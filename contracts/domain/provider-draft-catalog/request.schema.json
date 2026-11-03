@@ -1,0 +1,236 @@
+{
+  "$defs": {
+    "DraftEndpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "credentialRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "vendor": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "endpoint",
+        "protocol",
+        "vendor"
+      ],
+      "type": "object"
+    },
+    "DraftOrigin": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "saved",
+              "type": "string"
+            },
+            "query": {
+              "$ref": "#/$defs/SourceQuery"
+            },
+            "sourceRevision": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "query"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "new",
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            },
+            "storeId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "storeId",
+            "providerId"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Selection": {
+      "additionalProperties": false,
+      "properties": {
+        "bindingId": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/Target"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest",
+        "bindingId",
+        "target"
+      ],
+      "type": "object"
+    },
+    "SourceChoice": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "builtin",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "catalog": {
+              "$ref": "#/$defs/Selection"
+            },
+            "kind": {
+              "const": "external",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "catalog"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SourceQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "expectedRevision": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "providerId",
+        "expectedRevision"
+      ],
+      "type": "object"
+    },
+    "Target": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "expectedRevision": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "saved",
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "providerId",
+            "expectedRevision"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "credentialRef": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "endpoint": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "draft",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "protocol": {
+              "type": "string"
+            },
+            "vendor": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "label",
+            "endpoint",
+            "protocol",
+            "vendor"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "draft": {
+      "$ref": "#/$defs/DraftEndpoint"
+    },
+    "origin": {
+      "$ref": "#/$defs/DraftOrigin"
+    },
+    "source": {
+      "$ref": "#/$defs/SourceChoice"
+    }
+  },
+  "required": [
+    "origin",
+    "draft",
+    "source"
+  ],
+  "title": "DraftCatalogRequest",
+  "type": "object"
+}

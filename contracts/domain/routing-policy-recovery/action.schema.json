@@ -1,0 +1,125 @@
+{
+  "$defs": {
+    "PolicyRecoveryMode": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "native",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "pending-original",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PolicyRecoveryReference": {
+      "additionalProperties": false,
+      "properties": {
+        "referenceId": {
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/PolicyRecoveryScope"
+        }
+      },
+      "required": [
+        "scope",
+        "referenceId"
+      ],
+      "type": "object"
+    },
+    "PolicyRecoveryScope": {
+      "additionalProperties": false,
+      "properties": {
+        "serviceId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "serviceId"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "list",
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "storeId"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "inspect",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/PolicyRecoveryScope"
+        }
+      },
+      "required": [
+        "kind",
+        "scope"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "resolve",
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "#/$defs/PolicyRecoveryMode"
+        },
+        "reference": {
+          "$ref": "#/$defs/PolicyRecoveryReference"
+        }
+      },
+      "required": [
+        "kind",
+        "reference",
+        "mode"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "PolicyRecoveryAction"
+}

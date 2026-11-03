@@ -1,0 +1,133 @@
+{
+  "$defs": {
+    "PublicAction": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "authorize-report",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "refresh",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "read-session",
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            },
+            "snapshot": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "sessionId",
+            "snapshot"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "allowPrivateNetwork": {
+              "type": "boolean"
+            },
+            "kind": {
+              "const": "bind-connection",
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "providerId",
+            "allowPrivateNetwork"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "save-settings",
+              "type": "string"
+            },
+            "values": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "kind",
+            "values"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "create-provider",
+              "type": "string"
+            },
+            "preset": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "preset"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/PublicAction"
+    },
+    "digest": {
+      "type": "string"
+    },
+    "pluginId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "pluginId",
+    "digest",
+    "action"
+  ],
+  "title": "ActionRequest",
+  "type": "object"
+}

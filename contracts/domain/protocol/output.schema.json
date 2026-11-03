@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "chunks": {
+      "description": "Keep frame order and boundaries. Empty frames need not be delivered.",
+      "items": {
+        "items": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "complete": {
+      "description": "Transformation reached its validated terminal state, not proof of billing or success.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "chunks",
+    "complete"
+  ],
+  "title": "Output",
+  "type": "object"
+}

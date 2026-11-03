@@ -1,0 +1,149 @@
+{
+  "$defs": {
+    "ActivityInput": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "type": "string"
+        },
+        "text": {
+          "description": "Existing bounded, redacted user excerpt; never tool/system arguments.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "at"
+      ],
+      "type": "object"
+    },
+    "ActivityObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "attribution": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "eventAt": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "messageId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "messageStartedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "phase": {
+          "type": "string"
+        },
+        "productId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "stale": {
+          "type": "boolean"
+        },
+        "step": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "toolNames": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "userInput": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ActivityInput"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "sourceId",
+        "sessionId",
+        "title",
+        "phase",
+        "step",
+        "toolNames",
+        "eventAt",
+        "stale"
+      ],
+      "type": "object"
+    },
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "activities": {
+      "items": {
+        "$ref": "#/$defs/ActivityObservation"
+      },
+      "type": "array"
+    },
+    "collectionMicros": {
+      "$ref": "#/$defs/Decimal",
+      "description": "Host monotonic collection duration, not message latency or generation time."
+    },
+    "limited": {
+      "type": "boolean"
+    },
+    "observedAt": {
+      "type": "string"
+    },
+    "sourceId": {
+      "type": "string"
+    },
+    "sourceRevision": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "sourceId",
+    "sourceRevision",
+    "observedAt",
+    "collectionMicros",
+    "activities",
+    "limited"
+  ],
+  "title": "ActivitySnapshot",
+  "type": "object"
+}

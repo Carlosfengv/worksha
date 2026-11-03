@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "protocol": null,
+  "config": null,
+  "connector": "mcp-http"
+}

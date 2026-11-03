@@ -1,0 +1,250 @@
+{
+  "version": 1,
+  "fallback": {
+    "httpStatus": 400,
+    "outcomeUnknown": false,
+    "initialProviderWrite": "query"
+  },
+  "errors": {
+    "agent_busy": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "busy": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "reject"
+    },
+    "capacity": {
+      "httpStatus": 400,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "reject"
+    },
+    "catalog_sync_required": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "conflict": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "reject"
+    },
+    "credential_discovery_capacity": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "credential_discovery_changed": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "credential_discovery_unavailable": {
+      "httpStatus": 503,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "credential_legacy_migrated": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "credential_legacy_not_found": {
+      "httpStatus": 404,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "credential_legacy_source_changed": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "credential_legacy_unverified": {
+      "httpStatus": 503,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "credential_migration_pending": {
+      "httpStatus": 503,
+      "outcomeUnknown": true,
+      "initialProviderWrite": "query"
+    },
+    "credential_namespace_changed": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "credential_namespace_unverified": {
+      "httpStatus": 503,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "credential_operation_cancelled": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "credential_protocol_unavailable": {
+      "httpStatus": 503,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "credential_recovery_corrupt": {
+      "httpStatus": 503,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "credential_recovery_unavailable": {
+      "httpStatus": 503,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "credential_removed": {
+      "httpStatus": 410,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "credential_result_unknown": {
+      "httpStatus": 503,
+      "outcomeUnknown": true,
+      "initialProviderWrite": "query"
+    },
+    "credential_store_changed": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "credential_unavailable": {
+      "httpStatus": 503,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "in_use": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "invalid_credential": {
+      "httpStatus": 400,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "reject"
+    },
+    "invalid_input": {
+      "httpStatus": 400,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "reject"
+    },
+    "invalid_provider": {
+      "httpStatus": 400,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "reject"
+    },
+    "invalid_record": {
+      "httpStatus": 503,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "local_token_cancelled": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "local_token_record_unavailable": {
+      "httpStatus": 503,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "local_token_recovery_required": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "local_token_result_unknown": {
+      "httpStatus": 503,
+      "outcomeUnknown": true,
+      "initialProviderWrite": "query"
+    },
+    "native_import_cancelled": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "native_import_expired": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "native_import_record_unavailable": {
+      "httpStatus": 503,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "native_import_result_unknown": {
+      "httpStatus": 503,
+      "outcomeUnknown": true,
+      "initialProviderWrite": "query"
+    },
+    "not_attached": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "not_found": {
+      "httpStatus": 404,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "operation_conflict": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "reject"
+    },
+    "operation_expired": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "reject"
+    },
+    "operation_in_progress": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "reject"
+    },
+    "operation_not_found": {
+      "httpStatus": 404,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "operation_origin_missing": {
+      "httpStatus": 400,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "reject"
+    },
+    "operation_store_changed": {
+      "httpStatus": 409,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "reject"
+    },
+    "routing_unavailable": {
+      "httpStatus": 503,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "service_unavailable": {
+      "httpStatus": 503,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "unavailable": {
+      "httpStatus": 503,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "query"
+    },
+    "write_protocol_unavailable": {
+      "httpStatus": 503,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "reject"
+    }
+  }
+}

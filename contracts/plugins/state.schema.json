@@ -1,0 +1,35 @@
+{
+  "$defs": {
+    "StateAction": {
+      "enum": [
+        "enable",
+        "disable",
+        "remove",
+        "rollback",
+        "revoke-grants",
+        "revoke-publisher"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/StateAction"
+    },
+    "digest": {
+      "type": "string"
+    },
+    "pluginId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "pluginId",
+    "digest",
+    "action"
+  ],
+  "title": "StateRequest",
+  "type": "object"
+}

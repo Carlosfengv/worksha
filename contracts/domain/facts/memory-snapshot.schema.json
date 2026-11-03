@@ -1,0 +1,127 @@
+{
+  "$defs": {
+    "Coverage": {
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "MemoryFile": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "modifiedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "scopeLabel": {
+          "type": "string"
+        },
+        "sizeBytes": {
+          "$ref": "#/$defs/Decimal"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "scopeLabel",
+        "sizeBytes"
+      ],
+      "type": "object"
+    },
+    "MemoryPreview": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "coverage": {
+      "$ref": "#/$defs/Coverage",
+      "description": "The known default locations do not establish coverage of custom/remote memory."
+    },
+    "files": {
+      "items": {
+        "$ref": "#/$defs/MemoryFile"
+      },
+      "type": "array"
+    },
+    "limited": {
+      "type": "boolean"
+    },
+    "loadedInClient": {
+      "description": "Discovery is not evidence that a client or Session loaded these files.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "observedAt": {
+      "type": "string"
+    },
+    "productId": {
+      "type": "string"
+    },
+    "selected": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MemoryPreview"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sharedProductIds": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "sourceId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "sourceId",
+    "productId",
+    "sharedProductIds",
+    "files",
+    "observedAt",
+    "coverage",
+    "limited"
+  ],
+  "title": "MemorySnapshot",
+  "type": "object"
+}

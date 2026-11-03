@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 1,
+  "id": "org.example.aurora-agent",
+  "version": "1.0.0",
+  "displayName": "Aurora 只读会话",
+  "publisher": "org.example",
+  "hostApi": "^1.0",
+  "runtime": { "kind": "wasm-component", "entry": "plugin.wasm", "abi": "local-agent:plugin@1.0.0" },
+  "capabilities": ["session.source@1", "ui.contribution@1"],
+  "requires": ["host.source-broker@1"],
+  "permissions": [{ "kind": "source.content.read", "resource": "history" }, { "kind": "ui.contribute" }],
+  "agent": { "productId": "org.example.aurora-agent:cli", "displayName": "Aurora（虚构示例）" },
+  "providers": [],
+  "settings": [{ "key": "title-style", "label": "会话标题", "options": ["original", "with-model"], "default": "original" }],
+  "views": [{ "id": "history", "title": "Aurora 会话", "description": "只读取你选择的 JSONL 文件；未接入活动观测、配置写入或模型调用。", "kind": "sessions" }, { "id": "preferences", "title": "Aurora 设置", "description": "由宿主管理的有限选项。", "kind": "settings" }]
+}

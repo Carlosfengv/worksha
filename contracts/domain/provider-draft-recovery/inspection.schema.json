@@ -1,0 +1,267 @@
+{
+  "$defs": {
+    "DraftGrantOwner": {
+      "additionalProperties": false,
+      "properties": {
+        "ownerId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "ownerId"
+      ],
+      "type": "object"
+    },
+    "DraftRecoveryEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "canFinish": {
+          "type": "boolean"
+        },
+        "digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpointOrigin": {
+          "description": "Scheme/host/port only; no credential reference or private endpoint path.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "operationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owner": {
+          "$ref": "#/$defs/DraftGrantOwner"
+        },
+        "ownership": {
+          "$ref": "#/$defs/DraftRecoveryOwnership"
+        },
+        "pluginId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/DraftRecoveryState"
+        }
+      },
+      "required": [
+        "owner",
+        "label",
+        "ownership",
+        "state",
+        "canFinish"
+      ],
+      "type": "object"
+    },
+    "DraftRecoveryOwnership": {
+      "enum": [
+        "prepared",
+        "managed",
+        "shared",
+        "missing"
+      ],
+      "type": "string"
+    },
+    "DraftRecoveryState": {
+      "enum": [
+        "unchecked",
+        "unattached",
+        "pending",
+        "committed",
+        "failed",
+        "cancelled",
+        "not-found",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "Kind": {
+      "enum": [
+        "save",
+        "connect"
+      ],
+      "type": "string"
+    },
+    "ModelCatalogSource": {
+      "additionalProperties": false,
+      "properties": {
+        "credentialRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "fetchedAt": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "sourceUrl": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "fetchedAt",
+        "sourceUrl",
+        "endpoint",
+        "protocol"
+      ],
+      "type": "object"
+    },
+    "Provider": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "default": "cloud",
+          "type": "string"
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "credentialLabel": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "credentialRef": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "disabledModels": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "modelCatalog": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelCatalogSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "models": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "revision": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vendor": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "endpoint",
+        "protocol",
+        "model",
+        "configured"
+      ],
+      "type": "object"
+    },
+    "ProviderOperationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expectedSequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/Kind"
+        },
+        "operationId": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/Provider"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "operationId",
+        "expectedSequence",
+        "kind",
+        "provider"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "entry": {
+      "$ref": "#/$defs/DraftRecoveryEntry"
+    },
+    "request": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProviderOperationRequest"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The original frozen input, for the existing query/cancel API only."
+    }
+  },
+  "required": [
+    "entry"
+  ],
+  "title": "DraftRecoveryInspection",
+  "type": "object"
+}

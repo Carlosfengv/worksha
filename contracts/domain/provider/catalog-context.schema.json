@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "basePath": {
+      "type": "string"
+    },
+    "officialCatalogRoot": {
+      "description": "Computed by the host from the exact official origin, never accepted from a guest.",
+      "type": "boolean"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "vendor": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "vendor",
+    "basePath",
+    "officialCatalogRoot"
+  ],
+  "title": "CatalogContext",
+  "type": "object"
+}

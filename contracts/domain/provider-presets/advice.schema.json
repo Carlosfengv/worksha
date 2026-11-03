@@ -1,0 +1,91 @@
+{
+  "$defs": {
+    "PresetOrigin": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "builtin",
+              "type": "string"
+            },
+            "presetId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "presetId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "digest": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "external",
+              "type": "string"
+            },
+            "pluginId": {
+              "type": "string"
+            },
+            "presetId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "pluginId",
+            "digest",
+            "presetId"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "documents": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "endpoints": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "model": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "origin": {
+      "$ref": "#/$defs/PresetOrigin"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "sourceName": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "origin",
+    "sourceName",
+    "name",
+    "protocol",
+    "endpoints",
+    "model"
+  ],
+  "title": "PresetAdvice",
+  "type": "object"
+}

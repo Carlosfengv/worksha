@@ -1,0 +1,50 @@
+{
+  "$defs": {
+    "SourceRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "activationEpoch": {
+          "type": "string"
+        },
+        "contextId": {
+          "type": "string"
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "grantRevision": {
+          "type": "string"
+        },
+        "sourceRef": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contextId",
+        "sourceRef",
+        "activationEpoch",
+        "grantRevision"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "nativeId": {
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/SourceRequest"
+    }
+  },
+  "required": [
+    "source",
+    "nativeId"
+  ],
+  "title": "ConversationRequest",
+  "type": "object"
+}

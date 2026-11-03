@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "operationId": {
+      "type": "string"
+    },
+    "snapshotToken": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "operationId",
+    "snapshotToken"
+  ],
+  "title": "Begin",
+  "type": "object"
+}

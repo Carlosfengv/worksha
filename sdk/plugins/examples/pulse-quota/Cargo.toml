@@ -1,0 +1,11 @@
+[package]
+name = "pulse-quota-plugin"
+version = "1.0.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "=0.43.0"
+serde_json = { version = "1", features = ["arbitrary_precision"] }

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "protocol": null,
+  "config": {
+    "fields": [
+      {
+        "pointer": "/env/API_BASE_URL",
+        "value": "endpoint"
+      },
+      {
+        "pointer": "/env/API_MODEL",
+        "value": "model"
+      },
+      {
+        "pointer": "/env/API_KEY",
+        "value": "credential"
+      }
+    ]
+  },
+  "connector": null
+}

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "digest": {
+      "type": "string"
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "persistMetadata": {
+      "type": "boolean"
+    },
+    "pluginId": {
+      "type": "string"
+    },
+    "reviewRef": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "pluginId",
+    "digest",
+    "reviewRef",
+    "enabled",
+    "persistMetadata"
+  ],
+  "title": "SourceConsent",
+  "type": "object"
+}

@@ -1,0 +1,2 @@
+{"nativeId":"aurora-1","title":"Aurora 离线样例","createdAt":"2026-10-23T00:00:00Z","model":"sample-model","usage":{"inputTokens":"9007199254740993","outputTokens":"7","cacheReadTokens":"2","reasoningTokens":"1"},"messages":[{"role":"user","text":"这是虚构的离线会话。"},{"role":"assistant","text":"插件仅在授权后读取这个 JSONL 文件。"}]}
+{"nativeId":"aurora-2","title":"零用量与未知模型","createdAt":null,"model":null,"usage":{"inputTokens":"0","outputTokens":"0","cacheReadTokens":null,"reasoningTokens":null},"messages":[]}

@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 1,
+  "id": "org.example.pulse-quota",
+  "version": "1.0.0",
+  "displayName": "Pulse 额度解析",
+  "publisher": "org.example",
+  "hostApi": "^1.0",
+  "runtime": { "kind": "wasm-component", "entry": "plugin.wasm", "abi": "local-agent:plugin@1.0.0" },
+  "capabilities": ["account.quota-source@1", "provider.catalog@1", "ui.contribution@1"],
+  "requires": ["host.connection-broker@1"],
+  "permissions": [{ "kind": "connection.request", "path": "/quota" }, { "kind": "ui.contribute" }],
+  "agent": null,
+  "providers": [{ "id": "pulse", "name": "Pulse（需自行配置端点）", "protocol": "responses", "endpoint": "https://quota.example.invalid/v1", "model": "" }],
+  "settings": [],
+  "views": [{ "id": "balance", "title": "Pulse 额度", "description": "仅在手动刷新时，向你绑定的连接发送一次 GET /quota。凭据由宿主注入，插件不能读取原始密钥。", "kind": "quota" }, { "id": "preset", "title": "Pulse 连接预设", "description": "复制为本机连接后在 Providers 中配置；安装不会发起验证或模型调用。", "kind": "providers" }]
+}

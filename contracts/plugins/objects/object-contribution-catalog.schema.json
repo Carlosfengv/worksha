@@ -1,0 +1,236 @@
+{
+  "$defs": {
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "DependencyStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "pluginId": {
+          "type": "string"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": "string"
+        },
+        "views": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "pluginId",
+        "version",
+        "views",
+        "available"
+      ],
+      "type": "object"
+    },
+    "DetailPlacement": {
+      "enum": [
+        "tab",
+        "card"
+      ],
+      "type": "string"
+    },
+    "ObjectContributionStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "activationEpoch": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "dependencies": {
+          "items": {
+            "$ref": "#/$defs/DependencyStatus"
+          },
+          "type": "array"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "errorCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "grantRevision": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "pluginId": {
+          "type": "string"
+        },
+        "slots": {
+          "items": {
+            "$ref": "#/$defs/ObjectSlotStatus"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest",
+        "enabled",
+        "active",
+        "activationEpoch",
+        "grantRevision",
+        "dependencies",
+        "slots"
+      ],
+      "type": "object"
+    },
+    "ObjectQueryKind": {
+      "enum": [
+        "summary"
+      ],
+      "type": "string"
+    },
+    "ObjectSlot": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/SummaryField"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "placement": {
+          "$ref": "#/$defs/DetailPlacement"
+        },
+        "purpose": {
+          "description": "Human-readable, separately reviewed purpose. No executable expression.",
+          "type": "string"
+        },
+        "queryKind": {
+          "$ref": "#/$defs/ObjectQueryKind"
+        },
+        "target": {
+          "$ref": "#/$defs/ObjectTarget"
+        },
+        "title": {
+          "type": "string"
+        },
+        "viewId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "placement",
+        "viewId",
+        "title",
+        "queryKind",
+        "fields",
+        "purpose"
+      ],
+      "type": "object"
+    },
+    "ObjectSlotStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "authorized": {
+          "type": "boolean"
+        },
+        "contextIdentity": {
+          "description": "Host instance, installation scope and current summary-grant revision.",
+          "type": "string"
+        },
+        "declaration": {
+          "$ref": "#/$defs/ObjectSlot"
+        },
+        "descriptorIdentity": {
+          "description": "Hash of the entire fixed declaration, including purpose and fields.",
+          "type": "string"
+        },
+        "errorCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "declaration",
+        "descriptorIdentity",
+        "contextIdentity",
+        "authorized"
+      ],
+      "type": "object"
+    },
+    "ObjectTarget": {
+      "enum": [
+        "agent",
+        "provider",
+        "account",
+        "project",
+        "session",
+        "request"
+      ],
+      "type": "string"
+    },
+    "SummaryField": {
+      "enum": [
+        "session-count",
+        "model-count",
+        "configuration",
+        "quota-window-count",
+        "input-tokens",
+        "output-tokens",
+        "total-tokens",
+        "attempt-count",
+        "duration-ms",
+        "request-outcome"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "items": {
+        "$ref": "#/$defs/ObjectContributionStatus"
+      },
+      "type": "array"
+    },
+    "schemaVersion": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "items"
+  ],
+  "title": "ObjectContributionCatalog",
+  "type": "object"
+}

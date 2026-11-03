@@ -1,0 +1,75 @@
+{
+  "$defs": {
+    "DraftGrantOwner": {
+      "additionalProperties": false,
+      "properties": {
+        "ownerId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "ownerId"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "list",
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "storeId"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "inspect",
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/DraftGrantOwner"
+        }
+      },
+      "required": [
+        "kind",
+        "owner"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "finish",
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/DraftGrantOwner"
+        }
+      },
+      "required": [
+        "kind",
+        "owner"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "DraftRecoveryAction"
+}

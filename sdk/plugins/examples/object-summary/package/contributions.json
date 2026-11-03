@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "optionalDependencies": [
+    {
+      "pluginId": "org.example.detail-helper",
+      "version": "^1.0",
+      "views": ["enhanced"]
+    }
+  ],
+  "detailSlots": []
+}

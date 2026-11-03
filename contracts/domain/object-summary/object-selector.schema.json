@@ -1,0 +1,203 @@
+{
+  "$defs": {
+    "ObjectOrigin": {
+      "description": "A unified object must come from an existing authorized, frozen query.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "builtin",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "unified",
+              "type": "string"
+            },
+            "scope": {
+              "$ref": "#/$defs/QueryScope"
+            },
+            "snapshotToken": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "scope",
+            "sourceId",
+            "snapshotToken"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "QueryScope": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ScopeKind"
+        },
+        "sourceIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "sourceIds"
+      ],
+      "type": "object"
+    },
+    "RequestUnit": {
+      "enum": [
+        "model-response",
+        "logical-request"
+      ],
+      "type": "string"
+    },
+    "ScopeKind": {
+      "enum": [
+        "builtin",
+        "external",
+        "combined"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "target": {
+          "const": "agent",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target",
+        "id"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "target": {
+          "const": "provider",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target",
+        "id"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "target": {
+          "const": "account",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target",
+        "id"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/ObjectOrigin"
+        },
+        "target": {
+          "const": "project",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target",
+        "id",
+        "origin"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/ObjectOrigin"
+        },
+        "target": {
+          "const": "session",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target",
+        "id",
+        "origin"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/ObjectOrigin"
+        },
+        "target": {
+          "const": "request",
+          "type": "string"
+        },
+        "unit": {
+          "$ref": "#/$defs/RequestUnit"
+        }
+      },
+      "required": [
+        "target",
+        "id",
+        "origin",
+        "unit"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "ObjectSelector"
+}

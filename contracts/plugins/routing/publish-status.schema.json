@@ -1,0 +1,367 @@
+{
+  "$defs": {
+    "BindingStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "authorized": {
+          "type": "boolean"
+        },
+        "errorCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failureMode": {
+          "$ref": "#/$defs/FailureMode"
+        },
+        "package": {
+          "$ref": "#/$defs/PackageQuery"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "serviceId": {
+          "type": "string"
+        },
+        "serviceVersionId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "serviceId",
+        "serviceVersionId",
+        "revision",
+        "package",
+        "failureMode",
+        "authorized"
+      ],
+      "type": "object"
+    },
+    "Capabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "contextWindow": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "inputModalities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "maxOutputTokens": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "thinking": {
+          "type": "boolean"
+        },
+        "tools": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "contextWindow",
+        "maxOutputTokens",
+        "tools",
+        "thinking",
+        "inputModalities"
+      ],
+      "type": "object"
+    },
+    "FailureMode": {
+      "enum": [
+        "reject",
+        "builtin"
+      ],
+      "type": "string"
+    },
+    "ModelDraft": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "$ref": "#/$defs/Capabilities"
+        },
+        "id": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "providerId",
+        "model",
+        "capabilities"
+      ],
+      "type": "object"
+    },
+    "ModelLimit": {
+      "additionalProperties": false,
+      "properties": {
+        "maxConcurrent": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "modelId": {
+          "default": "",
+          "type": "string"
+        },
+        "requestsPerMinute": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "OperationAction": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "draft": {
+              "$ref": "#/$defs/ServiceDraft"
+            },
+            "kind": {
+              "const": "save",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "draft"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "expectedRevision": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "delete",
+              "type": "string"
+            },
+            "serviceId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "serviceId",
+            "expectedRevision"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "OperationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/OperationAction"
+        },
+        "operationId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "operationId",
+        "action"
+      ],
+      "type": "object"
+    },
+    "PackageQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "RoutingPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "cooldownSeconds": {
+          "default": 30,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "deadlineSeconds": {
+          "default": 120,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "disabledModels": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "fallbackOnFailure": {
+          "default": true,
+          "type": "boolean"
+        },
+        "fallbackOnRateLimit": {
+          "default": true,
+          "type": "boolean"
+        },
+        "limits": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ModelLimit"
+          },
+          "type": "array"
+        },
+        "maxAttempts": {
+          "default": 3,
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "order": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ServiceDraft": {
+      "additionalProperties": false,
+      "properties": {
+        "defaultModelId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/$defs/ModelDraft"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "routingPolicy": {
+          "$ref": "#/$defs/RoutingPolicy",
+          "default": {
+            "cooldownSeconds": 30,
+            "deadlineSeconds": 120,
+            "disabledModels": [],
+            "enabled": false,
+            "fallbackOnFailure": true,
+            "fallbackOnRateLimit": true,
+            "limits": [],
+            "maxAttempts": 3,
+            "order": []
+          }
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "name",
+        "defaultModelId",
+        "models"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "binding": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BindingStatus"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "errorCode": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "operationId": {
+      "type": "string"
+    },
+    "request": {
+      "$ref": "#/$defs/OperationRequest"
+    },
+    "serviceId": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "storeId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "storeId",
+    "operationId",
+    "serviceId",
+    "state",
+    "request"
+  ],
+  "title": "PublishStatus",
+  "type": "object"
+}

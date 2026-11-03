@@ -1,0 +1,6 @@
+{
+  "authorize_plugin_resource": ["query"],
+  "export_plugin_connector": ["query"],
+  "perform_plugin_extension": ["input"],
+  "query_plugin_extension": ["query"]
+}

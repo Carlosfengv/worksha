@@ -1,0 +1,115 @@
+{
+  "$defs": {
+    "Binding": {
+      "additionalProperties": false,
+      "properties": {
+        "allowPrivateNetwork": {
+          "type": "boolean"
+        },
+        "authorized": {
+          "type": "boolean"
+        },
+        "bindingId": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "errorCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expectedRevision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bindingId",
+        "digest",
+        "label",
+        "endpoint",
+        "protocol",
+        "allowPrivateNetwork",
+        "authorized"
+      ],
+      "type": "object"
+    },
+    "Policy": {
+      "additionalProperties": false,
+      "properties": {
+        "baseProtocol": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "baseProtocol",
+        "path"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "bindings": {
+      "items": {
+        "$ref": "#/$defs/Binding"
+      },
+      "type": "array"
+    },
+    "canBind": {
+      "type": "boolean"
+    },
+    "errorCode": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "policy": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Policy"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "canBind",
+    "bindings"
+  ],
+  "title": "State",
+  "type": "object"
+}

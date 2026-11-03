@@ -1,0 +1,34 @@
+{
+  "manifestVersion": 1,
+  "id": "org.example.envelope-protocol",
+  "version": "1.0.0",
+  "displayName": "Envelope 流协议",
+  "publisher": "org.example",
+  "hostApi": "^1.0.0",
+  "runtime": {
+    "kind": "wasm-component",
+    "entry": "plugin.wasm",
+    "abi": "local-agent:plugin@1.0.0"
+  },
+  "capabilities": [
+    "gateway.protocol@1",
+    "ui.contribution@1"
+  ],
+  "requires": [],
+  "permissions": [
+    {
+      "kind": "ui.contribute"
+    }
+  ],
+  "agent": null,
+  "providers": [],
+  "settings": [],
+  "views": [
+    {
+      "id": "manage",
+      "title": "Envelope 流协议",
+      "description": "启用后仍需明确授权连接或文件；宿主负责网络、备份、恢复和执行确认。",
+      "kind": "settings"
+    }
+  ]
+}

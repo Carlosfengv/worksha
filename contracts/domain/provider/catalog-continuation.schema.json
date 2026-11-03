@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "afterId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "hasMore": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "hasMore"
+  ],
+  "title": "CatalogContinuation",
+  "type": "object"
+}

@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "detailSlots": [
+    {
+      "id": "agent-card",
+      "target": "agent",
+      "placement": "card",
+      "viewId": "agent-summary",
+      "title": "Agent · 已记录摘要",
+      "queryKind": "summary",
+      "fields": ["session-count"],
+      "purpose": "在当前Agent详情中显示已记录的摘要字段，保留未知、过期和范围不完整状态。"
+    },
+    {
+      "id": "agent-tab",
+      "target": "agent",
+      "placement": "tab",
+      "viewId": "agent-summary",
+      "title": "Agent · 已记录摘要",
+      "queryKind": "summary",
+      "fields": ["session-count"],
+      "purpose": "在当前Agent详情中显示已记录的摘要字段，保留未知、过期和范围不完整状态。"
+    },
+    {
+      "id": "provider-card",
+      "target": "provider",
+      "placement": "card",
+      "viewId": "provider-summary",
+      "title": "Provider · 已记录摘要",
+      "queryKind": "summary",
+      "fields": ["model-count", "configuration"],
+      "purpose": "在当前Provider详情中显示已记录的摘要字段，保留未知、过期和范围不完整状态。"
+    },
+    {
+      "id": "provider-tab",
+      "target": "provider",
+      "placement": "tab",
+      "viewId": "provider-summary",
+      "title": "Provider · 已记录摘要",
+      "queryKind": "summary",
+      "fields": ["model-count", "configuration"],
+      "purpose": "在当前Provider详情中显示已记录的摘要字段，保留未知、过期和范围不完整状态。"
+    },
+    {
+      "id": "account-card",
+      "target": "account",
+      "placement": "card",
+      "viewId": "account-summary",
+      "title": "账户 · 已记录摘要",
+      "queryKind": "summary",
+      "fields": ["quota-window-count"],
+      "purpose": "在当前账户详情中显示已记录的摘要字段，保留未知、过期和范围不完整状态。"
+    },
+    {
+      "id": "account-tab",
+      "target": "account",
+      "placement": "tab",
+      "viewId": "account-summary",
+      "title": "账户 · 已记录摘要",
+      "queryKind": "summary",
+      "fields": ["quota-window-count"],
+      "purpose": "在当前账户详情中显示已记录的摘要字段，保留未知、过期和范围不完整状态。"
+    },
+    {
+      "id": "project-card",
+      "target": "project",
+      "placement": "card",
+      "viewId": "project-summary",
+      "title": "项目 · 已记录摘要",
+      "queryKind": "summary",
+      "fields": ["session-count"],
+      "purpose": "在当前项目详情中显示已记录的摘要字段，保留未知、过期和范围不完整状态。"
+    },
+    {
+      "id": "project-tab",
+      "target": "project",
+      "placement": "tab",
+      "viewId": "project-summary",
+      "title": "项目 · 已记录摘要",
+      "queryKind": "summary",
+      "fields": ["session-count"],
+      "purpose": "在当前项目详情中显示已记录的摘要字段，保留未知、过期和范围不完整状态。"
+    },
+    {
+      "id": "session-card",
+      "target": "session",
+      "placement": "card",
+      "viewId": "session-summary",
+      "title": "会话 · 已记录摘要",
+      "queryKind": "summary",
+      "fields": ["input-tokens", "output-tokens", "total-tokens"],
+      "purpose": "在当前会话详情中显示已记录的摘要字段，保留未知、过期和范围不完整状态。"
+    },
+    {
+      "id": "session-tab",
+      "target": "session",
+      "placement": "tab",
+      "viewId": "session-summary",
+      "title": "会话 · 已记录摘要",
+      "queryKind": "summary",
+      "fields": ["input-tokens", "output-tokens", "total-tokens"],
+      "purpose": "在当前会话详情中显示已记录的摘要字段，保留未知、过期和范围不完整状态。"
+    },
+    {
+      "id": "request-card",
+      "target": "request",
+      "placement": "card",
+      "viewId": "request-summary",
+      "title": "请求 · 已记录摘要",
+      "queryKind": "summary",
+      "fields": [
+        "input-tokens",
+        "output-tokens",
+        "total-tokens",
+        "attempt-count",
+        "duration-ms",
+        "request-outcome"
+      ],
+      "purpose": "在当前请求详情中显示已记录的摘要字段，保留未知、过期和范围不完整状态。"
+    },
+    {
+      "id": "request-tab",
+      "target": "request",
+      "placement": "tab",
+      "viewId": "request-summary",
+      "title": "请求 · 已记录摘要",
+      "queryKind": "summary",
+      "fields": [
+        "input-tokens",
+        "output-tokens",
+        "total-tokens",
+        "attempt-count",
+        "duration-ms",
+        "request-outcome"
+      ],
+      "purpose": "在当前请求详情中显示已记录的摘要字段，保留未知、过期和范围不完整状态。"
+    },
+    {
+      "id": "session-enhanced",
+      "target": "session",
+      "placement": "tab",
+      "viewId": "enhanced",
+      "title": "会话 · 增强摘要",
+      "queryKind": "summary",
+      "fields": ["input-tokens", "output-tokens", "total-tokens"],
+      "purpose": "演示可选依赖缺失时仅降级此增强页签；不自动采集或刷新来源。"
+    }
+  ]
+}

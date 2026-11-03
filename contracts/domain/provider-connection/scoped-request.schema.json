@@ -1,0 +1,163 @@
+{
+  "$defs": {
+    "Action": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "allowPrivateNetwork": {
+              "type": "boolean"
+            },
+            "kind": {
+              "const": "bind",
+              "type": "string"
+            },
+            "target": {
+              "$ref": "#/$defs/Target"
+            }
+          },
+          "required": [
+            "kind",
+            "target",
+            "allowPrivateNetwork"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "bindingId": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "unbind",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "bindingId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "bindingId": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "read",
+              "type": "string"
+            },
+            "target": {
+              "$ref": "#/$defs/Target"
+            }
+          },
+          "required": [
+            "kind",
+            "bindingId",
+            "target"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Request": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/Action"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest",
+        "action"
+      ],
+      "type": "object"
+    },
+    "Target": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "expectedRevision": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "saved",
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "providerId",
+            "expectedRevision"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "credentialRef": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "endpoint": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "draft",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "protocol": {
+              "type": "string"
+            },
+            "vendor": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "label",
+            "endpoint",
+            "protocol",
+            "vendor"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "request": {
+      "$ref": "#/$defs/Request"
+    },
+    "storeId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "storeId",
+    "request"
+  ],
+  "title": "ScopedRequest",
+  "type": "object"
+}

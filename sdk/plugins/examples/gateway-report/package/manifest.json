@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 1,
+  "id": "org.example.gateway-report",
+  "version": "1.0.0",
+  "displayName": "网关摘要报表",
+  "publisher": "org.example",
+  "hostApi": "^1.0",
+  "runtime": { "kind": "declarative" },
+  "capabilities": ["report.view@1", "ui.contribution@1"],
+  "requires": [],
+  "permissions": [{ "kind": "domain.query", "query": "gateway.summary" }, { "kind": "ui.contribute" }],
+  "agent": null,
+  "providers": [],
+  "settings": [],
+  "views": [{ "id": "summary", "title": "最近 24 小时网关摘要", "description": "授权后手动读取本数据目录的网关汇总；不读取原生会话、正文、请求 ID 或凭据。", "kind": "report" }]
+}

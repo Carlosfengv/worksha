@@ -1,0 +1,33 @@
+{
+  "$defs": {
+    "JsonEdit": {
+      "additionalProperties": false,
+      "properties": {
+        "pointer": {
+          "type": "string"
+        },
+        "value": true
+      },
+      "required": [
+        "pointer",
+        "value"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "edits": {
+      "items": {
+        "$ref": "#/$defs/JsonEdit"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "edits"
+  ],
+  "title": "ConfigCandidate",
+  "type": "object"
+}

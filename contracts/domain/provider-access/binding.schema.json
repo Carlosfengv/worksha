@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "allowPrivateNetwork": {
+      "type": "boolean"
+    },
+    "authorized": {
+      "type": "boolean"
+    },
+    "bindingId": {
+      "type": "string"
+    },
+    "digest": {
+      "type": "string"
+    },
+    "endpoint": {
+      "type": "string"
+    },
+    "errorCode": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expectedRevision": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "label": {
+      "type": "string"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "providerId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "bindingId",
+    "digest",
+    "label",
+    "endpoint",
+    "protocol",
+    "allowPrivateNetwork",
+    "authorized"
+  ],
+  "title": "Binding",
+  "type": "object"
+}

@@ -1,0 +1,11 @@
+package local-agent:plugin@1.0.0;
+
+/// Only these imports are linked. No WASI, environment, files, sockets or clocks.
+interface host {
+  call: func(method: string, payload: string) -> result<string, string>;
+}
+
+world plugin {
+  import host;
+  export invoke: func(method: string, payload: string) -> result<string, string>;
+}

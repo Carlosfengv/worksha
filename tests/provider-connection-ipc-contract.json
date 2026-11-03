@@ -1,0 +1,5 @@
+{
+  "commit_catalog_provider_operation": ["input"],
+  "get_catalog_provider_operation": ["input"],
+  "perform_scoped_provider_catalog": ["input"]
+}

@@ -1,0 +1,935 @@
+{
+  "$defs": {
+    "ActivityCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "durationMs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Historical source duration; does not establish a host monotonic sample."
+        },
+        "nativeId": {
+          "type": "string"
+        },
+        "occurredAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "phase": {
+          "$ref": "#/$defs/ActivityPhase"
+        },
+        "responseRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionRef": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "nativeId",
+        "sessionRef",
+        "phase"
+      ],
+      "type": "object"
+    },
+    "ActivityPhase": {
+      "enum": [
+        "thinking",
+        "generating",
+        "tool",
+        "idle",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "Authorization": {
+      "enum": [
+        "required",
+        "authorized",
+        "revoked"
+      ],
+      "type": "string"
+    },
+    "Coverage": {
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "EvidenceLevel": {
+      "enum": [
+        "builtin-native",
+        "source-reported"
+      ],
+      "type": "string"
+    },
+    "FactCandidate": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "project",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/ProjectCandidate"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "session",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/SessionCandidate"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "response",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/ResponseCandidate"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "activity",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/ActivityCandidate"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "write",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/WriteCandidate"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "mcp-catalog",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/McpCatalogCandidate"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "mcp-execution",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/McpExecutionCandidate"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "FactIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "epoch": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "evidence": {
+          "$ref": "#/$defs/EvidenceLevel"
+        },
+        "grantRevision": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "implementationIdentity": {
+          "type": "string"
+        },
+        "observedAt": {
+          "type": "string"
+        },
+        "providerKey": {
+          "type": "string"
+        },
+        "sourceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "providerKey",
+        "sourceId",
+        "implementationIdentity",
+        "epoch",
+        "grantRevision",
+        "observedAt",
+        "evidence"
+      ],
+      "type": "object"
+    },
+    "FactKind": {
+      "enum": [
+        "project",
+        "session",
+        "response",
+        "activity",
+        "write",
+        "mcp-catalog",
+        "mcp-execution"
+      ],
+      "type": "string"
+    },
+    "FactQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/FactKind"
+        },
+        "projectId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "responseId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "$ref": "#/$defs/QueryScope"
+        },
+        "sessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "snapshotToken": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "scope",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "FactRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "identity": {
+          "$ref": "#/$defs/FactIdentity"
+        },
+        "sourceRevision": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/FactCandidate"
+        }
+      },
+      "required": [
+        "id",
+        "identity",
+        "sourceRevision",
+        "value"
+      ],
+      "type": "object"
+    },
+    "FactSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "activities": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "coverage": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "crossSourceOverlapUnknown": {
+          "description": "Source-reported IDs do not establish overlap with other sources or the gateway.",
+          "type": "boolean"
+        },
+        "mcpCatalogs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mcpExecutions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projects": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "responses": {
+          "$ref": "#/$defs/UnitUsage"
+        },
+        "sessions": {
+          "$ref": "#/$defs/UnitUsage"
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "successfulWriteReports": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "writeReports": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "sourceId",
+        "coverage",
+        "sessions",
+        "responses",
+        "crossSourceOverlapUnknown"
+      ],
+      "type": "object"
+    },
+    "Freshness": {
+      "enum": [
+        "unread",
+        "current",
+        "stale",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "HiddenProject": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "sourceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceId",
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "McpCatalogCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "nativeId": {
+          "type": "string"
+        },
+        "serverName": {
+          "type": "string"
+        },
+        "toolNames": {
+          "description": "None means not observed; an observed empty catalog is Some([]).",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "nativeId",
+        "serverName"
+      ],
+      "type": "object"
+    },
+    "McpExecutionCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "durationMs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nativeId": {
+          "type": "string"
+        },
+        "occurredAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "$ref": "#/$defs/Outcome"
+        },
+        "responseRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "serverRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "toolName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "nativeId",
+        "toolName",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    "Outcome": {
+      "enum": [
+        "success",
+        "failure",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "ProjectCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "nativeId": {
+          "type": "string"
+        },
+        "pathHint": {
+          "description": "Display evidence only. Never passed to native identity/filesystem readers.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "nativeId",
+        "name"
+      ],
+      "type": "object"
+    },
+    "QueryScope": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ScopeKind"
+        },
+        "sourceIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "sourceIds"
+      ],
+      "type": "object"
+    },
+    "ResponseCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "durationMs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nativeId": {
+          "type": "string"
+        },
+        "occurredAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "$ref": "#/$defs/Outcome"
+        },
+        "productId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reportedResponseId": {
+          "description": "A source claim, never sufficient for cross-source gateway correlation.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionRef": {
+          "type": "string"
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        }
+      },
+      "required": [
+        "nativeId",
+        "sessionRef",
+        "outcome",
+        "usage"
+      ],
+      "type": "object"
+    },
+    "ScopeKind": {
+      "enum": [
+        "builtin",
+        "external",
+        "combined"
+      ],
+      "type": "string"
+    },
+    "SessionCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "createdAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nativeId": {
+          "type": "string"
+        },
+        "partial": {
+          "type": "boolean"
+        },
+        "productIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "projectRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "unknownClient": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        }
+      },
+      "required": [
+        "nativeId",
+        "productIds",
+        "unknownClient",
+        "title",
+        "usage",
+        "partial"
+      ],
+      "type": "object"
+    },
+    "SourceState": {
+      "additionalProperties": false,
+      "properties": {
+        "authorization": {
+          "$ref": "#/$defs/Authorization"
+        },
+        "coverage": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        },
+        "problem": {
+          "description": "Host-owned fixed reason code, never guest text.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceId",
+        "authorization",
+        "freshness",
+        "coverage"
+      ],
+      "type": "object"
+    },
+    "UnitUsage": {
+      "additionalProperties": false,
+      "properties": {
+        "coverage": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "missingFields": {
+          "description": "At least one matching fact lacks this field. Totals include known values only.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "records": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unit": {
+          "$ref": "#/$defs/UsageUnit"
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        }
+      },
+      "required": [
+        "unit",
+        "coverage",
+        "usage",
+        "missingFields"
+      ],
+      "type": "object"
+    },
+    "Usage": {
+      "additionalProperties": false,
+      "properties": {
+        "cacheWriteInputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cachedInputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reasoningOutputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "totalTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "UsageUnit": {
+      "enum": [
+        "session-cumulative",
+        "model-response"
+      ],
+      "type": "string"
+    },
+    "WriteCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "nativeId": {
+          "type": "string"
+        },
+        "occurredAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "$ref": "#/$defs/Outcome"
+        },
+        "projectRef": {
+          "type": "string"
+        },
+        "relativePath": {
+          "type": "string"
+        },
+        "responseRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionRef": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "nativeId",
+        "sessionRef",
+        "projectRef",
+        "relativePath",
+        "outcome"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "appliedQuery": {
+      "$ref": "#/$defs/FactQuery"
+    },
+    "asOf": {
+      "type": "string"
+    },
+    "hiddenProjects": {
+      "items": {
+        "$ref": "#/$defs/HiddenProject"
+      },
+      "type": "array"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/FactRecord"
+      },
+      "type": "array"
+    },
+    "nextCursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "overlapUnknown": {
+      "description": "Source claims never establish gateway correlation or cross-source deduplication.",
+      "type": "boolean"
+    },
+    "snapshotToken": {
+      "type": "string"
+    },
+    "sourceStates": {
+      "items": {
+        "$ref": "#/$defs/SourceState"
+      },
+      "type": "array"
+    },
+    "sourceSummaries": {
+      "items": {
+        "$ref": "#/$defs/FactSummary"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "items",
+    "snapshotToken",
+    "asOf",
+    "sourceStates",
+    "sourceSummaries",
+    "appliedQuery",
+    "overlapUnknown",
+    "hiddenProjects"
+  ],
+  "title": "FactPage",
+  "type": "object"
+}

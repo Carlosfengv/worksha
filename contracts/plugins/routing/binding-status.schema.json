@@ -1,0 +1,69 @@
+{
+  "$defs": {
+    "FailureMode": {
+      "enum": [
+        "reject",
+        "builtin"
+      ],
+      "type": "string"
+    },
+    "PackageQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "authorized": {
+      "type": "boolean"
+    },
+    "errorCode": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "failureMode": {
+      "$ref": "#/$defs/FailureMode"
+    },
+    "package": {
+      "$ref": "#/$defs/PackageQuery"
+    },
+    "revision": {
+      "type": "string"
+    },
+    "serviceId": {
+      "type": "string"
+    },
+    "serviceVersionId": {
+      "type": "string"
+    },
+    "storeId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "storeId",
+    "serviceId",
+    "serviceVersionId",
+    "revision",
+    "package",
+    "failureMode",
+    "authorized"
+  ],
+  "title": "BindingStatus",
+  "type": "object"
+}

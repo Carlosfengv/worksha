@@ -1,0 +1,34 @@
+{
+  "$defs": {
+    "RankReason": {
+      "enum": [
+        "builtin-priority",
+        "extension-order"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "order": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "reason": {
+      "$ref": "#/$defs/RankReason"
+    },
+    "requestIdentity": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "requestIdentity",
+    "order",
+    "reason"
+  ],
+  "title": "RankResult",
+  "type": "object"
+}

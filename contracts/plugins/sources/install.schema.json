@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "approvePublisher": {
+      "type": "boolean"
+    },
+    "digest": {
+      "type": "string"
+    },
+    "expectedSigningKey": {
+      "description": "The key visible in the review is bound again at submission.",
+      "type": "string"
+    },
+    "packageRef": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "packageRef",
+    "digest",
+    "approvePublisher",
+    "expectedSigningKey"
+  ],
+  "title": "Install",
+  "type": "object"
+}

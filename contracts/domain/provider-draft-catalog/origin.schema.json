@@ -1,0 +1,72 @@
+{
+  "$defs": {
+    "SourceQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "expectedRevision": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "providerId",
+        "expectedRevision"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "saved",
+          "type": "string"
+        },
+        "query": {
+          "$ref": "#/$defs/SourceQuery"
+        },
+        "sourceRevision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "query"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "new",
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "storeId",
+        "providerId"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "DraftOrigin"
+}

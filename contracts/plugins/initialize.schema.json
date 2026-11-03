@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "activationEpoch": {
+      "type": "string"
+    },
+    "apiVersion": {
+      "type": "string"
+    },
+    "capabilities": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "contextId": {
+      "type": "string"
+    },
+    "fuel": {
+      "type": "string"
+    },
+    "grantRevision": {
+      "type": "string"
+    },
+    "maxMemoryBytes": {
+      "type": "string"
+    },
+    "packageDigest": {
+      "type": "string"
+    },
+    "settings": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "settings",
+    "apiVersion",
+    "capabilities",
+    "packageDigest",
+    "activationEpoch",
+    "grantRevision",
+    "contextId",
+    "fuel",
+    "maxMemoryBytes"
+  ],
+  "title": "Initialize",
+  "type": "object"
+}

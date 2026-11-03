@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "credentialRef": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "endpoint": {
+      "type": "string"
+    },
+    "protocol": {
+      "type": "string"
+    },
+    "vendor": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "endpoint",
+    "protocol",
+    "vendor"
+  ],
+  "title": "DraftEndpoint",
+  "type": "object"
+}

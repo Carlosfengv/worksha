@@ -1,0 +1,2143 @@
+{
+  "version": 1,
+  "installations": [
+    {
+      "items": [
+        "surfaces",
+        "tailwind-merge-tokens",
+        "utils"
+      ],
+      "registryBase": "https://zeron-ui.vercel.app/r",
+      "cliVersion": "0.2.0-beta.19",
+      "files": [
+        "src/lib/tailwind-merge-tokens.ts",
+        "src/lib/utils.ts"
+      ],
+      "fileHashes": {
+        "src/lib/tailwind-merge-tokens.ts": {
+          "sourceHash": "1277e5cfadb06fad8ce615472603bf5e75ae2270269ca42aa253459a74a7a317",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "79ed798cc175b8842548d59f0e7fd737b807af5817e2b7cea881190e9d642e8e"
+        },
+        "src/lib/utils.ts": {
+          "sourceHash": "cd8413121df9b741a6ae601589bfda72da030ea7f97e767365e058f414acb933",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1831f143258d6933514dc37d1be90dbc5289489fb345e2eb7e8ea5f29b34a2b8"
+        }
+      },
+      "dependencies": [
+        "tw-animate-css@^1.4.0",
+        "clsx@^2.1.1",
+        "tailwind-merge@^3.4.0"
+      ],
+      "devDependencies": []
+    },
+    {
+      "items": [
+        "surfaces",
+        "tailwind-merge-tokens",
+        "utils",
+        "app-shell",
+        "springs",
+        "surface-classes",
+        "surface-context",
+        "icon-context",
+        "control-size",
+        "button",
+        "use-touch-primary",
+        "scroll-area",
+        "portal-container-context",
+        "mobile-drawer",
+        "popover",
+        "sidebar",
+        "use-proximity-hover",
+        "nav-menu",
+        "tooltip",
+        "nav-item",
+        "page-layout",
+        "badge",
+        "tabs",
+        "elevated",
+        "compose-refs",
+        "select",
+        "dialog",
+        "field",
+        "input",
+        "switch",
+        "alert",
+        "empty",
+        "skeleton",
+        "table",
+        "detail-list",
+        "accordion",
+        "chart-motion",
+        "chart-core",
+        "line-chart",
+        "pie-chart"
+      ],
+      "registryBase": "https://zeron-ui.vercel.app/r",
+      "cliVersion": "0.2.0-beta.19",
+      "files": [
+        "src/lib/tailwind-merge-tokens.ts",
+        "src/lib/utils.ts",
+        "src/components/ui/app-shell.tsx",
+        "src/lib/springs.ts",
+        "src/lib/surface-classes.ts",
+        "src/lib/surface-context.tsx",
+        "src/lib/icon-context.tsx",
+        "src/lib/huge-icon.tsx",
+        "src/lib/icon-catalog.ts",
+        "src/lib/hugeicons.d.ts",
+        "src/lib/tokens/control-size.ts",
+        "src/components/ui/button.tsx",
+        "src/hooks/use-touch-primary.tsx",
+        "src/components/ui/scroll-area.tsx",
+        "src/lib/portal-container-context.tsx",
+        "src/components/ui/mobile-drawer.tsx",
+        "src/components/ui/popover.tsx",
+        "src/components/ui/sidebar.tsx",
+        "src/hooks/use-proximity-hover.ts",
+        "src/components/ui/nav-menu.tsx",
+        "src/components/ui/tooltip.tsx",
+        "src/components/ui/nav-item.tsx",
+        "src/components/ui/page-layout.tsx",
+        "src/components/ui/badge.tsx",
+        "src/components/ui/badge-colors.ts",
+        "src/components/ui/tabs.tsx",
+        "src/lib/elevated.tsx",
+        "src/lib/compose-refs.ts",
+        "src/components/ui/select.tsx",
+        "src/components/ui/dialog.tsx",
+        "src/components/ui/field.tsx",
+        "src/components/ui/input.tsx",
+        "src/components/ui/switch.tsx",
+        "src/components/ui/alert.tsx",
+        "src/components/ui/empty.tsx",
+        "src/components/ui/skeleton.tsx",
+        "src/components/ui/table.tsx",
+        "src/components/ui/detail-list.tsx",
+        "src/components/ui/accordion.tsx",
+        "src/components/ui/chart-motion.tsx",
+        "src/components/ui/charts/animation.ts",
+        "src/components/ui/charts/use-mount-progress.ts",
+        "src/components/ui/charts/use-enter-complete.ts",
+        "src/components/ui/charts/use-chart-reduced-motion.ts",
+        "src/components/ui/charts/chart-domain.ts",
+        "src/components/ui/charts/reference-line.tsx",
+        "src/components/ui/chart-core.tsx",
+        "src/components/ui/charts/chart-child-passthrough.ts",
+        "src/components/ui/charts/chart-config-context.tsx",
+        "src/components/ui/charts/chart-context.tsx",
+        "src/components/ui/charts/chart-data.ts",
+        "src/components/ui/charts/chart-defs.ts",
+        "src/components/ui/charts/chart-formatters.ts",
+        "src/components/ui/charts/chart-legend-hover.tsx",
+        "src/components/ui/charts/chart-legend.tsx",
+        "src/components/ui/charts/chart-loading-label.tsx",
+        "src/components/ui/charts/chart-phase.ts",
+        "src/components/ui/charts/chart-reveal-clip.tsx",
+        "src/components/ui/charts/dash-tail-stroke.tsx",
+        "src/components/ui/charts/decimate-time-series.ts",
+        "src/components/ui/charts/fade-edges.ts",
+        "src/components/ui/charts/filter-data-by-x-domain.ts",
+        "src/components/ui/charts/generate-chart-skeleton-data.ts",
+        "src/components/ui/charts/grid.tsx",
+        "src/components/ui/charts/highlight-segment-bounds.ts",
+        "src/components/ui/charts/highlight-segment.tsx",
+        "src/components/ui/charts/indicator-fade.ts",
+        "src/components/ui/charts/legend/index.ts",
+        "src/components/ui/charts/legend/legend-context.tsx",
+        "src/components/ui/charts/legend/legend-item.tsx",
+        "src/components/ui/charts/legend/legend-label.tsx",
+        "src/components/ui/charts/legend/legend-marker.tsx",
+        "src/components/ui/charts/legend/legend-progress.tsx",
+        "src/components/ui/charts/legend/legend-value.tsx",
+        "src/components/ui/charts/legend/legend.tsx",
+        "src/components/ui/charts/line-loading-pulse.tsx",
+        "src/components/ui/charts/line-loading-timing.ts",
+        "src/components/ui/charts/loading-sweep.tsx",
+        "src/components/ui/charts/path-stroke-utils.ts",
+        "src/components/ui/charts/pattern-preset.tsx",
+        "src/components/ui/charts/projection-config.ts",
+        "src/components/ui/charts/projection-utils.ts",
+        "src/components/ui/charts/reference-area-config.ts",
+        "src/components/ui/charts/reference-area-geometry.ts",
+        "src/components/ui/charts/reference-area-registration-context.tsx",
+        "src/components/ui/charts/reference-area.tsx",
+        "src/components/ui/charts/series-bar-layout.ts",
+        "src/components/ui/charts/series-dash-tail-overlay.tsx",
+        "src/components/ui/charts/series-highlight-layer.tsx",
+        "src/components/ui/charts/series-hover-dim.tsx",
+        "src/components/ui/charts/series-markers.tsx",
+        "src/components/ui/charts/series-point-marker.tsx",
+        "src/components/ui/charts/shimmering-text.tsx",
+        "src/components/ui/charts/static-chart-preview-context.tsx",
+        "src/components/ui/charts/time-series-chart-shell.tsx",
+        "src/components/ui/charts/tooltip/chart-tooltip.tsx",
+        "src/components/ui/charts/tooltip/date-ticker.tsx",
+        "src/components/ui/charts/tooltip/index.ts",
+        "src/components/ui/charts/tooltip/tooltip-box.tsx",
+        "src/components/ui/charts/tooltip/tooltip-content.tsx",
+        "src/components/ui/charts/tooltip/tooltip-dot.tsx",
+        "src/components/ui/charts/tooltip/tooltip-indicator.tsx",
+        "src/components/ui/charts/use-animated-y-domains.ts",
+        "src/components/ui/charts/use-chart-interaction.ts",
+        "src/components/ui/charts/use-chart-phase-orchestrator.ts",
+        "src/components/ui/charts/use-grid-shimmer.ts",
+        "src/components/ui/charts/use-highlight-segment.ts",
+        "src/components/ui/charts/use-scheduled-tooltip.ts",
+        "src/components/ui/charts/visx-pattern.tsx",
+        "src/components/ui/charts/x-axis.tsx",
+        "src/components/ui/charts/y-axis-scales.ts",
+        "src/components/ui/charts/y-axis-ticks.ts",
+        "src/components/ui/charts/y-axis.tsx",
+        "src/components/ui/charts/y-domain-utils.ts",
+        "src/components/ui/charts/legend/legend-layout.tsx",
+        "src/components/ui/charts/background.tsx",
+        "src/components/ui/charts/markers/chart-markers.tsx",
+        "src/components/ui/charts/markers/index.ts",
+        "src/components/ui/charts/markers/marker-group.tsx",
+        "src/components/ui/charts/motion-utils.ts",
+        "src/components/ui/charts/chart-keyboard.ts",
+        "src/components/ui/charts/chart-source-data.tsx",
+        "src/components/ui/charts/chart-center-typography.ts",
+        "src/components/ui/charts/chart-stat-flow.tsx",
+        "src/components/ui/charts/area-stack.ts",
+        "src/components/ui/line-chart.tsx",
+        "src/components/ui/charts/line-chart-loading.tsx",
+        "src/components/ui/charts/line-chart.tsx",
+        "src/components/ui/charts/line-series-terminal-marker.tsx",
+        "src/components/ui/charts/line.tsx",
+        "src/components/ui/charts/series-path-utils.ts",
+        "src/components/ui/charts/use-animated-series-path.ts",
+        "src/components/ui/pie-chart.tsx",
+        "src/components/ui/charts/pie-center-shell.tsx",
+        "src/components/ui/charts/pie-center.tsx",
+        "src/components/ui/charts/pie-chart.tsx",
+        "src/components/ui/charts/pie-context.tsx",
+        "src/components/ui/charts/pie-slice.tsx"
+      ],
+      "fileHashes": {
+        "src/lib/tailwind-merge-tokens.ts": {
+          "sourceHash": "1277e5cfadb06fad8ce615472603bf5e75ae2270269ca42aa253459a74a7a317",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "79ed798cc175b8842548d59f0e7fd737b807af5817e2b7cea881190e9d642e8e"
+        },
+        "src/lib/utils.ts": {
+          "sourceHash": "cd8413121df9b741a6ae601589bfda72da030ea7f97e767365e058f414acb933",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1831f143258d6933514dc37d1be90dbc5289489fb345e2eb7e8ea5f29b34a2b8"
+        },
+        "src/components/ui/app-shell.tsx": {
+          "sourceHash": "fa0a063c8feee3b9e9ee0a1d7479acb3513af382847435aad810e4285ff7e53a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "a26de0f01de046a28b40f89381e399339622c39fce2f08b1e9602581666deb2f"
+        },
+        "src/lib/springs.ts": {
+          "sourceHash": "ed42d0bca6bce0d36d79a70cb162e38be422a45ad70155c5d008946d8cf4823f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5453027c1a35a2bb8879cfb883fc24ddebc041c59524095f8052d035df62be58"
+        },
+        "src/lib/surface-classes.ts": {
+          "sourceHash": "0ffd51810e24abe46e9a6b9c49bcc6c502031bc96ebe7c2a4685384cc69d7a71",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1be43ecf97b2259a07c3e0d663040f3ecf50fd071ea48397267b87948b93b65e"
+        },
+        "src/lib/surface-context.tsx": {
+          "sourceHash": "29e215c6c587d16f30fffac78f4d6bc28caed0484c3a3397929066f60d5b301e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e5331794b0cb164c5d59cfe87abcd1887666be5e9bdc2e50965ea645db3f83ad"
+        },
+        "src/lib/icon-context.tsx": {
+          "sourceHash": "07f0868e8fe45508ced8b0928eecd67655f5707c5ed3bd7725930802080fd655",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c8f1da9d186866d68f25db9e3843644deee2256a44d952d6129fbf954a203484"
+        },
+        "src/lib/huge-icon.tsx": {
+          "sourceHash": "f9957071efd430d3e6f76a52966ee906d707e418b584270e6daa04ffd36c4b9b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "584994e6218791a875d50ba24b0685a442c1f3cffd3a65258da705a4b13c458b"
+        },
+        "src/lib/icon-catalog.ts": {
+          "sourceHash": "3737b6e64010f1f798836e2f88f3bf617ad61a90961270dee77f6ff3e87ba305",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "50f7dbc34e3ea18201ee9d4d2286f8c66d69f86eb0d58cc3e5a87a88b2f84aec"
+        },
+        "src/lib/hugeicons.d.ts": {
+          "sourceHash": "956607cd138a8e94e7ce66dca087ef34f51295e466abbf488850134025b2903e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b964d3891cdd6e57638f0affc647ade61724aa668dce4f7606c63e32d010e70c"
+        },
+        "src/lib/tokens/control-size.ts": {
+          "sourceHash": "54d54ff80e87d6af2ea17f4a9997fbb3f7037719c3233802dc5338e0fb6a2d74",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "4e6a2572c6d452f058d7cbf096e3c9a86c107c94350dd5919d8dccb35c5e6fa9"
+        },
+        "src/components/ui/button.tsx": {
+          "sourceHash": "2801110ec9527e8364f5859624777a2819124a4030551a24b17f8de84805a1c2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5231eb3aa9cd72c50e946e7fc4b04a876d52321b01064b9ef33ce5ce4a4824d6"
+        },
+        "src/hooks/use-touch-primary.tsx": {
+          "sourceHash": "d621743c1c0837c8a19e19b5215999b567e5006f5ac5bb9f78cd39a28f819a9e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "068cb9e8d5ac11dc6b5f21d836d526fcbac04d1462b53587375ae4d4e04c311b"
+        },
+        "src/components/ui/scroll-area.tsx": {
+          "sourceHash": "e9c4d4a027fb1078de3a52a1bef5b805061309c3dda447673e947259d7da092f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d1e1f549eb9b27f2d0595dd3c6d8bc18114ec0fd420566e60c78da51cdf63f96"
+        },
+        "src/lib/portal-container-context.tsx": {
+          "sourceHash": "d54747ee09d40f90939a98ea843641f5aa6268fca5300b1bd003615e87711e74",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b13806446c6a669c943111aa1a361e587223492a75657d8bafd6743b1de200c2"
+        },
+        "src/components/ui/mobile-drawer.tsx": {
+          "sourceHash": "21cbd16fd81936a2edcf9c5f3f41a94f7a7a90ed8826c40e92a88dc8333f7130",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "eaa1bdf2fcdf2855a5b829e85889a27caa0c15fde9e8fd68fabd166d35129f53"
+        },
+        "src/components/ui/popover.tsx": {
+          "sourceHash": "35240136c8629aa21ff9f804b59bbcee7c06a0d317ab97f952410809f887d5e0",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "700abcebac2b1ccccda5fa053285416f2db35818618ae81866391ca0ac297a9a"
+        },
+        "src/components/ui/sidebar.tsx": {
+          "sourceHash": "d4438f342054972e14d080648cbced21554143e89669c663d64fc65356d7470a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "005cabe8af56474b69900b8e1f560eaa4e4bb835db6d1a52e3b374c988be8b00"
+        },
+        "src/hooks/use-proximity-hover.ts": {
+          "sourceHash": "9b0d8f949290d3dcb2b6ad5cad38305007d41e9d7b8cfa6525b3713bee2ba657",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "67e0b976ccd96fef96f59cdbd568eb59264d8b3bd98ff5ba24ff314ff65e9e72"
+        },
+        "src/components/ui/nav-menu.tsx": {
+          "sourceHash": "6e32c7a4cf4a3a7955187daadeda6d15bac6ef284860604599a1883939286b2c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b97008a99e1683fbd9637cd43e8a7c568de33596edc59e7cb6977386708b294a"
+        },
+        "src/components/ui/tooltip.tsx": {
+          "sourceHash": "7346e4bc2686df2de72b2bbb95cfed082080e38055617d1556913a1bae0e590a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "2659adcb19221fae729f6caf9493cd53f33a58d455e8f3bd5b1545e73aa4a62b"
+        },
+        "src/components/ui/nav-item.tsx": {
+          "sourceHash": "38f24e4e64b144dfb15f8259aae0a520907bedbcdc628ee2dc6abaac2f6ea35b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "57124590b080c4c0c06b04768180686ae67c1c2fa1a8c79af5cb548416300e05"
+        },
+        "src/components/ui/page-layout.tsx": {
+          "sourceHash": "b79ee74c1a57b1a1a762d01e0c4afdaa5f315b6ffda28b83277b2ccd7f93fceb",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "048534c0a6116b0508d819dabc3b2615fe4d9522f016a8af826fe6a2d53eb564"
+        },
+        "src/components/ui/badge.tsx": {
+          "sourceHash": "11b3367a37b6d7ca6c60d418cd7fcd37915becd9fd0f03e190f42442d44c2cbc",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8e34b79ed8d6bf4ee467fe0cc3d611fb49e8714be9619798ecae7d8f752c6783"
+        },
+        "src/components/ui/badge-colors.ts": {
+          "sourceHash": "c70396c77a0de00736ead56707e8f8b3b47d8119088bcea920681bbc59563cb7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1fc1da77799937969804f959cf3466a1fa6a53e87044886703532a16291fb00b"
+        },
+        "src/components/ui/tabs.tsx": {
+          "sourceHash": "3b9041410932e8eb3c175eae3fe19384038e18d93f0108f164312eb944fc927a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "80d751a937c657dafdeb617d86e27993875cd92b37de95c8c009dc796a3917b9"
+        },
+        "src/lib/elevated.tsx": {
+          "sourceHash": "f1c6ff8ab292f697c0d407d6db5061aa9e4a52b478c4ffaa10e49df55a9fcbdc",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "37c0eb562c370f21b4a30269b8a6f7b607932470c712dea01f0ed1fc2dbc29f9"
+        },
+        "src/lib/compose-refs.ts": {
+          "sourceHash": "a9f3ae263c45703612e5ae483c20bc4af267cf06c91863fad604e2f7f6347c02",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "26670b2e453d09da41bfe5cc8744eb98ee420e474ea3003c21e0c53e790407ba"
+        },
+        "src/components/ui/select.tsx": {
+          "sourceHash": "c8dc526f2ada3b66cc29808c64d35d9b7e82f5ff182c7f89fb711408e2fe9ac7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7566e064ff66f57757daf8a05d8b3eba58b09144374fbe28404346d21ccb59e5"
+        },
+        "src/components/ui/dialog.tsx": {
+          "sourceHash": "61fc9f71216d21d3bd0ee61c87c7c10a1d32fa62410487aff26be513717bc1cc",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "825e4749068d11465ff235570a7b0f559254dd61632199921845566fe5aa3349"
+        },
+        "src/components/ui/field.tsx": {
+          "sourceHash": "97cc858ccc301fa45dc5074b54aa902e6edf0cc59f25c466a1719b42958a624a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5c94b1d9bfc4c814392216706e0e5f55cfc3ac70355cdc48e4a24a04d36244d0"
+        },
+        "src/components/ui/input.tsx": {
+          "sourceHash": "309947bc89d1c349cbafcd30290f45f1bb4cfe2747e10404772526eab7dd5104",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "a08d377d720e17de8e7dac10b6b438526385c50eb749a83399b235d4be6be185"
+        },
+        "src/components/ui/switch.tsx": {
+          "sourceHash": "a3c2abc77ffd5c5a7965993c79afc5c329048a58c44b2ea6999090b16fd18658",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ac7a4195c5cf5fc678b5aaf94f787bc276b026e90b8fd6b65b10de674089bf81"
+        },
+        "src/components/ui/alert.tsx": {
+          "sourceHash": "44176ca0744149e74e24e45e85bbde7dbf23519acc28a1aaf9e490aa45fce6ea",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "601e456aff30bac2cf2ea7ff54d2e50f75a7ffd263134b88d4174d9d3c39a16c"
+        },
+        "src/components/ui/empty.tsx": {
+          "sourceHash": "01bfa5c07c45496751d475bf91df43341f58150560e49ae8cb065a4abaa3d64e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "202767ab9d3a170e5b80a849b7e9dddd6bf18606c65fd2b971e200c1b86c4340"
+        },
+        "src/components/ui/skeleton.tsx": {
+          "sourceHash": "25a6b53b732ae9ccd16164bceae5b263bbb7953006d66aad46f6f2891e62554a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7b4f0da87bceef218455895664128f678567a46ff8d892ece007c87b6ffb103d"
+        },
+        "src/components/ui/table.tsx": {
+          "sourceHash": "cfc57447d89a1aaa9e2b75b5290585e15330577d4387e96fd31db70e061f0145",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "047b2eb638006d06db4efe740e26165739eea8e7c76514c2265e28fd74a4b74a"
+        },
+        "src/components/ui/detail-list.tsx": {
+          "sourceHash": "06330506cce89cd8cb38aadf23b5ace3221d42a6ddbc023eb030c70a6c27273a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d67129a90bdde31a74ae58e6c258e0c3105a9ed8d326fd58881681a96012dbf7"
+        },
+        "src/components/ui/accordion.tsx": {
+          "sourceHash": "3f6738b0e77fb7ff8965980a3de09c7359de75281b9fa8be12dc698db9283b5d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "046179fd6a92b65388683161ad5e814399e88d080ff149cfa3ae5c0902498534"
+        },
+        "src/components/ui/chart-motion.tsx": {
+          "sourceHash": "5539c2f35d49a94af48fd021f84a99c1f31c9471f1c6914d8c1e91677a545023",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c57432d281201e3c275b53a8e407660d401676977de1ceeb636b3bea63cff492"
+        },
+        "src/components/ui/charts/animation.ts": {
+          "sourceHash": "436dcf3f879c16dfb414af4677d573fececc368a8893c14b0b18f8a7fe0ab668",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7541bfbbc037b6a8c9350410449e17a9bb0944b257d815504e9908b906623f00"
+        },
+        "src/components/ui/charts/use-mount-progress.ts": {
+          "sourceHash": "35ec2bebf88e1005c2c35dbcb19d24b4ceafa253f48eae04ebc25549de11faee",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "957e2f871085226dbae1af2bb5f451c9963d538b06e6a40537409961f49aa3ee"
+        },
+        "src/components/ui/charts/use-enter-complete.ts": {
+          "sourceHash": "0c84e8985079b356fd0067fa8dc98a82fd173232a8dd1b4f092b6b57778aeb54",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d80a496c690b8dbf5e8ec0fa19350d256a085bf7e5915548ecad4a075c3fa5ed"
+        },
+        "src/components/ui/charts/use-chart-reduced-motion.ts": {
+          "sourceHash": "3caaea34f7fb6e3cd29c016bf35ea33bdb3459df48b6deed76ce398e3c110be0",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ab42fe344fc5b9341533c265e3d014d5e8a0cb71c1747b7ac3f1f6ecab6b1287"
+        },
+        "src/components/ui/charts/chart-domain.ts": {
+          "sourceHash": "0def0368e0faea41cae584e8796006bfeda762447b810abf4d821a93739029f1",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "388a25d77da2f75e8820690412eba1faa34115b2a48bb057bffe91f4ad2e3422"
+        },
+        "src/components/ui/charts/reference-line.tsx": {
+          "sourceHash": "657b915afdb14acb9340b5ab76c99b1ec81d2b0e2f6b91b3f3c38c7052becad5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ccbe53bccc22caffc497b9bf8e17464c26d61543c4e49c6bcad2bc22271f1154"
+        },
+        "src/components/ui/chart-core.tsx": {
+          "sourceHash": "b151c313e4a34995e6ee5faa0f63864487a89b070d62a780e8f69852a8ee671b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "db7743bbdf07f31562358782967f3621c1661ebf23969290a41433b5b28c5df4"
+        },
+        "src/components/ui/charts/chart-child-passthrough.ts": {
+          "sourceHash": "4b21c84bbc8b59dbb8001b820ca9f785c46d056dcf87e8b8e97dd0598700d682",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "05326272c43a2ea85851f9c01e740368c7e96e97b8f5c6554c24dcbd2c7729e4"
+        },
+        "src/components/ui/charts/chart-config-context.tsx": {
+          "sourceHash": "8a2fae7dc9b2659e1c4f1580466d77c9aca0db3a82a75b6cf3bcb28cf47fae2c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "06d43dcfbbe6ab94551fff91f193ac728753a4b054eabd2c99b867661a35c0b2"
+        },
+        "src/components/ui/charts/chart-context.tsx": {
+          "sourceHash": "a65758c9592dc1d5d02662c7f179feba43921c97e6287db8975d53298d9044af",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fde51be4d5745c647a3471e967634a31bdf3669aaa12eee43b58e8b61ef439b0"
+        },
+        "src/components/ui/charts/chart-data.ts": {
+          "sourceHash": "ebce3a1dc96ce44bb1d3cf94168a9b75eb9069dd45ce28b83da9b874f76897c9",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "cf0b60d2a3d64f437dcfbb58b2a4d999349876ce90050afc30f4c582ea30611d"
+        },
+        "src/components/ui/charts/chart-defs.ts": {
+          "sourceHash": "0b588331d0dee5aaf4315909da626f5df3c904fd7a0e496e22e5db13253d3f06",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "81eeaa2e4cf943e1c04583a854b211685f09336e5e1554ca74a14c7817882c76"
+        },
+        "src/components/ui/charts/chart-formatters.ts": {
+          "sourceHash": "bdf80d1ab49b34b0ff848cb309331896870b3fd7c1dfb3d6dcd5770bb2c6d3e1",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "66c0888b01231f4241c6fc4f2e7573dff40bbf1280f609f1170372dd28b01d9b"
+        },
+        "src/components/ui/charts/chart-legend-hover.tsx": {
+          "sourceHash": "df4a5df3bac7ca1abccc07d99d65477b77ae07f42d44253a18ab41ba62fa9a3f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b9bdb3a8f2f7b89feb7a8c58065d2d10715b91474ce1dd1c7d5a8e402986b070"
+        },
+        "src/components/ui/charts/chart-legend.tsx": {
+          "sourceHash": "d25855802a1258c0f265cef6086aec03ff7b5a5ac503fa15a5b96726b063d3f5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "6c7051e7bb998b4486398882854311ae58f17285e3cd13143b71974385e5960f"
+        },
+        "src/components/ui/charts/chart-loading-label.tsx": {
+          "sourceHash": "643e233f224ab8c1c1dc45be8e80949d182a3094cbfbba2004f39256ba8b3e8e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "52b1589f2b044dd9766804adb0fc44d2b6bb7b4c68d86f6b38392621eebcb432"
+        },
+        "src/components/ui/charts/chart-phase.ts": {
+          "sourceHash": "724ee516994449fca17b349a35c80eb3011f1f64d78dcf5e5df7e79171be88e2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "59d7884a699da657e6fad862ad829973858ad509e354eebd082e3757114046cb"
+        },
+        "src/components/ui/charts/chart-reveal-clip.tsx": {
+          "sourceHash": "935b45c5190ff481d4cbb46085c860ec5c7386c94eea54695cc6ea8d14ad12e5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "cb63dfa99a8a6f114e6cc24494112118a6305c8b09b642dd8cba5025fa40bbc6"
+        },
+        "src/components/ui/charts/dash-tail-stroke.tsx": {
+          "sourceHash": "a83f32f8c90bc2725c18884694497a0b6d057c7b063928021ce912fa7c1d815f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "2f469382524ee2a6f8473b62f07156fe9373a7c8ebf7a0ea6d657eba9cf43b71"
+        },
+        "src/components/ui/charts/decimate-time-series.ts": {
+          "sourceHash": "103ba859c88daaace0a2346d802e55f4a0cad9f18dfba65abe13af66f18558e2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "67a07a96157d2c55e8a20c9df2fed1947f3ed29852cdfdaf6580e7dda5a62ca6"
+        },
+        "src/components/ui/charts/fade-edges.ts": {
+          "sourceHash": "3e9919bd802b3bae2e6fde6acc720c0796c7f2a30f09ff70827facd2c83189b6",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "444d51e3d880fd8451143a10f88f881bcddb3aee785fe5df7eaf38315c734358"
+        },
+        "src/components/ui/charts/filter-data-by-x-domain.ts": {
+          "sourceHash": "577e408b0596deb047e0f6ca0be6222fbbb22ad7cf6ad7050c0e488bc9caee7a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b18994faa219aa1cd3cd31136d951bac55cdc726749bc5533813929bb35c5000"
+        },
+        "src/components/ui/charts/generate-chart-skeleton-data.ts": {
+          "sourceHash": "e28c05c37bc604f96cb5002c6135f9600c9841e45910e12ddb035168830fffa7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "cfa7dcef432e3372bf55d4e2372b2223a16aedbd65103f44595ffed0fb323a61"
+        },
+        "src/components/ui/charts/grid.tsx": {
+          "sourceHash": "03b201ba63a670c1fccee14139ed40e1bd75a0abcc1746d1ac6b170c6409cd7c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c0a466ef7c56dad0c9442c8368d9a131f32dfb022188270941c4359cac544b2c"
+        },
+        "src/components/ui/charts/highlight-segment-bounds.ts": {
+          "sourceHash": "cb2e565e9e864f59428f2c7a255e33b3bb285476b88372ae3761e01400ff5b94",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "939ec5129f365c82683ec0d9db82a8dbdeb3ece32a6f5a0150b09b26d7745181"
+        },
+        "src/components/ui/charts/highlight-segment.tsx": {
+          "sourceHash": "bcbda90365fdd353720eb50914bd113c56370b3c4940be0603671e6bd1b27a32",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "94b042f1a20feeb942ef4e16da69150249dcd7ccb5361e41212d832076b73f51"
+        },
+        "src/components/ui/charts/indicator-fade.ts": {
+          "sourceHash": "7b213f129ec5a6430490a33b65b5d77228b7eff06f68015693939141f968949e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "81c32c59dfd1e8473f628bd4fceca454ab6ffd9374ed848692c7ae9642c01ac1"
+        },
+        "src/components/ui/charts/legend/index.ts": {
+          "sourceHash": "6b97e56eebf43b7f396122256e552f758858cb4ff28230e4c0f3966f385d14de",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "db2bff451b74443776f6665046a41a024f42465a3623ca76c07a3279692b0c41"
+        },
+        "src/components/ui/charts/legend/legend-context.tsx": {
+          "sourceHash": "d20c645fa17c1aec55054b4e985e68fb68d336467500d64f34f3cc330571b734",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f032013eb694c6c15aba6756e85cded146152e0c39757ac734b1b3f63f19c0cf"
+        },
+        "src/components/ui/charts/legend/legend-item.tsx": {
+          "sourceHash": "2b4c45000726140633ed0e63f4109d6a9ca9899c5faa9c21926f9309851f0a6d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8c0e77e83f1b6dfc40f6e312fd7cbdd0da292caebaa5eee9df58c5b9e666d95b"
+        },
+        "src/components/ui/charts/legend/legend-label.tsx": {
+          "sourceHash": "96806bc6eda29b5dba0ff7c9da18601bbdb67fec9973893f50e7e83dff06e1b8",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "6db3fcfd65b862b8fe19f83e27550273e87829dbaf5bae2f7b017fa09ca7c5a4"
+        },
+        "src/components/ui/charts/legend/legend-marker.tsx": {
+          "sourceHash": "8395feb1455cf05b8cbb0a8bcf7a25856a5df48b84417e2ece3a10edf39f5c6b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b6d21f1ff80ef5b64f50394822a46cd3bbca1c063b7e4e04928e729c83b34d51"
+        },
+        "src/components/ui/charts/legend/legend-progress.tsx": {
+          "sourceHash": "50f5f335e915015fe782256aa4a5e39f424daf41358437ca95dacbb64fe93c00",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e55224af6c5bc4cf654392068acdda4daa19aaa4e454a16b61598991d4b44d47"
+        },
+        "src/components/ui/charts/legend/legend-value.tsx": {
+          "sourceHash": "e806dcd1fbfcad3512a37506cb6bcf7d5f112d8efdddff32917bf395e579f41c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d73bc05edca00eb9d8c1547a43d02809eb9729651a6515ab74a5cc64348dcf38"
+        },
+        "src/components/ui/charts/legend/legend.tsx": {
+          "sourceHash": "967e178523ce90b98eb9104d371c0ab3f189f87a887e078d183d32abf4b93ba7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b693cf4543444939499cd0c77b4e584e4f9d5313b67a59bf8a4e5b2bd9e8e73c"
+        },
+        "src/components/ui/charts/line-loading-pulse.tsx": {
+          "sourceHash": "fe6b987cd693ad1266b3fc9b81b41d7f2c038f98f5961e583c512cc9e18be6d5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9f80656f693e5e18efbd9eee8bcc090995f4e3a501464cae17fbe50caa5dd42a"
+        },
+        "src/components/ui/charts/line-loading-timing.ts": {
+          "sourceHash": "654f68991cbb153e4a536fe2214e1c365b9c15551af32f7d2a334100d22722a5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f2455ea9f9bf50a32815a458f3ac430724416fb5c72b8de18bb3c6e04333ed94"
+        },
+        "src/components/ui/charts/loading-sweep.tsx": {
+          "sourceHash": "ae67b2b0bb786a85063110157a4df256a4cb2112fb738501514562541bff7f35",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "eb59f4ce411789faf27f990e1b70e4c56d83a9e39d42bb09bea99fef1d597bd2"
+        },
+        "src/components/ui/charts/path-stroke-utils.ts": {
+          "sourceHash": "62048f056e0cbc546290cc3a46db8e8720576e5b7ba54f9f3ca85995366bebd5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9e47e82f0f0d179762cfca2e3903bd8edc6e029a9702f2871a360a216e67ab5a"
+        },
+        "src/components/ui/charts/pattern-preset.tsx": {
+          "sourceHash": "13e49ef412c06aa5c4a6bb92e005139806359aff79adfed3212c1944fa88569e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fc931c1f81d0a01cb136dec913749c83916cc6fc2446975eda0afbe52c5c5fab"
+        },
+        "src/components/ui/charts/projection-config.ts": {
+          "sourceHash": "ea0715857716e80bb35fb40ca3b7e43c3657287c624f825cf41fe9b4d0aa85bc",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "00758110c1cb987dc2f9ea6d433558d17e63712992083d97ba67731a671e23b4"
+        },
+        "src/components/ui/charts/projection-utils.ts": {
+          "sourceHash": "d575c3f7c8fd1f36ffda47fa82c087b683d330b869151230c117b3a1bd9064ad",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "90425d0031d604e068f2888b5ea807a79fefd6f8eff0e47430023c6809a280d3"
+        },
+        "src/components/ui/charts/reference-area-config.ts": {
+          "sourceHash": "54039e8f1ba0116f3974378c6ff97176333738fc927a32400f7384e6b6a388af",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8736f3e9ba1cd2f211994f8c71621c4671662ca30565d0d4f347a10f9f23a436"
+        },
+        "src/components/ui/charts/reference-area-geometry.ts": {
+          "sourceHash": "4f96647eb22edbfd85a2db3a8d7b36349e62d1cb11123e774968cd863857beb3",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "657daf17d3eeb0b76f601950110f352892fe67548b394951e481c74f67a5a8c9"
+        },
+        "src/components/ui/charts/reference-area-registration-context.tsx": {
+          "sourceHash": "b7052179b8724683259867e582837b683077b3fef412199cda915562ffa0d15d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "61004720e24bed028b4377a56f984da9dda61e6346cd607174cc0a816d4848a5"
+        },
+        "src/components/ui/charts/reference-area.tsx": {
+          "sourceHash": "ea1dd8e84bdb9bd26b07851e2db3909b18d4162394c8458878ef330b6fffe910",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "10e20b475da6c4b51656a34b493ba3ef45ce24d1426244bb53187008c9e11bf4"
+        },
+        "src/components/ui/charts/series-bar-layout.ts": {
+          "sourceHash": "d87051c37e28764284e79c509cfc6d75c88d33bab2c7f2ce536715413bc8e673",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "74b420a3fcac1b6f578bc8ac29024f68aab992b744664d71b547802b5acd34a4"
+        },
+        "src/components/ui/charts/series-dash-tail-overlay.tsx": {
+          "sourceHash": "a968dce306c5c4af367cc6f8a6347cc71eaeba83faf757093b470f426b3114e5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b9c25f93bd142733291e09535cb6f43242981f2486fa1be413dd4bac9fd9202d"
+        },
+        "src/components/ui/charts/series-highlight-layer.tsx": {
+          "sourceHash": "e91e92d3fe9ed5ac9d581228b2dca23d4096441cee4fc17952f64c696ebc7f84",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "2ef262024e2c536c5d4cabcd130123f2f577c10008ae99495795be057aba4d39"
+        },
+        "src/components/ui/charts/series-hover-dim.tsx": {
+          "sourceHash": "d25b6697ae827746521c06762b029ed09745f3506a3a81ae10bae545b63717b6",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "31a2021245115a4f179831092613b391a3940dfa6f0ede34c7a853176576c3b8"
+        },
+        "src/components/ui/charts/series-markers.tsx": {
+          "sourceHash": "37e1921cde719fb696786c192a5e2b36ea3b3ea87bc98de1a7e11fea56bf2f04",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c1a6eb3d8fc98a3328a24b11ae2c9f69f2073a236398b36fe464b662f789dbde"
+        },
+        "src/components/ui/charts/series-point-marker.tsx": {
+          "sourceHash": "d8bb2e265d3587bc7b54f60a839c94e6d5ab18339efc47f9fc3a16ad3bd83610",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "66291b6262e6a9c3c881242f6126b67b20263f59693b1ba0bb2cfe225e92897a"
+        },
+        "src/components/ui/charts/shimmering-text.tsx": {
+          "sourceHash": "9f1acfd3b7f33775ccaf4cda660ad2e041ad5e8ab4c05dbbee481b146f37875e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "65a26b6f37c5ddcc5ccbed9b8ecdc45d2a66e8ce5741b63e384c3b2a2e4738e9"
+        },
+        "src/components/ui/charts/static-chart-preview-context.tsx": {
+          "sourceHash": "c352ea459ebf4b943542f3b40fc6e861c56678ab915457198c56f9ffd3308c52",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "00e58c535af284166026c44b834a7b4161d7bbb74424748ef82ac5c1645c631f"
+        },
+        "src/components/ui/charts/time-series-chart-shell.tsx": {
+          "sourceHash": "0112a5587b99e5b523a4cccef064d6e4a2bab4414accd1076def44449ae22276",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d6d68de6aff3bf46f952d22b93ce3b98fe37c70a976ab73505dbe32e6e015866"
+        },
+        "src/components/ui/charts/tooltip/chart-tooltip.tsx": {
+          "sourceHash": "961e15f25b0bb56a11bd7e659d1f5f9221dfb4968659af34f974e0f34eb08e2b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "bf1ca300e7b43c36ecbe663a96a965fe4e28f4f5aba908171edd64e62ffde382"
+        },
+        "src/components/ui/charts/tooltip/date-ticker.tsx": {
+          "sourceHash": "f0c1ff73d9f56c80ff8509fad261766671a687a30639f35ef53a9e01149c4ab5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "13d5aaf83f125b8cc86a60767d8532211dd6bb29f579e291e39d3813f44c9273"
+        },
+        "src/components/ui/charts/tooltip/index.ts": {
+          "sourceHash": "f14f6abd0f724fcb73cf87056a286c20fdae193e2fea035d92f77ea4c13dd2be",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7bdbd4ca5ec9a338222b2fbddb1983881e89186801e02c18279ff12896486d26"
+        },
+        "src/components/ui/charts/tooltip/tooltip-box.tsx": {
+          "sourceHash": "d6a3799c99b204c14a9827974ada2cfd95814f547c2a3bde212658b34f443b29",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ae2e57a94bd531ada682d055e075645f991bc57cce478eeaed880b2396fe1ba5"
+        },
+        "src/components/ui/charts/tooltip/tooltip-content.tsx": {
+          "sourceHash": "247cfc0c2f13a35cd723c4dfdbd344d6646f5501b0d65c82ce228b6d4040bd4d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "641314d696b24c10ace3b51aba5d0be2ca9237941c81580e8d0ee18cf1e9827e"
+        },
+        "src/components/ui/charts/tooltip/tooltip-dot.tsx": {
+          "sourceHash": "4f3f869956f39d0b02300bc28c916dfa52ea0dd5007e2cd35edd2f3a83bc9f14",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "3ef903d38a6bb08440bb0d44fcf634c8fb42220d8f9c9fb5d758d7fd92c9989e"
+        },
+        "src/components/ui/charts/tooltip/tooltip-indicator.tsx": {
+          "sourceHash": "da27cd45f2ba5864bbc8d3bc203fc44ef1df4e5d819123667c8eb672388dae76",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "89c021e674768700c9dfda57f6fa5057f5077c44f0c9fbb002ecc00abbc4977c"
+        },
+        "src/components/ui/charts/use-animated-y-domains.ts": {
+          "sourceHash": "75960373ad6553468dd98283ea9e7f0e65000d4e7ee9b86ebec843efb7b3c505",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "90ca283eef8651ebd6e60f3f477a0a26631197d775a3c0d6ef290e506fc4462d"
+        },
+        "src/components/ui/charts/use-chart-interaction.ts": {
+          "sourceHash": "0a1b2844f5da1f83aca84be677753e3ba21a5904f9253b5ccd235c12ed54320e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "96dbcb1f3340024abbdabd5310ab78dfb0c753718aaff187d914cc4f848886d6"
+        },
+        "src/components/ui/charts/use-chart-phase-orchestrator.ts": {
+          "sourceHash": "e3ecc345f7f68da95e23260d8cdda6544887f725a681ec7a4db2188c53364fbe",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ce0f6f90dd70d93023383453cec7a81e7b861ff10c54afef2030e17ce251797a"
+        },
+        "src/components/ui/charts/use-grid-shimmer.ts": {
+          "sourceHash": "87b64aee9c2ac3869c1e4415db925a3902dd93c6238b0db1a9923cc2a9dfb1ce",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "bd8c97b04c9e6191a8f8abe44eee8351430d8c27b470d6b288522f1cacd0318c"
+        },
+        "src/components/ui/charts/use-highlight-segment.ts": {
+          "sourceHash": "dc3b85d64314f173e1abdb49af2a59d2edc55e43a5658f92a4603cf3ad35dfe8",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ac978aa4d780ec68ae02013d99c6b906cc1b55e9c23aa040316040ac307f89e3"
+        },
+        "src/components/ui/charts/use-scheduled-tooltip.ts": {
+          "sourceHash": "b21b25111663b18893e1cce04f0b8b3078270fa080fda15b90fd7b8276920882",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "aa57d7f278d03f3a1f5797259f492bd5c1f27b6664f74a02fc40201c4da92574"
+        },
+        "src/components/ui/charts/visx-pattern.tsx": {
+          "sourceHash": "a84a4c3b717662a701bd6414e319a22c1f953dcf6e0e4ef5893d7550b527b559",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7b966c96952e0f89eb5b1b2d70ca9e640cd1a7d67828e534218ad3f10888eb4c"
+        },
+        "src/components/ui/charts/x-axis.tsx": {
+          "sourceHash": "34144cf6729505fb425f945bc725e88c16c3a4ae2f8ca0d6849deb761f42fa49",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1a60c796b6e31d4ce4469e7c88c653b2ab4df7f18f2f191d47188957d33ba66d"
+        },
+        "src/components/ui/charts/y-axis-scales.ts": {
+          "sourceHash": "3fb139bcb416c581cdb8f3cdcded9d4043ec5dea7d0c2bc20eb233b0a3c673a4",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "4ce8464eb29d82cb998de2a80d80d46acde9ac33437f1c0611b2a72954e6a61a"
+        },
+        "src/components/ui/charts/y-axis-ticks.ts": {
+          "sourceHash": "28bc558855e4120dac77e7c00c88ab48f5764e148a1f771e9010a44b8f583b66",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ef19261515e3f38cf3143d0cf6a9cc8c4c2779ea8ed5b66fc7c55068fab4af70"
+        },
+        "src/components/ui/charts/y-axis.tsx": {
+          "sourceHash": "b33551e23a06a1edc6649e839fdb796d2e091ddb9e6f4a651c2757512b4632cb",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e8a004906ea86594c6dde6d352ce0032e77ecc8b2594b5bd18d2f06e97ded737"
+        },
+        "src/components/ui/charts/y-domain-utils.ts": {
+          "sourceHash": "f2223167b82374359ee273eff99b780ed99f9aa9bff3c851ff24e0274b3f2a29",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b179643458d73068920d880f016f6d365daace01550a5633859e6df1ca143237"
+        },
+        "src/components/ui/charts/legend/legend-layout.tsx": {
+          "sourceHash": "6a14a06eddf1f99b2544760006baf2b979660f1c064f8a4a706161e20a96bf09",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "05d601c853d72615f70cedc8b7097a8d4a2ed0540601c42d8ae5fb4cf1aa96b9"
+        },
+        "src/components/ui/charts/background.tsx": {
+          "sourceHash": "947504a064acd1788c237cea356dc76a8ff5bb8b76ee992728e3b32bf27ed638",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fce68bc6b3d10c1a5f2ad86e707faa0f41f4b90b8e9d030c7d9818bd01d313f4"
+        },
+        "src/components/ui/charts/markers/chart-markers.tsx": {
+          "sourceHash": "112770125481411ffe74bbd25b28075c5987f1760fd874be2293213f908ca5e7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "0b235d170e0547cf3e02b8ed3b333a519178e0f7bb652275eba3e94cf6b9c633"
+        },
+        "src/components/ui/charts/markers/index.ts": {
+          "sourceHash": "cd1af508bab012133e6beeaaec75bab035450abd1121782a5e12a591a9f09bf2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f52d92b7c0fca979d2bd27793c247e6c50ddbdb39d197b8fd0de1ea13ceb393d"
+        },
+        "src/components/ui/charts/markers/marker-group.tsx": {
+          "sourceHash": "297aa6ab04c71dab86cac4bca9783e31bfa93ed84c0f530cb974f4a97f004fe2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "79e10cf48d7664a99cc49daf6a2564c9023ce6cee18f32644ffc76e15152bcfe"
+        },
+        "src/components/ui/charts/motion-utils.ts": {
+          "sourceHash": "ac3b9485669e98f359f558306e94b8a327259824095eadbc51233853978f1dd2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f74dc096050e10ee5fc5403e1947074d0f788757f617d5221498437f7ac59b3f"
+        },
+        "src/components/ui/charts/chart-keyboard.ts": {
+          "sourceHash": "b7c83b14afbcd4a5dfdfd93d42779070e58a8a5f3f3ba8fe81f172f956814dba",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c4df6cceba02e2077b727600a94533ab0e7852dca4c16b052ed998f72d1f2acb"
+        },
+        "src/components/ui/charts/chart-source-data.tsx": {
+          "sourceHash": "5d400dd6ea3391ba9c3323b47651a898f6570d27b9d2c7bda31dac4d27780e59",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9c1ff4f247b44827186d4ebe508ee1ec9536f2688ab90a945dc30a2ff69eb48f"
+        },
+        "src/components/ui/charts/chart-center-typography.ts": {
+          "sourceHash": "dc25b75db2408a07c381974901c3d4967dbd0a3cfb7af5b57b1c013329f553ad",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "a9c32013bda98baa3ff337fa21df616e6c1f9030e13a04c48752c6f0caef5f29"
+        },
+        "src/components/ui/charts/chart-stat-flow.tsx": {
+          "sourceHash": "55867c76a1b041c5bb3ea665b78e1847f569c22585075b8bc27dd9e26a549739",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "6ea45ab00606acd1e2f0d721912a8e3d29d00af9900d0e176c2416c230897964"
+        },
+        "src/components/ui/charts/area-stack.ts": {
+          "sourceHash": "bef95a63cbf8470c5314ec8473c9925aa7dd9c04dad33d35f183ffa4b97f7c9c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "16bf3110b8ba2fa5cd07443d43f41d8ebf72a27dcea5262fb53bd5983b65013f"
+        },
+        "src/components/ui/line-chart.tsx": {
+          "sourceHash": "993dcb5cca2116b4f16c56b44a77893dcd5e5b7c9b24b567c2758558a3f83c2a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5194be74084cb73ace93865e439a7e6f7abc5d772adbf7c51b73048f9baa3538"
+        },
+        "src/components/ui/charts/line-chart-loading.tsx": {
+          "sourceHash": "70baa5944f905f7db71f59c7c1c074d61d3ea162d8f453fbf303617f7d1ca2f4",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "26adda81182f867f6e6d3d4c816288e737c044b6c2f261dadef10d1026bd76c3"
+        },
+        "src/components/ui/charts/line-chart.tsx": {
+          "sourceHash": "58acac0b750b6b04451fa54226936e544622e4843d9fe077e34d6358a1ea7c22",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c1e33d9a4fabc03d52cd2f8af6592a32491125e30f4f4c90bf279ecbb884906f"
+        },
+        "src/components/ui/charts/line-series-terminal-marker.tsx": {
+          "sourceHash": "5d0d39020680d24713711687765ce46d26341e4d5755019102c3a77915f450a1",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5afdce88d1bafd39f5904cf9509a8507b9c91106a1f3d290666cc7eaf3726f8c"
+        },
+        "src/components/ui/charts/line.tsx": {
+          "sourceHash": "4452f1598fc03e30d229793db8fe378846be27a7e056749a5ad9cdf18de4d8d8",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f8e9e4d673ecfc226baa07be57f5cc3786e8adbd04c4fa6eb99746cd619f3260"
+        },
+        "src/components/ui/charts/series-path-utils.ts": {
+          "sourceHash": "3630a3205b6029fd87e674e2b3e4b39688f3881e2199d3ab13e5b8d3c1cde432",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "863bae917928a1f78d160aff425b06036c62796cfc309ea76739b44643645942"
+        },
+        "src/components/ui/charts/use-animated-series-path.ts": {
+          "sourceHash": "eca97b9c122642dcfb2cd61b56d501b9209a53b7b677383337333d9866a4a4f6",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "6669f00ae57a6d95bb7afa0cac7a808d6c6bd6e2e3a49e043879227d288372d0"
+        },
+        "src/components/ui/pie-chart.tsx": {
+          "sourceHash": "6c60d6c31356bd6dcae87a7602febca17ea87ed4faa7f9e514098437b0a32234",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9b85274e91a2fca9e38d406c02cae20f1dbc6e41c9c375bd09f3f5c155d7dc3a"
+        },
+        "src/components/ui/charts/pie-center-shell.tsx": {
+          "sourceHash": "82e1dfe4db944f16b22067f73c0a6fb34e72145962e54350ca682891a25cb901",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "0449cdbab387bff1cdb913758d785d0186cac728a6e50dbbc0367f8d056101d4"
+        },
+        "src/components/ui/charts/pie-center.tsx": {
+          "sourceHash": "46f68729637c8fe64c62c6a8ca4e612e709cfd4d4def3528043b5434981dc167",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ddf5a30aa944ab4b987941a3063a54ba3fdefd15fdafa8efb8f743d11f81ea29"
+        },
+        "src/components/ui/charts/pie-chart.tsx": {
+          "sourceHash": "d9b6933e09ff0300e079bf4e6c50d827c1bdb2ee981658d338cf255db7a7face",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c97a2231b788d1f95f7cdec1913371c2e52abf058efd02ba345f202a72f20839"
+        },
+        "src/components/ui/charts/pie-context.tsx": {
+          "sourceHash": "d31e9a1ecd30d8c95de4884133eec4e1545a6a3d0f846365790e5bd177b52887",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9199a4b037d993e892fd4b6e09d3946176f7b770e6ab75363b553c31fe628c5e"
+        },
+        "src/components/ui/charts/pie-slice.tsx": {
+          "sourceHash": "b3b2e422808221a680093f394f817457332ba14956fa19aae95cedde6e3761e0",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5c754e963f9a795feb2c4f9212449d8afd63b5819a9badcea7e79f68f3d861e1"
+        }
+      },
+      "dependencies": [
+        "tw-animate-css@^1.4.0",
+        "clsx@^2.1.1",
+        "tailwind-merge@^3.4.0",
+        "@hugeicons/core-free-icons@^4.1.1",
+        "@hugeicons/react@^1.1.6",
+        "@base-ui/react@^1.4.1",
+        "class-variance-authority@^0.7.1",
+        "framer-motion@^12.34.0",
+        "motion@^12.42.2",
+        "@visx/scale@4.0.0",
+        "@visx/event@4.0.0",
+        "@visx/grid@4.0.0",
+        "@visx/pattern@4.0.0",
+        "@visx/shape@4.0.0",
+        "@visx/curve@4.0.0",
+        "d3-array@3.2.4",
+        "@types/d3-array",
+        "@types/d3-shape",
+        "@visx/group@4.0.0",
+        "@visx/gradient@4.0.0",
+        "@number-flow/react@0.5.10",
+        "@visx/responsive@4.0.0",
+        "d3-shape@3.2.0"
+      ],
+      "devDependencies": []
+    },
+    {
+      "items": [
+        "surfaces",
+        "tailwind-merge-tokens",
+        "utils",
+        "icon-context",
+        "badge",
+        "control-size",
+        "button",
+        "checkbox",
+        "springs",
+        "use-proximity-hover",
+        "use-merge-split",
+        "checkbox-group",
+        "surface-classes",
+        "surface-context",
+        "elevated",
+        "portal-container-context",
+        "compose-refs",
+        "dropdown",
+        "empty",
+        "input",
+        "popover",
+        "select",
+        "sortable-collection",
+        "skeleton",
+        "table",
+        "data-table"
+      ],
+      "registryBase": "https://zeron-ui.vercel.app/r",
+      "cliVersion": "0.2.0-beta.19",
+      "files": [
+        "src/lib/tailwind-merge-tokens.ts",
+        "src/lib/utils.ts",
+        "src/lib/icon-context.tsx",
+        "src/lib/huge-icon.tsx",
+        "src/lib/icon-catalog.ts",
+        "src/lib/hugeicons.d.ts",
+        "src/components/ui/badge.tsx",
+        "src/components/ui/badge-colors.ts",
+        "src/lib/tokens/control-size.ts",
+        "src/components/ui/button.tsx",
+        "src/components/ui/checkbox.tsx",
+        "src/lib/springs.ts",
+        "src/hooks/use-proximity-hover.ts",
+        "src/hooks/use-merge-split.tsx",
+        "src/components/ui/checkbox-group.tsx",
+        "src/lib/surface-classes.ts",
+        "src/lib/surface-context.tsx",
+        "src/lib/elevated.tsx",
+        "src/lib/portal-container-context.tsx",
+        "src/lib/compose-refs.ts",
+        "src/components/ui/dropdown.tsx",
+        "src/components/ui/menu-item.tsx",
+        "src/components/ui/empty.tsx",
+        "src/components/ui/input.tsx",
+        "src/components/ui/popover.tsx",
+        "src/components/ui/select.tsx",
+        "src/components/ui/sortable-collection.tsx",
+        "src/components/ui/skeleton.tsx",
+        "src/components/ui/table.tsx",
+        "src/components/ui/data-table.tsx"
+      ],
+      "fileHashes": {
+        "src/lib/tailwind-merge-tokens.ts": {
+          "sourceHash": "1277e5cfadb06fad8ce615472603bf5e75ae2270269ca42aa253459a74a7a317",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "79ed798cc175b8842548d59f0e7fd737b807af5817e2b7cea881190e9d642e8e"
+        },
+        "src/lib/utils.ts": {
+          "sourceHash": "cd8413121df9b741a6ae601589bfda72da030ea7f97e767365e058f414acb933",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1831f143258d6933514dc37d1be90dbc5289489fb345e2eb7e8ea5f29b34a2b8"
+        },
+        "src/lib/icon-context.tsx": {
+          "sourceHash": "07f0868e8fe45508ced8b0928eecd67655f5707c5ed3bd7725930802080fd655",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c8f1da9d186866d68f25db9e3843644deee2256a44d952d6129fbf954a203484"
+        },
+        "src/lib/huge-icon.tsx": {
+          "sourceHash": "f9957071efd430d3e6f76a52966ee906d707e418b584270e6daa04ffd36c4b9b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "584994e6218791a875d50ba24b0685a442c1f3cffd3a65258da705a4b13c458b"
+        },
+        "src/lib/icon-catalog.ts": {
+          "sourceHash": "3737b6e64010f1f798836e2f88f3bf617ad61a90961270dee77f6ff3e87ba305",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "50f7dbc34e3ea18201ee9d4d2286f8c66d69f86eb0d58cc3e5a87a88b2f84aec"
+        },
+        "src/lib/hugeicons.d.ts": {
+          "sourceHash": "956607cd138a8e94e7ce66dca087ef34f51295e466abbf488850134025b2903e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b964d3891cdd6e57638f0affc647ade61724aa668dce4f7606c63e32d010e70c"
+        },
+        "src/components/ui/badge.tsx": {
+          "sourceHash": "11b3367a37b6d7ca6c60d418cd7fcd37915becd9fd0f03e190f42442d44c2cbc",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8e34b79ed8d6bf4ee467fe0cc3d611fb49e8714be9619798ecae7d8f752c6783"
+        },
+        "src/components/ui/badge-colors.ts": {
+          "sourceHash": "c70396c77a0de00736ead56707e8f8b3b47d8119088bcea920681bbc59563cb7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1fc1da77799937969804f959cf3466a1fa6a53e87044886703532a16291fb00b"
+        },
+        "src/lib/tokens/control-size.ts": {
+          "sourceHash": "54d54ff80e87d6af2ea17f4a9997fbb3f7037719c3233802dc5338e0fb6a2d74",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "4e6a2572c6d452f058d7cbf096e3c9a86c107c94350dd5919d8dccb35c5e6fa9"
+        },
+        "src/components/ui/button.tsx": {
+          "sourceHash": "2801110ec9527e8364f5859624777a2819124a4030551a24b17f8de84805a1c2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5231eb3aa9cd72c50e946e7fc4b04a876d52321b01064b9ef33ce5ce4a4824d6"
+        },
+        "src/components/ui/checkbox.tsx": {
+          "sourceHash": "1dc217d8239d691dcf85bf40bc97235c5dd94653e69fc237ca147094fa4d8f51",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f3effb93ab6ad32da382c1fd5fd7b1cf269083f3a91144168c37fcf01d246941"
+        },
+        "src/lib/springs.ts": {
+          "sourceHash": "ed42d0bca6bce0d36d79a70cb162e38be422a45ad70155c5d008946d8cf4823f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5453027c1a35a2bb8879cfb883fc24ddebc041c59524095f8052d035df62be58"
+        },
+        "src/hooks/use-proximity-hover.ts": {
+          "sourceHash": "9b0d8f949290d3dcb2b6ad5cad38305007d41e9d7b8cfa6525b3713bee2ba657",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "67e0b976ccd96fef96f59cdbd568eb59264d8b3bd98ff5ba24ff314ff65e9e72"
+        },
+        "src/hooks/use-merge-split.tsx": {
+          "sourceHash": "fff8e8386a2bace4a946dba2767d2ee8547a44066ca1dc7508ec1bc51cd5df87",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1fa5061139006070dee45bc6c8114f2cdf0e7c779db4a21e280a54eff59ca8ca"
+        },
+        "src/components/ui/checkbox-group.tsx": {
+          "sourceHash": "3510ee9b30c92048600f5d481f7be0231929f4c6408c510a494d48f07a8e891f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ed1620e8c46700f5a989823a7d5b249bf951db735f87fc9662cae8630fc6fcd5"
+        },
+        "src/lib/surface-classes.ts": {
+          "sourceHash": "0ffd51810e24abe46e9a6b9c49bcc6c502031bc96ebe7c2a4685384cc69d7a71",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1be43ecf97b2259a07c3e0d663040f3ecf50fd071ea48397267b87948b93b65e"
+        },
+        "src/lib/surface-context.tsx": {
+          "sourceHash": "29e215c6c587d16f30fffac78f4d6bc28caed0484c3a3397929066f60d5b301e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e5331794b0cb164c5d59cfe87abcd1887666be5e9bdc2e50965ea645db3f83ad"
+        },
+        "src/lib/elevated.tsx": {
+          "sourceHash": "f1c6ff8ab292f697c0d407d6db5061aa9e4a52b478c4ffaa10e49df55a9fcbdc",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "37c0eb562c370f21b4a30269b8a6f7b607932470c712dea01f0ed1fc2dbc29f9"
+        },
+        "src/lib/portal-container-context.tsx": {
+          "sourceHash": "d54747ee09d40f90939a98ea843641f5aa6268fca5300b1bd003615e87711e74",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b13806446c6a669c943111aa1a361e587223492a75657d8bafd6743b1de200c2"
+        },
+        "src/lib/compose-refs.ts": {
+          "sourceHash": "a9f3ae263c45703612e5ae483c20bc4af267cf06c91863fad604e2f7f6347c02",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "26670b2e453d09da41bfe5cc8744eb98ee420e474ea3003c21e0c53e790407ba"
+        },
+        "src/components/ui/dropdown.tsx": {
+          "sourceHash": "af484d79dcd87df445d5652021f32d7d827f745aba23deb4e446f1a567260c12",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b662a1d10985a99672e6861c20877adadc9ed8bb15b94a4e32ee73c579285ca5"
+        },
+        "src/components/ui/menu-item.tsx": {
+          "sourceHash": "735192420dd9eeeb6625152801178c1d52ab5c5260afaf3ff421e190955f8f06",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "38596314bbd219f3d04665b5e783167ae17043b41c1719eb47e3287c9d811a0b"
+        },
+        "src/components/ui/empty.tsx": {
+          "sourceHash": "01bfa5c07c45496751d475bf91df43341f58150560e49ae8cb065a4abaa3d64e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "202767ab9d3a170e5b80a849b7e9dddd6bf18606c65fd2b971e200c1b86c4340"
+        },
+        "src/components/ui/input.tsx": {
+          "sourceHash": "309947bc89d1c349cbafcd30290f45f1bb4cfe2747e10404772526eab7dd5104",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "a08d377d720e17de8e7dac10b6b438526385c50eb749a83399b235d4be6be185"
+        },
+        "src/components/ui/popover.tsx": {
+          "sourceHash": "35240136c8629aa21ff9f804b59bbcee7c06a0d317ab97f952410809f887d5e0",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "700abcebac2b1ccccda5fa053285416f2db35818618ae81866391ca0ac297a9a"
+        },
+        "src/components/ui/select.tsx": {
+          "sourceHash": "c8dc526f2ada3b66cc29808c64d35d9b7e82f5ff182c7f89fb711408e2fe9ac7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7566e064ff66f57757daf8a05d8b3eba58b09144374fbe28404346d21ccb59e5"
+        },
+        "src/components/ui/sortable-collection.tsx": {
+          "sourceHash": "e65402ec19b706d3b8c260bd2d4200c5734809e88f2be7e672097b04a5dad6ff",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "756d69348fd1cb4cd9cb300c62b4807b02d83be579a07c08bb3e619ea8b15f2d"
+        },
+        "src/components/ui/skeleton.tsx": {
+          "sourceHash": "25a6b53b732ae9ccd16164bceae5b263bbb7953006d66aad46f6f2891e62554a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7b4f0da87bceef218455895664128f678567a46ff8d892ece007c87b6ffb103d"
+        },
+        "src/components/ui/table.tsx": {
+          "sourceHash": "cfc57447d89a1aaa9e2b75b5290585e15330577d4387e96fd31db70e061f0145",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "047b2eb638006d06db4efe740e26165739eea8e7c76514c2265e28fd74a4b74a"
+        },
+        "src/components/ui/data-table.tsx": {
+          "sourceHash": "2f69e170f90ffdb04777f543ea39b0de94d697d8f45c6e05b5771fb852f5a793",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "bb28b80e6a6da57d5358ce81e9849f733986dfebb449b9ed980dbb370c4d9e79"
+        }
+      },
+      "dependencies": [
+        "tw-animate-css@^1.4.0",
+        "clsx@^2.1.1",
+        "tailwind-merge@^3.4.0",
+        "@hugeicons/core-free-icons@^4.1.1",
+        "@hugeicons/react@^1.1.6",
+        "class-variance-authority@^0.7.1",
+        "@base-ui/react@^1.4.1",
+        "framer-motion@^12.34.0",
+        "@tanstack/react-table@^8.21.3"
+      ],
+      "devDependencies": []
+    },
+    {
+      "items": [
+        "surfaces",
+        "tailwind-merge-tokens",
+        "utils",
+        "icon-context",
+        "control-size",
+        "button",
+        "use-proximity-hover",
+        "input",
+        "input-group",
+        "surface-classes",
+        "surface-context",
+        "elevated",
+        "portal-container-context",
+        "combobox"
+      ],
+      "registryBase": "https://zeron-ui.vercel.app/r",
+      "cliVersion": "0.2.0-beta.19",
+      "files": [
+        "src/lib/tailwind-merge-tokens.ts",
+        "src/lib/utils.ts",
+        "src/lib/icon-context.tsx",
+        "src/lib/huge-icon.tsx",
+        "src/lib/icon-catalog.ts",
+        "src/lib/hugeicons.d.ts",
+        "src/lib/tokens/control-size.ts",
+        "src/components/ui/button.tsx",
+        "src/hooks/use-proximity-hover.ts",
+        "src/components/ui/input.tsx",
+        "src/components/ui/input-group.tsx",
+        "src/lib/surface-classes.ts",
+        "src/lib/surface-context.tsx",
+        "src/lib/elevated.tsx",
+        "src/lib/portal-container-context.tsx",
+        "src/components/ui/combobox.tsx"
+      ],
+      "fileHashes": {
+        "src/lib/tailwind-merge-tokens.ts": {
+          "sourceHash": "1277e5cfadb06fad8ce615472603bf5e75ae2270269ca42aa253459a74a7a317",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "79ed798cc175b8842548d59f0e7fd737b807af5817e2b7cea881190e9d642e8e"
+        },
+        "src/lib/utils.ts": {
+          "sourceHash": "cd8413121df9b741a6ae601589bfda72da030ea7f97e767365e058f414acb933",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1831f143258d6933514dc37d1be90dbc5289489fb345e2eb7e8ea5f29b34a2b8"
+        },
+        "src/lib/icon-context.tsx": {
+          "sourceHash": "07f0868e8fe45508ced8b0928eecd67655f5707c5ed3bd7725930802080fd655",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c8f1da9d186866d68f25db9e3843644deee2256a44d952d6129fbf954a203484"
+        },
+        "src/lib/huge-icon.tsx": {
+          "sourceHash": "f9957071efd430d3e6f76a52966ee906d707e418b584270e6daa04ffd36c4b9b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "584994e6218791a875d50ba24b0685a442c1f3cffd3a65258da705a4b13c458b"
+        },
+        "src/lib/icon-catalog.ts": {
+          "sourceHash": "3737b6e64010f1f798836e2f88f3bf617ad61a90961270dee77f6ff3e87ba305",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "50f7dbc34e3ea18201ee9d4d2286f8c66d69f86eb0d58cc3e5a87a88b2f84aec"
+        },
+        "src/lib/hugeicons.d.ts": {
+          "sourceHash": "956607cd138a8e94e7ce66dca087ef34f51295e466abbf488850134025b2903e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b964d3891cdd6e57638f0affc647ade61724aa668dce4f7606c63e32d010e70c"
+        },
+        "src/lib/tokens/control-size.ts": {
+          "sourceHash": "54d54ff80e87d6af2ea17f4a9997fbb3f7037719c3233802dc5338e0fb6a2d74",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "4e6a2572c6d452f058d7cbf096e3c9a86c107c94350dd5919d8dccb35c5e6fa9"
+        },
+        "src/components/ui/button.tsx": {
+          "sourceHash": "2801110ec9527e8364f5859624777a2819124a4030551a24b17f8de84805a1c2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5231eb3aa9cd72c50e946e7fc4b04a876d52321b01064b9ef33ce5ce4a4824d6"
+        },
+        "src/hooks/use-proximity-hover.ts": {
+          "sourceHash": "9b0d8f949290d3dcb2b6ad5cad38305007d41e9d7b8cfa6525b3713bee2ba657",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "67e0b976ccd96fef96f59cdbd568eb59264d8b3bd98ff5ba24ff314ff65e9e72"
+        },
+        "src/components/ui/input.tsx": {
+          "sourceHash": "309947bc89d1c349cbafcd30290f45f1bb4cfe2747e10404772526eab7dd5104",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "a08d377d720e17de8e7dac10b6b438526385c50eb749a83399b235d4be6be185"
+        },
+        "src/components/ui/input-group.tsx": {
+          "sourceHash": "1e557c94262669689cda21b2d932da31a51a51ca31a306275a6b9a13ef95898a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "85db6561129e44648704ed97e01b42a53d6047157b29588893704c44c18aafa0"
+        },
+        "src/lib/surface-classes.ts": {
+          "sourceHash": "0ffd51810e24abe46e9a6b9c49bcc6c502031bc96ebe7c2a4685384cc69d7a71",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1be43ecf97b2259a07c3e0d663040f3ecf50fd071ea48397267b87948b93b65e"
+        },
+        "src/lib/surface-context.tsx": {
+          "sourceHash": "29e215c6c587d16f30fffac78f4d6bc28caed0484c3a3397929066f60d5b301e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e5331794b0cb164c5d59cfe87abcd1887666be5e9bdc2e50965ea645db3f83ad"
+        },
+        "src/lib/elevated.tsx": {
+          "sourceHash": "f1c6ff8ab292f697c0d407d6db5061aa9e4a52b478c4ffaa10e49df55a9fcbdc",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "37c0eb562c370f21b4a30269b8a6f7b607932470c712dea01f0ed1fc2dbc29f9"
+        },
+        "src/lib/portal-container-context.tsx": {
+          "sourceHash": "d54747ee09d40f90939a98ea843641f5aa6268fca5300b1bd003615e87711e74",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b13806446c6a669c943111aa1a361e587223492a75657d8bafd6743b1de200c2"
+        },
+        "src/components/ui/combobox.tsx": {
+          "sourceHash": "1a36fb8d978bf74378092ee10d157cf298b57f3555b231ddf9f26b1eff640219",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "04f65563360e087daa5d00b2f1829f1f88053efef51b0df0d704c6268517fb54"
+        }
+      },
+      "dependencies": [
+        "tw-animate-css@^1.4.0",
+        "clsx@^2.1.1",
+        "tailwind-merge@^3.4.0",
+        "@hugeicons/core-free-icons@^4.1.1",
+        "@hugeicons/react@^1.1.6",
+        "@base-ui/react@^1.4.1",
+        "class-variance-authority@^0.7.1"
+      ],
+      "devDependencies": []
+    },
+    {
+      "items": [
+        "surfaces",
+        "chart-motion",
+        "tailwind-merge-tokens",
+        "utils",
+        "chart-core",
+        "surface-classes",
+        "surface-context",
+        "bar-chart",
+        "badge",
+        "chart-primitives",
+        "skeleton",
+        "metric-card",
+        "heatmap-chart",
+        "area-chart"
+      ],
+      "registryBase": "https://zeron-ui.vercel.app/r",
+      "cliVersion": "0.2.0-beta.19",
+      "files": [
+        "src/components/ui/chart-motion.tsx",
+        "src/components/ui/charts/animation.ts",
+        "src/components/ui/charts/use-mount-progress.ts",
+        "src/components/ui/charts/use-enter-complete.ts",
+        "src/components/ui/charts/use-chart-reduced-motion.ts",
+        "src/lib/tailwind-merge-tokens.ts",
+        "src/lib/utils.ts",
+        "src/components/ui/charts/chart-domain.ts",
+        "src/components/ui/charts/reference-line.tsx",
+        "src/components/ui/chart-core.tsx",
+        "src/components/ui/charts/chart-child-passthrough.ts",
+        "src/components/ui/charts/chart-config-context.tsx",
+        "src/components/ui/charts/chart-context.tsx",
+        "src/components/ui/charts/chart-data.ts",
+        "src/components/ui/charts/chart-defs.ts",
+        "src/components/ui/charts/chart-formatters.ts",
+        "src/components/ui/charts/chart-legend-hover.tsx",
+        "src/components/ui/charts/chart-legend.tsx",
+        "src/components/ui/charts/chart-loading-label.tsx",
+        "src/components/ui/charts/chart-phase.ts",
+        "src/components/ui/charts/chart-reveal-clip.tsx",
+        "src/components/ui/charts/dash-tail-stroke.tsx",
+        "src/components/ui/charts/decimate-time-series.ts",
+        "src/components/ui/charts/fade-edges.ts",
+        "src/components/ui/charts/filter-data-by-x-domain.ts",
+        "src/components/ui/charts/generate-chart-skeleton-data.ts",
+        "src/components/ui/charts/grid.tsx",
+        "src/components/ui/charts/highlight-segment-bounds.ts",
+        "src/components/ui/charts/highlight-segment.tsx",
+        "src/components/ui/charts/indicator-fade.ts",
+        "src/components/ui/charts/legend/index.ts",
+        "src/components/ui/charts/legend/legend-context.tsx",
+        "src/components/ui/charts/legend/legend-item.tsx",
+        "src/components/ui/charts/legend/legend-label.tsx",
+        "src/components/ui/charts/legend/legend-marker.tsx",
+        "src/components/ui/charts/legend/legend-progress.tsx",
+        "src/components/ui/charts/legend/legend-value.tsx",
+        "src/components/ui/charts/legend/legend.tsx",
+        "src/components/ui/charts/line-loading-pulse.tsx",
+        "src/components/ui/charts/line-loading-timing.ts",
+        "src/components/ui/charts/loading-sweep.tsx",
+        "src/components/ui/charts/path-stroke-utils.ts",
+        "src/components/ui/charts/pattern-preset.tsx",
+        "src/components/ui/charts/projection-config.ts",
+        "src/components/ui/charts/projection-utils.ts",
+        "src/components/ui/charts/reference-area-config.ts",
+        "src/components/ui/charts/reference-area-geometry.ts",
+        "src/components/ui/charts/reference-area-registration-context.tsx",
+        "src/components/ui/charts/reference-area.tsx",
+        "src/components/ui/charts/series-bar-layout.ts",
+        "src/components/ui/charts/series-dash-tail-overlay.tsx",
+        "src/components/ui/charts/series-highlight-layer.tsx",
+        "src/components/ui/charts/series-hover-dim.tsx",
+        "src/components/ui/charts/series-markers.tsx",
+        "src/components/ui/charts/series-point-marker.tsx",
+        "src/components/ui/charts/shimmering-text.tsx",
+        "src/components/ui/charts/static-chart-preview-context.tsx",
+        "src/components/ui/charts/time-series-chart-shell.tsx",
+        "src/components/ui/charts/tooltip/chart-tooltip.tsx",
+        "src/components/ui/charts/tooltip/date-ticker.tsx",
+        "src/components/ui/charts/tooltip/index.ts",
+        "src/components/ui/charts/tooltip/tooltip-box.tsx",
+        "src/components/ui/charts/tooltip/tooltip-content.tsx",
+        "src/components/ui/charts/tooltip/tooltip-dot.tsx",
+        "src/components/ui/charts/tooltip/tooltip-indicator.tsx",
+        "src/components/ui/charts/use-animated-y-domains.ts",
+        "src/components/ui/charts/use-chart-interaction.ts",
+        "src/components/ui/charts/use-chart-phase-orchestrator.ts",
+        "src/components/ui/charts/use-grid-shimmer.ts",
+        "src/components/ui/charts/use-highlight-segment.ts",
+        "src/components/ui/charts/use-scheduled-tooltip.ts",
+        "src/components/ui/charts/visx-pattern.tsx",
+        "src/components/ui/charts/x-axis.tsx",
+        "src/components/ui/charts/y-axis-scales.ts",
+        "src/components/ui/charts/y-axis-ticks.ts",
+        "src/components/ui/charts/y-axis.tsx",
+        "src/components/ui/charts/y-domain-utils.ts",
+        "src/components/ui/charts/legend/legend-layout.tsx",
+        "src/components/ui/charts/background.tsx",
+        "src/components/ui/charts/markers/chart-markers.tsx",
+        "src/components/ui/charts/markers/index.ts",
+        "src/components/ui/charts/markers/marker-group.tsx",
+        "src/components/ui/charts/motion-utils.ts",
+        "src/components/ui/charts/chart-keyboard.ts",
+        "src/components/ui/charts/chart-source-data.tsx",
+        "src/components/ui/charts/chart-center-typography.ts",
+        "src/components/ui/charts/chart-stat-flow.tsx",
+        "src/components/ui/charts/area-stack.ts",
+        "src/lib/surface-classes.ts",
+        "src/lib/surface-context.tsx",
+        "src/components/ui/bar-chart.tsx",
+        "src/components/ui/charts/bar-chart.tsx",
+        "src/components/ui/charts/bar-depth-geometry.ts",
+        "src/components/ui/charts/bar-depth.tsx",
+        "src/components/ui/charts/bar-squares-layout.ts",
+        "src/components/ui/charts/bar-squares.tsx",
+        "src/components/ui/charts/bar-x-axis.tsx",
+        "src/components/ui/charts/bar-y-axis.tsx",
+        "src/components/ui/charts/bar.tsx",
+        "src/components/ui/charts/bar-chart-loading.tsx",
+        "src/components/ui/badge.tsx",
+        "src/components/ui/badge-colors.ts",
+        "src/components/ui/chart-primitives.tsx",
+        "src/components/ui/skeleton.tsx",
+        "src/components/ui/metric-card.tsx",
+        "src/components/ui/heatmap-chart.tsx",
+        "src/components/ui/charts/chart-scale.ts",
+        "src/components/ui/charts/heatmap/generate-heatmap-skeleton-data.ts",
+        "src/components/ui/charts/heatmap/heatmap-animation.ts",
+        "src/components/ui/charts/heatmap/heatmap-cells.tsx",
+        "src/components/ui/charts/heatmap/heatmap-chart-loading.tsx",
+        "src/components/ui/charts/heatmap/heatmap-chart.tsx",
+        "src/components/ui/charts/heatmap/heatmap-colors.ts",
+        "src/components/ui/charts/heatmap/heatmap-context.tsx",
+        "src/components/ui/charts/heatmap/heatmap-legend-gradient.tsx",
+        "src/components/ui/charts/heatmap/heatmap-legend-swatch.tsx",
+        "src/components/ui/charts/heatmap/heatmap-legend.tsx",
+        "src/components/ui/charts/heatmap/heatmap-pattern-defs.tsx",
+        "src/components/ui/charts/heatmap/heatmap-resolve-separator.ts",
+        "src/components/ui/charts/heatmap/heatmap-separator.tsx",
+        "src/components/ui/charts/heatmap/heatmap-tooltip.tsx",
+        "src/components/ui/charts/heatmap/heatmap-utils.ts",
+        "src/components/ui/charts/heatmap/heatmap-x-axis.tsx",
+        "src/components/ui/charts/heatmap/heatmap-y-axis.tsx",
+        "src/components/ui/charts/heatmap/index.ts",
+        "src/components/ui/charts/heatmap/use-delayed-tooltip-data.ts",
+        "src/components/ui/charts/heatmap/heatmap-matrix.tsx",
+        "src/components/ui/area-chart.tsx",
+        "src/components/ui/charts/area-chart-loading.tsx",
+        "src/components/ui/charts/area-chart.tsx",
+        "src/components/ui/charts/area-gradient-defs.tsx",
+        "src/components/ui/charts/area.tsx",
+        "src/components/ui/charts/pattern-area.tsx"
+      ],
+      "fileHashes": {
+        "src/components/ui/chart-motion.tsx": {
+          "sourceHash": "5539c2f35d49a94af48fd021f84a99c1f31c9471f1c6914d8c1e91677a545023",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c57432d281201e3c275b53a8e407660d401676977de1ceeb636b3bea63cff492"
+        },
+        "src/components/ui/charts/animation.ts": {
+          "sourceHash": "436dcf3f879c16dfb414af4677d573fececc368a8893c14b0b18f8a7fe0ab668",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7541bfbbc037b6a8c9350410449e17a9bb0944b257d815504e9908b906623f00"
+        },
+        "src/components/ui/charts/use-mount-progress.ts": {
+          "sourceHash": "35ec2bebf88e1005c2c35dbcb19d24b4ceafa253f48eae04ebc25549de11faee",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "957e2f871085226dbae1af2bb5f451c9963d538b06e6a40537409961f49aa3ee"
+        },
+        "src/components/ui/charts/use-enter-complete.ts": {
+          "sourceHash": "0c84e8985079b356fd0067fa8dc98a82fd173232a8dd1b4f092b6b57778aeb54",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d80a496c690b8dbf5e8ec0fa19350d256a085bf7e5915548ecad4a075c3fa5ed"
+        },
+        "src/components/ui/charts/use-chart-reduced-motion.ts": {
+          "sourceHash": "3caaea34f7fb6e3cd29c016bf35ea33bdb3459df48b6deed76ce398e3c110be0",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ab42fe344fc5b9341533c265e3d014d5e8a0cb71c1747b7ac3f1f6ecab6b1287"
+        },
+        "src/lib/tailwind-merge-tokens.ts": {
+          "sourceHash": "1277e5cfadb06fad8ce615472603bf5e75ae2270269ca42aa253459a74a7a317",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "79ed798cc175b8842548d59f0e7fd737b807af5817e2b7cea881190e9d642e8e"
+        },
+        "src/lib/utils.ts": {
+          "sourceHash": "cd8413121df9b741a6ae601589bfda72da030ea7f97e767365e058f414acb933",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1831f143258d6933514dc37d1be90dbc5289489fb345e2eb7e8ea5f29b34a2b8"
+        },
+        "src/components/ui/charts/chart-domain.ts": {
+          "sourceHash": "0def0368e0faea41cae584e8796006bfeda762447b810abf4d821a93739029f1",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "388a25d77da2f75e8820690412eba1faa34115b2a48bb057bffe91f4ad2e3422"
+        },
+        "src/components/ui/charts/reference-line.tsx": {
+          "sourceHash": "657b915afdb14acb9340b5ab76c99b1ec81d2b0e2f6b91b3f3c38c7052becad5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ccbe53bccc22caffc497b9bf8e17464c26d61543c4e49c6bcad2bc22271f1154"
+        },
+        "src/components/ui/chart-core.tsx": {
+          "sourceHash": "b151c313e4a34995e6ee5faa0f63864487a89b070d62a780e8f69852a8ee671b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "db7743bbdf07f31562358782967f3621c1661ebf23969290a41433b5b28c5df4"
+        },
+        "src/components/ui/charts/chart-child-passthrough.ts": {
+          "sourceHash": "4b21c84bbc8b59dbb8001b820ca9f785c46d056dcf87e8b8e97dd0598700d682",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "05326272c43a2ea85851f9c01e740368c7e96e97b8f5c6554c24dcbd2c7729e4"
+        },
+        "src/components/ui/charts/chart-config-context.tsx": {
+          "sourceHash": "8a2fae7dc9b2659e1c4f1580466d77c9aca0db3a82a75b6cf3bcb28cf47fae2c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "06d43dcfbbe6ab94551fff91f193ac728753a4b054eabd2c99b867661a35c0b2"
+        },
+        "src/components/ui/charts/chart-context.tsx": {
+          "sourceHash": "a65758c9592dc1d5d02662c7f179feba43921c97e6287db8975d53298d9044af",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fde51be4d5745c647a3471e967634a31bdf3669aaa12eee43b58e8b61ef439b0"
+        },
+        "src/components/ui/charts/chart-data.ts": {
+          "sourceHash": "ebce3a1dc96ce44bb1d3cf94168a9b75eb9069dd45ce28b83da9b874f76897c9",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "cf0b60d2a3d64f437dcfbb58b2a4d999349876ce90050afc30f4c582ea30611d"
+        },
+        "src/components/ui/charts/chart-defs.ts": {
+          "sourceHash": "0b588331d0dee5aaf4315909da626f5df3c904fd7a0e496e22e5db13253d3f06",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "81eeaa2e4cf943e1c04583a854b211685f09336e5e1554ca74a14c7817882c76"
+        },
+        "src/components/ui/charts/chart-formatters.ts": {
+          "sourceHash": "bdf80d1ab49b34b0ff848cb309331896870b3fd7c1dfb3d6dcd5770bb2c6d3e1",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "66c0888b01231f4241c6fc4f2e7573dff40bbf1280f609f1170372dd28b01d9b"
+        },
+        "src/components/ui/charts/chart-legend-hover.tsx": {
+          "sourceHash": "df4a5df3bac7ca1abccc07d99d65477b77ae07f42d44253a18ab41ba62fa9a3f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b9bdb3a8f2f7b89feb7a8c58065d2d10715b91474ce1dd1c7d5a8e402986b070"
+        },
+        "src/components/ui/charts/chart-legend.tsx": {
+          "sourceHash": "d25855802a1258c0f265cef6086aec03ff7b5a5ac503fa15a5b96726b063d3f5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "6c7051e7bb998b4486398882854311ae58f17285e3cd13143b71974385e5960f"
+        },
+        "src/components/ui/charts/chart-loading-label.tsx": {
+          "sourceHash": "643e233f224ab8c1c1dc45be8e80949d182a3094cbfbba2004f39256ba8b3e8e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "52b1589f2b044dd9766804adb0fc44d2b6bb7b4c68d86f6b38392621eebcb432"
+        },
+        "src/components/ui/charts/chart-phase.ts": {
+          "sourceHash": "724ee516994449fca17b349a35c80eb3011f1f64d78dcf5e5df7e79171be88e2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "59d7884a699da657e6fad862ad829973858ad509e354eebd082e3757114046cb"
+        },
+        "src/components/ui/charts/chart-reveal-clip.tsx": {
+          "sourceHash": "935b45c5190ff481d4cbb46085c860ec5c7386c94eea54695cc6ea8d14ad12e5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "cb63dfa99a8a6f114e6cc24494112118a6305c8b09b642dd8cba5025fa40bbc6"
+        },
+        "src/components/ui/charts/dash-tail-stroke.tsx": {
+          "sourceHash": "a83f32f8c90bc2725c18884694497a0b6d057c7b063928021ce912fa7c1d815f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "2f469382524ee2a6f8473b62f07156fe9373a7c8ebf7a0ea6d657eba9cf43b71"
+        },
+        "src/components/ui/charts/decimate-time-series.ts": {
+          "sourceHash": "103ba859c88daaace0a2346d802e55f4a0cad9f18dfba65abe13af66f18558e2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "67a07a96157d2c55e8a20c9df2fed1947f3ed29852cdfdaf6580e7dda5a62ca6"
+        },
+        "src/components/ui/charts/fade-edges.ts": {
+          "sourceHash": "3e9919bd802b3bae2e6fde6acc720c0796c7f2a30f09ff70827facd2c83189b6",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "444d51e3d880fd8451143a10f88f881bcddb3aee785fe5df7eaf38315c734358"
+        },
+        "src/components/ui/charts/filter-data-by-x-domain.ts": {
+          "sourceHash": "577e408b0596deb047e0f6ca0be6222fbbb22ad7cf6ad7050c0e488bc9caee7a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b18994faa219aa1cd3cd31136d951bac55cdc726749bc5533813929bb35c5000"
+        },
+        "src/components/ui/charts/generate-chart-skeleton-data.ts": {
+          "sourceHash": "e28c05c37bc604f96cb5002c6135f9600c9841e45910e12ddb035168830fffa7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "cfa7dcef432e3372bf55d4e2372b2223a16aedbd65103f44595ffed0fb323a61"
+        },
+        "src/components/ui/charts/grid.tsx": {
+          "sourceHash": "03b201ba63a670c1fccee14139ed40e1bd75a0abcc1746d1ac6b170c6409cd7c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c0a466ef7c56dad0c9442c8368d9a131f32dfb022188270941c4359cac544b2c"
+        },
+        "src/components/ui/charts/highlight-segment-bounds.ts": {
+          "sourceHash": "cb2e565e9e864f59428f2c7a255e33b3bb285476b88372ae3761e01400ff5b94",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "939ec5129f365c82683ec0d9db82a8dbdeb3ece32a6f5a0150b09b26d7745181"
+        },
+        "src/components/ui/charts/highlight-segment.tsx": {
+          "sourceHash": "bcbda90365fdd353720eb50914bd113c56370b3c4940be0603671e6bd1b27a32",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "94b042f1a20feeb942ef4e16da69150249dcd7ccb5361e41212d832076b73f51"
+        },
+        "src/components/ui/charts/indicator-fade.ts": {
+          "sourceHash": "7b213f129ec5a6430490a33b65b5d77228b7eff06f68015693939141f968949e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "81c32c59dfd1e8473f628bd4fceca454ab6ffd9374ed848692c7ae9642c01ac1"
+        },
+        "src/components/ui/charts/legend/index.ts": {
+          "sourceHash": "6b97e56eebf43b7f396122256e552f758858cb4ff28230e4c0f3966f385d14de",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "db2bff451b74443776f6665046a41a024f42465a3623ca76c07a3279692b0c41"
+        },
+        "src/components/ui/charts/legend/legend-context.tsx": {
+          "sourceHash": "d20c645fa17c1aec55054b4e985e68fb68d336467500d64f34f3cc330571b734",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f032013eb694c6c15aba6756e85cded146152e0c39757ac734b1b3f63f19c0cf"
+        },
+        "src/components/ui/charts/legend/legend-item.tsx": {
+          "sourceHash": "2b4c45000726140633ed0e63f4109d6a9ca9899c5faa9c21926f9309851f0a6d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8c0e77e83f1b6dfc40f6e312fd7cbdd0da292caebaa5eee9df58c5b9e666d95b"
+        },
+        "src/components/ui/charts/legend/legend-label.tsx": {
+          "sourceHash": "96806bc6eda29b5dba0ff7c9da18601bbdb67fec9973893f50e7e83dff06e1b8",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "6db3fcfd65b862b8fe19f83e27550273e87829dbaf5bae2f7b017fa09ca7c5a4"
+        },
+        "src/components/ui/charts/legend/legend-marker.tsx": {
+          "sourceHash": "8395feb1455cf05b8cbb0a8bcf7a25856a5df48b84417e2ece3a10edf39f5c6b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b6d21f1ff80ef5b64f50394822a46cd3bbca1c063b7e4e04928e729c83b34d51"
+        },
+        "src/components/ui/charts/legend/legend-progress.tsx": {
+          "sourceHash": "50f5f335e915015fe782256aa4a5e39f424daf41358437ca95dacbb64fe93c00",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e55224af6c5bc4cf654392068acdda4daa19aaa4e454a16b61598991d4b44d47"
+        },
+        "src/components/ui/charts/legend/legend-value.tsx": {
+          "sourceHash": "e806dcd1fbfcad3512a37506cb6bcf7d5f112d8efdddff32917bf395e579f41c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d73bc05edca00eb9d8c1547a43d02809eb9729651a6515ab74a5cc64348dcf38"
+        },
+        "src/components/ui/charts/legend/legend.tsx": {
+          "sourceHash": "967e178523ce90b98eb9104d371c0ab3f189f87a887e078d183d32abf4b93ba7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b693cf4543444939499cd0c77b4e584e4f9d5313b67a59bf8a4e5b2bd9e8e73c"
+        },
+        "src/components/ui/charts/line-loading-pulse.tsx": {
+          "sourceHash": "fe6b987cd693ad1266b3fc9b81b41d7f2c038f98f5961e583c512cc9e18be6d5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9f80656f693e5e18efbd9eee8bcc090995f4e3a501464cae17fbe50caa5dd42a"
+        },
+        "src/components/ui/charts/line-loading-timing.ts": {
+          "sourceHash": "654f68991cbb153e4a536fe2214e1c365b9c15551af32f7d2a334100d22722a5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f2455ea9f9bf50a32815a458f3ac430724416fb5c72b8de18bb3c6e04333ed94"
+        },
+        "src/components/ui/charts/loading-sweep.tsx": {
+          "sourceHash": "ae67b2b0bb786a85063110157a4df256a4cb2112fb738501514562541bff7f35",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "eb59f4ce411789faf27f990e1b70e4c56d83a9e39d42bb09bea99fef1d597bd2"
+        },
+        "src/components/ui/charts/path-stroke-utils.ts": {
+          "sourceHash": "62048f056e0cbc546290cc3a46db8e8720576e5b7ba54f9f3ca85995366bebd5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9e47e82f0f0d179762cfca2e3903bd8edc6e029a9702f2871a360a216e67ab5a"
+        },
+        "src/components/ui/charts/pattern-preset.tsx": {
+          "sourceHash": "13e49ef412c06aa5c4a6bb92e005139806359aff79adfed3212c1944fa88569e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fc931c1f81d0a01cb136dec913749c83916cc6fc2446975eda0afbe52c5c5fab"
+        },
+        "src/components/ui/charts/projection-config.ts": {
+          "sourceHash": "ea0715857716e80bb35fb40ca3b7e43c3657287c624f825cf41fe9b4d0aa85bc",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "00758110c1cb987dc2f9ea6d433558d17e63712992083d97ba67731a671e23b4"
+        },
+        "src/components/ui/charts/projection-utils.ts": {
+          "sourceHash": "d575c3f7c8fd1f36ffda47fa82c087b683d330b869151230c117b3a1bd9064ad",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "90425d0031d604e068f2888b5ea807a79fefd6f8eff0e47430023c6809a280d3"
+        },
+        "src/components/ui/charts/reference-area-config.ts": {
+          "sourceHash": "54039e8f1ba0116f3974378c6ff97176333738fc927a32400f7384e6b6a388af",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8736f3e9ba1cd2f211994f8c71621c4671662ca30565d0d4f347a10f9f23a436"
+        },
+        "src/components/ui/charts/reference-area-geometry.ts": {
+          "sourceHash": "4f96647eb22edbfd85a2db3a8d7b36349e62d1cb11123e774968cd863857beb3",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "657daf17d3eeb0b76f601950110f352892fe67548b394951e481c74f67a5a8c9"
+        },
+        "src/components/ui/charts/reference-area-registration-context.tsx": {
+          "sourceHash": "b7052179b8724683259867e582837b683077b3fef412199cda915562ffa0d15d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "61004720e24bed028b4377a56f984da9dda61e6346cd607174cc0a816d4848a5"
+        },
+        "src/components/ui/charts/reference-area.tsx": {
+          "sourceHash": "ea1dd8e84bdb9bd26b07851e2db3909b18d4162394c8458878ef330b6fffe910",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "10e20b475da6c4b51656a34b493ba3ef45ce24d1426244bb53187008c9e11bf4"
+        },
+        "src/components/ui/charts/series-bar-layout.ts": {
+          "sourceHash": "d87051c37e28764284e79c509cfc6d75c88d33bab2c7f2ce536715413bc8e673",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "74b420a3fcac1b6f578bc8ac29024f68aab992b744664d71b547802b5acd34a4"
+        },
+        "src/components/ui/charts/series-dash-tail-overlay.tsx": {
+          "sourceHash": "a968dce306c5c4af367cc6f8a6347cc71eaeba83faf757093b470f426b3114e5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b9c25f93bd142733291e09535cb6f43242981f2486fa1be413dd4bac9fd9202d"
+        },
+        "src/components/ui/charts/series-highlight-layer.tsx": {
+          "sourceHash": "e91e92d3fe9ed5ac9d581228b2dca23d4096441cee4fc17952f64c696ebc7f84",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "2ef262024e2c536c5d4cabcd130123f2f577c10008ae99495795be057aba4d39"
+        },
+        "src/components/ui/charts/series-hover-dim.tsx": {
+          "sourceHash": "d25b6697ae827746521c06762b029ed09745f3506a3a81ae10bae545b63717b6",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "31a2021245115a4f179831092613b391a3940dfa6f0ede34c7a853176576c3b8"
+        },
+        "src/components/ui/charts/series-markers.tsx": {
+          "sourceHash": "37e1921cde719fb696786c192a5e2b36ea3b3ea87bc98de1a7e11fea56bf2f04",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c1a6eb3d8fc98a3328a24b11ae2c9f69f2073a236398b36fe464b662f789dbde"
+        },
+        "src/components/ui/charts/series-point-marker.tsx": {
+          "sourceHash": "d8bb2e265d3587bc7b54f60a839c94e6d5ab18339efc47f9fc3a16ad3bd83610",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "66291b6262e6a9c3c881242f6126b67b20263f59693b1ba0bb2cfe225e92897a"
+        },
+        "src/components/ui/charts/shimmering-text.tsx": {
+          "sourceHash": "9f1acfd3b7f33775ccaf4cda660ad2e041ad5e8ab4c05dbbee481b146f37875e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "65a26b6f37c5ddcc5ccbed9b8ecdc45d2a66e8ce5741b63e384c3b2a2e4738e9"
+        },
+        "src/components/ui/charts/static-chart-preview-context.tsx": {
+          "sourceHash": "c352ea459ebf4b943542f3b40fc6e861c56678ab915457198c56f9ffd3308c52",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "00e58c535af284166026c44b834a7b4161d7bbb74424748ef82ac5c1645c631f"
+        },
+        "src/components/ui/charts/time-series-chart-shell.tsx": {
+          "sourceHash": "0112a5587b99e5b523a4cccef064d6e4a2bab4414accd1076def44449ae22276",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d6d68de6aff3bf46f952d22b93ce3b98fe37c70a976ab73505dbe32e6e015866"
+        },
+        "src/components/ui/charts/tooltip/chart-tooltip.tsx": {
+          "sourceHash": "961e15f25b0bb56a11bd7e659d1f5f9221dfb4968659af34f974e0f34eb08e2b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "bf1ca300e7b43c36ecbe663a96a965fe4e28f4f5aba908171edd64e62ffde382"
+        },
+        "src/components/ui/charts/tooltip/date-ticker.tsx": {
+          "sourceHash": "f0c1ff73d9f56c80ff8509fad261766671a687a30639f35ef53a9e01149c4ab5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "13d5aaf83f125b8cc86a60767d8532211dd6bb29f579e291e39d3813f44c9273"
+        },
+        "src/components/ui/charts/tooltip/index.ts": {
+          "sourceHash": "f14f6abd0f724fcb73cf87056a286c20fdae193e2fea035d92f77ea4c13dd2be",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7bdbd4ca5ec9a338222b2fbddb1983881e89186801e02c18279ff12896486d26"
+        },
+        "src/components/ui/charts/tooltip/tooltip-box.tsx": {
+          "sourceHash": "d6a3799c99b204c14a9827974ada2cfd95814f547c2a3bde212658b34f443b29",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ae2e57a94bd531ada682d055e075645f991bc57cce478eeaed880b2396fe1ba5"
+        },
+        "src/components/ui/charts/tooltip/tooltip-content.tsx": {
+          "sourceHash": "247cfc0c2f13a35cd723c4dfdbd344d6646f5501b0d65c82ce228b6d4040bd4d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "641314d696b24c10ace3b51aba5d0be2ca9237941c81580e8d0ee18cf1e9827e"
+        },
+        "src/components/ui/charts/tooltip/tooltip-dot.tsx": {
+          "sourceHash": "4f3f869956f39d0b02300bc28c916dfa52ea0dd5007e2cd35edd2f3a83bc9f14",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "3ef903d38a6bb08440bb0d44fcf634c8fb42220d8f9c9fb5d758d7fd92c9989e"
+        },
+        "src/components/ui/charts/tooltip/tooltip-indicator.tsx": {
+          "sourceHash": "da27cd45f2ba5864bbc8d3bc203fc44ef1df4e5d819123667c8eb672388dae76",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "89c021e674768700c9dfda57f6fa5057f5077c44f0c9fbb002ecc00abbc4977c"
+        },
+        "src/components/ui/charts/use-animated-y-domains.ts": {
+          "sourceHash": "75960373ad6553468dd98283ea9e7f0e65000d4e7ee9b86ebec843efb7b3c505",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "90ca283eef8651ebd6e60f3f477a0a26631197d775a3c0d6ef290e506fc4462d"
+        },
+        "src/components/ui/charts/use-chart-interaction.ts": {
+          "sourceHash": "0a1b2844f5da1f83aca84be677753e3ba21a5904f9253b5ccd235c12ed54320e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "96dbcb1f3340024abbdabd5310ab78dfb0c753718aaff187d914cc4f848886d6"
+        },
+        "src/components/ui/charts/use-chart-phase-orchestrator.ts": {
+          "sourceHash": "e3ecc345f7f68da95e23260d8cdda6544887f725a681ec7a4db2188c53364fbe",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ce0f6f90dd70d93023383453cec7a81e7b861ff10c54afef2030e17ce251797a"
+        },
+        "src/components/ui/charts/use-grid-shimmer.ts": {
+          "sourceHash": "87b64aee9c2ac3869c1e4415db925a3902dd93c6238b0db1a9923cc2a9dfb1ce",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "bd8c97b04c9e6191a8f8abe44eee8351430d8c27b470d6b288522f1cacd0318c"
+        },
+        "src/components/ui/charts/use-highlight-segment.ts": {
+          "sourceHash": "dc3b85d64314f173e1abdb49af2a59d2edc55e43a5658f92a4603cf3ad35dfe8",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ac978aa4d780ec68ae02013d99c6b906cc1b55e9c23aa040316040ac307f89e3"
+        },
+        "src/components/ui/charts/use-scheduled-tooltip.ts": {
+          "sourceHash": "b21b25111663b18893e1cce04f0b8b3078270fa080fda15b90fd7b8276920882",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "aa57d7f278d03f3a1f5797259f492bd5c1f27b6664f74a02fc40201c4da92574"
+        },
+        "src/components/ui/charts/visx-pattern.tsx": {
+          "sourceHash": "a84a4c3b717662a701bd6414e319a22c1f953dcf6e0e4ef5893d7550b527b559",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7b966c96952e0f89eb5b1b2d70ca9e640cd1a7d67828e534218ad3f10888eb4c"
+        },
+        "src/components/ui/charts/x-axis.tsx": {
+          "sourceHash": "34144cf6729505fb425f945bc725e88c16c3a4ae2f8ca0d6849deb761f42fa49",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1a60c796b6e31d4ce4469e7c88c653b2ab4df7f18f2f191d47188957d33ba66d"
+        },
+        "src/components/ui/charts/y-axis-scales.ts": {
+          "sourceHash": "3fb139bcb416c581cdb8f3cdcded9d4043ec5dea7d0c2bc20eb233b0a3c673a4",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "4ce8464eb29d82cb998de2a80d80d46acde9ac33437f1c0611b2a72954e6a61a"
+        },
+        "src/components/ui/charts/y-axis-ticks.ts": {
+          "sourceHash": "28bc558855e4120dac77e7c00c88ab48f5764e148a1f771e9010a44b8f583b66",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ef19261515e3f38cf3143d0cf6a9cc8c4c2779ea8ed5b66fc7c55068fab4af70"
+        },
+        "src/components/ui/charts/y-axis.tsx": {
+          "sourceHash": "b33551e23a06a1edc6649e839fdb796d2e091ddb9e6f4a651c2757512b4632cb",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e8a004906ea86594c6dde6d352ce0032e77ecc8b2594b5bd18d2f06e97ded737"
+        },
+        "src/components/ui/charts/y-domain-utils.ts": {
+          "sourceHash": "f2223167b82374359ee273eff99b780ed99f9aa9bff3c851ff24e0274b3f2a29",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b179643458d73068920d880f016f6d365daace01550a5633859e6df1ca143237"
+        },
+        "src/components/ui/charts/legend/legend-layout.tsx": {
+          "sourceHash": "6a14a06eddf1f99b2544760006baf2b979660f1c064f8a4a706161e20a96bf09",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "05d601c853d72615f70cedc8b7097a8d4a2ed0540601c42d8ae5fb4cf1aa96b9"
+        },
+        "src/components/ui/charts/background.tsx": {
+          "sourceHash": "947504a064acd1788c237cea356dc76a8ff5bb8b76ee992728e3b32bf27ed638",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fce68bc6b3d10c1a5f2ad86e707faa0f41f4b90b8e9d030c7d9818bd01d313f4"
+        },
+        "src/components/ui/charts/markers/chart-markers.tsx": {
+          "sourceHash": "112770125481411ffe74bbd25b28075c5987f1760fd874be2293213f908ca5e7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "0b235d170e0547cf3e02b8ed3b333a519178e0f7bb652275eba3e94cf6b9c633"
+        },
+        "src/components/ui/charts/markers/index.ts": {
+          "sourceHash": "cd1af508bab012133e6beeaaec75bab035450abd1121782a5e12a591a9f09bf2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f52d92b7c0fca979d2bd27793c247e6c50ddbdb39d197b8fd0de1ea13ceb393d"
+        },
+        "src/components/ui/charts/markers/marker-group.tsx": {
+          "sourceHash": "297aa6ab04c71dab86cac4bca9783e31bfa93ed84c0f530cb974f4a97f004fe2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "79e10cf48d7664a99cc49daf6a2564c9023ce6cee18f32644ffc76e15152bcfe"
+        },
+        "src/components/ui/charts/motion-utils.ts": {
+          "sourceHash": "ac3b9485669e98f359f558306e94b8a327259824095eadbc51233853978f1dd2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f74dc096050e10ee5fc5403e1947074d0f788757f617d5221498437f7ac59b3f"
+        },
+        "src/components/ui/charts/chart-keyboard.ts": {
+          "sourceHash": "b7c83b14afbcd4a5dfdfd93d42779070e58a8a5f3f3ba8fe81f172f956814dba",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c4df6cceba02e2077b727600a94533ab0e7852dca4c16b052ed998f72d1f2acb"
+        },
+        "src/components/ui/charts/chart-source-data.tsx": {
+          "sourceHash": "5d400dd6ea3391ba9c3323b47651a898f6570d27b9d2c7bda31dac4d27780e59",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9c1ff4f247b44827186d4ebe508ee1ec9536f2688ab90a945dc30a2ff69eb48f"
+        },
+        "src/components/ui/charts/chart-center-typography.ts": {
+          "sourceHash": "dc25b75db2408a07c381974901c3d4967dbd0a3cfb7af5b57b1c013329f553ad",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "a9c32013bda98baa3ff337fa21df616e6c1f9030e13a04c48752c6f0caef5f29"
+        },
+        "src/components/ui/charts/chart-stat-flow.tsx": {
+          "sourceHash": "55867c76a1b041c5bb3ea665b78e1847f569c22585075b8bc27dd9e26a549739",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "6ea45ab00606acd1e2f0d721912a8e3d29d00af9900d0e176c2416c230897964"
+        },
+        "src/components/ui/charts/area-stack.ts": {
+          "sourceHash": "bef95a63cbf8470c5314ec8473c9925aa7dd9c04dad33d35f183ffa4b97f7c9c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "16bf3110b8ba2fa5cd07443d43f41d8ebf72a27dcea5262fb53bd5983b65013f"
+        },
+        "src/lib/surface-classes.ts": {
+          "sourceHash": "0ffd51810e24abe46e9a6b9c49bcc6c502031bc96ebe7c2a4685384cc69d7a71",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1be43ecf97b2259a07c3e0d663040f3ecf50fd071ea48397267b87948b93b65e"
+        },
+        "src/lib/surface-context.tsx": {
+          "sourceHash": "29e215c6c587d16f30fffac78f4d6bc28caed0484c3a3397929066f60d5b301e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e5331794b0cb164c5d59cfe87abcd1887666be5e9bdc2e50965ea645db3f83ad"
+        },
+        "src/components/ui/bar-chart.tsx": {
+          "sourceHash": "33e6aaad1d6e1b09e154e8358fcd1526341800f1d3240b8b2782aeecee2e6783",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e6530bb4bc3c7cb4c4cf466dff99dfbc3577836b5c75e5652b73606d251a6db1"
+        },
+        "src/components/ui/charts/bar-chart.tsx": {
+          "sourceHash": "5eafa042ba79abaeaf4eda21912f697d842778c087df419de4a1a526fb0dcbb6",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e7e5c5f1f1f273ca27f2e20846dd7edb675c019e0f4df82fdc335afb59735a43"
+        },
+        "src/components/ui/charts/bar-depth-geometry.ts": {
+          "sourceHash": "671a57496b5673db21c5af31748faad5bf3f0f811b3e9fa7ec36fed1fb6b5c7e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8c39081c45adb78bc78ff9314a10bf2d21e85942979472eed1b514d7c3813065"
+        },
+        "src/components/ui/charts/bar-depth.tsx": {
+          "sourceHash": "fa88fd5661c6b7fd4c5e71ddc62dfbe5e04d5a7c69c3686069ec5b2453300f9a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b212f6f5e43d987f5703a56b42a24777b1c641e51a5da67d8b5cfeacf1871578"
+        },
+        "src/components/ui/charts/bar-squares-layout.ts": {
+          "sourceHash": "f565deb2fa9a035276d1b900b04be363a72c8c1b63b77642b7375bb066251f05",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "6554b4373b05f09d5b2f3b30e3243c1794dc8991507f2b39d9dcb9732de8ef42"
+        },
+        "src/components/ui/charts/bar-squares.tsx": {
+          "sourceHash": "c482c423ee6075c5feb2052cc6d8ee6544438a132cc868b282f727d4c0719eab",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5b909e5be070c6227f7b580e4d10942fc880d4ca9ce2ae6ad90d0f1fd26bf024"
+        },
+        "src/components/ui/charts/bar-x-axis.tsx": {
+          "sourceHash": "57d581c0a5bf1cdbcdeeb62a11c9e3760f488351a0b1b4e95865212623073cf4",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "4eae90ec6a3210fb3620d287a731c190d66bf96d9154e3f4e7829a9c325d212f"
+        },
+        "src/components/ui/charts/bar-y-axis.tsx": {
+          "sourceHash": "ab7dd7406c4a6cf26e0d64a5356a20e8955e4222032ea70ff8789d977a02abe7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fba1c9c10cceadf66abcec3f9fc3363f8378e24d61aa12ccf55505d711ad2524"
+        },
+        "src/components/ui/charts/bar.tsx": {
+          "sourceHash": "0a45106c2bf27d9fc55f4fd066ebf30aca8bdac9d40761753ca7178215ba1973",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "cb747dd5f102ac7a019c8f597b8a3364ce7026f8a8099e6ec427d6f2dcbdc6ee"
+        },
+        "src/components/ui/charts/bar-chart-loading.tsx": {
+          "sourceHash": "722e5e4f8d936706301127a3d9772e693d1252c7975c4e6ee6b5e13775e63660",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9bbfb0f8578aced7757017bf21921d21b6935ab697e8f76bcbd4f48c760cc588"
+        },
+        "src/components/ui/badge.tsx": {
+          "sourceHash": "11b3367a37b6d7ca6c60d418cd7fcd37915becd9fd0f03e190f42442d44c2cbc",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8e34b79ed8d6bf4ee467fe0cc3d611fb49e8714be9619798ecae7d8f752c6783"
+        },
+        "src/components/ui/badge-colors.ts": {
+          "sourceHash": "c70396c77a0de00736ead56707e8f8b3b47d8119088bcea920681bbc59563cb7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1fc1da77799937969804f959cf3466a1fa6a53e87044886703532a16291fb00b"
+        },
+        "src/components/ui/chart-primitives.tsx": {
+          "sourceHash": "68326b3d8f87c51041b9219386e078bbb4652206f9937b88b414212c14e2d691",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f8f88de8bc159f47b8de88b5e04321bb6ac0c1e445d4109a72b1ea712ea42078"
+        },
+        "src/components/ui/skeleton.tsx": {
+          "sourceHash": "25a6b53b732ae9ccd16164bceae5b263bbb7953006d66aad46f6f2891e62554a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7b4f0da87bceef218455895664128f678567a46ff8d892ece007c87b6ffb103d"
+        },
+        "src/components/ui/metric-card.tsx": {
+          "sourceHash": "97982afa223951ae0fe03dcb8bf566f06fae9efb9fa7969f291a05dbdaf7edcf",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "23a81eab2582d0872a14907ee0dc4c40fc954091645a636daa0d2a50e9643ab4"
+        },
+        "src/components/ui/heatmap-chart.tsx": {
+          "sourceHash": "4a476700d1f6ddb940588c0baf7089c4a32dba6b86824d564885ecfc2e8bd458",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "cc30ded78fe328367e776a4d021f21817d18074d6d001293b12f387e223eb190"
+        },
+        "src/components/ui/charts/chart-scale.ts": {
+          "sourceHash": "02960b8b0c7c24de6052b59e120d00878ecb1803568dcc6770ae96b6df2d2da7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "dd6eed52c90b3fa7dbebddd8ec61ba343586ecb3ce2dd84a3e314145dcdebdfa"
+        },
+        "src/components/ui/charts/heatmap/generate-heatmap-skeleton-data.ts": {
+          "sourceHash": "8dbed6916c368f99d9acb9c09ad78650e1c92ddeb30bf42542dcf5de8493d6fa",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ef67c017129361bf901535f4e514a8ddbd3714325ece8878bfb93996bd17e475"
+        },
+        "src/components/ui/charts/heatmap/heatmap-animation.ts": {
+          "sourceHash": "59200ed4beafb7b178e0dd2763304f21957d9db40a35ed06a9c8075bf4fabe3b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "3811a53f0aa39bcd944e6dd74e7c32a998fda3a663a31d5aab6110c895528d15"
+        },
+        "src/components/ui/charts/heatmap/heatmap-cells.tsx": {
+          "sourceHash": "f1850d55cd61e5623240232752e8455f1fb3a564c30a1ca3e3b94a575231b882",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "87b070e582eea7e6cf51518632cb7856e3ce9fc2c8d87c0bb5a23293a2bfebc7"
+        },
+        "src/components/ui/charts/heatmap/heatmap-chart-loading.tsx": {
+          "sourceHash": "11405b39aee08065af3e96d368f5736f2bc690775c0a1c55241c1286ff823589",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "bfcf24180a0e67c6311fdf87532dcd927cdb7ae30a55b67ce751451ca5fca102"
+        },
+        "src/components/ui/charts/heatmap/heatmap-chart.tsx": {
+          "sourceHash": "7d05dd0f17695c09fe23c72f617015d702fac49d5063745fa8c9d7e330b80ae3",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5276844965de2b250910d8d4bbe9ae156d230fade85e80e31e28f1d4ad318a13"
+        },
+        "src/components/ui/charts/heatmap/heatmap-colors.ts": {
+          "sourceHash": "096eb6b035fdaeeb4236f44c2c56045cac1b2ff66cc7868ecfb8af6dc6ec7b8a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "60711a43dd10b5a45fe0191206f743d97b5da2e70575d74511aad9f858a23762"
+        },
+        "src/components/ui/charts/heatmap/heatmap-context.tsx": {
+          "sourceHash": "886d11f9ac97080530198f0e31582506dc883b14ee25915dbfa52cc2c96dd729",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c3dc7c38ffda1ea65f41e7134ba2d399f77e109d84345f8b6e4627e5e658fdbc"
+        },
+        "src/components/ui/charts/heatmap/heatmap-legend-gradient.tsx": {
+          "sourceHash": "bf084069f62f159976315edd4aa1d0f839a0b7b509e7416f115120df7d785d7a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "97f2a644c91df375d9b1076316aa6fdc2dff90722fa1b3357fcbc19c20dac876"
+        },
+        "src/components/ui/charts/heatmap/heatmap-legend-swatch.tsx": {
+          "sourceHash": "f980869e76a6f700d403b7705450eda65ca04f62cf1c84bcde6f78f4e67521d2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "4b290a5d227b39f6ef5c226a7500926cfb33f6bf3a443715ca8d00d5ff8727ed"
+        },
+        "src/components/ui/charts/heatmap/heatmap-legend.tsx": {
+          "sourceHash": "62ca027d7a21c9619b49f95ebf323995df26d54df16ba3908f60685a2095deb7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "84c19f6e8c37643bdc5a816b504af6566f2d4d6d4244e46b7c38f9d1aa2b9922"
+        },
+        "src/components/ui/charts/heatmap/heatmap-pattern-defs.tsx": {
+          "sourceHash": "b4875d9aa46e7826c024b35218a1dba3141c0bed73abf5cf6bbdac39c1ea03e9",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "57ac27426b7a0595481fab9a4bcfc0e31b9fff535de2490d00e26b96b3ef7da4"
+        },
+        "src/components/ui/charts/heatmap/heatmap-resolve-separator.ts": {
+          "sourceHash": "321f270fdb0868530bbdf27e7f5867dafe83a26b5e818f8d9519678c4fc559fb",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c0e247dbc2006b6f268904f11452cd5d449eeea1df90104178f9475a0c3f345f"
+        },
+        "src/components/ui/charts/heatmap/heatmap-separator.tsx": {
+          "sourceHash": "ce1c09e271d88420f4864bedf3bbe0201b101302ae3ae7fb4dd99d2e9df17656",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8fdf108ffafb0183640d8ba75aac3ec1595c412422e11a7d6215ecb6f7a7eefc"
+        },
+        "src/components/ui/charts/heatmap/heatmap-tooltip.tsx": {
+          "sourceHash": "cf227d2e7cecf42841fdfc6c64305d6b78d10e11ee4384a47bc123cc381e9d29",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8a22de6247b3a6e0e8b18ccb905019bd1900d50267e7e6690e4bc6bb8f9f3b13"
+        },
+        "src/components/ui/charts/heatmap/heatmap-utils.ts": {
+          "sourceHash": "aaf1bc5400bfd914f78f6484fb788123103e1b65165f8fa9e96efa5e40ba5bc5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c8553b3c5029e363fbdee6c467547aca46b15d2188fe1fd94c8c6d9627f18f87"
+        },
+        "src/components/ui/charts/heatmap/heatmap-x-axis.tsx": {
+          "sourceHash": "a69402aeddb7f1d999cb92cbf982bc30726a95bba00e3ded20e50981cd9f2e1d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "af9eed395a353d57c0d204e9c59f0417d02b9f1a5713e3347ef70e81d9ef928b"
+        },
+        "src/components/ui/charts/heatmap/heatmap-y-axis.tsx": {
+          "sourceHash": "2eef50886edb7ac8a04d5c86558b68068851d5d9853db655deea778a876ba1f8",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "179db06cfe0fba637c0833763faa3edc7ce1ee1235f432775c37a32f6b5b1b2e"
+        },
+        "src/components/ui/charts/heatmap/index.ts": {
+          "sourceHash": "94da9473ac202263ab06cc5dc25e25853651aae35fabc44aa6befc8fa3eec2cb",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e46fc4922976f4aba5062b6b268d66f289c67d7c22574612a46da51f93285983"
+        },
+        "src/components/ui/charts/heatmap/use-delayed-tooltip-data.ts": {
+          "sourceHash": "d271491d3fe562be55f4025d43d3473b0cd14199c5e86ab7bf9f63749d023713",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "cdf2ceedfd36cfb3f57398339f8c42e11138aee0d1390d14594b617b04f49468"
+        },
+        "src/components/ui/charts/heatmap/heatmap-matrix.tsx": {
+          "sourceHash": "58106c9555c833ee8fd8f3e404f62cbed318257b9175b7fba1030d489ce7d6fb",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "08f0d825a9611658501d83882d10f842cdfa570ac21b39a17d31b101e6ffbbce"
+        },
+        "src/components/ui/area-chart.tsx": {
+          "sourceHash": "264492e655a7cbf8c9efe4229977a48acea755e000b3b982a38c6053baa10f3b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b0fc28e76b51717db33a41a43fa101eb478e436059d2b6c1f7230a4f6c3c8aaa"
+        },
+        "src/components/ui/charts/area-chart-loading.tsx": {
+          "sourceHash": "2b0b615f16d28e53134bd260741d758a6c73a47f99ba62adb91c037e512862e6",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b6b7b28e4bdf844791e7f0291f2318d585ef6d4cddfe5404a4a797d94243c394"
+        },
+        "src/components/ui/charts/area-chart.tsx": {
+          "sourceHash": "1f41ff8a7df42e5b7b046d5c648132449b195540deba28b2bc6633fa7997190b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "6812e146b175bbf740dcc9dd0e511e82ba99dc18a59a4f6224af336c3f255bbc"
+        },
+        "src/components/ui/charts/area-gradient-defs.tsx": {
+          "sourceHash": "02c08a475b637bdf7db01f98889d1ec15cf62151bfbe342e63d56041f1f0a2c6",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f880e9c54f52ef73b2c951185469d95fa87035fd0b76fb24c46f1ab0393781ba"
+        },
+        "src/components/ui/charts/area.tsx": {
+          "sourceHash": "1b7d62a336aae606925644a152cbf5f443805f37843204ec0e0b7a2f9c16f3f1",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b444576e2ff6a4fa0f814eeb1d4d699e31bd68e5e7410f67e74f985cfb045edc"
+        },
+        "src/components/ui/charts/pattern-area.tsx": {
+          "sourceHash": "b85e505cfbd30cef8f9c52612228350d0384c86f75a9a0a0696f3ee4da6ce6b2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "6a8634b32ebcd75592fa9c48bd2337435f3d58adb6e64762a8bfbc8c3b596b62"
+        }
+      },
+      "dependencies": [
+        "tw-animate-css@^1.4.0",
+        "motion@^12.42.2",
+        "clsx@^2.1.1",
+        "tailwind-merge@^3.4.0",
+        "@base-ui/react@^1.4.1",
+        "@visx/scale@4.0.0",
+        "@visx/event@4.0.0",
+        "@visx/grid@4.0.0",
+        "@visx/pattern@4.0.0",
+        "@visx/shape@4.0.0",
+        "@visx/curve@4.0.0",
+        "d3-array@3.2.4",
+        "@types/d3-array",
+        "@types/d3-shape",
+        "@visx/group@4.0.0",
+        "@visx/gradient@4.0.0",
+        "@number-flow/react@0.5.10",
+        "@visx/responsive@4.0.0",
+        "class-variance-authority@^0.7.1",
+        "@visx/heatmap@4.0.0"
+      ],
+      "devDependencies": []
+    }
+  ]
+}

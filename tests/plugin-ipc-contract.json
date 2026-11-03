@@ -1,0 +1,9 @@
+{
+  "authorize_plugin_source": ["digest", "pluginId"],
+  "change_plugin_state": ["input"],
+  "inspect_plugin_package": [],
+  "install_plugin_package": ["input"],
+  "list_plugins": [],
+  "perform_plugin_action": ["input"],
+  "query_plugin_view": ["query"]
+}

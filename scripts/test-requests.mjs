@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import {mkdtempSync,realpathSync,mkdirSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {spawn} from 'node:child_process';
+import {createInterface} from 'node:readline';
+import {once} from 'node:events';
+import {randomUUID} from 'node:crypto';
+import {DatabaseSync} from 'node:sqlite';
+const dir=realpathSync(mkdtempSync(path.join(tmpdir(),'request-dashboard-')));
+const token=randomUUID(), source=path.join(dir,'source');mkdirSync(source);mkdirSync(path.join(dir,'observation'));
+const db=new DatabaseSync(path.join(dir,'observation','observations.sqlite3'));
+db.exec('CREATE TABLE model_observations(id TEXT PRIMARY KEY, started_at TEXT NOT NULL, revision INTEGER NOT NULL, value TEXT NOT NULL)');
+const statement=db.prepare('INSERT INTO model_observations VALUES(?,?,?,?)');
+const rows=Array.from({length:87},(_,i)=>({id:`row-${String(i).padStart(3,'0')}`,logicalId:i<3?'recovery':null,agentId:'codex',agentProductId:'codex-cli',sessionId:null,model:'deepseek-flash',requestedModel:'requested-alias',routedModel:'deepseek-flash',reportedModel:'deepseek-flash',provider:'测试,连接',providerId:'provider-archived',endpoint:'https://api.deepseek.com/v1',bindingRevision:1,startedAt:new Date(Date.UTC(2026,9,19,1,0,i)).toISOString(),endedAt:new Date(Date.UTC(2026,9,19,1,0,i+1)).toISOString(),clockId:'same-process',startTickMs:i*2000,status:i<2?'error':'success',httpStatus:i<2?429:200,ttftMs:i<2?null:100,firstTextMs:i<2?null:150,durationMs:1000,usage:{inputTokens:100,outputTokens:20,totalTokens:120,cachedInputTokens:80,cacheWriteInputTokens:0,reasoningOutputTokens:null},protocol:'responses',timingIssue:null,revision:1}));
+for(const row of rows)statement.run(row.id,row.startedAt,row.revision,JSON.stringify(row));
+let child,base;let stderr='';
+const api=async(route)=>{const response=await fetch(base+route,{headers:{authorization:`Bearer ${token}`}});assert.equal(response.status,200,await response.clone().text());return response.json();};
+const dashboard=(q={})=>api('/api/request-dashboard?'+new URLSearchParams(q));
+try{
+ child=spawn(process.env.LOCAL_AGENT_TEST_SERVICE_BINARY??'target/debug/local-agent-service',['--data-dir',dir],{env:{...process.env,LOCAL_AGENT_SERVICE_TOKEN:token,LOCAL_AGENT_SOURCE_HOME:source,LOCAL_AGENT_TEST_MEMORY_VAULT:'1'},stdio:['ignore','pipe','pipe']});child.stderr.on('data',b=>stderr+=b);
+ const lines=createInterface({input:child.stdout});const [line]=await Promise.race([once(lines,'line'),once(child,'exit').then(()=>{throw Error(stderr)}),new Promise((_,reject)=>setTimeout(()=>reject(Error('服务启动超时')),10000).unref())]);base=`http://127.0.0.1:${JSON.parse(line).port}`;
+ assert.equal((await fetch(base+'/api/request-dashboard')).status,401);
+ const first=await dashboard({metric:'calls',sort:'time'});assert.equal(first.total,85);assert.equal(first.items.length,40);assert.equal(first.summary.requests,85);assert.equal(first.summary.attempts,87);assert.equal(first.summary.statuses.recovered,1);assert.equal(first.summary.issues.rate_limit,2);
+ assert.equal(first.buckets.reduce((n,b)=>n+b.value,0),85);assert.equal(first.groups.reduce((n,g)=>n+g.value,0),85);
+ const frozen={...first.query,snapshot:first.snapshot};for(const key of Object.keys(frozen))if(frozen[key]===null)delete frozen[key];
+ const second=await dashboard({...frozen,cursor:first.nextCursor});assert.equal(second.items.length,40);assert.ok(second.items.every(b=>first.items.every(a=>a.id!==b.id)));
+ const recovery=await api('/api/request-detail?id=row-001');assert.equal(recovery.request.status,'recovered');assert.equal(recovery.request.attempts.length,3);assert.equal(recovery.request.durationMs,5000);assert.equal(recovery.request.ttftMs,4100);
+ const exported=await api('/api/request-export?snapshot='+first.snapshot);assert.equal(exported.count,85);assert.equal(exported.csv.split('\r\n').filter(Boolean).length,86);assert.ok(exported.csv.includes('"测试,连接"'));assert.ok(exported.csv.includes('+08:00'));
+ const newRow={...rows[3],id:'late',startedAt:'2026-10-19T01:10:00Z'};statement.run(newRow.id,newRow.startedAt,1,JSON.stringify(newRow));
+ const same=await dashboard(frozen);assert.equal(same.total,85);const fresh=await dashboard({metric:'calls',sort:'time'});assert.equal(fresh.total,86);
+ const filtered=await dashboard({result:'recovered',provider:'provider-archived',model:'deepseek-flash',start:'2026-10-19T00:00:00+08:00',end:'2026-10-20T00:00:00+08:00',metric:'tokens',dimension:'model'});assert.equal(filtered.total,1);assert.equal(filtered.summary.usage.totalTokens,360);assert.equal(filtered.groups.reduce((n,g)=>n+g.value,0),360);
+ const invalid=await fetch(base+'/api/request-dashboard?sort=invalid',{headers:{authorization:`Bearer ${token}`}});assert.equal(invalid.status,400);
+ const stale=await fetch(base+'/api/request-dashboard?snapshot=missing',{headers:{authorization:`Bearer ${token}`}});assert.equal(stale.status,409);assert.equal((await stale.json()).code,'stale_snapshot');
+ const noMatch=await dashboard({search:'does-not-exist'});const empty=await api('/api/request-export?snapshot='+noMatch.snapshot);assert.equal(empty.count,0);assert.equal(empty.csv.split('\r\n').filter(Boolean).length,1);
+ console.log('通过：真实独立进程鉴权、87 次尝试归为 85 条请求、三次恢复时序、完整汇总、冻结分页 / 导出、迟到记录、筛选、错误与空结果。');
+}finally{db.close();if(child?.exitCode===null){const closed=once(child,'exit');child.kill();await closed;}rmSync(dir,{recursive:true,force:true});}

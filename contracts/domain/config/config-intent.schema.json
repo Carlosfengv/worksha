@@ -1,0 +1,92 @@
+{
+  "$defs": {
+    "FieldEdit": {
+      "additionalProperties": false,
+      "properties": {
+        "pointer": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pointer",
+        "value"
+      ],
+      "type": "object"
+    },
+    "NativeBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "identity": {
+          "description": "An opaque identity of the host's provider snapshot, never a credential reference.",
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "identity",
+        "endpoint",
+        "model"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "agentId": {
+          "type": "string"
+        },
+        "binding": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NativeBinding"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "const": "native-route",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "agentId"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "edits": {
+          "items": {
+            "$ref": "#/$defs/FieldEdit"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "json-fields",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "edits"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "ConfigIntent"
+}

@@ -1,0 +1,538 @@
+{
+  "$defs": {
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "McpCatalogFact": {
+      "additionalProperties": false,
+      "properties": {
+        "applicableProductIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "configurationStatus": {
+          "type": "string"
+        },
+        "connectionStatus": {
+          "type": "string"
+        },
+        "durationSamples": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "errorCount": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "errorRate": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "executionCount": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "lastExecutionAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "observationStatus": {
+          "type": "string"
+        },
+        "p95Ms": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectFacetRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "recordedToolCount": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "returnedCount": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "sessionCount": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "toolCatalogCount": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unknownCount": {
+          "$ref": "#/$defs/Decimal"
+        }
+      },
+      "required": [
+        "id",
+        "sourceId",
+        "name",
+        "applicableProductIds",
+        "configurationStatus",
+        "connectionStatus",
+        "observationStatus",
+        "returnedCount",
+        "errorCount",
+        "unknownCount",
+        "durationSamples",
+        "recordedToolCount",
+        "sessionCount"
+      ],
+      "type": "object"
+    },
+    "McpExecutionFact": {
+      "additionalProperties": false,
+      "properties": {
+        "associatedProductId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "associatedResponseUsage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Usage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "associatedUsageState": {
+          "type": "string"
+        },
+        "association": {
+          "type": "string"
+        },
+        "durationMs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "groupId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "occurredAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "productId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectFacetRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "responseId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "serviceId": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "serviceId",
+        "groupId",
+        "sourceId",
+        "sessionId",
+        "name",
+        "status",
+        "association",
+        "associatedUsageState"
+      ],
+      "type": "object"
+    },
+    "McpFacet": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "type": "object"
+    },
+    "McpGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "configurationCount": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "configuredProductIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "durationSamples": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "errorCount": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "errorRate": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "executionCount": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "identity": {
+          "type": "string"
+        },
+        "lastExecutionAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "observedClientIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "p95Ms": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectFacetRefs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "projectRefs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "returnedCount": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "serviceIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sessionCount": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "unknownCount": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "usage": {
+          "$ref": "#/$defs/McpUsageSummary"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "identity",
+        "serviceIds",
+        "observedClientIds",
+        "configuredProductIds",
+        "projectRefs",
+        "projectFacetRefs",
+        "configurationCount",
+        "returnedCount",
+        "errorCount",
+        "unknownCount",
+        "durationSamples",
+        "sessionCount",
+        "usage"
+      ],
+      "type": "object"
+    },
+    "McpUsageSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "relatedResponses": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "relatedTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tokenCoveredCalls": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "tokenMissingCalls": {
+          "$ref": "#/$defs/Decimal"
+        }
+      },
+      "required": [
+        "relatedResponses",
+        "tokenCoveredCalls",
+        "tokenMissingCalls"
+      ],
+      "type": "object"
+    },
+    "Usage": {
+      "additionalProperties": false,
+      "properties": {
+        "cacheWriteInputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cachedInputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reasoningOutputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "totalTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "catalogs": {
+      "items": {
+        "$ref": "#/$defs/McpCatalogFact"
+      },
+      "type": "array"
+    },
+    "coverage": {
+      "type": "string"
+    },
+    "executions": {
+      "items": {
+        "$ref": "#/$defs/McpExecutionFact"
+      },
+      "type": "array"
+    },
+    "groups": {
+      "description": "Full filtered range, independently of the execution page.",
+      "items": {
+        "$ref": "#/$defs/McpGroup"
+      },
+      "type": "array"
+    },
+    "historyAsOf": {
+      "type": "string"
+    },
+    "modelFacets": {
+      "items": {
+        "$ref": "#/$defs/McpFacet"
+      },
+      "type": "array"
+    },
+    "nextCursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "projectFacets": {
+      "description": "Opaque host bindings. Native paths and their labels are not a guest API.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "selectedGroupId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "selectedServiceId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sourceAsOf": {
+      "type": "string"
+    },
+    "totalExecutions": {
+      "$ref": "#/$defs/Decimal"
+    },
+    "usageSummary": {
+      "$ref": "#/$defs/McpUsageSummary"
+    }
+  },
+  "required": [
+    "catalogs",
+    "executions",
+    "groups",
+    "usageSummary",
+    "modelFacets",
+    "projectFacets",
+    "totalExecutions",
+    "sourceAsOf",
+    "historyAsOf",
+    "coverage"
+  ],
+  "title": "McpFacts",
+  "type": "object"
+}

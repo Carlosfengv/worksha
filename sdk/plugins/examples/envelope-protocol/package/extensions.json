@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "protocol": {
+    "baseProtocol": "responses",
+    "path": "/envelope"
+  },
+  "config": null,
+  "connector": null
+}

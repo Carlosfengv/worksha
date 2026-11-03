@@ -1,0 +1,242 @@
+{
+  "$defs": {
+    "PolicyRecoveryEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "pendingOperationIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "problem": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PolicyRecoveryProblem"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope": {
+          "$ref": "#/$defs/PolicyRecoveryScope"
+        },
+        "serviceExists": {
+          "description": "None means unreadable, not deleted.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "serviceName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/PolicyRecoveryState"
+        }
+      },
+      "required": [
+        "scope",
+        "state",
+        "pendingOperationIds"
+      ],
+      "type": "object"
+    },
+    "PolicyRecoveryInspection": {
+      "additionalProperties": false,
+      "properties": {
+        "canRestoreNative": {
+          "type": "boolean"
+        },
+        "canRestorePending": {
+          "type": "boolean"
+        },
+        "currentServiceVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "entry": {
+          "$ref": "#/$defs/PolicyRecoveryEntry"
+        },
+        "reference": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PolicyRecoveryReference"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "entry",
+        "canRestoreNative",
+        "canRestorePending"
+      ],
+      "type": "object"
+    },
+    "PolicyRecoveryMode": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "native",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "pending-original",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PolicyRecoveryProblem": {
+      "enum": [
+        "missing-control",
+        "marker-mismatch",
+        "pending-publication",
+        "incomplete-evidence",
+        "unavailable",
+        "capacity"
+      ],
+      "type": "string"
+    },
+    "PolicyRecoveryReference": {
+      "additionalProperties": false,
+      "properties": {
+        "referenceId": {
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/PolicyRecoveryScope"
+        }
+      },
+      "required": [
+        "scope",
+        "referenceId"
+      ],
+      "type": "object"
+    },
+    "PolicyRecoveryScope": {
+      "additionalProperties": false,
+      "properties": {
+        "serviceId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "serviceId"
+      ],
+      "type": "object"
+    },
+    "PolicyRecoveryState": {
+      "enum": [
+        "unchecked",
+        "consistent",
+        "needs-recovery",
+        "blocked"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/PolicyRecoveryEntry"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "listed",
+          "type": "string"
+        },
+        "limited": {
+          "type": "boolean"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "storeId",
+        "entries",
+        "limited"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "inspection": {
+          "$ref": "#/$defs/PolicyRecoveryInspection"
+        },
+        "kind": {
+          "const": "inspected",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "inspection"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "resolved",
+          "type": "string"
+        },
+        "mode": {
+          "$ref": "#/$defs/PolicyRecoveryMode"
+        },
+        "reference": {
+          "$ref": "#/$defs/PolicyRecoveryReference"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "reference",
+        "mode",
+        "revision"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "PolicyRecoveryReply"
+}

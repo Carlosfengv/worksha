@@ -1,0 +1,80 @@
+[
+  {
+    "id": "openai",
+    "name": "OpenAI",
+    "protocol": "responses",
+    "endpoints": {
+      "responses": "https://api.openai.com/v1",
+      "chat-completions": "https://api.openai.com/v1"
+    },
+    "documents": "https://developers.openai.com/api/docs/"
+  },
+  {
+    "id": "anthropic",
+    "name": "Anthropic",
+    "protocol": "messages",
+    "endpoints": {
+      "messages": "https://api.anthropic.com"
+    },
+    "documents": "https://platform.claude.com/docs/en/api/overview"
+  },
+  {
+    "id": "openrouter",
+    "name": "OpenRouter",
+    "protocol": "chat-completions",
+    "endpoints": {
+      "responses": "https://openrouter.ai/api/v1",
+      "messages": "https://openrouter.ai/api",
+      "chat-completions": "https://openrouter.ai/api/v1"
+    },
+    "documents": "https://openrouter.ai/docs/"
+  },
+  {
+    "id": "deepseek",
+    "name": "DeepSeek",
+    "protocol": "chat-completions",
+    "endpoints": {
+      "messages": "https://api.deepseek.com/anthropic",
+      "chat-completions": "https://api.deepseek.com"
+    },
+    "documents": "https://api-docs.deepseek.com/"
+  },
+  {
+    "id": "kimi",
+    "name": "Kimi",
+    "protocol": "chat-completions",
+    "endpoints": {
+      "responses": "https://api.moonshot.cn/v1",
+      "messages": "https://api.moonshot.cn/anthropic",
+      "chat-completions": "https://api.moonshot.cn/v1"
+    },
+    "documents": "https://platform.kimi.ai/docs/overview"
+  },
+  {
+    "id": "ollama",
+    "name": "Ollama",
+    "protocol": "responses",
+    "endpoints": {
+      "responses": "http://localhost:11434/v1",
+      "messages": "http://localhost:11434",
+      "chat-completions": "http://localhost:11434/v1"
+    },
+    "documents": "https://docs.ollama.com/api/openai-compatibility"
+  },
+  {
+    "id": "vllm",
+    "name": "vLLM",
+    "protocol": "responses",
+    "endpoints": {
+      "responses": "http://localhost:8000/v1",
+      "chat-completions": "http://localhost:8000/v1"
+    },
+    "documents": "https://docs.vllm.ai/en/latest/serving/online_serving/openai_compatible_server/"
+  },
+  {
+    "id": "custom",
+    "name": "其他供应商",
+    "protocol": "responses",
+    "endpoints": {}
+  }
+]

@@ -1,0 +1,571 @@
+{
+  "$defs": {
+    "Coverage": {
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "DependencyStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "pluginId": {
+          "type": "string"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": "string"
+        },
+        "views": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "pluginId",
+        "version",
+        "views",
+        "available"
+      ],
+      "type": "object"
+    },
+    "DetailPlacement": {
+      "enum": [
+        "tab",
+        "card"
+      ],
+      "type": "string"
+    },
+    "Freshness": {
+      "enum": [
+        "unread",
+        "current",
+        "stale",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "MissingReason": {
+      "enum": [
+        "unread",
+        "not-recorded",
+        "unavailable",
+        "partial"
+      ],
+      "type": "string"
+    },
+    "ObjectContributionCatalog": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ObjectContributionStatus"
+          },
+          "type": "array"
+        },
+        "schemaVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "items"
+      ],
+      "type": "object"
+    },
+    "ObjectContributionStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "activationEpoch": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "dependencies": {
+          "items": {
+            "$ref": "#/$defs/DependencyStatus"
+          },
+          "type": "array"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "errorCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "grantRevision": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "pluginId": {
+          "type": "string"
+        },
+        "slots": {
+          "items": {
+            "$ref": "#/$defs/ObjectSlotStatus"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest",
+        "enabled",
+        "active",
+        "activationEpoch",
+        "grantRevision",
+        "dependencies",
+        "slots"
+      ],
+      "type": "object"
+    },
+    "ObjectQueryKind": {
+      "enum": [
+        "summary"
+      ],
+      "type": "string"
+    },
+    "ObjectReference": {
+      "additionalProperties": false,
+      "properties": {
+        "contextIdentity": {
+          "type": "string"
+        },
+        "expiresAfterMs": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "objectRef": {
+          "type": "string"
+        },
+        "slot": {
+          "$ref": "#/$defs/ObjectSlotQuery"
+        },
+        "target": {
+          "$ref": "#/$defs/ObjectTarget"
+        }
+      },
+      "required": [
+        "slot",
+        "contextIdentity",
+        "objectRef",
+        "target",
+        "expiresAfterMs"
+      ],
+      "type": "object"
+    },
+    "ObjectSlot": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/SummaryField"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "placement": {
+          "$ref": "#/$defs/DetailPlacement"
+        },
+        "purpose": {
+          "description": "Human-readable, separately reviewed purpose. No executable expression.",
+          "type": "string"
+        },
+        "queryKind": {
+          "$ref": "#/$defs/ObjectQueryKind"
+        },
+        "target": {
+          "$ref": "#/$defs/ObjectTarget"
+        },
+        "title": {
+          "type": "string"
+        },
+        "viewId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "placement",
+        "viewId",
+        "title",
+        "queryKind",
+        "fields",
+        "purpose"
+      ],
+      "type": "object"
+    },
+    "ObjectSlotQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": "string"
+        },
+        "slotId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest",
+        "slotId"
+      ],
+      "type": "object"
+    },
+    "ObjectSlotStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "authorized": {
+          "type": "boolean"
+        },
+        "contextIdentity": {
+          "description": "Host instance, installation scope and current summary-grant revision.",
+          "type": "string"
+        },
+        "declaration": {
+          "$ref": "#/$defs/ObjectSlot"
+        },
+        "descriptorIdentity": {
+          "description": "Hash of the entire fixed declaration, including purpose and fields.",
+          "type": "string"
+        },
+        "errorCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "declaration",
+        "descriptorIdentity",
+        "contextIdentity",
+        "authorized"
+      ],
+      "type": "object"
+    },
+    "ObjectSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "apiVersion": {
+          "type": "string"
+        },
+        "capturedAt": {
+          "type": "string"
+        },
+        "coverage": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        },
+        "metrics": {
+          "items": {
+            "$ref": "#/$defs/SummaryMetric"
+          },
+          "type": "array"
+        },
+        "target": {
+          "$ref": "#/$defs/ObjectTarget"
+        }
+      },
+      "required": [
+        "apiVersion",
+        "target",
+        "coverage",
+        "freshness",
+        "capturedAt",
+        "metrics"
+      ],
+      "type": "object"
+    },
+    "ObjectTarget": {
+      "enum": [
+        "agent",
+        "provider",
+        "account",
+        "project",
+        "session",
+        "request"
+      ],
+      "type": "string"
+    },
+    "SummaryField": {
+      "enum": [
+        "session-count",
+        "model-count",
+        "configuration",
+        "quota-window-count",
+        "input-tokens",
+        "output-tokens",
+        "total-tokens",
+        "attempt-count",
+        "duration-ms",
+        "request-outcome"
+      ],
+      "type": "string"
+    },
+    "SummaryMetric": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "$ref": "#/$defs/SummaryField"
+        },
+        "missingReason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MissingReason"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SummaryValue"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "field"
+      ],
+      "type": "object"
+    },
+    "SummaryOutcome": {
+      "enum": [
+        "succeeded",
+        "failed",
+        "cancelled",
+        "in-progress",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "SummaryValue": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "count",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/Decimal"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "tokens",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/Decimal"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "configured": {
+              "type": "boolean"
+            },
+            "kind": {
+              "const": "configuration",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "configured"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Preserve recorded fractional milliseconds; counts and tokens use Decimal.",
+          "properties": {
+            "kind": {
+              "const": "milliseconds",
+              "type": "string"
+            },
+            "value": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "outcome",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/SummaryOutcome"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "catalog": {
+          "$ref": "#/$defs/ObjectContributionCatalog"
+        },
+        "kind": {
+          "const": "catalog",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "catalog"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "status",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/ObjectContributionStatus"
+        }
+      },
+      "required": [
+        "kind",
+        "status"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "reference",
+          "type": "string"
+        },
+        "reference": {
+          "$ref": "#/$defs/ObjectReference"
+        }
+      },
+      "required": [
+        "kind",
+        "reference"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "summary",
+          "type": "string"
+        },
+        "objectRef": {
+          "type": "string"
+        },
+        "summary": {
+          "$ref": "#/$defs/ObjectSummary"
+        }
+      },
+      "required": [
+        "kind",
+        "objectRef",
+        "summary"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "released",
+          "type": "string"
+        },
+        "objectRef": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "objectRef"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "ObjectContributionReply"
+}

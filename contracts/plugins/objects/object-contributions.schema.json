@@ -1,0 +1,108 @@
+{
+  "$defs": {
+    "DetailPlacement": {
+      "enum": [
+        "tab",
+        "card"
+      ],
+      "type": "string"
+    },
+    "ObjectQueryKind": {
+      "enum": [
+        "summary"
+      ],
+      "type": "string"
+    },
+    "ObjectSlot": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/SummaryField"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "placement": {
+          "$ref": "#/$defs/DetailPlacement"
+        },
+        "purpose": {
+          "description": "Human-readable, separately reviewed purpose. No executable expression.",
+          "type": "string"
+        },
+        "queryKind": {
+          "$ref": "#/$defs/ObjectQueryKind"
+        },
+        "target": {
+          "$ref": "#/$defs/ObjectTarget"
+        },
+        "title": {
+          "type": "string"
+        },
+        "viewId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "placement",
+        "viewId",
+        "title",
+        "queryKind",
+        "fields",
+        "purpose"
+      ],
+      "type": "object"
+    },
+    "ObjectTarget": {
+      "enum": [
+        "agent",
+        "provider",
+        "account",
+        "project",
+        "session",
+        "request"
+      ],
+      "type": "string"
+    },
+    "SummaryField": {
+      "enum": [
+        "session-count",
+        "model-count",
+        "configuration",
+        "quota-window-count",
+        "input-tokens",
+        "output-tokens",
+        "total-tokens",
+        "attempt-count",
+        "duration-ms",
+        "request-outcome"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "detailSlots": {
+      "items": {
+        "$ref": "#/$defs/ObjectSlot"
+      },
+      "type": "array"
+    },
+    "schemaVersion": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "detailSlots"
+  ],
+  "title": "ObjectContributions",
+  "type": "object"
+}

@@ -1,0 +1,107 @@
+{
+  "$defs": {
+    "DetailPlacement": {
+      "enum": [
+        "tab",
+        "card"
+      ],
+      "type": "string"
+    },
+    "DetailSlot": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "objectIds": {
+          "description": "Exact public object IDs or the single wildcard \"*\". Never sent to the guest.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "placement": {
+          "$ref": "#/$defs/DetailPlacement"
+        },
+        "target": {
+          "$ref": "#/$defs/DetailTarget"
+        },
+        "title": {
+          "type": "string"
+        },
+        "viewId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "objectIds",
+        "placement",
+        "viewId",
+        "title"
+      ],
+      "type": "object"
+    },
+    "DetailTarget": {
+      "enum": [
+        "agent",
+        "provider",
+        "account"
+      ],
+      "type": "string"
+    },
+    "OptionalDependency": {
+      "additionalProperties": false,
+      "properties": {
+        "pluginId": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "views": {
+          "description": "Only these existing views degrade. No cross-plugin data or permission is granted.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "pluginId",
+        "version",
+        "views"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "detailSlots": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DetailSlot"
+      },
+      "type": "array"
+    },
+    "optionalDependencies": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/OptionalDependency"
+      },
+      "type": "array"
+    },
+    "schemaVersion": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schemaVersion"
+  ],
+  "title": "Contributions",
+  "type": "object"
+}

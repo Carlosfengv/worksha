@@ -1,0 +1,159 @@
+{
+  "$defs": {
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "SessionRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "createdAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "nativeId": {
+          "type": "string"
+        },
+        "partial": {
+          "type": "boolean"
+        },
+        "productIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "projectRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "unknownClient": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        }
+      },
+      "required": [
+        "id",
+        "nativeId",
+        "productIds",
+        "unknownClient",
+        "title",
+        "usage",
+        "partial"
+      ],
+      "type": "object"
+    },
+    "Usage": {
+      "additionalProperties": false,
+      "properties": {
+        "cacheWriteInputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cachedInputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reasoningOutputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "totalTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "batchId": {
+      "$ref": "#/$defs/Decimal"
+    },
+    "records": {
+      "items": {
+        "$ref": "#/$defs/SessionRecord"
+      },
+      "type": "array"
+    },
+    "sourceId": {
+      "type": "string"
+    },
+    "sourceRevision": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "sourceId",
+    "sourceRevision",
+    "batchId",
+    "records"
+  ],
+  "title": "SourceBatch",
+  "type": "object"
+}

@@ -1,0 +1,140 @@
+{
+  "$defs": {
+    "DraftGrantOwner": {
+      "additionalProperties": false,
+      "properties": {
+        "ownerId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "ownerId"
+      ],
+      "type": "object"
+    },
+    "DraftGrantState": {
+      "enum": [
+        "prepared",
+        "acquired",
+        "borrowed",
+        "pending",
+        "released"
+      ],
+      "type": "string"
+    },
+    "Selection": {
+      "additionalProperties": false,
+      "properties": {
+        "bindingId": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/Target"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest",
+        "bindingId",
+        "target"
+      ],
+      "type": "object"
+    },
+    "Target": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "expectedRevision": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "saved",
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "providerId",
+            "expectedRevision"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "credentialRef": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "endpoint": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "draft",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "protocol": {
+              "type": "string"
+            },
+            "vendor": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "label",
+            "endpoint",
+            "protocol",
+            "vendor"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "owner": {
+      "$ref": "#/$defs/DraftGrantOwner"
+    },
+    "selection": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Selection"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "state": {
+      "$ref": "#/$defs/DraftGrantState"
+    }
+  },
+  "required": [
+    "owner",
+    "state"
+  ],
+  "title": "DraftGrantReceipt",
+  "type": "object"
+}

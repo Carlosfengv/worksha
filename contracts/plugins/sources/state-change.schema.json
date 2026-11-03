@@ -1,0 +1,47 @@
+{
+  "$defs": {
+    "PackageQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "StateAction": {
+      "enum": [
+        "enable",
+        "disable",
+        "remove",
+        "rollback",
+        "revoke-grants",
+        "revoke-publisher"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "$ref": "#/$defs/StateAction"
+    },
+    "package": {
+      "$ref": "#/$defs/PackageQuery"
+    }
+  },
+  "required": [
+    "package",
+    "action"
+  ],
+  "title": "StateChange",
+  "type": "object"
+}

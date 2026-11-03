@@ -1,0 +1,246 @@
+{
+  "$defs": {
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "RequestObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "attempts": {
+          "$ref": "#/$defs/Decimal",
+          "description": "Host-retained attempt evidence, including evidence already attached to\na native response. This count never changes the response's own unit."
+        },
+        "durationMs": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "endedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "occurredAt": {
+          "description": "An event time on a native response is not an HTTP request start.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "productId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "providerKey": {
+          "type": "string"
+        },
+        "providerName": {
+          "type": "string"
+        },
+        "sessionRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionTitle": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "throughput": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "ttftMs": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "unit": {
+          "$ref": "#/$defs/RequestUnit"
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        },
+        "usageMissing": {
+          "$ref": "#/$defs/Decimal"
+        }
+      },
+      "required": [
+        "id",
+        "sourceId",
+        "unit",
+        "providerKey",
+        "providerName",
+        "outcome",
+        "usage",
+        "usageMissing",
+        "attempts"
+      ],
+      "type": "object"
+    },
+    "RequestRead": {
+      "additionalProperties": false,
+      "properties": {
+        "implementationIdentity": {
+          "type": "string"
+        },
+        "providerKey": {
+          "type": "string"
+        },
+        "readRevision": {
+          "type": "string"
+        },
+        "recordId": {
+          "type": "string"
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "unit": {
+          "$ref": "#/$defs/RequestUnit"
+        }
+      },
+      "required": [
+        "providerKey",
+        "implementationIdentity",
+        "readRevision",
+        "sourceId",
+        "recordId",
+        "unit"
+      ],
+      "type": "object"
+    },
+    "RequestUnit": {
+      "enum": [
+        "model-response",
+        "logical-request"
+      ],
+      "type": "string"
+    },
+    "Usage": {
+      "additionalProperties": false,
+      "properties": {
+        "cacheWriteInputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cachedInputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reasoningOutputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "totalTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "read": {
+      "$ref": "#/$defs/RequestRead",
+      "description": "Exact host-bound read identity. It is not a filesystem/resource grant."
+    },
+    "record": {
+      "$ref": "#/$defs/RequestObservation"
+    }
+  },
+  "required": [
+    "read",
+    "record"
+  ],
+  "title": "RequestSnapshot",
+  "type": "object"
+}

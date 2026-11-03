@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "anchor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "cursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sessionId": {
+      "type": "string"
+    },
+    "snapshotToken": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "sessionId",
+    "snapshotToken"
+  ],
+  "title": "UnifiedConversationRequest",
+  "type": "object"
+}

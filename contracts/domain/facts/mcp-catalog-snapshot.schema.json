@@ -1,0 +1,80 @@
+{
+  "$defs": {
+    "McpConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "applicableProductIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "configuredEnabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "projectRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "transport": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "sourceId",
+        "name",
+        "applicableProductIds"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "configurationRevision": {
+      "description": "Opaque metadata version, without configuration values or credentials.",
+      "type": "string"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/McpConfiguration"
+      },
+      "type": "array"
+    },
+    "observedAt": {
+      "type": "string"
+    },
+    "partialSources": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "entries",
+    "partialSources",
+    "observedAt",
+    "configurationRevision"
+  ],
+  "title": "McpCatalogSnapshot",
+  "type": "object"
+}

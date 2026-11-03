@@ -1,0 +1,38 @@
+{
+  "$defs": {
+    "ViewKind": {
+      "enum": [
+        "report",
+        "sessions",
+        "quota",
+        "providers",
+        "settings"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "description": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/ViewKind"
+    },
+    "title": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "title",
+    "description",
+    "kind"
+  ],
+  "title": "View",
+  "type": "object"
+}

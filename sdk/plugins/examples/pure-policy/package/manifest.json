@@ -1,0 +1,13 @@
+{
+  "manifestVersion": 1,
+  "kind": "routing-policy",
+  "id": "org.example.pure-policy",
+  "publisher": "org.example",
+  "displayName": "反向候选排序",
+  "version": "1.0.0",
+  "hostApi": "^1.0.0",
+  "capabilities": ["domain.routing-policy@1"],
+  "requires": ["host.pure-policy@1"],
+  "permissions": [],
+  "runtime": { "kind": "wasm-component", "entry": "plugin.wasm", "abi": "local-agent:plugin@1.0.0" }
+}

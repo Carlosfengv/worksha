@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "expectedRevision": {
+      "type": "string"
+    },
+    "providerId": {
+      "type": "string"
+    },
+    "storeId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "storeId",
+    "providerId",
+    "expectedRevision"
+  ],
+  "title": "SourceQuery",
+  "type": "object"
+}

@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 1,
+  "id": "org.example.model-catalog",
+  "version": "1.0.0",
+  "displayName": "自定义模型目录",
+  "publisher": "org.example",
+  "hostApi": "^1.0",
+  "runtime": { "kind": "wasm-component", "entry": "plugin.wasm", "abi": "local-agent:plugin@1.0.0" },
+  "capabilities": ["provider.models@1", "ui.contribution@1"],
+  "requires": ["host.provider-catalog@1"],
+  "permissions": [{ "kind": "connection.request", "path": "/catalog" }, { "kind": "ui.contribute" }],
+  "agent": null,
+  "providers": [],
+  "settings": [],
+  "views": [{ "id": "catalog", "title": "模型目录", "description": "显式授权所选连接后，读取固定路径的模型目录；不会保存凭据、修改配置或执行模型调用。", "kind": "settings" }]
+}

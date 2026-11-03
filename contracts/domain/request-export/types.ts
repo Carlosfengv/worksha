@@ -1,0 +1,25 @@
+// Generated from contracts/domain/request-export/*.schema.json. Do not edit.
+export type Authorization = "required" | "authorized" | "revoked";
+export type Begin = { "operationId": string; "snapshotToken": string; };
+export type Chunk = { "csv": string; "nextOffset"?: (Decimal | null); "offset": Decimal; "operationId": string; "rows": Decimal; };
+export type Coverage = "complete" | "partial" | "unavailable";
+export type Decimal = string;
+export type Finish = { "nextOffset": Decimal; "rows": Decimal; };
+export type Freshness = "unread" | "current" | "stale" | "failed";
+export type Info = { "apiVersion": string; "appliedQuery": UnifiedRequestQuery; "asOf": string; "count": Decimal; "operationId": string; "overlapUnknown": boolean; "snapshotToken": string; "sourceStates": Array<SourceState>; "sourceSummaries": Array<RequestSourceSummary>; };
+export type QueryScope = { "kind": ScopeKind; "sourceIds": Array<string>; };
+export type Read = { "offset": Decimal; };
+export type RequestBilling = { "actual": Array<RequestMoney>; "estimated": Array<RequestMoney>; "unknownParts": Decimal; };
+export type RequestEvidence = "host-observed" | "source-reported";
+export type RequestEvidenceSummary = { "billing"?: (RequestBilling | null); "matching": RequestMatchingSummary; "overflowFields": Array<string>; "usageMissingParts"?: (Decimal | null); };
+export type RequestFilter = { "end"?: (string | null); "model"?: (string | null); "outcome"?: (string | null); "productId"?: (string | null); "projectId"?: (string | null); "providerKey"?: (string | null); "search"?: (string | null); "sessionId"?: (string | null); "start"?: (string | null); };
+export type RequestMatchingSummary = ({ "ambiguous": Decimal; "exact": Decimal; "identityConflicts": Decimal; "kind": "native-responses"; "unknown": Decimal; "unlinked": Decimal; "usageConflicts": Decimal; } | { "kind": "gateway-requests"; "matchedResponses": Decimal; "usageConflictLinks": Decimal; "withExactLinks": Decimal; "withoutConfirmedLinks": Decimal; } | { "kind": "source-reported"; "unverifiedRecords"?: (Decimal | null); });
+export type RequestMoney = { "amount": string; "currency": string; "parts": Decimal; };
+export type RequestSort = "time" | "tokens" | "duration" | "ttft" | "cost-usd";
+export type RequestSourceSummary = { "attempts"?: (Decimal | null); "coverage": Coverage; "evidence": RequestEvidence; "evidenceSummary"?: (RequestEvidenceSummary | null); "records"?: (Decimal | null); "sourceId": string; "unit": RequestUnit; "unknownTime"?: (Decimal | null); "usage": Usage; "usageMissing"?: (Decimal | null); };
+export type RequestUnit = "model-response" | "logical-request";
+export type SaveReply = ({ "fileName"?: (string | null); "info": Info; "status": "saved"; } | { "status": "cancelled"; });
+export type ScopeKind = "builtin" | "external" | "combined";
+export type SourceState = { "authorization": Authorization; "coverage": Coverage; "freshness": Freshness; "problem"?: (string | null); "sourceId": string; };
+export type UnifiedRequestQuery = { "cursor"?: (string | null); "descending": boolean; "filter": RequestFilter; "includeEvidence"?: (boolean | null); "scope": QueryScope; "snapshotToken"?: (string | null); "sort"?: (RequestSort | null); "unit": RequestUnit; };
+export type Usage = { "cacheWriteInputTokens"?: (Decimal | null); "cachedInputTokens"?: (Decimal | null); "inputTokens"?: (Decimal | null); "outputTokens"?: (Decimal | null); "reasoningOutputTokens"?: (Decimal | null); "totalTokens"?: (Decimal | null); };

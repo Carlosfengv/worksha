@@ -1,0 +1,27 @@
+{
+  "manifestVersion": 1,
+  "id": "org.example.full-history",
+  "publisher": "org.example",
+  "displayName": "完整只读历史",
+  "version": "1.0.0",
+  "hostApi": "^1.0.0",
+  "capabilities": [
+    "domain.agent-directory@1",
+    "domain.session-source@1",
+    "domain.call-source@1",
+    "domain.project-source@1",
+    "domain.activity-source@1",
+    "domain.mcp-source@1"
+  ],
+  "requires": ["host.source-broker@1", "host.domain-facts@1"],
+  "permissions": [{ "kind": "source.content.read", "resource": "history" }],
+  "runtime": {
+    "kind": "wasm-component",
+    "entry": "plugin.wasm",
+    "abi": "local-agent:plugin@1.0.0"
+  },
+  "source": {
+    "id": "history",
+    "products": [{ "id": "terminal", "displayName": "外部历史终端" }]
+  }
+}

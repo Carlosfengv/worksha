@@ -1,0 +1,113 @@
+{
+  "$defs": {
+    "SessionCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "createdAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "nativeId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Usage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "nativeId",
+        "title"
+      ],
+      "type": "object"
+    },
+    "Usage": {
+      "additionalProperties": false,
+      "properties": {
+        "cacheReadTokens": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inputTokens": {
+          "type": "string"
+        },
+        "outputTokens": {
+          "type": "string"
+        },
+        "reasoningTokens": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "inputTokens",
+        "outputTokens"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "batchId": {
+      "type": "string"
+    },
+    "complete": {
+      "type": "boolean"
+    },
+    "nextCursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schemaVersion": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "sourceRef": {
+      "type": "string"
+    },
+    "sourceRevision": {
+      "type": "string"
+    },
+    "upserts": {
+      "items": {
+        "$ref": "#/$defs/SessionCandidate"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "sourceRef",
+    "sourceRevision",
+    "batchId",
+    "upserts",
+    "complete"
+  ],
+  "title": "SourceBatch",
+  "type": "object"
+}

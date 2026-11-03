@@ -1,0 +1,31 @@
+{
+  "manifestVersion": 1,
+  "id": "org.example.detail-helper",
+  "version": "1.0.0",
+  "displayName": "可选增强依赖",
+  "publisher": "org.example",
+  "hostApi": "^1.0",
+  "runtime": {
+    "kind": "declarative"
+  },
+  "capabilities": [
+    "ui.contribution@1"
+  ],
+  "requires": [],
+  "permissions": [
+    {
+      "kind": "ui.contribute"
+    }
+  ],
+  "agent": null,
+  "providers": [],
+  "settings": [],
+  "views": [
+    {
+      "id": "info",
+      "kind": "settings",
+      "title": "依赖说明",
+      "description": "此示例用于依赖版本和生命周期验证，不访问账户、文件或网络。"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "$defs": {
+    "ErrorCode": {
+      "enum": [
+        "invalid_input",
+        "unsupported",
+        "not_found",
+        "plugin_disabled",
+        "incompatible_api",
+        "capability_conflict",
+        "stale_snapshot",
+        "grant_revoked",
+        "cancelled",
+        "resource_limit",
+        "deadline_exceeded",
+        "unavailable"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "code": {
+      "$ref": "#/$defs/ErrorCode"
+    },
+    "retryable": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "code",
+    "retryable"
+  ],
+  "title": "Failure",
+  "type": "object"
+}

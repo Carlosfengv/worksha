@@ -1,0 +1,69 @@
+{
+  "manifestVersion": 1,
+  "id": "org.example.object-summary",
+  "version": "1.0.0",
+  "displayName": "对象详情摘要",
+  "publisher": "org.example",
+  "hostApi": "^1.0",
+  "runtime": {
+    "kind": "declarative"
+  },
+  "capabilities": ["ui.contribution@1"],
+  "requires": ["host.object-detail-slots@1", "host.optional-dependencies@1"],
+  "permissions": [
+    {
+      "kind": "ui.contribute"
+    },
+    {
+      "kind": "domain.query",
+      "query": "object.summary@1"
+    }
+  ],
+  "agent": null,
+  "providers": [],
+  "settings": [],
+  "views": [
+    {
+      "id": "agent-summary",
+      "title": "Agent已记录摘要",
+      "description": "由宿主在当前对象详情内读取单独授权的摘要字段。",
+      "kind": "report"
+    },
+    {
+      "id": "provider-summary",
+      "title": "Provider已记录摘要",
+      "description": "由宿主在当前对象详情内读取单独授权的摘要字段。",
+      "kind": "report"
+    },
+    {
+      "id": "account-summary",
+      "title": "账户已记录摘要",
+      "description": "由宿主在当前对象详情内读取单独授权的摘要字段。",
+      "kind": "report"
+    },
+    {
+      "id": "project-summary",
+      "title": "项目已记录摘要",
+      "description": "由宿主在当前对象详情内读取单独授权的摘要字段。",
+      "kind": "report"
+    },
+    {
+      "id": "session-summary",
+      "title": "会话已记录摘要",
+      "description": "由宿主在当前对象详情内读取单独授权的摘要字段。",
+      "kind": "report"
+    },
+    {
+      "id": "request-summary",
+      "title": "请求已记录摘要",
+      "description": "由宿主在当前对象详情内读取单独授权的摘要字段。",
+      "kind": "report"
+    },
+    {
+      "id": "enhanced",
+      "title": "增强会话摘要",
+      "description": "依赖可用时显示相同范围的会话摘要；不扩大读取权限。",
+      "kind": "report"
+    }
+  ]
+}

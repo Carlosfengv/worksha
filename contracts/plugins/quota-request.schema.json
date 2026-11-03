@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "connectionRef": {
+      "type": "string"
+    },
+    "contextId": {
+      "type": "string"
+    },
+    "observedAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "contextId",
+    "connectionRef",
+    "observedAt"
+  ],
+  "title": "QuotaRequest",
+  "type": "object"
+}

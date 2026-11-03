@@ -1,0 +1,446 @@
+use crate::{
+    AppState, billing, gateway, model_usage, observation, projects, provider_models,
+    provider_usage, providers, sessions, settings,
+};
+use axum::{Router, middleware, routing::get};
+
+pub(crate) fn management(state: AppState) -> Router {
+    Router::new()
+        .route("/api/domain/catalog", get(crate::domain::catalog))
+        .route("/api/domain/directory", get(crate::domain::directory))
+        .route(
+            "/api/domain/requests",
+            axum::routing::post(crate::domain::requests),
+        )
+        .route(
+            "/api/domain/activity",
+            axum::routing::post(crate::domain::activity),
+        )
+        .route(
+            "/api/domain/fact-conversation",
+            axum::routing::post(crate::domain::fact_conversation),
+        )
+        .route(
+            "/api/domain/project-visibility",
+            axum::routing::post(crate::domain::project_visibility),
+        )
+        .route(
+            "/api/domain/facts",
+            axum::routing::post(crate::domain::facts),
+        )
+        .route(
+            "/api/domain/source-authorize",
+            axum::routing::post(crate::domain::authorize_source),
+        )
+        .route(
+            "/api/domain/source-refresh",
+            axum::routing::post(crate::domain::refresh_source),
+        )
+        .route(
+            "/api/domain/sessions",
+            axum::routing::post(crate::domain::sessions),
+        )
+        .route(
+            "/api/domain/conversation",
+            axum::routing::post(crate::domain::conversation),
+        )
+        .route(
+            "/api/domain/consent",
+            axum::routing::post(crate::domain::consent),
+        )
+        .route(
+            "/api/domain/consent-review",
+            axum::routing::post(crate::domain::prepare_consent),
+        )
+        .route(
+            "/api/local-tokens/protocol",
+            get(crate::local_tokens::protocol),
+        )
+        .route(
+            "/api/local-tokens/query",
+            axum::routing::post(crate::local_tokens::query),
+        )
+        .route(
+            "/api/local-tokens/continue",
+            axum::routing::post(crate::local_tokens::resume),
+        )
+        .route(
+            "/api/local-tokens/cancel",
+            axum::routing::post(crate::local_tokens::cancel),
+        )
+        .route(
+            "/api/model-services",
+            get(crate::model_services::list).put(crate::model_services::save),
+        )
+        .route(
+            "/api/model-services/{id}/delete",
+            axum::routing::post(crate::model_services::delete),
+        )
+        .route(
+            "/api/model-service-operations",
+            axum::routing::post(crate::model_services::commit_operation),
+        )
+        .route(
+            "/api/model-service-operations/{id}",
+            get(crate::model_services::operation),
+        )
+        .route(
+            "/api/model-service-members/verify",
+            axum::routing::post(crate::model_services::verify_member),
+        )
+        .route(
+            "/api/model-service-connections",
+            axum::routing::post(crate::model_services::connect),
+        )
+        .merge(crate::plugin_host::external::api::routes())
+        .merge(crate::plugin_host::external::advanced::api::routes())
+        .merge(crate::plugin_host::external::catalog::api::routes())
+        .route("/api/gateway-lan", get(crate::lan::status))
+        .route(
+            "/api/gateway-lan/operations",
+            axum::routing::post(crate::lan::commit_operation),
+        )
+        .route(
+            "/api/gateway-lan/operations/{id}",
+            get(crate::lan::operation),
+        )
+        .route(
+            "/api/gateway-lan/clients",
+            axum::routing::post(crate::lan::create),
+        )
+        .route(
+            "/api/gateway-lan/clients/{id}/revoke",
+            axum::routing::post(crate::lan::revoke),
+        )
+        .route(
+            "/api/associated-costs",
+            get(crate::associated_costs::details),
+        )
+        .route("/api/accounts", get(billing::list))
+        .route(
+            "/api/accounts/{id}/refresh",
+            axum::routing::post(billing::refresh),
+        )
+        .route(
+            "/api/account-collectors/claude",
+            axum::routing::post(billing::claude_launcher),
+        )
+        .route("/api/snapshot", get(settings::snapshot))
+        .route("/api/settings", axum::routing::put(settings::save_settings))
+        .route(
+            "/api/settings/retention-preview",
+            get(settings::retention_preview),
+        )
+        .route(
+            "/api/settings/retention-inventory",
+            get(settings::retention_inventory),
+        )
+        .route(
+            "/api/settings/scoped/operations/{id}",
+            get(settings::scoped_operation),
+        )
+        .route(
+            "/api/settings/operations/{id}",
+            get(settings::settings_operation),
+        )
+        .route(
+            "/api/providers",
+            axum::routing::put(providers::save_provider),
+        )
+        .route("/api/provider-status", get(providers::status))
+        .route(
+            "/api/provider-credentials/legacy-policy",
+            get(providers::credential_scope::legacy_policy),
+        )
+        .route(
+            "/api/provider-credentials/v3/protocol",
+            get(providers::credential_scope::protocol_v3),
+        )
+        .route(
+            "/api/provider-credentials/v3/initialize",
+            axum::routing::post(providers::credential_scope::initialize_v3),
+        )
+        .route(
+            "/api/provider-credentials/v3/legacy/{id}",
+            get(providers::credential_scope::preview_legacy),
+        )
+        .route(
+            "/api/provider-credentials/v3/discovery",
+            get(crate::providers::credential_scope::discovery),
+        )
+        .route(
+            "/api/provider-credentials/v3/legacy",
+            axum::routing::post(providers::credential_scope::confirm_legacy),
+        )
+        .route(
+            "/api/provider-credentials/v3",
+            axum::routing::post(providers::credential_scope::create_v3),
+        )
+        .route(
+            "/api/provider-credential-operations/v3/{id}",
+            get(providers::credential_scope::query_v3),
+        )
+        .route(
+            "/api/provider-credential-operations/v3/cancel",
+            axum::routing::post(providers::credential_scope::cancel_v3),
+        )
+        .route(
+            "/api/provider-credentials/protocol",
+            get(providers::credential_scope::protocol),
+        )
+        .route(
+            "/api/provider-credentials/scoped",
+            axum::routing::post(providers::credential_scope::create),
+        )
+        .route(
+            "/api/provider-credential-operations/scoped/cancel",
+            axum::routing::post(providers::credential_scope::cancel),
+        )
+        .route(
+            "/api/provider-credential-operations/scoped/{id}",
+            get(providers::credential_scope::query),
+        )
+        .route(
+            "/api/provider-operations/protocol",
+            get(providers::operations::protocol),
+        )
+        .route(
+            "/api/provider-operations",
+            axum::routing::post(providers::operations::commit),
+        )
+        .route(
+            "/api/provider-operations/cancel",
+            axum::routing::post(providers::operations::cancel),
+        )
+        .route(
+            "/api/provider-operations/{id}",
+            get(providers::operations::get),
+        )
+        .route(
+            "/api/provider-connect",
+            axum::routing::post(crate::provider_connect::connect),
+        )
+        .route(
+            "/api/provider-source-operations",
+            axum::routing::post(providers::source_operation::action).layer(
+                axum::extract::DefaultBodyLimit::max(2 * 1024 * 1024 + 32768),
+            ),
+        )
+        .route(
+            "/api/provider-draft-catalog",
+            axum::routing::post(providers::draft_catalog::action)
+                .layer(axum::extract::DefaultBodyLimit::max(32768)),
+        )
+        .route(
+            "/api/provider-draft-grant",
+            axum::routing::post(providers::draft_grant::action)
+                .layer(axum::extract::DefaultBodyLimit::max(2 * 1024 * 1024)),
+        )
+        .route(
+            "/api/provider-draft-recovery",
+            axum::routing::post(providers::draft_recovery::action)
+                .layer(axum::extract::DefaultBodyLimit::max(65536)),
+        )
+        .route(
+            "/api/provider-presets",
+            axum::routing::post(providers::presets::action)
+                .layer(axum::extract::DefaultBodyLimit::max(65536)),
+        )
+        .route(
+            "/api/catalog-provider-operations",
+            axum::routing::post(providers::catalog_connection::commit).layer(
+                axum::extract::DefaultBodyLimit::max(2 * 1024 * 1024 + 32768),
+            ),
+        )
+        .route(
+            "/api/catalog-provider-operations/query",
+            axum::routing::post(providers::catalog_connection::get).layer(
+                axum::extract::DefaultBodyLimit::max(2 * 1024 * 1024 + 32768),
+            ),
+        )
+        .route(
+            "/api/catalog-provider-scope",
+            axum::routing::post(providers::catalog_connection::scoped)
+                .layer(axum::extract::DefaultBodyLimit::max(65536)),
+        )
+        .route(
+            "/api/provider-catalog-source",
+            axum::routing::post(providers::catalog_source::action)
+                .layer(axum::extract::DefaultBodyLimit::max(65536)),
+        )
+        .route(
+            "/api/dynamic-connections",
+            axum::routing::post(gateway::dynamic::connect),
+        )
+        .route(
+            "/api/dynamic-routes",
+            axum::routing::post(gateway::dynamic::prepare),
+        )
+        .route(
+            "/api/dynamic-routes/{id}",
+            axum::routing::post(gateway::dynamic::action),
+        )
+        .route("/api/provider-usage", get(provider_usage::query))
+        .route(
+            "/api/provider-models",
+            axum::routing::post(provider_models::discover),
+        )
+        .route(
+            "/api/provider-imports",
+            get(providers::import_candidates).post(providers::import_native),
+        )
+        .route(
+            "/api/provider-imports/protocol",
+            get(providers::import_protocol),
+        )
+        .route(
+            "/api/provider-imports/operations/query",
+            axum::routing::post(providers::query_import),
+        )
+        .route(
+            "/api/provider-imports/operations/cancel",
+            axum::routing::post(providers::cancel_import),
+        )
+        .route(
+            "/api/provider-credentials",
+            axum::routing::post(providers::credential),
+        )
+        .route(
+            "/api/provider-credential-operations/{id}",
+            get(providers::credential_operation),
+        )
+        .route(
+            "/api/provider-credential-operations/{id}/cancel",
+            axum::routing::post(providers::cancel_credential_operation),
+        )
+        .route(
+            "/api/providers/{id}/verify",
+            axum::routing::post(providers::verify),
+        )
+        .route(
+            "/api/provider-switches",
+            axum::routing::post(providers::prepare),
+        )
+        .route(
+            "/api/provider-switches/{id}/apply",
+            axum::routing::post(providers::apply),
+        )
+        .route(
+            "/api/provider-switches/{id}/check",
+            axum::routing::post(providers::check_switch),
+        )
+        .route(
+            "/api/provider-switches/{id}/defer",
+            axum::routing::post(providers::defer_switch),
+        )
+        .route(
+            "/api/provider-switches/{id}/launched",
+            axum::routing::post(providers::launch_requested),
+        )
+        .route(
+            "/api/provider-switches/{id}/cancel",
+            axum::routing::post(providers::cancel),
+        )
+        .route(
+            "/api/provider-switches/{id}/restore",
+            axum::routing::post(providers::restore),
+        )
+        .route(
+            "/api/session-sources",
+            axum::routing::put(sessions::save_source),
+        )
+        .route(
+            "/api/sessions/refresh",
+            axum::routing::post(sessions::refresh_sessions),
+        )
+        .route("/api/sessions", get(sessions::query_sessions))
+        .route("/api/sessions/{id}", get(sessions::conversation))
+        .route("/api/agents/{id}/memory", get(sessions::memory))
+        .route("/api/calls", get(sessions::query_calls))
+        .route("/api/mcp", get(sessions::query_mcp))
+        .route("/api/domain/capabilities", get(crate::domain::capabilities))
+        .route("/api/overview", get(observation::overview))
+        .route("/api/agent-usage", get(model_usage::query))
+        .route(
+            "/api/observation/bindings",
+            axum::routing::put(observation::save_binding),
+        )
+        .route("/api/requests", get(observation::requests))
+        .route(
+            "/api/request-dashboard",
+            get(observation::request_query::dashboard),
+        )
+        .route(
+            "/api/request-detail",
+            get(observation::request_query::detail),
+        )
+        .route(
+            "/api/request-export",
+            get(observation::request_export::legacy),
+        )
+        .route(
+            "/api/request-exports",
+            axum::routing::post(observation::request_export::begin),
+        )
+        .route(
+            "/api/domain/request-exports",
+            axum::routing::post(crate::domain::request_exports::begin),
+        )
+        .route(
+            "/api/domain/request-exports/{id}",
+            get(crate::domain::request_exports::chunk)
+                .delete(crate::domain::request_exports::cancel),
+        )
+        .route(
+            "/api/domain/request-exports/{id}/finish",
+            axum::routing::post(crate::domain::request_exports::finish),
+        )
+        .route(
+            "/api/request-exports/{id}",
+            get(observation::request_export::chunk).delete(observation::request_export::cancel),
+        )
+        .route(
+            "/api/request-exports/{id}/finish",
+            axum::routing::post(observation::request_export::finish),
+        )
+        .route("/api/projects", get(projects::query))
+        .route(
+            "/api/project-visibility",
+            axum::routing::put(projects::set_hidden),
+        )
+        .route("/api/projects/{id}", get(projects::detail))
+        .route("/api/projects/{id}/diff/{file}", get(projects::diff))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::api::authorize,
+        ))
+        .merge(
+            Router::new()
+                .route(
+                    "/capture/{agent}/{secret}/{*path}",
+                    axum::routing::post(observation::capture),
+                )
+                .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)),
+        )
+        .with_state(state)
+}
+
+pub(crate) fn lan(state: AppState) -> Router {
+    Router::new()
+        .route("/v1/messages", axum::routing::post(crate::lan::capture))
+        .route("/v1/responses", axum::routing::post(crate::lan::capture))
+        .route("/v1/models", get(crate::lan::capture))
+        .route("/v1/codex/models.json", get(crate::lan::capture))
+        .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024))
+        .with_state(state)
+}
+
+pub(crate) fn gateway(state: AppState) -> Router {
+    Router::new()
+        .route(
+            "/gateway/{id}/{*path}",
+            axum::routing::post(gateway::capture).get(gateway::capture),
+        )
+        .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024))
+        .with_state(state)
+}

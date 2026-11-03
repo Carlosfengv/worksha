@@ -1,0 +1,370 @@
+{
+  "$defs": {
+    "Authorization": {
+      "enum": [
+        "required",
+        "authorized",
+        "revoked"
+      ],
+      "type": "string"
+    },
+    "Coverage": {
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "Freshness": {
+      "enum": [
+        "unread",
+        "current",
+        "stale",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "QueryScope": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ScopeKind"
+        },
+        "sourceIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "sourceIds"
+      ],
+      "type": "object"
+    },
+    "ScopeKind": {
+      "enum": [
+        "builtin",
+        "external",
+        "combined"
+      ],
+      "type": "string"
+    },
+    "SessionFilter": {
+      "additionalProperties": false,
+      "properties": {
+        "days": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "productId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "query": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SessionItem": {
+      "additionalProperties": false,
+      "properties": {
+        "record": {
+          "$ref": "#/$defs/SessionRecord"
+        },
+        "sourceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceId",
+        "record"
+      ],
+      "type": "object"
+    },
+    "SessionRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "createdAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "nativeId": {
+          "type": "string"
+        },
+        "partial": {
+          "type": "boolean"
+        },
+        "productIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "projectRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "unknownClient": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        }
+      },
+      "required": [
+        "id",
+        "nativeId",
+        "productIds",
+        "unknownClient",
+        "title",
+        "usage",
+        "partial"
+      ],
+      "type": "object"
+    },
+    "SessionScopeSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "knownUsageSessions": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "sessions": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        }
+      },
+      "required": [
+        "sourceId",
+        "sessions",
+        "knownUsageSessions",
+        "usage"
+      ],
+      "type": "object"
+    },
+    "SourceState": {
+      "additionalProperties": false,
+      "properties": {
+        "authorization": {
+          "$ref": "#/$defs/Authorization"
+        },
+        "coverage": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        },
+        "problem": {
+          "description": "Host-owned fixed reason code, never guest text.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceId",
+        "authorization",
+        "freshness",
+        "coverage"
+      ],
+      "type": "object"
+    },
+    "UnifiedSessionQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filter": {
+          "$ref": "#/$defs/SessionFilter"
+        },
+        "scope": {
+          "$ref": "#/$defs/QueryScope"
+        },
+        "snapshotToken": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "scope",
+        "filter"
+      ],
+      "type": "object"
+    },
+    "Usage": {
+      "additionalProperties": false,
+      "properties": {
+        "cacheWriteInputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cachedInputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reasoningOutputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "totalTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "appliedFilter": {
+      "$ref": "#/$defs/UnifiedSessionQuery"
+    },
+    "asOf": {
+      "type": "string"
+    },
+    "coverage": {
+      "$ref": "#/$defs/Coverage"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/SessionItem"
+      },
+      "type": "array"
+    },
+    "nextCursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "overlapUnknown": {
+      "description": "Sources retain separate session cumulative units. No synthetic response/call totals.",
+      "type": "boolean"
+    },
+    "snapshotToken": {
+      "type": "string"
+    },
+    "sourceStates": {
+      "items": {
+        "$ref": "#/$defs/SourceState"
+      },
+      "type": "array"
+    },
+    "sourceSummaries": {
+      "items": {
+        "$ref": "#/$defs/SessionScopeSummary"
+      },
+      "type": "array"
+    },
+    "summaryRef": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "items",
+    "snapshotToken",
+    "asOf",
+    "coverage",
+    "sourceStates",
+    "appliedFilter",
+    "summaryRef",
+    "sourceSummaries",
+    "overlapUnknown"
+  ],
+  "title": "UnifiedSessionPage",
+  "type": "object"
+}

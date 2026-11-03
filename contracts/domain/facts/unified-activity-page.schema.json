@@ -1,0 +1,566 @@
+{
+  "$defs": {
+    "ActivityKind": {
+      "enum": [
+        "native-message",
+        "gateway-attempt",
+        "source-event"
+      ],
+      "type": "string"
+    },
+    "ActivityMeasurements": {
+      "additionalProperties": false,
+      "properties": {
+        "firstOutputMs": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "firstTextMs": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "firstTokenMs": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "historicalAverageTextRate": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "liveRate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RateObservation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Only a current, message-bound host sample can populate this field."
+        },
+        "recentRate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RateObservation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A prior observation, even when the activity has expired."
+        },
+        "reportedTtftMs": {
+          "description": "Source event duration; distinct from a runtime first-token measurement.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "runtimeState": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Usage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ActivityRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "historicalDurationMs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ActivityKind"
+        },
+        "logicalRequestId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "measurements": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ActivityMeasurements"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Absent for external source events. Guests cannot manufacture host metrics."
+        },
+        "messageId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observedAt": {
+          "type": "string"
+        },
+        "occurredAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "phase": {
+          "type": "string"
+        },
+        "productIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "providerKey": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "sourceRevision": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/ActivityState"
+        },
+        "title": {
+          "type": "string"
+        },
+        "toolNames": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "unknownClient": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "sourceId",
+        "providerKey",
+        "sourceRevision",
+        "observedAt",
+        "productIds",
+        "unknownClient",
+        "title",
+        "phase",
+        "state",
+        "toolNames"
+      ],
+      "type": "object"
+    },
+    "ActivitySourceState": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ActivityKind"
+        },
+        "state": {
+          "$ref": "#/$defs/SourceState"
+        }
+      },
+      "required": [
+        "kind",
+        "state"
+      ],
+      "type": "object"
+    },
+    "ActivityState": {
+      "enum": [
+        "current",
+        "expired",
+        "historical"
+      ],
+      "type": "string"
+    },
+    "ActivitySummary": {
+      "additionalProperties": false,
+      "properties": {
+        "current": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "expired": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "historical": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/ActivityKind"
+        },
+        "logicalRequests": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observedRecords": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "unknownTime": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "sourceId",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "Authorization": {
+      "enum": [
+        "required",
+        "authorized",
+        "revoked"
+      ],
+      "type": "string"
+    },
+    "Coverage": {
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "Freshness": {
+      "enum": [
+        "unread",
+        "current",
+        "stale",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "QueryScope": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ScopeKind"
+        },
+        "sourceIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "sourceIds"
+      ],
+      "type": "object"
+    },
+    "RateObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "atMs": {
+          "$ref": "#/$defs/Decimal",
+          "description": "Wall-clock anchor for the host sampling clock, never the source event timestamp."
+        },
+        "tokensPerSecond": {
+          "format": "double",
+          "type": "number"
+        },
+        "windowMs": {
+          "$ref": "#/$defs/Decimal"
+        }
+      },
+      "required": [
+        "atMs",
+        "windowMs",
+        "tokensPerSecond"
+      ],
+      "type": "object"
+    },
+    "ScopeKind": {
+      "enum": [
+        "builtin",
+        "external",
+        "combined"
+      ],
+      "type": "string"
+    },
+    "SourceState": {
+      "additionalProperties": false,
+      "properties": {
+        "authorization": {
+          "$ref": "#/$defs/Authorization"
+        },
+        "coverage": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        },
+        "problem": {
+          "description": "Host-owned fixed reason code, never guest text.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceId",
+        "authorization",
+        "freshness",
+        "coverage"
+      ],
+      "type": "object"
+    },
+    "UnifiedActivityQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "includeGateway": {
+          "description": "Host gateway observations for selected built-in Agent families only.\nThis does not grant native transcript access.",
+          "type": "boolean"
+        },
+        "includeHistorical": {
+          "type": "boolean"
+        },
+        "productId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rangeSeconds": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "scope": {
+          "$ref": "#/$defs/QueryScope"
+        },
+        "sessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "scope",
+        "rangeSeconds",
+        "includeGateway",
+        "includeHistorical"
+      ],
+      "type": "object"
+    },
+    "Usage": {
+      "additionalProperties": false,
+      "properties": {
+        "cacheWriteInputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cachedInputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reasoningOutputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "totalTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "appliedQuery": {
+      "$ref": "#/$defs/UnifiedActivityQuery"
+    },
+    "asOf": {
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/ActivityRecord"
+      },
+      "type": "array"
+    },
+    "limited": {
+      "description": "The bounded result window, not the source's collection coverage.",
+      "type": "boolean"
+    },
+    "overlapUnknown": {
+      "type": "boolean"
+    },
+    "sourceStates": {
+      "items": {
+        "$ref": "#/$defs/ActivitySourceState"
+      },
+      "type": "array"
+    },
+    "sourceSummaries": {
+      "items": {
+        "$ref": "#/$defs/ActivitySummary"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "items",
+    "asOf",
+    "sourceStates",
+    "sourceSummaries",
+    "appliedQuery",
+    "limited",
+    "overlapUnknown"
+  ],
+  "title": "UnifiedActivityPage",
+  "type": "object"
+}

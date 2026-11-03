@@ -1,0 +1,11 @@
+[workspace]
+members = ["examples/aurora-agent", "examples/pulse-quota", "examples/envelope-protocol", "examples/json-config", "examples/full-history", "examples/model-catalog", "fixtures/hostile", "examples/pure-policy", "fixtures/policy-hostile"]
+default-members = ["examples/aurora-agent", "examples/pulse-quota", "examples/envelope-protocol", "examples/json-config"]
+resolver = "3"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

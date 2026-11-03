@@ -1,0 +1,253 @@
+{
+  "$defs": {
+    "Kind": {
+      "enum": [
+        "save",
+        "connect"
+      ],
+      "type": "string"
+    },
+    "ModelCatalogSource": {
+      "additionalProperties": false,
+      "properties": {
+        "credentialRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "fetchedAt": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "sourceUrl": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "fetchedAt",
+        "sourceUrl",
+        "endpoint",
+        "protocol"
+      ],
+      "type": "object"
+    },
+    "Provider": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "default": "cloud",
+          "type": "string"
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "credentialLabel": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "credentialRef": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "disabledModels": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "modelCatalog": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelCatalogSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "models": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "revision": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vendor": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "endpoint",
+        "protocol",
+        "model",
+        "configured"
+      ],
+      "type": "object"
+    },
+    "ProviderOperationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expectedSequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/Kind"
+        },
+        "operationId": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/Provider"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "operationId",
+        "expectedSequence",
+        "kind",
+        "provider"
+      ],
+      "type": "object"
+    },
+    "Selection": {
+      "additionalProperties": false,
+      "properties": {
+        "bindingId": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/Target"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest",
+        "bindingId",
+        "target"
+      ],
+      "type": "object"
+    },
+    "Target": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "expectedRevision": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "saved",
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "providerId",
+            "expectedRevision"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "credentialRef": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "endpoint": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "draft",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "protocol": {
+              "type": "string"
+            },
+            "vendor": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "label",
+            "endpoint",
+            "protocol",
+            "vendor"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "catalog": {
+      "$ref": "#/$defs/Selection"
+    },
+    "operation": {
+      "$ref": "#/$defs/ProviderOperationRequest"
+    }
+  },
+  "required": [
+    "operation",
+    "catalog"
+  ],
+  "title": "ConnectionRequest",
+  "type": "object"
+}

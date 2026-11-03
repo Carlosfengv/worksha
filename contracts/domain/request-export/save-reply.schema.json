@@ -1,0 +1,653 @@
+{
+  "$defs": {
+    "Authorization": {
+      "enum": [
+        "required",
+        "authorized",
+        "revoked"
+      ],
+      "type": "string"
+    },
+    "Coverage": {
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "Freshness": {
+      "enum": [
+        "unread",
+        "current",
+        "stale",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "Info": {
+      "additionalProperties": false,
+      "properties": {
+        "apiVersion": {
+          "type": "string"
+        },
+        "appliedQuery": {
+          "$ref": "#/$defs/UnifiedRequestQuery"
+        },
+        "asOf": {
+          "type": "string"
+        },
+        "count": {
+          "$ref": "#/$defs/Decimal",
+          "description": "Request/response records only, excluding the CSV header and scope row."
+        },
+        "operationId": {
+          "type": "string"
+        },
+        "overlapUnknown": {
+          "type": "boolean"
+        },
+        "snapshotToken": {
+          "type": "string"
+        },
+        "sourceStates": {
+          "items": {
+            "$ref": "#/$defs/SourceState"
+          },
+          "type": "array"
+        },
+        "sourceSummaries": {
+          "items": {
+            "$ref": "#/$defs/RequestSourceSummary"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "apiVersion",
+        "operationId",
+        "snapshotToken",
+        "count",
+        "asOf",
+        "appliedQuery",
+        "sourceStates",
+        "sourceSummaries",
+        "overlapUnknown"
+      ],
+      "type": "object"
+    },
+    "QueryScope": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ScopeKind"
+        },
+        "sourceIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "sourceIds"
+      ],
+      "type": "object"
+    },
+    "RequestBilling": {
+      "additionalProperties": false,
+      "properties": {
+        "actual": {
+          "items": {
+            "$ref": "#/$defs/RequestMoney"
+          },
+          "type": "array"
+        },
+        "estimated": {
+          "items": {
+            "$ref": "#/$defs/RequestMoney"
+          },
+          "type": "array"
+        },
+        "unknownParts": {
+          "$ref": "#/$defs/Decimal",
+          "description": "Missing billing evidence parts, not missing request/response count."
+        }
+      },
+      "required": [
+        "actual",
+        "estimated",
+        "unknownParts"
+      ],
+      "type": "object"
+    },
+    "RequestEvidence": {
+      "enum": [
+        "host-observed",
+        "source-reported"
+      ],
+      "type": "string"
+    },
+    "RequestEvidenceSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "billing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RequestBilling"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "matching": {
+          "$ref": "#/$defs/RequestMatchingSummary"
+        },
+        "overflowFields": {
+          "description": "A sum outside u64 is unknown; original per-record values remain intact.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "usageMissingParts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Missing underlying usage parts, distinct from records with incomplete usage."
+        }
+      },
+      "required": [
+        "matching",
+        "overflowFields"
+      ],
+      "type": "object"
+    },
+    "RequestFilter": {
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "productId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "providerKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "search": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "RequestMatchingSummary": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "ambiguous": {
+              "$ref": "#/$defs/Decimal"
+            },
+            "exact": {
+              "$ref": "#/$defs/Decimal"
+            },
+            "identityConflicts": {
+              "$ref": "#/$defs/Decimal"
+            },
+            "kind": {
+              "const": "native-responses",
+              "type": "string"
+            },
+            "unknown": {
+              "$ref": "#/$defs/Decimal"
+            },
+            "unlinked": {
+              "$ref": "#/$defs/Decimal"
+            },
+            "usageConflicts": {
+              "$ref": "#/$defs/Decimal"
+            }
+          },
+          "required": [
+            "kind",
+            "exact",
+            "unlinked",
+            "ambiguous",
+            "identityConflicts",
+            "unknown",
+            "usageConflicts"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "gateway-requests",
+              "type": "string"
+            },
+            "matchedResponses": {
+              "$ref": "#/$defs/Decimal"
+            },
+            "usageConflictLinks": {
+              "$ref": "#/$defs/Decimal"
+            },
+            "withExactLinks": {
+              "$ref": "#/$defs/Decimal"
+            },
+            "withoutConfirmedLinks": {
+              "$ref": "#/$defs/Decimal"
+            }
+          },
+          "required": [
+            "kind",
+            "withExactLinks",
+            "withoutConfirmedLinks",
+            "matchedResponses",
+            "usageConflictLinks"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "source-reported",
+              "type": "string"
+            },
+            "unverifiedRecords": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Decimal"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "RequestMoney": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "description": "Finite nonnegative decimal text from the existing host monetary value.\nNo currency conversion or claim of greater precision is introduced.",
+          "maxLength": 400,
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "type": "string"
+        },
+        "currency": {
+          "pattern": "^[A-Z][A-Z0-9]{0,15}$",
+          "type": "string"
+        },
+        "parts": {
+          "$ref": "#/$defs/Decimal"
+        }
+      },
+      "required": [
+        "currency",
+        "amount",
+        "parts"
+      ],
+      "type": "object"
+    },
+    "RequestSort": {
+      "enum": [
+        "time",
+        "tokens",
+        "duration",
+        "ttft",
+        "cost-usd"
+      ],
+      "type": "string"
+    },
+    "RequestSourceSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "attempts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source-reported responses do not establish an HTTP attempt count."
+        },
+        "coverage": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "evidence": {
+          "$ref": "#/$defs/RequestEvidence"
+        },
+        "evidenceSummary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RequestEvidenceSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "records": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "unit": {
+          "$ref": "#/$defs/RequestUnit"
+        },
+        "unknownTime": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Matching non-time filters but excluded from a dated range when time is unknown."
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        },
+        "usageMissing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "sourceId",
+        "unit",
+        "evidence",
+        "coverage",
+        "usage"
+      ],
+      "type": "object"
+    },
+    "RequestUnit": {
+      "enum": [
+        "model-response",
+        "logical-request"
+      ],
+      "type": "string"
+    },
+    "ScopeKind": {
+      "enum": [
+        "builtin",
+        "external",
+        "combined"
+      ],
+      "type": "string"
+    },
+    "SourceState": {
+      "additionalProperties": false,
+      "properties": {
+        "authorization": {
+          "$ref": "#/$defs/Authorization"
+        },
+        "coverage": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        },
+        "problem": {
+          "description": "Host-owned fixed reason code, never guest text.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceId",
+        "authorization",
+        "freshness",
+        "coverage"
+      ],
+      "type": "object"
+    },
+    "UnifiedRequestQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "descending": {
+          "description": "Event time ordered to milliseconds; unknown times always follow known times.",
+          "type": "boolean"
+        },
+        "filter": {
+          "$ref": "#/$defs/RequestFilter"
+        },
+        "includeEvidence": {
+          "description": "Opt in to frozen host matching/billing evidence, never guest claims.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "scope": {
+          "$ref": "#/$defs/QueryScope"
+        },
+        "snapshotToken": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sort": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RequestSort"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Omitted requests keep the original event-time order and JSON shape."
+        },
+        "unit": {
+          "$ref": "#/$defs/RequestUnit"
+        }
+      },
+      "required": [
+        "scope",
+        "unit",
+        "filter",
+        "descending"
+      ],
+      "type": "object"
+    },
+    "Usage": {
+      "additionalProperties": false,
+      "properties": {
+        "cacheWriteInputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cachedInputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reasoningOutputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "totalTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "fileName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "info": {
+          "$ref": "#/$defs/Info"
+        },
+        "status": {
+          "const": "saved",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "info"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "cancelled",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "SaveReply"
+}

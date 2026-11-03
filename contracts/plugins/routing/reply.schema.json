@@ -1,0 +1,983 @@
+{
+  "$defs": {
+    "Agent": {
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "productId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "productId",
+        "displayName"
+      ],
+      "type": "object"
+    },
+    "BindingStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "authorized": {
+          "type": "boolean"
+        },
+        "errorCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failureMode": {
+          "$ref": "#/$defs/FailureMode"
+        },
+        "package": {
+          "$ref": "#/$defs/PackageQuery"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "serviceId": {
+          "type": "string"
+        },
+        "serviceVersionId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "serviceId",
+        "serviceVersionId",
+        "revision",
+        "package",
+        "failureMode",
+        "authorized"
+      ],
+      "type": "object"
+    },
+    "Capabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "contextWindow": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "inputModalities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "maxOutputTokens": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "thinking": {
+          "type": "boolean"
+        },
+        "tools": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "contextWindow",
+        "maxOutputTokens",
+        "tools",
+        "thinking",
+        "inputModalities"
+      ],
+      "type": "object"
+    },
+    "FailureMode": {
+      "enum": [
+        "reject",
+        "builtin"
+      ],
+      "type": "string"
+    },
+    "Manifest": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Agent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "capabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "hostApi": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PackageKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "manifestVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "permissions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Permission"
+          },
+          "type": "array"
+        },
+        "providers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ProviderPreset"
+          },
+          "type": "array"
+        },
+        "publisher": {
+          "type": "string"
+        },
+        "requires": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "runtime": {
+          "$ref": "#/$defs/Runtime"
+        },
+        "settings": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Setting"
+          },
+          "type": "array"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Source"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "type": "string"
+        },
+        "views": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/View"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "manifestVersion",
+        "id",
+        "version",
+        "displayName",
+        "publisher",
+        "hostApi",
+        "runtime",
+        "capabilities"
+      ],
+      "type": "object"
+    },
+    "ModelDraft": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "$ref": "#/$defs/Capabilities"
+        },
+        "id": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "providerId",
+        "model",
+        "capabilities"
+      ],
+      "type": "object"
+    },
+    "ModelLimit": {
+      "additionalProperties": false,
+      "properties": {
+        "maxConcurrent": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "modelId": {
+          "default": "",
+          "type": "string"
+        },
+        "requestsPerMinute": {
+          "default": 0,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "OperationAction": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "draft": {
+              "$ref": "#/$defs/ServiceDraft"
+            },
+            "kind": {
+              "const": "save",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "draft"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "expectedRevision": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "delete",
+              "type": "string"
+            },
+            "serviceId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "serviceId",
+            "expectedRevision"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "OperationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/OperationAction"
+        },
+        "operationId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "operationId",
+        "action"
+      ],
+      "type": "object"
+    },
+    "PackageKind": {
+      "enum": [
+        "routing-policy"
+      ],
+      "type": "string"
+    },
+    "PackageQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "PackageStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "type": "boolean"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "epoch": {
+          "type": "string"
+        },
+        "manifest": {
+          "$ref": "#/$defs/Manifest"
+        },
+        "publisherTrusted": {
+          "type": "boolean"
+        },
+        "signingKey": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "manifest",
+        "digest",
+        "signingKey",
+        "enabled",
+        "active",
+        "publisherTrusted",
+        "epoch"
+      ],
+      "type": "object"
+    },
+    "Permission": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "source.content.read",
+              "type": "string"
+            },
+            "resource": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "resource"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "connection.request",
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ui.contribute",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "domain.query",
+              "type": "string"
+            },
+            "query": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "query"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Product": {
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "displayName"
+      ],
+      "type": "object"
+    },
+    "ProviderPreset": {
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "protocol",
+        "endpoint",
+        "model"
+      ],
+      "type": "object"
+    },
+    "PublishStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "binding": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BindingStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "errorCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "operationId": {
+          "type": "string"
+        },
+        "request": {
+          "$ref": "#/$defs/OperationRequest"
+        },
+        "serviceId": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "operationId",
+        "serviceId",
+        "state",
+        "request"
+      ],
+      "type": "object"
+    },
+    "Review": {
+      "additionalProperties": false,
+      "properties": {
+        "compressedBytes": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "expandedBytes": {
+          "type": "string"
+        },
+        "manifest": {
+          "$ref": "#/$defs/Manifest"
+        },
+        "packageRef": {
+          "type": "string"
+        },
+        "signingKey": {
+          "type": "string"
+        },
+        "trustedPublisher": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "packageRef",
+        "digest",
+        "manifest",
+        "signingKey",
+        "trustedPublisher",
+        "compressedBytes",
+        "expandedBytes"
+      ],
+      "type": "object"
+    },
+    "RoutingPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "cooldownSeconds": {
+          "default": 30,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "deadlineSeconds": {
+          "default": 120,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "disabledModels": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "fallbackOnFailure": {
+          "default": true,
+          "type": "boolean"
+        },
+        "fallbackOnRateLimit": {
+          "default": true,
+          "type": "boolean"
+        },
+        "limits": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ModelLimit"
+          },
+          "type": "array"
+        },
+        "maxAttempts": {
+          "default": 3,
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "order": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Runtime": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "declarative",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "abi": {
+              "type": "string"
+            },
+            "entry": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "wasm-component",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "entry",
+            "abi"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ScopeStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "errorCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pendingOperationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revision": {
+          "type": "string"
+        },
+        "serviceId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "serviceId",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "ServiceDraft": {
+      "additionalProperties": false,
+      "properties": {
+        "defaultModelId": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "models": {
+          "items": {
+            "$ref": "#/$defs/ModelDraft"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "routingPolicy": {
+          "$ref": "#/$defs/RoutingPolicy",
+          "default": {
+            "cooldownSeconds": 30,
+            "deadlineSeconds": 120,
+            "disabledModels": [],
+            "enabled": false,
+            "fallbackOnFailure": true,
+            "fallbackOnRateLimit": true,
+            "limits": [],
+            "maxAttempts": 3,
+            "order": []
+          }
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "name",
+        "defaultModelId",
+        "models"
+      ],
+      "type": "object"
+    },
+    "Setting": {
+      "additionalProperties": false,
+      "properties": {
+        "default": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "key",
+        "label",
+        "options",
+        "default"
+      ],
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Package-local stable name; the host prefixes the plugin namespace.",
+          "type": "string"
+        },
+        "products": {
+          "items": {
+            "$ref": "#/$defs/Product"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "products"
+      ],
+      "type": "object"
+    },
+    "View": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ViewKind"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "description",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "ViewKind": {
+      "enum": [
+        "report",
+        "sessions",
+        "quota",
+        "providers",
+        "settings"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "bindings": {
+          "items": {
+            "$ref": "#/$defs/BindingStatus"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "inventory",
+          "type": "string"
+        },
+        "packages": {
+          "items": {
+            "$ref": "#/$defs/PackageStatus"
+          },
+          "type": "array"
+        },
+        "publishes": {
+          "items": {
+            "$ref": "#/$defs/PublishStatus"
+          },
+          "type": "array"
+        },
+        "scopes": {
+          "items": {
+            "$ref": "#/$defs/ScopeStatus"
+          },
+          "type": "array"
+        },
+        "storeId": {
+          "type": "string"
+        },
+        "unavailableServiceIds": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "storeId",
+        "packages",
+        "bindings",
+        "scopes",
+        "publishes"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "review",
+          "type": "string"
+        },
+        "review": {
+          "$ref": "#/$defs/Review"
+        }
+      },
+      "required": [
+        "kind",
+        "review"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "package",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/PackageStatus"
+        }
+      },
+      "required": [
+        "kind",
+        "status"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "binding": {
+          "$ref": "#/$defs/BindingStatus"
+        },
+        "kind": {
+          "const": "binding",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "binding"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "unbound",
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "serviceId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "storeId",
+        "serviceId",
+        "revision"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "publish",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/PublishStatus"
+        }
+      },
+      "required": [
+        "kind",
+        "status"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "Reply"
+}

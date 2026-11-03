@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "activationEpoch": {
+      "type": "string"
+    },
+    "contextId": {
+      "type": "string"
+    },
+    "cursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "grantRevision": {
+      "type": "string"
+    },
+    "sourceRef": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "contextId",
+    "sourceRef",
+    "activationEpoch",
+    "grantRevision"
+  ],
+  "title": "SourceRequest",
+  "type": "object"
+}

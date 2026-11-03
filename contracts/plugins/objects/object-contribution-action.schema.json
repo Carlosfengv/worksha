@@ -1,0 +1,395 @@
+{
+  "$defs": {
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "ObjectGrantRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expectedActivationEpoch": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "expectedContextIdentity": {
+          "type": "string"
+        },
+        "expectedDescriptorIdentity": {
+          "type": "string"
+        },
+        "expectedGrantRevision": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "slot": {
+          "$ref": "#/$defs/ObjectSlotQuery"
+        }
+      },
+      "required": [
+        "slot",
+        "expectedDescriptorIdentity",
+        "expectedContextIdentity",
+        "expectedActivationEpoch",
+        "expectedGrantRevision"
+      ],
+      "type": "object"
+    },
+    "ObjectOrigin": {
+      "description": "A unified object must come from an existing authorized, frozen query.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "builtin",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "unified",
+              "type": "string"
+            },
+            "scope": {
+              "$ref": "#/$defs/QueryScope"
+            },
+            "snapshotToken": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "scope",
+            "sourceId",
+            "snapshotToken"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ObjectRefQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "objectRef": {
+          "type": "string"
+        },
+        "slot": {
+          "$ref": "#/$defs/ObjectSlotQuery"
+        }
+      },
+      "required": [
+        "slot",
+        "objectRef"
+      ],
+      "type": "object"
+    },
+    "ObjectRefRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expectedContextIdentity": {
+          "type": "string"
+        },
+        "object": {
+          "$ref": "#/$defs/ObjectSelector",
+          "description": "Host input only. Never forwarded to a guest or returned as summary data."
+        },
+        "slot": {
+          "$ref": "#/$defs/ObjectSlotQuery"
+        }
+      },
+      "required": [
+        "slot",
+        "expectedContextIdentity",
+        "object"
+      ],
+      "type": "object"
+    },
+    "ObjectSelector": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "target": {
+              "const": "agent",
+              "type": "string"
+            }
+          },
+          "required": [
+            "target",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "target": {
+              "const": "provider",
+              "type": "string"
+            }
+          },
+          "required": [
+            "target",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "target": {
+              "const": "account",
+              "type": "string"
+            }
+          },
+          "required": [
+            "target",
+            "id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "origin": {
+              "$ref": "#/$defs/ObjectOrigin"
+            },
+            "target": {
+              "const": "project",
+              "type": "string"
+            }
+          },
+          "required": [
+            "target",
+            "id",
+            "origin"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "origin": {
+              "$ref": "#/$defs/ObjectOrigin"
+            },
+            "target": {
+              "const": "session",
+              "type": "string"
+            }
+          },
+          "required": [
+            "target",
+            "id",
+            "origin"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "origin": {
+              "$ref": "#/$defs/ObjectOrigin"
+            },
+            "target": {
+              "const": "request",
+              "type": "string"
+            },
+            "unit": {
+              "$ref": "#/$defs/RequestUnit"
+            }
+          },
+          "required": [
+            "target",
+            "id",
+            "origin",
+            "unit"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ObjectSlotQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": "string"
+        },
+        "slotId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest",
+        "slotId"
+      ],
+      "type": "object"
+    },
+    "QueryScope": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ScopeKind"
+        },
+        "sourceIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "sourceIds"
+      ],
+      "type": "object"
+    },
+    "RequestUnit": {
+      "enum": [
+        "model-response",
+        "logical-request"
+      ],
+      "type": "string"
+    },
+    "ScopeKind": {
+      "enum": [
+        "builtin",
+        "external",
+        "combined"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "catalog",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "grant",
+          "type": "string"
+        },
+        "request": {
+          "$ref": "#/$defs/ObjectGrantRequest"
+        }
+      },
+      "required": [
+        "kind",
+        "request"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "revoke",
+          "type": "string"
+        },
+        "request": {
+          "$ref": "#/$defs/ObjectGrantRequest"
+        }
+      },
+      "required": [
+        "kind",
+        "request"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "issue",
+          "type": "string"
+        },
+        "request": {
+          "$ref": "#/$defs/ObjectRefRequest"
+        }
+      },
+      "required": [
+        "kind",
+        "request"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "read",
+          "type": "string"
+        },
+        "query": {
+          "$ref": "#/$defs/ObjectRefQuery"
+        }
+      },
+      "required": [
+        "kind",
+        "query"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "release",
+          "type": "string"
+        },
+        "query": {
+          "$ref": "#/$defs/ObjectRefQuery"
+        }
+      },
+      "required": [
+        "kind",
+        "query"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "ObjectContributionAction"
+}

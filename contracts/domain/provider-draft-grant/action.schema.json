@@ -1,0 +1,455 @@
+{
+  "$defs": {
+    "DraftEndpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "credentialRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "vendor": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "endpoint",
+        "protocol",
+        "vendor"
+      ],
+      "type": "object"
+    },
+    "DraftGrantOwner": {
+      "additionalProperties": false,
+      "properties": {
+        "ownerId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "ownerId"
+      ],
+      "type": "object"
+    },
+    "DraftGrantScope": {
+      "additionalProperties": false,
+      "properties": {
+        "allowPrivateNetwork": {
+          "type": "boolean"
+        },
+        "catalog": {
+          "$ref": "#/$defs/Query"
+        },
+        "draft": {
+          "$ref": "#/$defs/DraftEndpoint"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "catalog",
+        "draft",
+        "label",
+        "allowPrivateNetwork"
+      ],
+      "type": "object"
+    },
+    "Kind": {
+      "enum": [
+        "save",
+        "connect"
+      ],
+      "type": "string"
+    },
+    "ModelCatalogSource": {
+      "additionalProperties": false,
+      "properties": {
+        "credentialRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "fetchedAt": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "sourceUrl": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "fetchedAt",
+        "sourceUrl",
+        "endpoint",
+        "protocol"
+      ],
+      "type": "object"
+    },
+    "Provider": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "default": "cloud",
+          "type": "string"
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "credentialLabel": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "credentialRef": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "disabledModels": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "modelCatalog": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModelCatalogSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "models": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "revision": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "vendor": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "endpoint",
+        "protocol",
+        "model",
+        "configured"
+      ],
+      "type": "object"
+    },
+    "ProviderOperationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expectedSequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/Kind"
+        },
+        "operationId": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/Provider"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "operationId",
+        "expectedSequence",
+        "kind",
+        "provider"
+      ],
+      "type": "object"
+    },
+    "Query": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "Selection": {
+      "additionalProperties": false,
+      "properties": {
+        "bindingId": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/Target"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest",
+        "bindingId",
+        "target"
+      ],
+      "type": "object"
+    },
+    "SourceChoice": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "builtin",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "catalog": {
+              "$ref": "#/$defs/Selection"
+            },
+            "kind": {
+              "const": "external",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "catalog"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SourceRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "expectedSourceRevision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "operation": {
+          "$ref": "#/$defs/ProviderOperationRequest"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceChoice"
+        }
+      },
+      "required": [
+        "operation",
+        "source"
+      ],
+      "type": "object"
+    },
+    "Target": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "expectedRevision": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "saved",
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "providerId",
+            "expectedRevision"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "credentialRef": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "endpoint": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "draft",
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "protocol": {
+              "type": "string"
+            },
+            "vendor": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "label",
+            "endpoint",
+            "protocol",
+            "vendor"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "open",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/DraftGrantScope"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "storeId",
+        "scope"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "acquire",
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/DraftGrantOwner"
+        }
+      },
+      "required": [
+        "kind",
+        "owner"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "attach",
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/DraftGrantOwner"
+        },
+        "request": {
+          "$ref": "#/$defs/SourceRequest"
+        }
+      },
+      "required": [
+        "kind",
+        "owner",
+        "request"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "release",
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/DraftGrantOwner"
+        }
+      },
+      "required": [
+        "kind",
+        "owner"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "DraftGrantAction"
+}

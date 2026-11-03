@@ -1,0 +1,92 @@
+{
+  "$defs": {
+    "PresetOrigin": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "builtin",
+              "type": "string"
+            },
+            "presetId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "presetId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "digest": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "external",
+              "type": "string"
+            },
+            "pluginId": {
+              "type": "string"
+            },
+            "presetId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "pluginId",
+            "digest",
+            "presetId"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "list",
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "storeId"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "resolve",
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/PresetOrigin"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "storeId",
+        "origin"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "PresetAction"
+}

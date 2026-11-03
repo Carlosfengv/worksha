@@ -1,0 +1,25 @@
+{
+  "$defs": {
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "nextOffset": {
+      "$ref": "#/$defs/Decimal"
+    },
+    "rows": {
+      "$ref": "#/$defs/Decimal"
+    }
+  },
+  "required": [
+    "nextOffset",
+    "rows"
+  ],
+  "title": "Finish",
+  "type": "object"
+}

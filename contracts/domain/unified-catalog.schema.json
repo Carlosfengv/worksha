@@ -1,0 +1,260 @@
+{
+  "$defs": {
+    "Authorization": {
+      "enum": [
+        "required",
+        "authorized",
+        "revoked"
+      ],
+      "type": "string"
+    },
+    "Capability": {
+      "additionalProperties": false,
+      "properties": {
+        "instanceId": {
+          "type": "string"
+        },
+        "major": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "major",
+        "instanceId"
+      ],
+      "type": "object"
+    },
+    "CatalogSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "apiVersion": {
+          "type": "string"
+        },
+        "products": {
+          "items": {
+            "$ref": "#/$defs/Product"
+          },
+          "type": "array"
+        },
+        "providers": {
+          "items": {
+            "$ref": "#/$defs/Provider"
+          },
+          "type": "array"
+        },
+        "revision": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/Source"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "apiVersion",
+        "revision",
+        "providers",
+        "products",
+        "sources"
+      ],
+      "type": "object"
+    },
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "ExecutionKind": {
+      "enum": [
+        "builtin",
+        "wasm-component",
+        "declarative"
+      ],
+      "type": "string"
+    },
+    "Freshness": {
+      "enum": [
+        "unread",
+        "current",
+        "stale",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "Product": {
+      "additionalProperties": false,
+      "properties": {
+        "configId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "sourceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "sourceId"
+      ],
+      "type": "object"
+    },
+    "Provider": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "$ref": "#/$defs/Capability"
+        },
+        "executionKind": {
+          "$ref": "#/$defs/ExecutionKind"
+        },
+        "implementationIdentity": {
+          "type": "string"
+        },
+        "implementationVersion": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": "string"
+        },
+        "providerKey": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "providerKey",
+        "pluginId",
+        "implementationVersion",
+        "implementationIdentity",
+        "capability",
+        "executionKind"
+      ],
+      "type": "object"
+    },
+    "ProviderStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "authorization": {
+          "$ref": "#/$defs/Authorization"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        },
+        "grantRevision": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "runtimeActive": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "enabled",
+        "authorization",
+        "grantRevision",
+        "runtimeActive",
+        "freshness"
+      ],
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "productIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "providerKey": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/ProviderStatus"
+        }
+      },
+      "required": [
+        "id",
+        "providerKey",
+        "productIds",
+        "status"
+      ],
+      "type": "object"
+    },
+    "SourceConsentStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "persistMetadata": {
+          "type": "boolean"
+        },
+        "pluginId": {
+          "type": "string"
+        },
+        "sourceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest",
+        "sourceId",
+        "enabled",
+        "persistMetadata"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "catalog": {
+      "$ref": "#/$defs/CatalogSnapshot"
+    },
+    "consents": {
+      "items": {
+        "$ref": "#/$defs/SourceConsentStatus"
+      },
+      "type": "array"
+    },
+    "externalProblem": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "catalog",
+    "consents"
+  ],
+  "title": "UnifiedCatalog",
+  "type": "object"
+}

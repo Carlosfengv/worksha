@@ -1,0 +1,33 @@
+[package]
+name = "local-agent-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+# Retention must detect future nested source fields without tightening shared API DTOs.
+serde_ignored = "=0.1.14"
+# SQLite 3.51.3 includes the Unix WAL open/close lock-order fix absent in 3.51.1.
+rusqlite = { version = "=0.39.0", features = ["bundled", "functions", "hooks"] }
+dirs = "6"
+url = "2"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+sha2 = "0.10"
+regex = "1"
+libc = "0.2"
+toml_edit = { version = "0.25", features = ["serde"] }
+aes-gcm = "0.10"
+uuid = { version = "1", features = ["v4"] }
+zeroize = "1"
+fs2 = "0.4"
+schemars = "=1.2.3"
+# Reuse the already locked workspace compressor for bounded statistical blocks.
+flate2 = { version = "=1.1.10", default-features = false, features = ["zlib-rs"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
+
+[dev-dependencies]
+rusqlite = { version = "=0.39.0", features = ["trace"] }
+tempfile = "3"

@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "optionalDependencies": [
+    {
+      "pluginId": "org.example.detail-helper",
+      "version": "^1.0",
+      "views": [
+        "enhanced"
+      ]
+    }
+  ],
+  "detailSlots": [
+    {
+      "id": "agent-summary",
+      "target": "agent",
+      "objectIds": [
+        "*"
+      ],
+      "placement": "card",
+      "viewId": "summary",
+      "title": "Agent · 扩展摘要"
+    },
+    {
+      "id": "agent-enhanced",
+      "target": "agent",
+      "objectIds": [
+        "*"
+      ],
+      "placement": "tab",
+      "viewId": "enhanced",
+      "title": "Agent · 增强信息"
+    },
+    {
+      "id": "provider-summary",
+      "target": "provider",
+      "objectIds": [
+        "*"
+      ],
+      "placement": "card",
+      "viewId": "summary",
+      "title": "Provider · 扩展摘要"
+    },
+    {
+      "id": "provider-enhanced",
+      "target": "provider",
+      "objectIds": [
+        "*"
+      ],
+      "placement": "tab",
+      "viewId": "enhanced",
+      "title": "Provider · 增强信息"
+    },
+    {
+      "id": "account-summary",
+      "target": "account",
+      "objectIds": [
+        "*"
+      ],
+      "placement": "card",
+      "viewId": "summary",
+      "title": "账户 · 扩展摘要"
+    },
+    {
+      "id": "account-enhanced",
+      "target": "account",
+      "objectIds": [
+        "*"
+      ],
+      "placement": "tab",
+      "viewId": "enhanced",
+      "title": "账户 · 增强信息"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "digest": {
+      "type": "string"
+    },
+    "persistMetadata": {
+      "type": "boolean"
+    },
+    "pluginId": {
+      "type": "string"
+    },
+    "resourceLabel": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reviewRef": {
+      "type": "string"
+    },
+    "sourceAuthorized": {
+      "type": "boolean"
+    },
+    "unifiedAuthorized": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "reviewRef",
+    "pluginId",
+    "digest",
+    "sourceAuthorized",
+    "unifiedAuthorized",
+    "persistMetadata"
+  ],
+  "title": "SourceConsentReview",
+  "type": "object"
+}

@@ -1,0 +1,4 @@
+{
+  "query_provider_catalog": ["query"],
+  "perform_provider_catalog": ["input"]
+}

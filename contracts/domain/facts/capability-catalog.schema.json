@@ -1,0 +1,190 @@
+{
+  "$defs": {
+    "Authorization": {
+      "enum": [
+        "required",
+        "authorized",
+        "revoked"
+      ],
+      "type": "string"
+    },
+    "Capability": {
+      "additionalProperties": false,
+      "properties": {
+        "instanceId": {
+          "type": "string"
+        },
+        "major": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "major",
+        "instanceId"
+      ],
+      "type": "object"
+    },
+    "CapabilityEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "operations": {
+          "items": {
+            "$ref": "#/$defs/ReadOperation"
+          },
+          "type": "array"
+        },
+        "provider": {
+          "$ref": "#/$defs/Provider"
+        },
+        "status": {
+          "$ref": "#/$defs/ProviderStatus"
+        }
+      },
+      "required": [
+        "provider",
+        "status",
+        "operations"
+      ],
+      "type": "object"
+    },
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "ExecutionKind": {
+      "enum": [
+        "builtin",
+        "wasm-component",
+        "declarative"
+      ],
+      "type": "string"
+    },
+    "Freshness": {
+      "enum": [
+        "unread",
+        "current",
+        "stale",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "Provider": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "$ref": "#/$defs/Capability"
+        },
+        "executionKind": {
+          "$ref": "#/$defs/ExecutionKind"
+        },
+        "implementationIdentity": {
+          "type": "string"
+        },
+        "implementationVersion": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": "string"
+        },
+        "providerKey": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "providerKey",
+        "pluginId",
+        "implementationVersion",
+        "implementationIdentity",
+        "capability",
+        "executionKind"
+      ],
+      "type": "object"
+    },
+    "ProviderStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "authorization": {
+          "$ref": "#/$defs/Authorization"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        },
+        "grantRevision": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "runtimeActive": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "enabled",
+        "authorization",
+        "grantRevision",
+        "runtimeActive",
+        "freshness"
+      ],
+      "type": "object"
+    },
+    "ReadOperation": {
+      "enum": [
+        "describe",
+        "scan",
+        "read-conversation",
+        "collect-activity",
+        "list-memory",
+        "read-memory",
+        "scan-calls",
+        "collect-project-evidence",
+        "collect-assets",
+        "snapshot",
+        "diff",
+        "collect-listeners",
+        "refresh-quota",
+        "catalog-facts",
+        "execution-facts",
+        "read-requests"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/CapabilityEntry"
+      },
+      "type": "array"
+    },
+    "externalProblem": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "revision": {
+      "$ref": "#/$defs/Decimal"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "revision",
+    "entries"
+  ],
+  "title": "CapabilityCatalog",
+  "type": "object"
+}

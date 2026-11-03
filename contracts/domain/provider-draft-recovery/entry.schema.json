@@ -1,0 +1,95 @@
+{
+  "$defs": {
+    "DraftGrantOwner": {
+      "additionalProperties": false,
+      "properties": {
+        "ownerId": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "storeId",
+        "ownerId"
+      ],
+      "type": "object"
+    },
+    "DraftRecoveryOwnership": {
+      "enum": [
+        "prepared",
+        "managed",
+        "shared",
+        "missing"
+      ],
+      "type": "string"
+    },
+    "DraftRecoveryState": {
+      "enum": [
+        "unchecked",
+        "unattached",
+        "pending",
+        "committed",
+        "failed",
+        "cancelled",
+        "not-found",
+        "unavailable"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "canFinish": {
+      "type": "boolean"
+    },
+    "digest": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "endpointOrigin": {
+      "description": "Scheme/host/port only; no credential reference or private endpoint path.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "label": {
+      "type": "string"
+    },
+    "operationId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "owner": {
+      "$ref": "#/$defs/DraftGrantOwner"
+    },
+    "ownership": {
+      "$ref": "#/$defs/DraftRecoveryOwnership"
+    },
+    "pluginId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "state": {
+      "$ref": "#/$defs/DraftRecoveryState"
+    }
+  },
+  "required": [
+    "owner",
+    "label",
+    "ownership",
+    "state",
+    "canFinish"
+  ],
+  "title": "DraftRecoveryEntry",
+  "type": "object"
+}

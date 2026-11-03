@@ -1,0 +1,217 @@
+{
+  "$defs": {
+    "Coverage": {
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "UnitUsage": {
+      "additionalProperties": false,
+      "properties": {
+        "coverage": {
+          "$ref": "#/$defs/Coverage"
+        },
+        "missingFields": {
+          "description": "At least one matching fact lacks this field. Totals include known values only.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "records": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unit": {
+          "$ref": "#/$defs/UsageUnit"
+        },
+        "usage": {
+          "$ref": "#/$defs/Usage"
+        }
+      },
+      "required": [
+        "unit",
+        "coverage",
+        "usage",
+        "missingFields"
+      ],
+      "type": "object"
+    },
+    "Usage": {
+      "additionalProperties": false,
+      "properties": {
+        "cacheWriteInputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cachedInputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reasoningOutputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "totalTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "UsageUnit": {
+      "enum": [
+        "session-cumulative",
+        "model-response"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "activities": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Decimal"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "coverage": {
+      "$ref": "#/$defs/Coverage"
+    },
+    "crossSourceOverlapUnknown": {
+      "description": "Source-reported IDs do not establish overlap with other sources or the gateway.",
+      "type": "boolean"
+    },
+    "mcpCatalogs": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Decimal"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "mcpExecutions": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Decimal"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "projects": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Decimal"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "responses": {
+      "$ref": "#/$defs/UnitUsage"
+    },
+    "sessions": {
+      "$ref": "#/$defs/UnitUsage"
+    },
+    "sourceId": {
+      "type": "string"
+    },
+    "successfulWriteReports": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Decimal"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "writeReports": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Decimal"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "sourceId",
+    "coverage",
+    "sessions",
+    "responses",
+    "crossSourceOverlapUnknown"
+  ],
+  "title": "FactSummary",
+  "type": "object"
+}

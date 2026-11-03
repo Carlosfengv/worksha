@@ -1,0 +1,408 @@
+{
+  "$defs": {
+    "Agent": {
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "productId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "productId",
+        "displayName"
+      ],
+      "type": "object"
+    },
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "Manifest": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Agent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "capabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "hostApi": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PackageKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "manifestVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "permissions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Permission"
+          },
+          "type": "array"
+        },
+        "providers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ProviderPreset"
+          },
+          "type": "array"
+        },
+        "publisher": {
+          "type": "string"
+        },
+        "requires": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "runtime": {
+          "$ref": "#/$defs/Runtime"
+        },
+        "settings": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Setting"
+          },
+          "type": "array"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Source"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "type": "string"
+        },
+        "views": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/View"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "manifestVersion",
+        "id",
+        "version",
+        "displayName",
+        "publisher",
+        "hostApi",
+        "runtime",
+        "capabilities"
+      ],
+      "type": "object"
+    },
+    "PackageKind": {
+      "enum": [
+        "routing-policy"
+      ],
+      "type": "string"
+    },
+    "Permission": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "source.content.read",
+              "type": "string"
+            },
+            "resource": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "resource"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "connection.request",
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "ui.contribute",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "domain.query",
+              "type": "string"
+            },
+            "query": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "query"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Product": {
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "displayName"
+      ],
+      "type": "object"
+    },
+    "ProviderPreset": {
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "protocol",
+        "endpoint",
+        "model"
+      ],
+      "type": "object"
+    },
+    "Runtime": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "declarative",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "abi": {
+              "type": "string"
+            },
+            "entry": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "wasm-component",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "entry",
+            "abi"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Setting": {
+      "additionalProperties": false,
+      "properties": {
+        "default": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "key",
+        "label",
+        "options",
+        "default"
+      ],
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Package-local stable name; the host prefixes the plugin namespace.",
+          "type": "string"
+        },
+        "products": {
+          "items": {
+            "$ref": "#/$defs/Product"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "products"
+      ],
+      "type": "object"
+    },
+    "View": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ViewKind"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "description",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "ViewKind": {
+      "enum": [
+        "report",
+        "sessions",
+        "quota",
+        "providers",
+        "settings"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "compressedBytes": {
+      "$ref": "#/$defs/Decimal"
+    },
+    "digest": {
+      "type": "string"
+    },
+    "expandedBytes": {
+      "$ref": "#/$defs/Decimal"
+    },
+    "manifest": {
+      "$ref": "#/$defs/Manifest"
+    },
+    "packageRef": {
+      "type": "string"
+    },
+    "signingKey": {
+      "type": "string"
+    },
+    "trustedPublisher": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "packageRef",
+    "digest",
+    "manifest",
+    "signingKey",
+    "trustedPublisher",
+    "compressedBytes",
+    "expandedBytes"
+  ],
+  "title": "Review",
+  "type": "object"
+}

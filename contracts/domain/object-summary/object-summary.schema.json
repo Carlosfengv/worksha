@@ -1,0 +1,229 @@
+{
+  "$defs": {
+    "Coverage": {
+      "enum": [
+        "complete",
+        "partial",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "Freshness": {
+      "enum": [
+        "unread",
+        "current",
+        "stale",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "MissingReason": {
+      "enum": [
+        "unread",
+        "not-recorded",
+        "unavailable",
+        "partial"
+      ],
+      "type": "string"
+    },
+    "ObjectTarget": {
+      "enum": [
+        "agent",
+        "provider",
+        "account",
+        "project",
+        "session",
+        "request"
+      ],
+      "type": "string"
+    },
+    "SummaryField": {
+      "enum": [
+        "session-count",
+        "model-count",
+        "configuration",
+        "quota-window-count",
+        "input-tokens",
+        "output-tokens",
+        "total-tokens",
+        "attempt-count",
+        "duration-ms",
+        "request-outcome"
+      ],
+      "type": "string"
+    },
+    "SummaryMetric": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "$ref": "#/$defs/SummaryField"
+        },
+        "missingReason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MissingReason"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SummaryValue"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "field"
+      ],
+      "type": "object"
+    },
+    "SummaryOutcome": {
+      "enum": [
+        "succeeded",
+        "failed",
+        "cancelled",
+        "in-progress",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "SummaryValue": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "count",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/Decimal"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "tokens",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/Decimal"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "configured": {
+              "type": "boolean"
+            },
+            "kind": {
+              "const": "configuration",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "configured"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Preserve recorded fractional milliseconds; counts and tokens use Decimal.",
+          "properties": {
+            "kind": {
+              "const": "milliseconds",
+              "type": "string"
+            },
+            "value": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "outcome",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/SummaryOutcome"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string"
+    },
+    "capturedAt": {
+      "type": "string"
+    },
+    "coverage": {
+      "$ref": "#/$defs/Coverage"
+    },
+    "freshness": {
+      "$ref": "#/$defs/Freshness"
+    },
+    "metrics": {
+      "items": {
+        "$ref": "#/$defs/SummaryMetric"
+      },
+      "type": "array"
+    },
+    "target": {
+      "$ref": "#/$defs/ObjectTarget"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "target",
+    "coverage",
+    "freshness",
+    "capturedAt",
+    "metrics"
+  ],
+  "title": "ObjectSummary",
+  "type": "object"
+}

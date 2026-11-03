@@ -1,0 +1,39 @@
+{
+  "$defs": {
+    "Message": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "text"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "messages": {
+      "items": {
+        "$ref": "#/$defs/Message"
+      },
+      "type": "array"
+    },
+    "nativeId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "nativeId",
+    "messages"
+  ],
+  "title": "Conversation",
+  "type": "object"
+}

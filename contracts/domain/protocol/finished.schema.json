@@ -1,0 +1,68 @@
+{
+  "$defs": {
+    "Output": {
+      "additionalProperties": false,
+      "properties": {
+        "chunks": {
+          "description": "Keep frame order and boundaries. Empty frames need not be delivered.",
+          "items": {
+            "items": {
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "complete": {
+          "description": "Transformation reached its validated terminal state, not proof of billing or success.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "chunks",
+        "complete"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Native JSON stays parsed until host accounting has completed, as before.\nWire adapters retain ordered bytes and their explicit completeness check.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "json",
+          "type": "string"
+        },
+        "value": true
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "stream",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/Output"
+        }
+      },
+      "required": [
+        "kind",
+        "value"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "Finished"
+}

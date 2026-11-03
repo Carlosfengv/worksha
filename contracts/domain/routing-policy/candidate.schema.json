@@ -1,0 +1,68 @@
+{
+  "$defs": {
+    "CandidateCapabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "contextWindow": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "inputModalities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "maxOutputTokens": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "thinking": {
+          "type": "boolean"
+        },
+        "tools": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "contextWindow",
+        "maxOutputTokens",
+        "tools",
+        "thinking",
+        "inputModalities"
+      ],
+      "type": "object"
+    },
+    "CandidateHealth": {
+      "enum": [
+        "unknown",
+        "available",
+        "cooling"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "capabilities": {
+      "$ref": "#/$defs/CandidateCapabilities"
+    },
+    "health": {
+      "$ref": "#/$defs/CandidateHealth"
+    },
+    "modelId": {
+      "description": "Published service model identity, never an endpoint, Provider or wire model name.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "modelId",
+    "capabilities",
+    "health"
+  ],
+  "title": "Candidate",
+  "type": "object"
+}

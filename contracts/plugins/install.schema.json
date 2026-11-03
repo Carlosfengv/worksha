@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "approvePublisher": {
+      "type": "boolean"
+    },
+    "digest": {
+      "type": "string"
+    },
+    "packageRef": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "packageRef",
+    "digest",
+    "approvePublisher"
+  ],
+  "title": "InstallRequest",
+  "type": "object"
+}

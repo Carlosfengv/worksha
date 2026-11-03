@@ -1,0 +1,35 @@
+{
+  "$defs": {
+    "FieldEdit": {
+      "additionalProperties": false,
+      "properties": {
+        "pointer": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pointer",
+        "value"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "edits": {
+      "items": {
+        "$ref": "#/$defs/FieldEdit"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "edits"
+  ],
+  "title": "FieldsCandidate",
+  "type": "object"
+}

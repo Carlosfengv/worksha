@@ -1,0 +1,4 @@
+allowBuilds:
+  msw: false
+overrides:
+  shadcn@3.0.0>zod: 3.25.76

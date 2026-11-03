@@ -1,0 +1,38 @@
+{
+  "manifestVersion": 1,
+  "id": "org.example.provider-presets",
+  "version": "1.0.0",
+  "displayName": "供应商预设示例",
+  "publisher": "org.example",
+  "hostApi": "^1.0",
+  "runtime": { "kind": "declarative" },
+  "capabilities": ["provider.catalog@1", "ui.contribution@1"],
+  "requires": [],
+  "permissions": [{ "kind": "ui.contribute" }],
+  "agent": null,
+  "providers": [
+    {
+      "id": "responses",
+      "name": "Responses 预设示例",
+      "protocol": "responses",
+      "endpoint": "https://responses.example.invalid/v1",
+      "model": ""
+    },
+    {
+      "id": "messages",
+      "name": "Messages 预设示例",
+      "protocol": "messages",
+      "endpoint": "https://messages.example.invalid",
+      "model": ""
+    }
+  ],
+  "settings": [],
+  "views": [
+    {
+      "id": "presets",
+      "title": "供应商预设",
+      "description": "仅提供可编辑的初始值。请在 Providers 的添加窗口选择预设，填写自己的地址与 Key；目录授权和验证分别进行。",
+      "kind": "providers"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "expiresAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "limit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "observedAt": {
+      "type": "string"
+    },
+    "remaining": {
+      "type": "string"
+    },
+    "unit": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "remaining",
+    "unit",
+    "observedAt"
+  ],
+  "title": "Quota",
+  "type": "object"
+}

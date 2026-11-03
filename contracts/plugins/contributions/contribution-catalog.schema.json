@@ -1,0 +1,151 @@
+{
+  "$defs": {
+    "ContributionStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "dependencies": {
+          "items": {
+            "$ref": "#/$defs/DependencyStatus"
+          },
+          "type": "array"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "errorCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pluginId": {
+          "type": "string"
+        },
+        "slots": {
+          "items": {
+            "$ref": "#/$defs/DetailSlot"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest",
+        "dependencies",
+        "slots"
+      ],
+      "type": "object"
+    },
+    "DependencyStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "pluginId": {
+          "type": "string"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selectedVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": "string"
+        },
+        "views": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "pluginId",
+        "version",
+        "views",
+        "available"
+      ],
+      "type": "object"
+    },
+    "DetailPlacement": {
+      "enum": [
+        "tab",
+        "card"
+      ],
+      "type": "string"
+    },
+    "DetailSlot": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "objectIds": {
+          "description": "Exact public object IDs or the single wildcard \"*\". Never sent to the guest.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "placement": {
+          "$ref": "#/$defs/DetailPlacement"
+        },
+        "target": {
+          "$ref": "#/$defs/DetailTarget"
+        },
+        "title": {
+          "type": "string"
+        },
+        "viewId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "objectIds",
+        "placement",
+        "viewId",
+        "title"
+      ],
+      "type": "object"
+    },
+    "DetailTarget": {
+      "enum": [
+        "agent",
+        "provider",
+        "account"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "items": {
+        "$ref": "#/$defs/ContributionStatus"
+      },
+      "type": "array"
+    },
+    "schemaVersion": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "items"
+  ],
+  "title": "ContributionCatalog",
+  "type": "object"
+}

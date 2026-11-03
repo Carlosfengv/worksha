@@ -1,0 +1,45 @@
+{
+  "manifestVersion": 1,
+  "id": "org.example.detail-report",
+  "version": "1.0.0",
+  "displayName": "详情扩展摘要",
+  "publisher": "org.example",
+  "hostApi": "^1.0",
+  "runtime": {
+    "kind": "declarative"
+  },
+  "capabilities": [
+    "report.view@1",
+    "ui.contribution@1"
+  ],
+  "requires": [
+    "host.optional-dependencies@1",
+    "host.detail-slots@1"
+  ],
+  "permissions": [
+    {
+      "kind": "domain.query",
+      "query": "gateway.summary"
+    },
+    {
+      "kind": "ui.contribute"
+    }
+  ],
+  "agent": null,
+  "providers": [],
+  "settings": [],
+  "views": [
+    {
+      "id": "summary",
+      "title": "现有网关摘要",
+      "description": "展示此插件已有的授权快照，不自动读取当前详情对象。",
+      "kind": "report"
+    },
+    {
+      "id": "enhanced",
+      "title": "增强摘要",
+      "description": "展示此插件已有的授权快照，不自动读取当前详情对象。",
+      "kind": "report"
+    }
+  ]
+}

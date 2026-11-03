@@ -1,0 +1,19 @@
+{
+  "get_fact_conversation": ["query"],
+  "set_domain_project_visibility": ["input"],
+  "query_unified_facts": ["query"],
+  "query_unified_activity": ["query"],
+  "query_unified_requests": ["query"],
+  "list_full_plugins": [],
+  "inspect_full_plugin_package": [],
+  "install_full_plugin_package": ["input"],
+  "change_full_plugin_state": ["input"],
+  "authorize_domain_source": ["query"],
+  "refresh_domain_source": ["query"],
+  "get_unified_conversation": ["query"],
+  "prepare_domain_source_consent": ["query"],
+  "query_domain_catalog": [],
+  "query_domain_capabilities": [],
+  "query_unified_sessions": ["query"],
+  "set_domain_source_consent": ["input"]
+}

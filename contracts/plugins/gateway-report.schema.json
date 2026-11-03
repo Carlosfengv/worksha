@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "attempts": {
+      "type": "string"
+    },
+    "inputTokens": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "outputTokens": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "rangeEnd": {
+      "type": "string"
+    },
+    "rangeStart": {
+      "type": "string"
+    },
+    "requests": {
+      "type": "string"
+    },
+    "totalTokens": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "requests",
+    "attempts",
+    "rangeStart",
+    "rangeEnd"
+  ],
+  "title": "GatewayReport",
+  "type": "object"
+}

@@ -1,0 +1,70 @@
+{
+  "$defs": {
+    "QueryScope": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ScopeKind"
+        },
+        "sourceIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "sourceIds"
+      ],
+      "type": "object"
+    },
+    "ScopeKind": {
+      "enum": [
+        "builtin",
+        "external",
+        "combined"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "includeGateway": {
+      "description": "Host gateway observations for selected built-in Agent families only.\nThis does not grant native transcript access.",
+      "type": "boolean"
+    },
+    "includeHistorical": {
+      "type": "boolean"
+    },
+    "productId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "rangeSeconds": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "scope": {
+      "$ref": "#/$defs/QueryScope"
+    },
+    "sessionId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "scope",
+    "rangeSeconds",
+    "includeGateway",
+    "includeHistorical"
+  ],
+  "title": "UnifiedActivityQuery",
+  "type": "object"
+}

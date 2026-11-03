@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "hidden": {
+      "type": "boolean"
+    },
+    "projectId": {
+      "type": "string"
+    },
+    "sourceId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "sourceId",
+    "projectId",
+    "hidden"
+  ],
+  "title": "ProjectVisibility",
+  "type": "object"
+}

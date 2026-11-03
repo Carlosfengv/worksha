@@ -1,0 +1,43 @@
+{
+  "$defs": {
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "csv": {
+      "type": "string"
+    },
+    "nextOffset": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Decimal"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "offset": {
+      "$ref": "#/$defs/Decimal"
+    },
+    "operationId": {
+      "type": "string"
+    },
+    "rows": {
+      "$ref": "#/$defs/Decimal"
+    }
+  },
+  "required": [
+    "operationId",
+    "offset",
+    "rows",
+    "csv"
+  ],
+  "title": "Chunk",
+  "type": "object"
+}

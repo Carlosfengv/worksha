@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Selected by the user through a native file picker. Never supplied by a package.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "command": {
+          "type": "string"
+        },
+        "transport": {
+          "const": "stdio",
+          "type": "string"
+        }
+      },
+      "required": [
+        "transport",
+        "command",
+        "args"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "allowPrivateNetwork": {
+          "type": "boolean"
+        },
+        "providerId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "transport": {
+          "const": "http",
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "transport",
+        "url",
+        "allowPrivateNetwork"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "launchToken": {
+          "type": "string"
+        },
+        "transport": {
+          "const": "dsh",
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "transport",
+        "url",
+        "launchToken",
+        "version"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "Connection"
+}

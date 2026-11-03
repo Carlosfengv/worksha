@@ -1,0 +1,103 @@
+{
+  "$defs": {
+    "Budget": {
+      "additionalProperties": false,
+      "properties": {
+        "batchItems": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxDocumentBytes": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "maxRecords": {
+          "$ref": "#/$defs/Decimal"
+        }
+      },
+      "required": [
+        "batchItems",
+        "maxRecords",
+        "maxDocumentBytes"
+      ],
+      "type": "object"
+    },
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "Invocation": {
+      "additionalProperties": false,
+      "properties": {
+        "budget": {
+          "$ref": "#/$defs/Budget"
+        },
+        "catalogRevision": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "deadlineMs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "None preserves the existing native scan policy; external adapters must set a deadline."
+        },
+        "epoch": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "grantRevision": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "implementationIdentity": {
+          "type": "string"
+        },
+        "invocationId": {
+          "type": "string"
+        },
+        "providerKey": {
+          "type": "string"
+        },
+        "resourceRef": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "invocationId",
+        "providerKey",
+        "implementationIdentity",
+        "epoch",
+        "grantRevision",
+        "catalogRevision",
+        "resourceRef",
+        "budget"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Configuration observation has no execution counts or connection proof.",
+  "properties": {
+    "invocation": {
+      "$ref": "#/$defs/Invocation"
+    },
+    "sourceIds": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "invocation",
+    "sourceIds"
+  ],
+  "title": "McpCatalogRequest",
+  "type": "object"
+}

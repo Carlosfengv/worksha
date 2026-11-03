@@ -1,0 +1,70 @@
+{
+  "$defs": {
+    "DraftEndpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "credentialRef": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "vendor": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "endpoint",
+        "protocol",
+        "vendor"
+      ],
+      "type": "object"
+    },
+    "Query": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "allowPrivateNetwork": {
+      "type": "boolean"
+    },
+    "catalog": {
+      "$ref": "#/$defs/Query"
+    },
+    "draft": {
+      "$ref": "#/$defs/DraftEndpoint"
+    },
+    "label": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "catalog",
+    "draft",
+    "label",
+    "allowPrivateNetwork"
+  ],
+  "title": "DraftGrantScope",
+  "type": "object"
+}

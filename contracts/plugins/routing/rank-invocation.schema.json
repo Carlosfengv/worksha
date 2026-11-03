@@ -1,0 +1,129 @@
+{
+  "$defs": {
+    "Candidate": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "$ref": "#/$defs/CandidateCapabilities"
+        },
+        "health": {
+          "$ref": "#/$defs/CandidateHealth"
+        },
+        "modelId": {
+          "description": "Published service model identity, never an endpoint, Provider or wire model name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "modelId",
+        "capabilities",
+        "health"
+      ],
+      "type": "object"
+    },
+    "CandidateCapabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "contextWindow": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "inputModalities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "maxOutputTokens": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "thinking": {
+          "type": "boolean"
+        },
+        "tools": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "contextWindow",
+        "maxOutputTokens",
+        "tools",
+        "thinking",
+        "inputModalities"
+      ],
+      "type": "object"
+    },
+    "CandidateHealth": {
+      "enum": [
+        "unknown",
+        "available",
+        "cooling"
+      ],
+      "type": "string"
+    },
+    "RankRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "description": "In the published service order. Capabilities are already allowed by the host.",
+          "items": {
+            "$ref": "#/$defs/Candidate"
+          },
+          "type": "array"
+        },
+        "configuredOrder": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "defaultModelId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "preferredModelId": {
+          "description": "Only eligible identities are included. Disabled or incompatible entries stay host-private.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "serviceId": {
+          "type": "string"
+        },
+        "serviceVersionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "serviceId",
+        "serviceVersionId",
+        "configuredOrder",
+        "candidates"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The host supplies the digest; a guest only echoes it, never establishes authority.",
+  "properties": {
+    "request": {
+      "$ref": "#/$defs/RankRequest"
+    },
+    "requestIdentity": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "request",
+    "requestIdentity"
+  ],
+  "title": "RankInvocation",
+  "type": "object"
+}

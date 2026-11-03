@@ -1,0 +1,171 @@
+{
+  "$defs": {
+    "PresetAdvice": {
+      "additionalProperties": false,
+      "properties": {
+        "documents": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoints": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "model": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/PresetOrigin"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "sourceName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "origin",
+        "sourceName",
+        "name",
+        "protocol",
+        "endpoints",
+        "model"
+      ],
+      "type": "object"
+    },
+    "PresetIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "errorCode": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "errorCode"
+      ],
+      "type": "object"
+    },
+    "PresetOrigin": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "builtin",
+              "type": "string"
+            },
+            "presetId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "presetId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "digest": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "external",
+              "type": "string"
+            },
+            "pluginId": {
+              "type": "string"
+            },
+            "presetId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "pluginId",
+            "digest",
+            "presetId"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/PresetIssue"
+          },
+          "type": "array"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/PresetAdvice"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "listed",
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "storeId",
+        "items",
+        "issues"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "advice": {
+          "$ref": "#/$defs/PresetAdvice"
+        },
+        "kind": {
+          "const": "resolved",
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "storeId",
+        "advice"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "PresetReply"
+}

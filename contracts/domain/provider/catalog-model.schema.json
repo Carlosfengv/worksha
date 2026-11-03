@@ -1,0 +1,84 @@
+{
+  "$defs": {
+    "ModelCapabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "jsonOutput": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "reasoning": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "structuredOutput": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "tools": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "vision": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "capabilities": {
+      "$ref": "#/$defs/ModelCapabilities"
+    },
+    "contextWindow": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "id": {
+      "type": "string"
+    },
+    "maxInputTokens": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "maxOutputTokens": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "capabilities"
+  ],
+  "title": "CatalogModel",
+  "type": "object"
+}

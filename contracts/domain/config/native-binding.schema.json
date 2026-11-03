@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "endpoint": {
+      "type": "string"
+    },
+    "identity": {
+      "description": "An opaque identity of the host's provider snapshot, never a credential reference.",
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "identity",
+    "endpoint",
+    "model"
+  ],
+  "title": "NativeBinding",
+  "type": "object"
+}

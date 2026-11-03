@@ -1,0 +1,196 @@
+{
+  "$defs": {
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "Money": {
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "currency": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "period": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resetsAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "label",
+        "currency",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "QuotaWindow": {
+      "additionalProperties": false,
+      "properties": {
+        "durationMinutes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "remainingPercent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resetsAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "usedPercent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "type": "object"
+    },
+    "ResetCredits": {
+      "additionalProperties": false,
+      "properties": {
+        "accessMode": {
+          "type": "string"
+        },
+        "availableCount": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "detailsComplete": {
+          "type": "boolean"
+        },
+        "expirations": {
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": "array"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "detailsComplete",
+        "expirations",
+        "accessMode",
+        "reason"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "accountRef": {
+      "type": "string"
+    },
+    "accountType": {
+      "type": "string"
+    },
+    "identity": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "money": {
+      "items": {
+        "$ref": "#/$defs/Money"
+      },
+      "type": "array"
+    },
+    "notes": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "plan": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "resetCredits": {
+      "$ref": "#/$defs/ResetCredits"
+    },
+    "source": {
+      "type": "string"
+    },
+    "sourceAsOf": {
+      "type": "string"
+    },
+    "validForSeconds": {
+      "$ref": "#/$defs/Decimal"
+    },
+    "windows": {
+      "items": {
+        "$ref": "#/$defs/QuotaWindow"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "accountRef",
+    "accountType",
+    "windows",
+    "money",
+    "resetCredits",
+    "sourceAsOf",
+    "validForSeconds",
+    "source",
+    "notes"
+  ],
+  "title": "AccountQuota",
+  "type": "object"
+}

@@ -1,0 +1,43 @@
+{
+  "$defs": {
+    "RequestUnit": {
+      "enum": [
+        "model-response",
+        "logical-request"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "implementationIdentity": {
+      "type": "string"
+    },
+    "providerKey": {
+      "type": "string"
+    },
+    "readRevision": {
+      "type": "string"
+    },
+    "recordId": {
+      "type": "string"
+    },
+    "sourceId": {
+      "type": "string"
+    },
+    "unit": {
+      "$ref": "#/$defs/RequestUnit"
+    }
+  },
+  "required": [
+    "providerKey",
+    "implementationIdentity",
+    "readRevision",
+    "sourceId",
+    "recordId",
+    "unit"
+  ],
+  "title": "RequestRead",
+  "type": "object"
+}

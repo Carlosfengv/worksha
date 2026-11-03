@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "contextId": {
+      "type": "string"
+    },
+    "maxBytes": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "offset": {
+      "type": "string"
+    },
+    "sourceRef": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "contextId",
+    "sourceRef",
+    "offset",
+    "maxBytes"
+  ],
+  "title": "ReadChunk",
+  "type": "object"
+}

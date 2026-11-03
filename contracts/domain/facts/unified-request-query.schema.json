@@ -1,0 +1,163 @@
+{
+  "$defs": {
+    "QueryScope": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ScopeKind"
+        },
+        "sourceIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "sourceIds"
+      ],
+      "type": "object"
+    },
+    "RequestFilter": {
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "productId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "providerKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "search": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "start": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "RequestSort": {
+      "enum": [
+        "time",
+        "tokens",
+        "duration",
+        "ttft",
+        "cost-usd"
+      ],
+      "type": "string"
+    },
+    "RequestUnit": {
+      "enum": [
+        "model-response",
+        "logical-request"
+      ],
+      "type": "string"
+    },
+    "ScopeKind": {
+      "enum": [
+        "builtin",
+        "external",
+        "combined"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "cursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "descending": {
+      "description": "Event time ordered to milliseconds; unknown times always follow known times.",
+      "type": "boolean"
+    },
+    "filter": {
+      "$ref": "#/$defs/RequestFilter"
+    },
+    "includeEvidence": {
+      "description": "Opt in to frozen host matching/billing evidence, never guest claims.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "scope": {
+      "$ref": "#/$defs/QueryScope"
+    },
+    "snapshotToken": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sort": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RequestSort"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Omitted requests keep the original event-time order and JSON shape."
+    },
+    "unit": {
+      "$ref": "#/$defs/RequestUnit"
+    }
+  },
+  "required": [
+    "scope",
+    "unit",
+    "filter",
+    "descending"
+  ],
+  "title": "UnifiedRequestQuery",
+  "type": "object"
+}

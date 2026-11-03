@@ -1,0 +1,111 @@
+{
+  "$defs": {
+    "BindingValue": {
+      "enum": [
+        "endpoint",
+        "model",
+        "credential"
+      ],
+      "type": "string"
+    },
+    "Config": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/ConfigField"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "fields"
+      ],
+      "type": "object"
+    },
+    "ConfigField": {
+      "additionalProperties": false,
+      "properties": {
+        "pointer": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/BindingValue"
+        }
+      },
+      "required": [
+        "pointer",
+        "value"
+      ],
+      "type": "object"
+    },
+    "Connector": {
+      "enum": [
+        "mcp-stdio",
+        "mcp-http",
+        "dsh-sessions"
+      ],
+      "type": "string"
+    },
+    "Protocol": {
+      "additionalProperties": false,
+      "properties": {
+        "baseProtocol": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "baseProtocol",
+        "path"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "config": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Config"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "connector": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Connector"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "protocol": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Protocol"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "schemaVersion": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schemaVersion"
+  ],
+  "title": "Policy",
+  "type": "object"
+}
