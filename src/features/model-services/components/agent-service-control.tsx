@@ -482,12 +482,17 @@ export function AgentServiceControl({
                 <p className="text-label text-fg-muted">
                   原配置加密备份已保存。
                   {transaction.state === "applied"
-                    ? "下次启动客户端后使用新目录；请在新会话核对实际模型。"
+                    ? "请重新启动客户端，在新会话中选择模型。调用期间请保持 Local Agent 运行。"
                     : "确认写入后，按原方式重新启动客户端。关闭此窗口会保留待应用事务，可在连接页继续。"}
                 </p>
                 <p className="break-all text-label text-fg-muted">
                   本机入口：{transaction.routing?.localEndpoint}
                 </p>
+                {agentId === "codex" && transaction.state === "applied" && (
+                  <p className="text-label text-fg-muted">
+                    如果启用了系统代理或代理工具，请将 127.0.0.1 设为直连。
+                  </p>
+                )}
               </>
             )}
             <p role="status" className="text-label text-fg-muted">

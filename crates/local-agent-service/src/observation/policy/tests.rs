@@ -103,6 +103,9 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
                 if model == "one" && body["messages"].to_string().contains("fallback fixture") {
                     return (StatusCode::SERVICE_UNAVAILABLE, "offline upstream busy").into_response();
                 }
+                if body["messages"].to_string().contains("empty gateway fixture") {
+                    return StatusCode::BAD_GATEWAY.into_response();
+                }
                 let result = json!({"id":"msg-service-fixture","type":"message","role":"assistant","model":model,"content":[{"type":"text","text":model}],"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":2}});
                 if body["stream"] == true {
                     let frames = [
@@ -187,11 +190,21 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
         let response = fixture.client.post(format!("{codex}/responses"))
             .bearer_auth("model-service-fixture-key")
             .header("session_id", uuid::Uuid::new_v4().to_string())
-            .json(&json!({"model":catalog["models"][2]["slug"],"input":[{"role":"user","content":[{"type":"input_text","text":"offline fixture"}]}],"store":false,"stream":stream}))
+            .json(&json!({
+                "model":catalog["models"][2]["slug"],
+                "input":[{"type":"message","role":"developer","content":[{"type":"input_text","text":"Offline test instructions"}]},
+                    {"type":"message","role":"user","content":[{"type":"input_text","text":"offline fixture"}]}],
+                "tools":[{"type":"custom","name":"apply_patch","description":"Apply patch","format":{"type":"text"}}],
+                "reasoning":{"effort":"none"},"tool_choice":"auto","parallel_tool_calls":false,
+                "include":["reasoning.encrypted_content"],"store":false,"stream":stream
+            }))
             .send().await.unwrap().error_for_status().unwrap().text().await.unwrap();
         if stream {
             assert!(
-                response.contains("response.completed") && response.contains("\"delta\":\"two\""),
+                response.contains("response.created")
+                    && response.contains("response.output_item.done")
+                    && response.contains("response.completed")
+                    && response.contains("\"delta\":\"two\""),
                 "{response}"
             );
         } else {
@@ -199,6 +212,28 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
             assert_eq!(body["output"][0]["content"][0]["text"], "two");
         }
     }
+    let rejected = fixture.client.post(format!("{codex}/responses"))
+        .bearer_auth("model-service-fixture-key")
+        .json(&json!({"model":catalog["models"][2]["slug"],"input":"empty gateway fixture","stream":true}))
+        .send().await.unwrap();
+    assert_eq!(rejected.status(), StatusCode::BAD_GATEWAY);
+    let error: serde_json::Value = rejected.json().await.unwrap();
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("上游模型接口返回 502")
+    );
+    assert!(
+        fixture
+            .state
+            .observation
+            .hub_rows_for_test()
+            .iter()
+            .any(|row| row.agent_id == "codex"
+                && row.status == "error"
+                && row.http_status == Some(502))
+    );
     let catalog: serde_json::Value = fixture
         .client
         .get(format!("{desktop}/models"))

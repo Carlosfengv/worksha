@@ -1,14 +1,21 @@
 //! Bounded output for local version and process inspection, on a blocking worker.
 use std::{
+    collections::HashSet,
     ffi::{OsStr, OsString},
     io::{ErrorKind, Read},
     os::fd::AsRawFd,
     path::Path,
     process::{Child, Command, Stdio},
+    sync::{LazyLock, Mutex},
     time::{Duration, Instant},
 };
 
 const OUTPUT_LIMIT: usize = 256 * 1024;
+static VERSION_PROBES: LazyLock<Mutex<HashSet<u32>>> = LazyLock::new(Default::default);
+
+pub(super) fn version_probes() -> Option<HashSet<u32>> {
+    Some(VERSION_PROBES.lock().ok()?.clone())
+}
 
 pub(super) fn output(binary: &Path, args: &[&str]) -> Option<String> {
     output_with_budget(binary, args, Duration::from_millis(1200))
@@ -32,17 +39,22 @@ pub(super) fn cli_version(binary: &Path, search_path: &OsStr) -> Option<String> 
         }
     }
     command.arg(binary).arg("--version");
-    run(command, Duration::from_millis(2500))
+    run(command, Duration::from_millis(2500), true)
 }
 
 fn output_with_budget(binary: &Path, args: &[&str], budget: Duration) -> Option<String> {
     let mut command = Command::new(binary);
     command.args(args);
-    run(command, budget)
+    run(command, budget, false)
 }
 
-fn run(mut command: Command, budget: Duration) -> Option<String> {
+fn run(mut command: Command, budget: Duration, version_probe: bool) -> Option<String> {
     let deadline = Instant::now() + budget;
+    let mut probes = if version_probe {
+        Some(VERSION_PROBES.lock().ok()?)
+    } else {
+        None
+    };
     let mut child = command
         .current_dir("/")
         .stdin(Stdio::null())
@@ -50,6 +62,11 @@ fn run(mut command: Command, budget: Duration) -> Option<String> {
         .stderr(Stdio::null())
         .spawn()
         .ok()?;
+    let pid = child.id();
+    if let Some(probes) = probes.as_mut() {
+        probes.insert(pid);
+    }
+    drop(probes);
     let result = collect(&mut child, deadline);
     if result.is_none() {
         // Only this directly spawned child is owned here. Never signal a
@@ -57,6 +74,9 @@ fn run(mut command: Command, budget: Duration) -> Option<String> {
         let _ = child.kill();
     }
     let _ = child.wait();
+    if version_probe {
+        VERSION_PROBES.lock().ok()?.remove(&pid);
+    }
     result
 }
 

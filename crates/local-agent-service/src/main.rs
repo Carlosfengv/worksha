@@ -33,6 +33,22 @@ use std::{
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::args().nth(1).as_deref() == Some("--vault-worker") {
+        local_agent_core::providers::vault::run_worker()?;
+        return Ok(());
+    }
+    if std::env::args().nth(1).as_deref() == Some("--credential") {
+        use local_agent_core::providers::vault::Vault;
+        let reference = std::env::args()
+            .nth(2)
+            .ok_or("Missing credential reference")?;
+        uuid::Uuid::parse_str(&reference).map_err(|_| "Invalid credential reference")?;
+        let secret = local_agent_core::providers::vault::SystemVault
+            .get(&reference)
+            .map_err(|_| "Credential unavailable")?;
+        std::io::stdout().write_all(&secret)?;
+        return Ok(());
+    }
     if std::env::args().nth(1).as_deref() == Some("--plugin-worker") {
         let path = PathBuf::from(std::env::args().nth(2).ok_or("Missing package")?);
         let digest = std::env::args().nth(3).ok_or("Missing digest")?;
@@ -64,25 +80,9 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     local_agent_core::sessions::install_reader_worker(std::env::current_exe()?);
-    if std::env::args().nth(1).as_deref() == Some("--vault-worker") {
-        local_agent_core::providers::vault::run_worker()?;
-        return Ok(());
-    }
     if std::env::args().nth(1).as_deref() == Some("--claude-quota-stdin") {
         let directory = PathBuf::from(std::env::args().nth(2).ok_or("Missing quota directory")?);
         billing::capture_stdin(&directory)?;
-        return Ok(());
-    }
-    if std::env::args().nth(1).as_deref() == Some("--credential") {
-        use local_agent_core::providers::vault::Vault;
-        let reference = std::env::args()
-            .nth(2)
-            .ok_or("Missing credential reference")?;
-        uuid::Uuid::parse_str(&reference).map_err(|_| "Invalid credential reference")?;
-        let secret = local_agent_core::providers::vault::SystemVault
-            .get(&reference)
-            .map_err(|_| "Credential unavailable")?;
-        std::io::stdout().write_all(&secret)?;
         return Ok(());
     }
     let Some(options) = daemon::command(std::env::args().skip(1).collect()).await? else {

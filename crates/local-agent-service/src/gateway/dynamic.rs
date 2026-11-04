@@ -425,6 +425,9 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
                     .and_then(|v| v.to_str().ok())
             })
             .unwrap_or("");
+        if token.is_empty() {
+            return Err(unavailable());
+        }
         uuid::Uuid::parse_str(&b.credential_ref).map_err(|_| unavailable())?;
         let key = credentials.get(&b.credential_ref)?;
         if token.len() != key.len()

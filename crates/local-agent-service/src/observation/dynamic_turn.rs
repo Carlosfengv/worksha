@@ -52,7 +52,8 @@ pub(super) fn responses_projection(body: &Value) -> Result<Value, &'static str> 
     {
         return Err("Responses 模型请求的角色或工具格式无效");
     }
-    let mut messages = crate::gateway::protocol::request("responses", "messages", body, "")?;
+    let (_, portable) = crate::gateway::tools::Tools::prepare("responses", body)?;
+    let mut messages = crate::gateway::protocol::request("responses", "messages", &portable, "")?;
     if body.get("max_output_tokens").is_none_or(Value::is_null) {
         messages.as_object_mut().unwrap().remove("max_tokens");
     }

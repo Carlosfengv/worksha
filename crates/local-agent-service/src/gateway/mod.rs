@@ -500,18 +500,6 @@ pub async fn capture(
     {
         return (StatusCode::NOT_FOUND, "此路由只接收指定 Agent 协议").into_response();
     }
-    let local = match crate::blocking::secret(
-        state.credentials.clone(),
-        route.local_credential_ref.clone(),
-    )
-    .await
-    {
-        Ok(secret) => secret,
-        Err(e) if e.code == "busy" => {
-            return (StatusCode::SERVICE_UNAVAILABLE, e.message).into_response();
-        }
-        Err(_) => return reject(),
-    };
     let auth = request
         .headers()
         .get("authorization")
@@ -524,6 +512,21 @@ pub async fn capture(
                 .and_then(|v| v.to_str().ok())
         })
         .unwrap_or("");
+    if auth.is_empty() {
+        return reject();
+    }
+    let local = match crate::blocking::secret(
+        state.credentials.clone(),
+        route.local_credential_ref.clone(),
+    )
+    .await
+    {
+        Ok(secret) => secret,
+        Err(e) if e.code == "busy" => {
+            return (StatusCode::SERVICE_UNAVAILABLE, e.message).into_response();
+        }
+        Err(_) => return reject(),
+    };
     if auth.len() != local.len()
         || auth
             .bytes()
@@ -533,14 +536,6 @@ pub async fn capture(
     {
         return reject();
     }
-    let upstream = if let Some(reference) = &route.provider.credential_ref {
-        match crate::blocking::secret(state.credentials.clone(), reference.clone()).await {
-            Ok(secret) => Some(secret),
-            Err(e) => return (StatusCode::SERVICE_UNAVAILABLE, e.message).into_response(),
-        }
-    } else {
-        None
-    };
     if codex_catalog {
         return axum::Json(capabilities::codex_catalog(&route.provider, &route.models))
             .into_response();
@@ -578,6 +573,14 @@ pub async fn capture(
         )
         .into_response();
     }
+    let upstream = if let Some(reference) = &route.provider.credential_ref {
+        match crate::blocking::secret(state.credentials.clone(), reference.clone()).await {
+            Ok(secret) => Some(secret),
+            Err(e) => return (StatusCode::SERVICE_UNAVAILABLE, e.message).into_response(),
+        }
+    } else {
+        None
+    };
     forward(
         state,
         Forward {

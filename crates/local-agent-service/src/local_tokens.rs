@@ -329,7 +329,16 @@ pub(crate) fn execute(
         };
         let t = match attachment {
             Some(attachment) => {
-                manager.prepare_model_service(draft, &source, &rendered, route, &attachment)?
+                let codex_catalog = (draft.agent_id == "codex")
+                    .then(|| crate::gateway::codex_catalog::service_catalog_bytes(&attachment));
+                manager.prepare_model_service(
+                    draft,
+                    &source,
+                    &rendered,
+                    route,
+                    &attachment,
+                    codex_catalog.as_deref(),
+                )?
             }
             None => manager.prepare_routed(draft, Some(&source), Some((&rendered, route)))?,
         };

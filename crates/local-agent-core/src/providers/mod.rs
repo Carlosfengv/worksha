@@ -571,7 +571,7 @@ impl ProviderManager {
         provider: Option<&Provider>,
         routed: Option<(&Provider, Routing)>,
     ) -> Result<Transaction, ConfigError> {
-        self.prepare_catalog(draft, provider, routed, None)
+        self.prepare_catalog(draft, provider, routed, None, None)
     }
     pub fn prepare_model_service(
         &self,
@@ -580,13 +580,62 @@ impl ProviderManager {
         rendered: &Provider,
         route: Routing,
         catalog: &crate::model_services::ServiceAttachment,
+        codex_catalog: Option<&[u8]>,
     ) -> Result<Transaction, ConfigError> {
         self.prepare_catalog(
             draft,
             Some(provider),
             Some((rendered, route)),
             Some(catalog),
+            codex_catalog,
         )
+    }
+    fn codex_catalog_path(&self, bytes: &[u8]) -> PathBuf {
+        self.directory
+            .join("codex-catalogs")
+            .join(format!("{}.json", files::hash(bytes)))
+    }
+    fn owned_codex_catalog(&self, doc: &toml_edit::DocumentMut) -> Option<(PathBuf, String)> {
+        let path = PathBuf::from(doc.get("model_catalog_json")?.as_str()?);
+        let digest = path.file_stem()?.to_str()?;
+        (path.parent()? == self.directory.join("codex-catalogs")
+            && path.extension()?.to_str()? == "json"
+            && digest.len() == 64
+            && digest
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)))
+        .then(|| (path.clone(), digest.to_owned()))
+    }
+    pub fn codex_catalog_current(&self, bytes: &[u8]) -> bool {
+        let expected = self.codex_catalog_path(bytes);
+        let Ok(path) = self
+            .adapters
+            .resolve("codex")
+            .and_then(|a| a.path(&self.home))
+        else {
+            return false;
+        };
+        files::read(&path)
+            .and_then(|f| config::parse_toml(f.bytes.as_deref()))
+            .ok()
+            .and_then(|doc| self.owned_codex_catalog(&doc))
+            .is_some_and(|(path, _)| {
+                path == expected
+                    && files::read(&path).is_ok_and(|f| f.bytes.as_deref() == Some(bytes))
+            })
+    }
+    fn check_codex_catalog(&self, after: Option<&[u8]>) -> Result<(), ConfigError> {
+        if let Some(after) = after
+            && let Ok(doc) = config::parse_toml(Some(after))
+            && let Some((path, digest)) = self.owned_codex_catalog(&doc)
+            && files::read(&path)?.stamp.digest.as_deref() != Some(&digest)
+        {
+            return fail(
+                "conflict",
+                "Codex 模型目录缺失或已变化，未写入配置；请重新同步目录",
+            );
+        }
+        Ok(())
     }
     fn prepare_catalog(
         &self,
@@ -594,6 +643,7 @@ impl ProviderManager {
         provider: Option<&Provider>,
         routed: Option<(&Provider, Routing)>,
         catalog: Option<&crate::model_services::ServiceAttachment>,
+        codex_catalog: Option<&[u8]>,
     ) -> Result<Transaction, ConfigError> {
         let _lock = self.lock()?;
         let mut j = self.journal()?;
@@ -658,9 +708,17 @@ impl ProviderManager {
             self.helper_source.clone()
         };
         let adapter = self.adapters.resolve(&draft.agent_id)?;
+        let mut render_input = None;
+        if draft.agent_id == "codex" && before.bytes.is_some() {
+            let mut doc = config::parse_toml(before.bytes.as_deref())?;
+            if self.owned_codex_catalog(&doc).is_some() {
+                doc.remove("model_catalog_json");
+                render_input = Some(doc.to_string().into_bytes());
+            }
+        }
         let (mut after, planning_lease) = self.adapters.plan_native(
             &draft.agent_id,
-            before.bytes.as_deref(),
+            render_input.as_deref().or(before.bytes.as_deref()),
             rendered,
             &helper,
         )?;
@@ -717,6 +775,22 @@ impl ProviderManager {
                 &mut after,
                 catalog,
             )?;
+            if draft.agent_id == "codex" {
+                let bytes = codex_catalog
+                    .filter(|b| !b.is_empty() && b.len() as u64 <= files::LIMIT)
+                    .ok_or_else(|| ConfigError::new("invalid_config", "Codex 模型目录无法生成"))?;
+                let path = self.codex_catalog_path(bytes);
+                files::private_dir(&self.directory.join("codex-catalogs"))?;
+                let snapshot = files::read(&path)?;
+                if snapshot.bytes.as_deref() != Some(bytes) {
+                    files::replace(&path, &snapshot.stamp, Some(bytes), 0o600)?;
+                }
+                let mut doc = config::parse_toml(Some(&after))?;
+                doc["model_catalog_json"] = toml_edit::value(path.to_str().ok_or_else(|| {
+                    ConfigError::new("invalid_config", "Codex 模型目录路径无法表示")
+                })?);
+                after = doc.to_string().into_bytes();
+            }
         }
         if after.len() as u64 > files::LIMIT {
             return fail("invalid_config", "生成的配置超过 1 MiB，原文件未修改");
@@ -907,6 +981,23 @@ impl ProviderManager {
         read_provider: impl FnOnce() -> Result<Option<Provider>, ConfigError>,
         idle: bool,
     ) -> Result<Transaction, ConfigError> {
+        self.apply_checked(id, read_provider, || {
+            if idle {
+                Ok(())
+            } else {
+                fail(
+                    "agent_busy",
+                    "相关 Agent 仍在运行或进程状态无法确认，尚未写入；请关闭相关 Agent 后重试，或撤销待应用事务",
+                )
+            }
+        })
+    }
+    pub fn apply_checked(
+        &self,
+        id: &str,
+        read_provider: impl FnOnce() -> Result<Option<Provider>, ConfigError>,
+        check_idle: impl FnOnce() -> Result<(), ConfigError>,
+    ) -> Result<Transaction, ConfigError> {
         let _lock = self.lock()?;
         let mut j = self.journal()?;
         self.recover(&mut j)?;
@@ -922,12 +1013,6 @@ impl ProviderManager {
         if t.state != "pending" {
             return fail("conflict", "此事务已结束，请重新读取");
         }
-        if !idle {
-            return fail(
-                "agent_busy",
-                "相关 Agent 仍在运行或进程状态无法确认，尚未写入；请关闭相关 Agent 后重试，或撤销待应用事务",
-            );
-        }
         if t.restore_of.is_none() {
             let current_provider = read_provider()?;
             match (&t.provider, current_provider.as_ref()) {
@@ -941,6 +1026,10 @@ impl ProviderManager {
         if files::read(&path)?.stamp != p.before_stamp {
             return fail("conflict", "配置被其他程序修改，未覆盖；请撤销后重新预览");
         }
+        if t.agent_id == "codex" {
+            self.check_codex_catalog(p.after.as_deref())?;
+        }
+        check_idle()?;
         j.transactions[index].state = "applying".into();
         j.transactions[index].activation = Some(Activation {
             state: "awaiting_restart".into(),

@@ -30,6 +30,10 @@ pub(crate) fn service_catalog(service: &ServiceAttachment) -> Value {
     }).collect::<Vec<_>>()})
 }
 
+pub(crate) fn service_catalog_bytes(service: &ServiceAttachment) -> Vec<u8> {
+    service_catalog(service).to_string().into_bytes()
+}
+
 fn entry(
     model: &str,
     display: &str,

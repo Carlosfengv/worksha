@@ -472,6 +472,10 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         .as_ref()
         .and_then(|route| route.service.as_ref())
         .is_none_or(|service| service.capabilities.tools);
+    let codex_service = agent == "codex"
+        && routing
+            .as_ref()
+            .is_some_and(|route| route.service.is_some());
     // Decode text-only replies even on the same protocol: a client can still
     // have tools registered, so unexpected upstream tool calls must not reach it.
     let converted = binding.client_protocol != binding.provider.protocol || !tool_calls_allowed;
@@ -744,39 +748,44 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             .is_some_and(|v| v.starts_with("text/event-stream"));
     let recovery = Arc::new(super::delivery::Recovery::default());
     let delivery_recovery = recovery.clone();
-    if converted {
-        if !status.is_success() {
-            let deadline = tokio::time::Instant::now() + super::delivery::RECOVERY_LIMIT;
-            let mut input = response.bytes_stream();
-            let mut bytes = Vec::new();
-            while let Ok(Some(Ok(chunk))) = tokio::time::timeout_at(deadline, input.next()).await {
-                if bytes.len() + chunk.len() > 64 * 1024 {
-                    break;
-                }
-                bytes.extend_from_slice(&chunk);
+    let codex_upstream_502 = codex_service && status == StatusCode::BAD_GATEWAY;
+    if !status.is_success() && (converted || codex_upstream_502) {
+        let deadline = tokio::time::Instant::now() + super::delivery::RECOVERY_LIMIT;
+        let mut input = response.bytes_stream();
+        let mut bytes = Vec::new();
+        while let Ok(Some(Ok(chunk))) = tokio::time::timeout_at(deadline, input.next()).await {
+            if bytes.len() + chunk.len() > 64 * 1024 {
+                break;
             }
-            let mut update = decode(&bytes, &binding.provider.protocol);
-            update.generated = false;
-            update.text = false;
-            update.estimated_tokens = 0.0;
-            state.observation.hub.update(&id, update);
-            if super::context_budget::is_context_error(&bytes) {
-                guard.finish("error", Some("上游上下文超限"));
-                return super::context_budget::upstream_rejection();
-            }
-            let issue = upstream_rejection(&bytes);
-            guard.finish("error", Some(issue));
-            let mut result = reject(status, issue);
-            if super::policy::permanent_error(&bytes) {
-                result
-                    .extensions_mut()
-                    .insert(super::policy::PermanentReject);
-            }
-            if let Some(value) = retry_after {
-                result.headers_mut().insert("retry-after", value);
-            }
-            return result;
+            bytes.extend_from_slice(&chunk);
         }
+        let mut update = decode(&bytes, &binding.provider.protocol);
+        update.generated = false;
+        update.text = false;
+        update.estimated_tokens = 0.0;
+        state.observation.hub.update(&id, update);
+        if super::context_budget::is_context_error(&bytes) {
+            guard.finish("error", Some("上游上下文超限"));
+            return super::context_budget::upstream_rejection();
+        }
+        let issue = if codex_upstream_502 && bytes.iter().all(u8::is_ascii_whitespace) {
+            "请求已到达 Local Agent，但上游模型接口返回 502。请在 Local Agent 的「请求」查看对应记录。"
+        } else {
+            upstream_rejection(&bytes)
+        };
+        guard.finish("error", Some(issue));
+        let mut result = reject(status, issue);
+        if super::policy::permanent_error(&bytes) {
+            result
+                .extensions_mut()
+                .insert(super::policy::PermanentReject);
+        }
+        if let Some(value) = retry_after {
+            result.headers_mut().insert("retry-after", value);
+        }
+        return result;
+    }
+    if converted {
         if compressed || (streamed && !sse) || (!streamed && sse) {
             guard.finish("error", Some("上游流式 / 编码类型与请求不符"));
             return reject(StatusCode::BAD_GATEWAY, "上游返回的流式或编码类型无法转换");

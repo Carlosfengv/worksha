@@ -108,6 +108,16 @@ try {
   assert.match(codexConfig, /model = "local-agent-default"/);
   assert.match(codexConfig, /model_catalog_url = "http:\/\/127\.0\.0\.1:.*\/v1\/codex\/models\.json"/);
   assert.match(codexConfig, /\[mcp_servers\.keep\]/);
+  const codexCatalogLine = codexConfig.match(/^model_catalog_json = (".*")$/m)[0];
+  const codexCatalogFile = JSON.parse(codexCatalogLine.slice("model_catalog_json = ".length));
+  assert.deepEqual(JSON.parse(readFileSync(codexCatalogFile)).models.map(m => m.slug), [
+    "local-agent-default", ...models.map(m => `local-agent-model-${m.id}`),
+  ]);
+  // Older installs used only the HTTP catalog. Surface a directory sync for those installs.
+  writeFileSync(files.codex, codexConfig.replace(codexCatalogLine + "\n", ""));
+  assert.equal((await api("/api/model-services")).attachments.find(a => a.agentId === "codex").directorySyncRequired, true);
+  writeFileSync(files.codex, codexConfig);
+  assert.equal((await api("/api/model-services")).attachments.find(a => a.agentId === "codex").directorySyncRequired, false);
   for (const agentId of Object.keys(files)) {
     const provider = sources[1];
     const config = (await api("/api/provider-status")).configs.find(c => c.agentId === agentId);
@@ -118,6 +128,7 @@ try {
     assert.notEqual(hash(files[agentId]), installedHashes[agentId]);
     assert.equal((await api("/api/model-services")).attachments.some(a => a.agentId === agentId && a.attached), false);
     if (agentId === "claude") assert.equal(JSON.parse(readFileSync(files.claude)).modelPicker, undefined);
+    if (agentId === "codex") assert.doesNotMatch(readFileSync(files.codex, "utf8"), /^model_catalog_json\s*=/m);
     const restore = await api(`/api/provider-switches/${direct.id}/restore`, {});
     await api(`/api/provider-switches/${restore.id}/apply`, {});
     assert.equal(hash(files[agentId]), installedHashes[agentId]);

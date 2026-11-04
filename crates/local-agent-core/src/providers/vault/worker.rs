@@ -4,8 +4,10 @@ use crate::providers::{ConfigError, files};
 use serde::{Deserialize, Serialize};
 use std::{
     io::{Read, Write},
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::Mutex,
     time::{Duration, Instant},
 };
 use zeroize::Zeroizing;
@@ -13,6 +15,39 @@ use zeroize::Zeroizing;
 #[derive(Serialize, Deserialize)]
 struct Worker {
     digest: String,
+}
+#[derive(PartialEq, Eq)]
+struct WorkerFile {
+    device: u64,
+    inode: u64,
+    len: u64,
+    modified: (i64, i64),
+    changed: (i64, i64),
+}
+static VERIFIED_WORKER: Mutex<Option<(PathBuf, WorkerFile)>> = Mutex::new(None);
+
+fn worker_file(path: &Path) -> Result<WorkerFile, ConfigError> {
+    files::checked_path(path)?;
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|_| ConfigError::new("unavailable", "钥匙串助手缺失或不可读取"))?;
+    if !metadata.is_file()
+        || metadata.nlink() != 1
+        || metadata.uid() != super::super::current_uid()
+        || metadata.mode() & 0o022 != 0
+        || metadata.mode() & 0o111 == 0
+    {
+        return Err(ConfigError::new(
+            "unsafe_path",
+            "钥匙串助手权限或文件类型无效",
+        ));
+    }
+    Ok(WorkerFile {
+        device: metadata.dev(),
+        inode: metadata.ino(),
+        len: metadata.len(),
+        modified: (metadata.mtime(), metadata.mtime_nsec()),
+        changed: (metadata.ctime(), metadata.ctime_nsec()),
+    })
 }
 #[derive(Serialize, Deserialize)]
 struct Request {
@@ -37,18 +72,62 @@ fn executable(directory: &Path, digest: &str) -> Result<PathBuf, ConfigError> {
         return Err(ConfigError::new("unsafe_path", "钥匙串助手摘要无效"));
     }
     let path = directory.join("bin").join(format!("vault-{digest}"));
+    let mut verified = VERIFIED_WORKER
+        .lock()
+        .map_err(|_| ConfigError::new("unavailable", "钥匙串助手核对状态不可用"))?;
+    let identity = worker_file(&path)?;
+    // Cache the executable check only. Each operation still reads the live
+    // Keychain. ctime also changes when an edit restores the original mtime.
+    if verified
+        .as_ref()
+        .is_some_and(|(previous, file)| previous == &path && file == &identity)
+    {
+        return Ok(path);
+    }
     let actual = files::read_executable(&path)?
         .stamp
         .digest
         .ok_or_else(|| ConfigError::new("unavailable", "钥匙串助手缺失"))?;
-    if actual != digest {
+    if actual != digest || worker_file(&path)? != identity {
         return Err(ConfigError::new(
             "unsafe_path",
             "钥匙串助手已被修改，拒绝执行",
         ));
     }
+    *verified = Some((path.clone(), identity));
     Ok(path)
 }
+
+#[cfg(test)]
+#[test]
+fn verified_worker_rechecks_modified_executable() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let bin = tmp.path().join("bin");
+    files::private_dir(&bin).unwrap();
+    let digest = files::hash(b"worker");
+    let path = bin.join(format!("vault-{digest}"));
+    files::atomic_write(&path, b"worker", 0o700).unwrap();
+    assert_eq!(executable(tmp.path(), &digest).unwrap(), path);
+    assert_eq!(executable(tmp.path(), &digest).unwrap(), path);
+    let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+    let file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+    (&file).write_all(b"edited").unwrap();
+    file.set_modified(modified).unwrap();
+    assert_eq!(
+        executable(tmp.path(), &digest).unwrap_err().code,
+        "unsafe_path"
+    );
+    files::atomic_write(&path, b"worker", 0o700).unwrap();
+    assert_eq!(executable(tmp.path(), &digest).unwrap(), path);
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(
+        executable(tmp.path(), &digest).unwrap_err().code,
+        "unsafe_path"
+    );
+}
+
 pub fn install_worker() -> Result<(), ConfigError> {
     let dir = directory().ok_or_else(|| ConfigError::new("unavailable", "用户目录不可用"))?;
     files::private_dir(&dir)?;

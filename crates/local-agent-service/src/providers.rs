@@ -179,8 +179,8 @@ fn compatibility(agent: &str) -> Compatibility {
 
 fn runtimes() -> Vec<Runtime> {
     let fixture = fixture_version("claude").is_some();
-    let (processes, node_commands) = if fixture {
-        (Some(String::new()), Some(String::new()))
+    let snapshot = if fixture {
+        Some(ProcessSnapshot::default())
     } else {
         process_snapshot(true)
     };
@@ -192,9 +192,10 @@ fn runtimes() -> Vec<Runtime> {
                 agent_id: agent.into(),
                 version,
                 supported: result.is_ok(),
-                processes: processes
-                    .as_deref()
-                    .and_then(|text| process_count(agent, text, node_commands.as_deref())),
+                processes: snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.count(agent))
+                    .map(ProcessCount::total),
                 reason: if fixture {
                     "隔离临时目录测试进程状态".into()
                 } else {
@@ -209,106 +210,197 @@ pub(crate) fn require_supported(agent: &str) -> Result<(), ConfigError> {
     compatibility(agent).result
 }
 
-fn agent_idle(agent: &str) -> bool {
-    if fixture_version(agent).is_some() {
-        return true;
-    }
-    let (processes, node_commands) = process_snapshot(agent == "claude");
-    processes
-        .as_deref()
-        .and_then(|text| process_count(agent, text, node_commands.as_deref()))
-        == Some(0)
+#[derive(Default)]
+struct ProcessSnapshot {
+    processes: String,
+    node_commands: Option<String>,
+    probes: std::collections::HashSet<u32>,
 }
-
-fn process_snapshot(need_node_commands: bool) -> (Option<String>, Option<String>) {
+#[derive(Default, Debug, PartialEq, Eq)]
+struct ProcessCount {
+    desktop: usize,
+    other: usize,
+}
+impl ProcessCount {
+    fn total(self) -> usize {
+        self.desktop + self.other
+    }
+}
+fn process_row(line: &str) -> Option<(u32, u32, &str, &str)> {
+    let (pid, rest) = line.trim_start().split_once(char::is_whitespace)?;
+    let (parent, rest) = rest.trim_start().split_once(char::is_whitespace)?;
+    let (status, executable) = rest
+        .trim_start()
+        .split_once(char::is_whitespace)
+        .unwrap_or((rest.trim(), ""));
+    Some((
+        pid.parse().ok()?,
+        parent.parse().ok()?,
+        status,
+        executable.trim(),
+    ))
+}
+fn process_snapshot(need_node_commands: bool) -> Option<ProcessSnapshot> {
     let uid = providers::current_uid().to_string();
-    let processes = output(FilePath::new("/bin/ps"), &["-U", &uid, "-o", "pid=,comm="]);
-    if !need_node_commands {
-        return (processes, None);
-    }
-    let node_pids = processes
-        .as_deref()
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|line| {
-            let (pid, name) = line.trim().split_once(char::is_whitespace)?;
-            (FilePath::new(name.trim()).file_name()?.to_str()? == "node").then_some(pid)
-        })
-        .collect::<Vec<_>>()
-        .join(",");
-    let node_commands = if node_pids.is_empty() {
-        Some(String::new())
-    } else {
-        output(
-            FilePath::new("/bin/ps"),
-            &["-p", &node_pids, "-o", "pid=,args="],
-        )
+    let mut probes = process::version_probes()?;
+    let processes = output(
+        FilePath::new("/bin/ps"),
+        &["-ww", "-U", &uid, "-o", "pid=,ppid=,stat=,comm="],
+    )?;
+    probes.extend(process::version_probes()?);
+    let mut snapshot = ProcessSnapshot {
+        processes,
+        probes,
+        ..Default::default()
     };
-    (processes, node_commands)
-}
-fn process_count(agent: &str, processes: &str, node_commands: Option<&str>) -> Option<usize> {
-    let mut count = 0;
-    for line in processes.lines() {
-        let (pid, executable) = line.trim().split_once(char::is_whitespace)?;
-        let executable = executable.trim();
-        let base = std::path::Path::new(executable).file_name()?.to_str()?;
-        if base == agent
-            || agent == "codex" && ["Codex", "ChatGPT"].contains(&base)
-            || agent == "opencode" && base == "OpenCode"
-            || agent == "claude-desktop" && base == "Claude"
-            || agent == "claude" && executable.contains("/claude/versions/")
-        {
-            count += 1;
-        } else if agent == "claude" && base == "node" {
-            // Read command lines only inside this process. Never return or persist their contents.
-            let command = node_commands?.lines().find_map(|line| {
-                let (id, args) = line.trim().split_once(char::is_whitespace)?;
-                (id == pid).then_some(args.trim())
-            })?;
-            if command.is_empty() {
-                return None;
-            }
-            if command.contains("@anthropic-ai/claude-code/")
-                || command.contains("/claude-code/cli.js")
-            {
-                count += 1;
-            }
+    if need_node_commands {
+        let node_pids = snapshot
+            .processes
+            .lines()
+            .filter_map(process_row)
+            .filter(|(_, _, status, name)| {
+                !status.starts_with('Z')
+                    && FilePath::new(name)
+                        .file_name()
+                        .is_some_and(|base| base == "node")
+            })
+            .map(|(pid, _, _, _)| pid.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        if !node_pids.is_empty() {
+            snapshot.node_commands = output(
+                FilePath::new("/bin/ps"),
+                &["-ww", "-p", &node_pids, "-o", "pid=,args="],
+            );
         }
     }
-    Some(count)
+    Some(snapshot)
+}
+impl ProcessSnapshot {
+    fn count(&self, agent: &str) -> Option<ProcessCount> {
+        let mut count = ProcessCount::default();
+        for line in self
+            .processes
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+        {
+            let (pid, parent, status, executable) = process_row(line)?;
+            if status.starts_with('Z')
+                || (parent == std::process::id() && self.probes.contains(&pid))
+            {
+                continue;
+            }
+            let base = FilePath::new(executable).file_name()?.to_str()?;
+            if agent == "codex" && ["Codex", "ChatGPT"].contains(&base) {
+                count.desktop += 1;
+            } else if base == agent
+                || agent == "opencode" && base == "OpenCode"
+                || agent == "claude-desktop" && base == "Claude"
+                || agent == "claude" && executable.contains("/claude/versions/")
+            {
+                count.other += 1;
+            } else if agent == "claude" && base == "node" {
+                // Never return or persist command lines.
+                let command = self.node_commands.as_deref()?.lines().find_map(|line| {
+                    let (id, args) = line.trim().split_once(char::is_whitespace)?;
+                    (id.parse::<u32>().ok()? == pid).then_some(args.trim())
+                })?;
+                if command.is_empty() {
+                    return None;
+                }
+                if command.contains("@anthropic-ai/claude-code/")
+                    || command.contains("/claude-code/cli.js")
+                {
+                    count.other += 1;
+                }
+            }
+        }
+        Some(count)
+    }
+}
+fn check_idle(state: &AppState, agent: &str) -> Result<(), ConfigError> {
+    let count = if fixture_version(agent).is_some() {
+        ProcessCount::default()
+    } else {
+        process_snapshot(agent == "claude")
+            .and_then(|snapshot| snapshot.count(agent))
+            .ok_or_else(|| {
+                ConfigError::new(
+                    "agent_busy",
+                    "暂时无法确认 Agent 进程状态，尚未写入。请稍后重试，原预览与加密备份仍保留。",
+                )
+            })?
+    };
+    let message = match (agent, count.desktop, count.other) {
+        (_, 0, 0) => None,
+        ("codex", desktop, 0) => Some(format!(
+            "仍检测到 {desktop} 个 Codex／ChatGPT 桌面进程，尚未写入。请在相关 App 中按 ⌘Q 完全退出后重试。"
+        )),
+        ("codex", 0, other) => Some(format!(
+            "仍检测到 {other} 个 Codex CLI 或后台进程，尚未写入。请在原终端或所属应用中正常结束相关任务后重试。"
+        )),
+        ("codex", desktop, other) => Some(format!(
+            "仍检测到 {desktop} 个 Codex／ChatGPT 桌面进程和 {other} 个 Codex CLI 或后台进程，尚未写入。请退出相关应用和终端任务后重试。"
+        )),
+        _ => Some("Agent 仍在运行，尚未写入。请正常退出相关客户端后重试。".into()),
+    };
+    if let Some(message) = message {
+        return Err(ConfigError::new("agent_busy", &message));
+    }
+    let observed_agent = if agent == "claude-desktop" {
+        "claude"
+    } else {
+        agent
+    };
+    if state.observation.active_count(observed_agent) != 0 {
+        return Err(ConfigError::new(
+            "agent_busy",
+            "本机网关仍有此 Agent 的请求未结束，尚未写入。请等待请求结束后重试。",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod runtime_tests {
-    use super::process_count;
+    use super::*;
+    #[test]
+    fn exited_and_owned_version_processes_do_not_block_codex() {
+        let parent = std::process::id();
+        let mut snapshot = ProcessSnapshot {
+            processes: format!(
+                "10 1 Z+ (Codex)\n11 1 Z\n12 {parent} S /app/codex\n13 1 S /Applications/ChatGPT.app/Contents/MacOS/ChatGPT\n14 1 S /app/codex\n15 1 S /Applications/Codex.app/Contents/MacOS/Codex\n"
+            ),
+            probes: [12, 14].into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            snapshot.count("codex"),
+            Some(ProcessCount {
+                desktop: 2,
+                other: 1
+            })
+        );
+        snapshot.processes = format!("10 1 Z+ (Codex)\n11 1 Z\n12 {parent} S /app/codex\n");
+        assert_eq!(snapshot.count("codex").map(ProcessCount::total), Some(0));
+        snapshot.processes.push_str("broken\n");
+        assert_eq!(snapshot.count("codex"), None);
+    }
     #[test]
     fn only_claude_hosts_count_and_unreadable_nodes_remain_unknown() {
-        let processes = "10 /usr/bin/node\n11 /Users/test/.local/share/claude/versions/2.1.286\n12 /usr/bin/node\n13 /app/codex\n14 /app/claude\n";
-        let commands = "10 node /project/node_modules/vite/bin/vite.js\n12 node /npm/@anthropic-ai/claude-code/cli.js\n";
-        assert_eq!(process_count("claude", processes, Some(commands)), Some(3));
-        assert_eq!(process_count("codex", processes, None), Some(1));
-        assert_eq!(
-            process_count(
-                "codex",
-                "10 /Applications/ChatGPT.app/Contents/MacOS/ChatGPT\n11 /app/codex\n12 /Applications/Codex.app/Contents/MacOS/Codex\n",
-                None
-            ),
-            Some(3),
-            "shared config writes must guard both desktop and CLI"
-        );
-        assert_eq!(process_count("claude", processes, None), None);
-        assert_eq!(
-            process_count("claude", processes, Some("10 node app.js")),
-            None
-        );
-        assert_eq!(
-            process_count(
-                "claude",
-                "10 /usr/bin/node",
-                Some("10 node /project/server.js")
-            ),
-            Some(0)
-        );
+        let mut snapshot = ProcessSnapshot {
+            processes: "10 1 S /usr/bin/node\n11 1 S /Users/test/.local/share/claude/versions/2.1.286\n12 1 S /usr/bin/node\n13 1 S /app/codex\n14 1 S /app/claude\n".into(),
+            node_commands: Some("10 node /project/node_modules/vite/bin/vite.js\n12 node /npm/@anthropic-ai/claude-code/cli.js\n".into()),
+            ..Default::default()
+        };
+        assert_eq!(snapshot.count("claude").map(ProcessCount::total), Some(3));
+        assert_eq!(snapshot.count("codex").map(ProcessCount::total), Some(1));
+        snapshot.node_commands = None;
+        assert_eq!(snapshot.count("claude"), None);
+        snapshot.node_commands = Some("10 node app.js".into());
+        assert_eq!(snapshot.count("claude"), None);
+        snapshot.processes = "10 1 S /usr/bin/node".into();
+        assert_eq!(snapshot.count("claude").map(ProcessCount::total), Some(0));
     }
 }
 pub async fn status(State(state): State<AppState>) -> ApiResult {
@@ -644,7 +736,7 @@ async fn switch(state: AppState, id: String, commit: bool) -> ApiResult {
             return json_value(m.check_switch(&id, current.as_ref()).map_err(error)?);
         }
         json_value(
-            m.apply_with_provider(
+            m.apply_checked(
                 &id,
                 || {
                     t.provider
@@ -659,15 +751,7 @@ async fn switch(state: AppState, id: String, commit: bool) -> ApiResult {
                         })
                         .transpose()
                 },
-                agent_idle(&t.agent_id)
-                    && state
-                        .observation
-                        .active_count(if t.agent_id == "claude-desktop" {
-                            "claude"
-                        } else {
-                            &t.agent_id
-                        })
-                        == 0,
+                || check_idle(&state, &t.agent_id),
             )
             .map_err(error)?,
         )

@@ -60,7 +60,8 @@ pub async fn list(State(state): State<AppState>) -> ApiResult {
                 let a_ids=a.installed.models.iter().map(|m|(&m.id,&m.name,&m.capabilities)).collect::<Vec<_>>();
                 let b_ids=s.models.iter().map(|m|(&m.id,&m.name,&m.capabilities)).collect::<Vec<_>>();
                 a_ids!=b_ids || a.installed.name!=s.name
-            });
+            }) || (attached && binding.is_some_and(|b| b.agent_id == "codex")
+                && !m.codex_catalog_current(&crate::gateway::codex_catalog::service_catalog_bytes(&a)));
             json!({"bindingId":a.binding_id,"serviceId":a.service_id,"installed":a.installed,"agentId":binding.map(|b|&b.agent_id),"localEndpoint":endpoint,"attached":attached,"referenced":referenced,"configurationUnknown":configuration_unknown,"directorySyncRequired":directory_sync_required})
         }).collect::<Vec<_>>();
         let health=services.iter().flat_map(|s|s.models.iter().map(|m|json!({"serviceId":s.id,"modelId":m.id,"status":crate::observation::policy::health(&store,&m.provider)}))).collect::<Vec<_>>();
