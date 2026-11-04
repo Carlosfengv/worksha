@@ -1,6 +1,6 @@
 # 固定入口与动态路由
 
-0.1.4 新增，首批支持 Claude Code CLI 与 OpenCode。Codex CLI / 桌面继续使用原固定路由和共享配置，Antigravity 保持只读。
+0.1.4 新增的单模型动态绑定支持 Claude Code CLI 与 OpenCode。Codex CLI / 桌面共用配置，可选择固定 Provider 或模型服务。Antigravity 桌面端在客户端内选择模型。
 
 0.1.5 主入口升级为 [模型服务](model-services.md)：先将跨 Provider 模型组织为服务，再由 Agent 选择服务及默认 / 指定模型。下述 Provider 动态预览描述 0.1.4 兼容接口；原绑定、旧路由与备份继续有效，迁移需一次原生配置预览，升级不会自动改文件。
 

@@ -88,6 +88,175 @@ struct Fixture {
     tasks: Vec<tokio::task::JoinHandle<()>>,
     root: tempfile::TempDir,
 }
+
+#[tokio::test]
+async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
+    let vault = Arc::new(MemoryVault::default());
+    let mut fixture = Fixture::new(vault.clone()).await;
+    let upstream = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = upstream.local_addr().unwrap();
+    fixture.tasks.push(tokio::spawn(async move {
+        let router = axum::Router::new().route("/v1/messages", axum::routing::post(
+            |axum::Json(body): axum::Json<serde_json::Value>| async move {
+                assert_eq!(body["thinking"]["type"], "disabled");
+                let model = body["model"].as_str().unwrap();
+                if model == "one" && body["messages"].to_string().contains("fallback fixture") {
+                    return (StatusCode::SERVICE_UNAVAILABLE, "offline upstream busy").into_response();
+                }
+                let result = json!({"id":"msg-service-fixture","type":"message","role":"assistant","model":model,"content":[{"type":"text","text":model}],"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":2}});
+                if body["stream"] == true {
+                    let frames = [
+                        json!({"type":"message_start","message":{"id":"msg-service-fixture","type":"message","role":"assistant","model":model,"content":[],"usage":{"input_tokens":10}}}),
+                        json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}),
+                        json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":model}}),
+                        json!({"type":"content_block_stop","index":0}),
+                        json!({"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}),
+                        json!({"type":"message_stop"}),
+                    ].map(|event| format!("data: {event}\n\n")).join("");
+                    return ([("content-type", "text/event-stream")], frames).into_response();
+                }
+                axum::Json(result).into_response()
+            }
+        ));
+        axum::serve(upstream, router).await.unwrap();
+    }));
+    let mut provider = fixture.provider();
+    provider.endpoint = format!("http://{address}");
+    provider.model = "one".into();
+    provider.models = vec!["one".into(), "two".into()];
+    let first = uuid::Uuid::new_v4().to_string();
+    let second = uuid::Uuid::new_v4().to_string();
+    let reference = uuid::Uuid::new_v4().to_string();
+    vault.set(&reference, b"model-service-fixture-key").unwrap();
+    let (codex, desktop) = {
+        let store = fixture.state.store.lock().unwrap();
+        store.save_provider(provider.clone()).unwrap();
+        let caps = json!({"contextWindow":96000,"maxOutputTokens":4096,"tools":true,"thinking":false,"inputModalities":["text"]});
+        let service = store.save_model_service(serde_json::from_value(json!({
+            "id":uuid::Uuid::new_v4().to_string(), "revision":0,"name":"Fixture service","defaultModelId":first,
+            "models":[{"id":first,"name":"One","providerId":provider.id,"model":"one","capabilities":caps},
+                      {"id":second,"name":"Two","providerId":provider.id,"model":"two","capabilities":caps}],
+            "routingPolicy":{"enabled":true}
+        })).unwrap()).unwrap();
+        let make = |agent| {
+            store
+                .create_model_service_binding(agent, "fixture", &reference, &service)
+                .unwrap()
+                .0
+        };
+        (make("codex"), make("claude-desktop"))
+    };
+    let codex = crate::gateway::dynamic::configured_endpoint(&fixture.state, &codex);
+    let desktop = format!(
+        "{}/v1",
+        crate::gateway::dynamic::configured_endpoint(&fixture.state, &desktop)
+    );
+    let codex_catalog = format!("{codex}/codex/models.json?client_version=0.166.0-alpha.6");
+    assert_eq!(
+        fixture
+            .client
+            .get(&codex_catalog)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let catalog: serde_json::Value = fixture
+        .client
+        .get(codex_catalog)
+        .bearer_auth("model-service-fixture-key")
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        catalog["models"][0]["slug"],
+        local_agent_core::routing::ALIAS
+    );
+    assert_eq!(
+        catalog["models"][2]["slug"],
+        format!("local-agent-model-{second}")
+    );
+    assert_eq!(catalog["models"][2]["context_window"], 96000);
+    for stream in [false, true] {
+        let response = fixture.client.post(format!("{codex}/responses"))
+            .bearer_auth("model-service-fixture-key")
+            .header("session_id", uuid::Uuid::new_v4().to_string())
+            .json(&json!({"model":catalog["models"][2]["slug"],"input":[{"role":"user","content":[{"type":"input_text","text":"offline fixture"}]}],"store":false,"stream":stream}))
+            .send().await.unwrap().error_for_status().unwrap().text().await.unwrap();
+        if stream {
+            assert!(
+                response.contains("response.completed") && response.contains("\"delta\":\"two\""),
+                "{response}"
+            );
+        } else {
+            let body: serde_json::Value = serde_json::from_str(&response).unwrap();
+            assert_eq!(body["output"][0]["content"][0]["text"], "two");
+        }
+    }
+    let catalog: serde_json::Value = fixture
+        .client
+        .get(format!("{desktop}/models"))
+        .bearer_auth("model-service-fixture-key")
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let desktop_default = local_agent_core::model_services::client_model_id(
+        "claude-desktop",
+        local_agent_core::routing::ALIAS,
+    );
+    assert_eq!(catalog["data"][0]["id"], desktop_default);
+    let response: serde_json::Value = fixture.client.post(format!("{desktop}/messages"))
+        .bearer_auth("model-service-fixture-key")
+        .header("session_id", uuid::Uuid::new_v4().to_string())
+        .json(&json!({"model":desktop_default,"max_tokens":30,"messages":[{"role":"user","content":"offline fixture"}]}))
+        .send().await.unwrap().error_for_status().unwrap().json().await.unwrap();
+    assert_eq!(response["content"][0]["text"], "one");
+
+    let session = uuid::Uuid::new_v4().to_string();
+    let user = json!({"type":"message","role":"user","content":"fallback fixture"});
+    let request = |input| {
+        fixture
+            .client
+            .post(format!("{codex}/responses"))
+            .bearer_auth("model-service-fixture-key")
+            .header("session_id", &session)
+            .json(&json!({"model":local_agent_core::routing::ALIAS,"input":input}))
+    };
+    let fallback: serde_json::Value = request(json!([user]))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(fallback["output"][0]["content"][0]["text"], "two");
+    let continuation: serde_json::Value = request(json!([user,
+        {"type":"function_call","call_id":"fixture-call","name":"read","arguments":"{}"},
+        {"type":"function_call_output","call_id":"fixture-call","output":"fixture output"}
+    ]))
+    .send()
+    .await
+    .unwrap()
+    .error_for_status()
+    .unwrap()
+    .json()
+    .await
+    .unwrap();
+    assert_eq!(continuation["output"][0]["content"][0]["text"], "two");
+}
 impl Drop for Fixture {
     fn drop(&mut self) {
         for task in &self.tasks {

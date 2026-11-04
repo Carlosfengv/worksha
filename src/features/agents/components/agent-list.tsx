@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable, useDataTable } from "@/components/ui/data-table";
 import { connectionView } from "@/features/agents/connection-display";
-import { AgentProviderSelect } from "@/features/providers/components/agent-provider-select";
 import { activationLabel } from "@/features/providers/components/provider-activation-status";
 import { ProviderConfigControl } from "@/features/providers/components/provider-config-control";
 import { AgentServiceControl } from "@/features/model-services/components/agent-service-control";
@@ -101,37 +100,28 @@ const columns: ColumnDef<AgentRow>[] = [
   {
     id: "provider",
     size: 264,
-    header: () => <span className="block text-right">模型服务 / 兼容连接</span>,
+    header: () => <span className="block text-right">模型连接</span>,
     cell: ({ row: { original: item } }) => (
       <div
         className="flex justify-end"
         onClick={(event) => event.stopPropagation()}
         onKeyDown={(event) => event.stopPropagation()}
       >
-        {["claude", "opencode"].includes(item.agent.configId) ? (
-          <AgentServiceControl
-            compact
-            agentId={item.agent.configId}
-            name={item.agent.name}
-            providers={item.data.providers}
-            status={item.status}
-            catalog={item.services}
-            unavailable={item.unavailable || item.servicesUnavailable}
-            reload={item.reloadServices}
-          />
-        ) : (
-          <AgentProviderSelect
-            name={item.agent.name}
-            configId={item.agent.configId}
-            providers={item.data.providers}
-            status={item.status}
-            checking={item.checking}
-            unavailable={item.unavailable}
-            onSelect={(config, providerId) =>
-              item.onSelect(item.agent, config, providerId)
-            }
-          />
-        )}
+        <AgentServiceControl
+          compact
+          agentId={item.agent.configId}
+          name={item.agent.name}
+          providers={item.data.providers}
+          status={item.status}
+          catalog={item.services}
+          checking={item.checking}
+          unavailable={item.unavailable}
+          servicesUnavailable={item.servicesUnavailable}
+          onProviderSelect={(config, providerId) =>
+            item.onSelect(item.agent, config, providerId)
+          }
+          reload={item.reloadServices}
+        />
       </div>
     ),
   },
@@ -241,7 +231,7 @@ export function AgentList({ data }: { data: Snapshot }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-body text-fg-muted">
-          {data.agents.length} 个 Agent · 选择模型服务；未适配客户端保留兼容连接
+          {data.agents.length} 个 Agent · 选择 Provider 或模型服务
         </p>
         <Button
           variant="tertiary"

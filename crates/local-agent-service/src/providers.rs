@@ -326,6 +326,11 @@ pub async fn status(State(state): State<AppState>) -> ApiResult {
         {
             let store = state.store.lock().map_err(|_| error(unavailable()))?;
             let bindings = store.dynamic_bindings().map_err(error)?;
+            let service_bindings: std::collections::HashSet<_> = store
+                .model_service_binding_ids()
+                .map_err(error)?
+                .into_iter()
+                .collect();
             value["dynamicBindings"] = json!(
                 bindings
                     .iter()
@@ -333,6 +338,9 @@ pub async fn status(State(state): State<AppState>) -> ApiResult {
                         let mut v = json!(b);
                         v["localEndpoint"] =
                             json!(crate::gateway::dynamic::configured_endpoint(&state, b));
+                        if service_bindings.contains(&b.id) {
+                            v["modelService"] = json!(true);
+                        }
                         if let Some(row)=observed.iter().find(|row|row.routing.as_ref().is_some_and(|r|r.binding_id==b.id)) {
                             v["lastObserved"]=json!({"providerName":row.provider,"model":row.routed_model,"status":row.status,"routeVersionId":row.routing.as_ref().map(|r|&r.route_version_id),"startedAt":row.started_at});
                         }

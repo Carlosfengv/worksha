@@ -7,6 +7,7 @@ use axum::{
 };
 use local_agent_core::{
     Provider,
+    model_services::{self, CONNECTION_AGENTS},
     providers::{BindingDraft, ConfigError, Routing, fingerprint, select_model},
     routing::{self, Binding},
 };
@@ -80,7 +81,11 @@ pub fn configured_endpoint(state: &AppState, b: &Binding) -> String {
     format!(
         "{}{}",
         endpoint(state, b),
-        if b.agent_id == "opencode" { "/v1" } else { "" }
+        if ["opencode", "codex"].contains(&b.agent_id.as_str()) {
+            "/v1"
+        } else {
+            ""
+        }
     )
 }
 pub(crate) fn client(state: &AppState, b: &Binding) -> Provider {
@@ -90,11 +95,23 @@ pub(crate) fn client(state: &AppState, b: &Binding) -> Provider {
     p.model = routing::ALIAS.into();
     p.models = vec![];
     p.disabled_models = vec![];
-    p.endpoint = endpoint(state, b);
-    p.protocol = "messages".into();
+    p.endpoint = if b.agent_id == "codex" {
+        configured_endpoint(state, b)
+    } else {
+        endpoint(state, b)
+    };
+    p.protocol = client_protocol(&b.agent_id).into();
     p.credential_ref = Some(b.credential_ref.clone());
     p.credential_label = Some("固定本机入口认证".into());
     p
+}
+
+fn client_protocol(agent: &str) -> &'static str {
+    if agent == "codex" {
+        "responses"
+    } else {
+        "messages"
+    }
 }
 pub async fn connect(State(state): State<AppState>, Json(draft): Json<BindingDraft>) -> ApiResult {
     crate::blocking::run(move || {
@@ -360,22 +377,38 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
             .map_err(|_| unavailable())?
             .dynamic_binding(&id)?
             .ok_or_else(unavailable)?;
-        if b.agent_id != "claude" && b.agent_id != "opencode" {
+        if !CONNECTION_AGENTS.contains(&b.agent_id.as_str()) {
             return Err(unavailable());
         }
         let path = request.uri().path();
         let prefix = format!("/gateway/{id}/v1/");
         let catalog =
             request.method() == axum::http::Method::GET && path == format!("{prefix}models");
+        let codex_catalog = b.agent_id == "codex"
+            && request.method() == axum::http::Method::GET
+            && path == format!("{prefix}codex/models.json");
+        let protocol = client_protocol(&b.agent_id);
         if !catalog
-            && (request.method() != axum::http::Method::POST || path != format!("{prefix}messages"))
+            && !codex_catalog
+            && (request.method() != axum::http::Method::POST
+                || path != format!("{prefix}{protocol}"))
         {
             return Err(unavailable());
         }
         let query = if catalog {
             Some(CatalogQuery::parse(request.uri().query())?)
         } else {
-            if request.uri().query().is_some_and(|q| q != "beta=true") {
+            if let Some(q) = request.uri().query()
+                && !(if codex_catalog {
+                    let mut pairs = url::form_urlencoded::parse(q.as_bytes());
+                    pairs.next().is_some_and(|(key, version)| {
+                        key == "client_version"
+                            && super::codex_catalog::valid_client_version(&version)
+                    }) && pairs.next().is_none()
+                } else {
+                    protocol == "messages" && q == "beta=true"
+                })
+            {
                 return Err(unavailable());
             }
             None
@@ -407,7 +440,10 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
             .lock()
             .map_err(|_| unavailable())?
             .model_service_attachment(&b.id)?;
-        Ok::<_, ConfigError>((request, b, query, service))
+        if service.is_none() && !["claude", "opencode"].contains(&b.agent_id.as_str()) {
+            return Err(unavailable());
+        }
+        Ok::<_, ConfigError>((request, b, query, codex_catalog, service))
     })
     .await;
     let result = match result {
@@ -420,9 +456,12 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
                 .into_response();
         }
     };
-    let Ok((mut request, b, query, service)) = result else {
+    let Ok((mut request, b, query, codex_catalog, service)) = result else {
         return (StatusCode::UNAUTHORIZED, "未授权的动态入口").into_response();
     };
+    if codex_catalog && let Some(service) = &service {
+        return Json(super::codex_catalog::service_catalog(service)).into_response();
+    }
     if let Some(query) = query {
         let entries = service.as_ref().map(|s| s.catalog()).unwrap_or_else(|| {
             vec![(
@@ -433,7 +472,11 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
         });
         let after = query.after_id.as_deref();
         let start = after
-            .and_then(|id| entries.iter().position(|(entry, _, _)| entry == id))
+            .and_then(|id| {
+                entries.iter().position(|(entry, _, _)| {
+                    model_services::client_model_id(&b.agent_id, entry) == id
+                })
+            })
             .map_or(0, |i| i + 1);
         if after.is_some() && start == 0 {
             return (StatusCode::BAD_REQUEST, "模型目录游标无效").into_response();
@@ -444,7 +487,7 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
             .take(query.limit)
             .map(|(id, name, capabilities)| {
                 json!({
-                    "id": id,
+                    "id": model_services::client_model_id(&b.agent_id, id),
                     "display_name": name,
                     "type": "model",
                     "description": format!(
@@ -465,21 +508,21 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
         binding: b.clone(),
         service,
     });
+    let protocol = client_protocol(&b.agent_id);
+    let (agent, product) = match b.agent_id.as_str() {
+        "claude-desktop" => ("claude".into(), Some("claude-code-desktop".into())),
+        "claude" => (b.agent_id, Some("claude-code-cli".into())),
+        "opencode" => (b.agent_id, Some("opencode".into())),
+        _ => (b.agent_id, None),
+    };
     crate::observation::proxy::forward(
         state,
         crate::observation::proxy::Forward {
-            agent_product_id: Some(
-                if b.agent_id == "claude" {
-                    "claude-code-cli"
-                } else {
-                    "opencode"
-                }
-                .into(),
-            ),
+            agent_product_id: product,
             provider: b.target.provider,
-            agent: b.agent_id,
+            agent,
             revision: 1,
-            client_protocol: "messages".into(),
+            client_protocol: protocol.into(),
             credential: None,
             managed: true,
             models: vec![],

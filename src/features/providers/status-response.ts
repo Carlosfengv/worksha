@@ -120,6 +120,7 @@ const binding: Decoder<DynamicBinding> = shape({
   agentId: nonempty(),
   scope: text(),
   localEndpoint: url,
+  modelService: optional(boolean),
   lastObserved: optional(
     shape({
       providerName: text(),

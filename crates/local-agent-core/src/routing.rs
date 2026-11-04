@@ -182,11 +182,8 @@ fn create_binding(
     provider: &Provider,
 ) -> Result<Binding, ConfigError> {
     uuid::Uuid::parse_str(id).map_err(self::db)?;
-    if !["claude", "opencode"].contains(&agent) {
-        return fail(
-            "unsupported",
-            "动态接入当前支持 Claude Code CLI 与 OpenCode",
-        );
+    if !crate::model_services::CONNECTION_AGENTS.contains(&agent) {
+        return fail("unsupported", "此 Agent 尚未支持模型服务接入");
     }
     uuid::Uuid::parse_str(credential).map_err(self::db)?;
     validate_source(provider)?;
@@ -244,6 +241,9 @@ impl Store {
         credential: &str,
         provider: &Provider,
     ) -> Result<Binding, ConfigError> {
+        if !["claude", "opencode"].contains(&agent) {
+            return fail("unsupported", "此 Agent 尚未支持单模型动态接入");
+        }
         let tx = Transaction::new_unchecked(&self.connection, TransactionBehavior::Immediate)
             .map_err(db_error)?;
         let binding = create_binding(

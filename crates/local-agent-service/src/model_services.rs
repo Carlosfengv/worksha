@@ -5,7 +5,7 @@ use axum::{
 };
 use local_agent_core::{
     model_services::{
-        ModelService, ServiceDraft,
+        CONNECTION_AGENTS, ModelService, ServiceDraft,
         operations::{OperationAction, OperationRequest, RECEIPT_LIMIT},
     },
     providers::{BindingDraft, ConfigError, fingerprint, select_model},
@@ -64,7 +64,7 @@ pub async fn list(State(state): State<AppState>) -> ApiResult {
             json!({"bindingId":a.binding_id,"serviceId":a.service_id,"installed":a.installed,"agentId":binding.map(|b|&b.agent_id),"localEndpoint":endpoint,"attached":attached,"referenced":referenced,"configurationUnknown":configuration_unknown,"directorySyncRequired":directory_sync_required})
         }).collect::<Vec<_>>();
         let health=services.iter().flat_map(|s|s.models.iter().map(|m|json!({"serviceId":s.id,"modelId":m.id,"status":crate::observation::policy::health(&store,&m.provider)}))).collect::<Vec<_>>();
-        Ok(Json(json!({"services":services,"attachments":attachments,"routingHealth":health,"writeProtocol":{"version":1,"receiptLimit":RECEIPT_LIMIT,"storeId":store.model_service_operation_store_id().map_err(providers::error)?}})))
+        Ok(Json(json!({"services":services,"attachments":attachments,"connectionAgents":CONNECTION_AGENTS,"routingHealth":health,"writeProtocol":{"version":1,"receiptLimit":RECEIPT_LIMIT,"storeId":store.model_service_operation_store_id().map_err(providers::error)?}})))
     }).await.map_err(|e|providers::error(crate::blocking::config_error(e)))?
 }
 pub async fn save(State(state): State<AppState>, Json(draft): Json<ServiceDraft>) -> ApiResult {
@@ -220,10 +220,10 @@ pub struct Connect {
 }
 pub async fn connect(State(state): State<AppState>, Json(input): Json<Connect>) -> ApiResult {
     crate::blocking::run(move || {
-        if !["claude", "opencode"].contains(&input.agent_id.as_str()) {
+        if !CONNECTION_AGENTS.contains(&input.agent_id.as_str()) {
             return Err(providers::error(ConfigError::new(
                 "unsupported",
-                "模型服务首批支持 Claude Code CLI 与 OpenCode；其他客户端保留兼容连接",
+                "此 Agent 尚未支持模型服务接入",
             )));
         }
         providers::require_supported(&input.agent_id).map_err(providers::error)?;

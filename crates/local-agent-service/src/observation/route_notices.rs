@@ -200,6 +200,9 @@ pub(super) fn apply(
     let Ok(request) = serde_json::from_slice::<Value>(request) else {
         return response;
     };
+    if request.get("input").is_some() {
+        return response;
+    }
     let claim = Claim {
         state,
         binding,

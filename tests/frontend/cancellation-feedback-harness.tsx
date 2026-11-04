@@ -187,6 +187,9 @@ root.render(
           providers={[provider]}
           status={status}
           catalog={catalog}
+          onProviderSelect={() => {
+            throw new Error("unexpected Provider selection");
+          }}
           reload={() => {}}
         />
       ) : (

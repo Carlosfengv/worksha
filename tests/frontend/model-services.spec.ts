@@ -97,7 +97,7 @@ test("native enrollment blocks running clients, preserves dismissed previews, an
     "/tests/frontend/model-services.html?agent=opencode&running=1",
   );
   await page
-    .getByRole("combobox", { name: "OpenCode 模型服务", exact: true })
+    .getByRole("combobox", { name: "OpenCode 模型连接", exact: true })
     .click();
   await page.getByRole("option", { name: "编程服务", exact: true }).click();
   await page.getByRole("button", { name: "验证并生成预览" }).click();
@@ -111,29 +111,34 @@ test("native enrollment blocks running clients, preserves dismissed previews, an
     await page.evaluate(() => window.modelServiceFixture.config.revision),
   ).toBe("original");
   await page.keyboard.press("Escape");
-  await page.getByText("配置备份与恢复（1）", { exact: true }).click();
-  await expect(
-    page.getByRole("region", { name: "模型服务配置备份" }).getByRole("table"),
-  ).toContainText("待应用");
+  const history = page.getByRole("region", { name: "配置切换与备份记录" });
+  await expect(history).toContainText("待应用");
   await page.evaluate(() => {
     window.modelServiceFixture.processes = 0;
     window.dispatchEvent(new Event("provider-status-changed"));
   });
-  await page.getByRole("button", { name: "应用预览", exact: true }).click();
+  const applyPreview = async () => {
+    await history
+      .getByRole("button", { name: "重启 Agent 并生效", exact: true })
+      .click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "已退出，应用配置", exact: true })
+      .click();
+  };
+  await applyPreview();
   await expect(page.getByText("默认：Pro", { exact: true })).toBeVisible();
   await expect(
-    page.getByRole("combobox", { name: "OpenCode 模型服务", exact: true }),
-  ).toContainText("编程服务");
+    page.getByRole("status", { name: "OpenCode 当前连接", exact: true }),
+  ).toHaveText("模型服务 · 编程服务");
   await page
     .getByRole("button", { name: "预览恢复原配置", exact: true })
     .click();
-  await expect(
-    page.getByRole("region", { name: "模型服务配置备份" }).getByRole("table"),
-  ).toContainText("恢复服务接入前配置");
+  await expect(history).toContainText("恢复服务接入前配置");
   expect(
     await page.evaluate(() => window.modelServiceFixture.config.revision),
   ).toBe("installed");
-  await page.getByRole("button", { name: "应用预览", exact: true }).click();
+  await applyPreview();
   await expect(
     page.getByText("尚未接入模型服务", { exact: true }),
   ).toBeVisible();
@@ -264,7 +269,7 @@ test("dismissed service previews resume without preparing or verifying a second 
 }) => {
   await page.goto("/tests/frontend/model-services.html?agent=opencode");
   await page
-    .getByRole("combobox", { name: "OpenCode 模型服务", exact: true })
+    .getByRole("combobox", { name: "OpenCode 模型连接", exact: true })
     .click();
   await page.getByRole("option", { name: "编程服务", exact: true }).click();
   await page
@@ -279,7 +284,7 @@ test("dismissed service previews resume without preparing or verifying a second 
   await page.keyboard.press("Escape");
   await expect(page.getByText("有未完成的切换", { exact: true })).toBeVisible();
   await expect(
-    page.getByRole("combobox", { name: "OpenCode 模型服务", exact: true }),
+    page.getByRole("combobox", { name: "OpenCode 模型连接", exact: true }),
   ).toBeDisabled();
   await page.getByRole("button", { name: "继续处理", exact: true }).click();
   await expect(
@@ -312,13 +317,13 @@ test("existing previews can be cancelled without changing the native config and 
   );
   await expect(page.getByText("有未完成的切换", { exact: true })).toBeVisible();
   await expect(
-    page.getByRole("combobox", { name: "OpenCode 模型服务", exact: true }),
+    page.getByRole("combobox", { name: "OpenCode 模型连接", exact: true }),
   ).toBeDisabled();
   await page
     .getByRole("button", { name: "撤销待应用切换", exact: true })
     .click();
   await expect(
-    page.getByRole("combobox", { name: "OpenCode 模型服务", exact: true }),
+    page.getByRole("combobox", { name: "OpenCode 模型连接", exact: true }),
   ).toBeEnabled();
   expect(
     await page.evaluate(() => window.modelServiceFixture.config.revision),
@@ -342,7 +347,7 @@ test("a legacy pending transaction still exposes cancellation instead of trappin
     .getByRole("button", { name: "撤销待应用切换", exact: true })
     .click();
   await expect(
-    page.getByRole("combobox", { name: "OpenCode 模型服务", exact: true }),
+    page.getByRole("combobox", { name: "OpenCode 模型连接", exact: true }),
   ).toBeEnabled();
   expect(
     await page.evaluate(() => window.modelServiceFixture.config.revision),

@@ -325,6 +325,10 @@ modelServicesApi.prepareConnection = async (input) => {
   fixture.transactions.push(t);
   return structuredClone(t);
 };
+const verifications = new Map<
+  string,
+  ProviderStatus["verifications"][number]
+>();
 providersApi.verifyProvider = async (id, _revision, model) => {
   fixture.actions.push(`verify:${id}:${model}`);
   if (fixture.holdVerification)
@@ -334,14 +338,16 @@ providersApi.verifyProvider = async (id, _revision, model) => {
         resolve();
       };
     });
-  return {
+  const result = {
     providerId: id,
     model,
     fingerprint: "fixture",
-    state: "verified",
+    state: "verified" as const,
     checkedAt: new Date().toISOString(),
     message: "短请求验证通过",
   };
+  verifications.set(`${id}:${model}`, result);
+  return result;
 };
 modelServicesApi.verifyMember = async (input) => {
   if (input.storeId !== fixture.catalog.writeProtocol?.storeId)
@@ -381,7 +387,7 @@ providersApi.providerStatus = async (): Promise<ProviderStatus> => ({
       reason: "fixture",
     },
   ],
-  verifications: [],
+  verifications: [...verifications.values()],
 });
 providersApi.providerSwitchAction = async (id, action) => {
   fixture.actions.push(action);

@@ -303,18 +303,16 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
     let mut routing = None;
     if let Some(context) = parts.extensions.get::<crate::gateway::dynamic::Context>() {
         let requested = parsed["model"].as_str().unwrap_or("");
-        if !context
-            .service
-            .as_ref()
-            .map_or(requested == local_agent_core::routing::ALIAS, |s| {
-                s.accepts(requested)
-            })
-        {
+        let alias = context.service.as_ref().map_or_else(
+            || (requested == local_agent_core::routing::ALIAS).then(|| requested.to_owned()),
+            |service| service.alias_for_client_model(&context.binding.agent_id, requested),
+        );
+        let Some(alias) = alias else {
             return reject(
                 StatusCode::BAD_REQUEST,
                 "动态入口只接受已发布的动态模型标识",
             );
-        }
+        };
         if parsed
             .get("previous_response_id")
             .is_some_and(|v| !v.is_null())
@@ -329,9 +327,18 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         } else {
             super::dynamic_turn::evidence
         };
+        let responses = binding.client_protocol == "responses";
+        let mut projection = if responses {
+            match super::dynamic_turn::responses_projection(&parsed) {
+                Ok(body) => Some(body),
+                Err(message) => return reject(StatusCode::BAD_REQUEST, message),
+            }
+        } else {
+            None
+        };
         let turn = match evidence(
             &state.observation.hub,
-            &parsed,
+            projection.as_ref().unwrap_or(&parsed),
             session_id.clone(),
             agent_product_id.as_deref(),
         ) {
@@ -345,7 +352,7 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         } else {
             let state = state.clone();
             let id = context.binding.id.clone();
-            let model = context.service.as_ref().map(|_| requested.to_owned());
+            let model = context.service.as_ref().map(|_| alias);
             crate::blocking::run(move || {
                 let store = state
                     .store
@@ -365,7 +372,8 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             Ok(Err(message)) => return reject(StatusCode::CONFLICT, &message),
             Err(_) => return reject(StatusCode::SERVICE_UNAVAILABLE, "动态路由选择未完成"),
         };
-        if context.service.is_some()
+        if !responses
+            && context.service.is_some()
             && let Some(session) = &policy_turn.session
         {
             let store = state.store.clone();
@@ -389,10 +397,15 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             .as_ref()
             .map(|s| s.capabilities.clone())
             .unwrap_or_default();
-        if let Err(message) = super::dynamic_turn::prepare(&mut parsed, &caps) {
+        let analysis = projection.as_mut().unwrap_or(&mut parsed);
+        if responses && analysis.get("max_tokens").is_none() {
+            analysis["max_tokens"] = serde_json::json!(caps.max_output_tokens);
+        }
+        if let Err(message) = super::dynamic_turn::prepare(analysis, &caps) {
             return reject(StatusCode::BAD_REQUEST, message);
         }
-        let input = parsed.clone();
+        let input = analysis.clone();
+        let max_output_tokens = input["max_tokens"].clone();
         let provider = selected.version.provider.clone();
         let counter_caps = caps.clone();
         let budget = match super::context_budget::evaluate(input, counter_caps, provider).await {
@@ -418,7 +431,18 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             ))
             .await;
         }
-        if !caps.thinking {
+        if responses {
+            parsed["max_output_tokens"] = max_output_tokens;
+            parsed["store"] = serde_json::json!(false);
+            if !caps.tools
+                && let Some(body) = parsed.as_object_mut()
+            {
+                for field in ["tools", "tool_choice", "parallel_tool_calls"] {
+                    body.remove(field);
+                }
+            }
+        }
+        if !caps.thinking && (!responses || selected.version.provider.protocol != "responses") {
             parsed["thinking"] = serde_json::json!({"type":"disabled"});
         }
         binding.provider = selected.version.provider;

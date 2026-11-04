@@ -12,6 +12,16 @@ pub mod operations;
 pub mod policy;
 use policy::RoutingPolicy;
 
+pub const CONNECTION_AGENTS: [&str; 4] = ["claude", "opencode", "claude-desktop", "codex"];
+
+pub fn client_model_id(agent: &str, alias: &str) -> String {
+    if agent == "claude-desktop" {
+        crate::providers::claude_desktop_model_id("model-service", alias)
+    } else {
+        alias.into()
+    }
+}
+
 fn error(_: impl std::fmt::Display) -> ConfigError {
     ConfigError::new(
         "service_unavailable",
@@ -268,6 +278,15 @@ pub(crate) fn attach_binding(
     Ok(saved)
 }
 impl ServiceAttachment {
+    pub fn alias_for_client_model(&self, agent: &str, model: &str) -> Option<String> {
+        if agent != "claude-desktop" {
+            return self.accepts(model).then(|| model.into());
+        }
+        std::iter::once(crate::routing::ALIAS.to_owned())
+            .chain(self.installed.models.iter().map(ServiceModel::alias))
+            .find(|alias| client_model_id(agent, alias) == model)
+    }
+
     pub fn accepts(&self, alias: &str) -> bool {
         alias == crate::routing::ALIAS || self.installed.models.iter().any(|m| m.alias() == alias)
     }
@@ -543,17 +562,19 @@ impl Store {
     ) -> Result<Option<ServiceAttachment>, ConfigError> {
         attachment(&self.connection, binding)
     }
-    pub fn model_service_attachments(&self) -> Result<Vec<ServiceAttachment>, ConfigError> {
+    pub fn model_service_binding_ids(&self) -> Result<Vec<String>, ConfigError> {
         let mut s = self
             .connection
             .prepare("SELECT binding FROM model_service_bindings ORDER BY rowid")
             .map_err(error)?;
-        let ids = s
-            .query_map([], |r| r.get::<_, String>(0))
+        s.query_map([], |r| r.get::<_, String>(0))
             .map_err(error)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(error)?;
-        ids.iter()
+            .map_err(error)
+    }
+    pub fn model_service_attachments(&self) -> Result<Vec<ServiceAttachment>, ConfigError> {
+        self.model_service_binding_ids()?
+            .iter()
             .map(|id| attachment(&self.connection, id)?.ok_or_else(|| error("missing")))
             .collect()
     }

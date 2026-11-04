@@ -131,6 +131,7 @@ const configs = list
       .map((agentId) => ({ ...config, agentId }))
   : [config];
 modelServicesApi.catalog = async () => ({
+  connectionAgents: ["claude", "opencode", "claude-desktop", "codex"],
   writeProtocol: {
     version: 1,
     storeId: "00000000-0000-4000-8000-000000000001",

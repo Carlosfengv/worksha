@@ -74,6 +74,7 @@ export interface ServiceAttachment {
   directorySyncRequired: boolean;
 }
 export interface ModelServiceCatalog {
+  connectionAgents?: string[];
   writeProtocol?: { version: number; storeId: string; receiptLimit: number };
   routingHealth?: {
     serviceId: string;

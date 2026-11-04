@@ -295,7 +295,7 @@ pub(crate) fn execute(
             let rendered = crate::gateway::dynamic::client(state, &binding);
             let route = Routing {
                 id: binding.id.clone(),
-                client_protocol: "messages".into(),
+                client_protocol: rendered.protocol.clone(),
                 upstream_protocol: binding.target.provider.protocol.clone(),
                 local_endpoint: rendered.endpoint.clone(),
                 models: vec![],

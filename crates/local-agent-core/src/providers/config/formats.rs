@@ -15,6 +15,30 @@ pub(super) fn preserve_service_selection(
         return Ok(());
     };
     let Some(before) = before else { return Ok(()) };
+    if agent == "claude-desktop" {
+        return Ok(());
+    }
+    if agent == "codex" {
+        let old = parse_toml(Some(before))?;
+        let provider = old.get("model_provider").and_then(Item::as_str);
+        let previous = provider.and_then(|id| {
+            old.get("model_providers")?
+                .get(id)?
+                .get("base_url")?
+                .as_str()
+        });
+        if previous == Some(endpoint.as_str())
+            && let Some(alias) = old
+                .get("model")
+                .and_then(Item::as_str)
+                .filter(|alias| catalog.accepts(alias))
+        {
+            let mut next = parse_toml(Some(after))?;
+            next["model"] = value(alias);
+            *after = next.to_string().into_bytes();
+        }
+        return Ok(());
+    }
     let old: Value = serde_json::from_slice(before)
         .map_err(|_| ConfigError::new("invalid_config", "原模型服务配置无法读取"))?;
     let mut next: Value = serde_json::from_slice(after)
@@ -75,6 +99,9 @@ pub(super) fn service_models(
     provider: &Provider,
     catalog: &crate::model_services::ServiceAttachment,
 ) -> Result<(), ConfigError> {
+    if agent == "codex" {
+        return codex_models(bytes, provider);
+    }
     let mut d: Value = serde_json::from_slice(bytes)
         .map_err(|_| ConfigError::new("invalid_config", "模型服务目录配置无法解析"))?;
     let entries = catalog.catalog();
@@ -110,11 +137,19 @@ pub(super) fn service_models(
         );
         d["provider"][&group]["name"] = json!(format!("Local Agent · {}", catalog.installed.name));
         d["provider"][&group]["models"]=Value::Object(entries.iter().map(|(id,name,c)|(id.clone(),json!({"name":name,"limit":{"context":c.context_window,"output":c.max_output_tokens},"tool_call":c.tools,"reasoning":false,"attachment":false,"modalities":{"input":["text"],"output":["text"]},"options":{"thinking":{"type":"disabled"}}}))).collect());
-    } else {
-        return fail(
-            "unsupported",
-            "首批模型服务支持 Claude Code CLI 与 OpenCode",
+    } else if agent == "claude-desktop" {
+        d["inferenceModels"] = json!(
+            entries
+                .iter()
+                .map(|(alias, label, _)| json!({
+                    "name": crate::model_services::client_model_id(agent, alias),
+                    "labelOverride": label,
+                    "maxEffort": "low"
+                }))
+                .collect::<Vec<_>>()
         );
+    } else {
+        return fail("unsupported", "此 Agent 尚未支持模型服务目录");
     }
     use zeroize::Zeroize;
     bytes.zeroize();
@@ -422,7 +457,46 @@ pub fn render(
         if d.get("env").is_none() {
             d["env"] = json!({});
         }
+        let own_service_picker = d["env"]["ANTHROPIC_DEFAULT_MODEL"] == crate::routing::ALIAS
+            && d["env"]["ANTHROPIC_BASE_URL"]
+                .as_str()
+                .and_then(|url| url::Url::parse(url).ok())
+                .is_some_and(|url| {
+                    super::super::is_loopback_url(&url) && url.path().starts_with("/gateway/")
+                })
+            && d["modelPicker"]["replaceBuiltInOptions"] == true
+            && d["modelPicker"]["options"]
+                .as_array()
+                .is_some_and(|entries| {
+                    !entries.is_empty()
+                        && entries.iter().all(|entry| {
+                            entry["model"].as_str().is_some_and(|id| {
+                                id == crate::routing::ALIAS
+                                    || id
+                                        .strip_prefix("local-agent-model-")
+                                        .is_some_and(|id| uuid::Uuid::parse_str(id).is_ok())
+                            })
+                        })
+                });
+        if own_service_picker {
+            d.as_object_mut().unwrap().remove("modelPicker");
+            if d["alwaysThinkingEnabled"] == false {
+                d.as_object_mut().unwrap().remove("alwaysThinkingEnabled");
+            }
+        }
         let env = d["env"].as_object_mut().unwrap();
+        if own_service_picker {
+            for key in [
+                "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
+                "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+                "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME",
+            ] {
+                env.remove(key);
+            }
+        }
         for key in CLAUDE_ENV {
             env.remove(*key);
         }

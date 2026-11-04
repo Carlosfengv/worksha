@@ -271,9 +271,12 @@ fn stream_rejection(bytes: &[u8]) -> Response {
         let Some(data) = line.strip_prefix(b"data:") else {
             continue;
         };
-        let Ok(value) = serde_json::from_slice::<serde_json::Value>(data) else {
+        let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(data) else {
             continue;
         };
+        if value["type"] == "response.failed" && !value["response"]["error"].is_null() {
+            value = serde_json::json!({"error":value["response"]["error"]});
+        }
         if value["type"] != "error" && value.get("error").is_none() {
             continue;
         }
@@ -281,10 +284,13 @@ fn stream_rejection(bytes: &[u8]) -> Response {
         if super::context_budget::is_context_error(&raw) {
             return super::context_budget::upstream_rejection();
         }
-        let kind = value["error"]["type"].as_str().unwrap_or("");
+        let kind = value["error"]["type"]
+            .as_str()
+            .or_else(|| value["error"]["code"].as_str())
+            .unwrap_or("");
         let permanent = permanent_error(&raw);
         let status = match kind {
-            "rate_limit_error" => StatusCode::TOO_MANY_REQUESTS,
+            "rate_limit_error" | "rate_limit_exceeded" => StatusCode::TOO_MANY_REQUESTS,
             "invalid_request_error" => StatusCode::BAD_REQUEST,
             "authentication_error" => StatusCode::UNAUTHORIZED,
             "permission_error" => StatusCode::FORBIDDEN,
@@ -301,7 +307,7 @@ fn stream_rejection(bytes: &[u8]) -> Response {
     rejection(StatusCode::BAD_GATEWAY, "上游在模型输出前返回协议错误")
 }
 /// Consume only a bounded protocol prelude before committing headers/events.
-async fn preflight(response: Response) -> Result<Response, Response> {
+async fn preflight(response: Response, protocol: &str) -> Result<Response, Response> {
     if !response.status().is_success() {
         let (mut parts, body) = response.into_parts();
         let bytes = match axum::body::to_bytes(body, 64 * 1024).await {
@@ -327,7 +333,7 @@ async fn preflight(response: Response) -> Result<Response, Response> {
     let mut input = body.into_data_stream();
     let mut chunks = vec![];
     let mut bytes = 0usize;
-    let mut decoder = crate::gateway::stream::Decoder::new("messages");
+    let mut decoder = crate::gateway::stream::Decoder::new(protocol);
     loop {
         match input.next().await {
             Some(Ok(chunk)) => {
@@ -377,7 +383,16 @@ async fn preflight(response: Response) -> Result<Response, Response> {
                     .collect::<Vec<_>>();
                 if serde_json::from_slice::<serde_json::Value>(&raw)
                     .ok()
-                    .is_none_or(|v| v.get("error").is_some() || v["type"] != "message")
+                    .is_none_or(|v| {
+                        if protocol == "responses" {
+                            v.get("error").is_some_and(|error| !error.is_null())
+                                || v["object"] != "response"
+                                || !matches!(v["status"].as_str(), Some("completed" | "incomplete"))
+                                || !v["output"].is_array()
+                        } else {
+                            v.get("error").is_some() || v["type"] != "message"
+                        }
+                    })
                 {
                     return Err(rejection(StatusCode::BAD_GATEWAY, "上游未返回有效模型响应"));
                 }
@@ -767,7 +782,7 @@ async fn execute(
         let result = tokio::time::timeout_at(deadline, async {
             let response =
                 Box::pin(super::proxy::forward(state.clone(), binding.clone(), req)).await;
-            preflight(response).await
+            preflight(response, &binding.client_protocol).await
         })
         .await;
         let response = match result {

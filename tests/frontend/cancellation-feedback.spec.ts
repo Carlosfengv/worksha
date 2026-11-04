@@ -18,7 +18,7 @@ async function choose(page: Page, purpose: Purpose) {
       .click();
   else {
     await page
-      .getByRole("combobox", { name: "Claude Code CLI 模型服务", exact: true })
+      .getByRole("combobox", { name: "Claude Code CLI 模型连接", exact: true })
       .click();
     await page.getByRole("option", { name: "隔离服务", exact: true }).click();
   }

@@ -76,22 +76,43 @@ test("Agent list selects a model service without changing the current connection
   const table = page.getByRole("table");
   await expect(table.getByRole("row")).toHaveCount(13);
   await expect(page.getByText("在 Agent 内选择模型")).toBeVisible();
+  for (const name of [
+    "Claude Code 桌面端",
+    "Codex CLI",
+    "Codex 桌面端",
+    "OpenCode",
+  ]) {
+    await page
+      .getByRole("combobox", { name: `${name} 模型连接`, exact: true })
+      .click();
+    await expect(
+      page
+        .getByRole("group", { name: "Provider", exact: true })
+        .getByRole("option", { name: "目标供应商", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole("group", { name: "模型服务", exact: true })
+        .getByRole("option", { name: "编程服务", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+  }
   const selector = page.getByRole("combobox", {
-    name: "Claude Code CLI 模型服务",
+    name: "Claude Code CLI 模型连接",
     exact: true,
   });
   await expect(selector).toBeEnabled();
   await selector.click();
   await expect(
     page.getByRole("option", { name: "目标供应商", exact: true }),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await page.getByRole("option", { name: "编程服务", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("接入模型服务");
   await expect(dialog).toContainText("Claude Code CLI → 编程服务");
   await dialog.getByRole("button", { name: "取消", exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(selector).toContainText("切换模型服务");
+  await expect(selector).toContainText("切换");
   expect(
     await page.evaluate(() => window.providerSwitchFixture.actions),
   ).toEqual([]);
@@ -108,7 +129,7 @@ test("runtime failures appear after attempting a switch and the same selection c
   }, failure);
   await page.getByRole("button", { name: "重新读取配置", exact: true }).click();
   const selector = page.getByRole("combobox", {
-    name: "Codex 桌面端 Provider",
+    name: "Codex 桌面端 模型连接",
     exact: true,
   });
   await expect(selector).toBeEnabled();
@@ -135,7 +156,7 @@ test("Agent list keeps shared Codex configuration pending until confirmed", asyn
 }) => {
   await page.goto("/tests/frontend/provider-switch.html?list=1&ready=1");
   const desktop = page.getByRole("combobox", {
-    name: "Codex 桌面端 Provider",
+    name: "Codex 桌面端 模型连接",
     exact: true,
   });
   await expect(desktop).toBeEnabled();
@@ -154,7 +175,7 @@ test("Agent list keeps shared Codex configuration pending until confirmed", asyn
       .getByRole("row")
       .filter({ has: page.getByRole("heading", { name, exact: true }) });
     await expect(row).toContainText("待重启后生效");
-    await expect(row.getByRole("combobox")).toContainText("原供应商");
+    await expect(row).toContainText("Provider · 原供应商");
   }
   expect(
     await page.evaluate(() => window.providerSwitchFixture.actions),
@@ -167,7 +188,7 @@ test("Agent list supports keyboard selection and recovers from configuration rea
   await page.setViewportSize({ width: 720, height: 560 });
   await page.goto("/tests/frontend/provider-switch.html?list=1");
   const selector = page.getByRole("combobox", {
-    name: "OpenCode 模型服务",
+    name: "OpenCode 模型连接",
     exact: true,
   });
   await expect(selector).toBeEnabled();

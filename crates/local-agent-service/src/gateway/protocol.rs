@@ -426,6 +426,8 @@ fn request_with_reasoning(
         if let Some(effort) = reasoning.filter(|s| s != "none" && s != "minimal") {
             out["thinking"] = json!({"type":"adaptive"});
             out["output_config"] = json!({"effort":effort});
+        } else if source == "responses" && v["thinking"]["type"] == "disabled" {
+            out["thinking"] = json!({"type":"disabled"});
         }
     } else {
         return Err("上游协议不受支持");

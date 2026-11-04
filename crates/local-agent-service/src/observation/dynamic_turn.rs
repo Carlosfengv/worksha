@@ -24,6 +24,40 @@ pub(super) fn evidence(
     validate(body, &Default::default())?;
     service_evidence(hub, body, session, product)
 }
+
+/// Project Responses onto Messages only for routing evidence and budget checks.
+/// Forward the original protocol to the normal gateway adapter.
+pub(super) fn responses_projection(body: &Value) -> Result<Value, &'static str> {
+    if body["reasoning"]["effort"]
+        .as_str()
+        .is_some_and(|effort| effort != "none")
+    {
+        return Err("模型服务采用文本与标准工具能力，请关闭思考模式");
+    }
+    if body["store"] == true {
+        return Err("模型服务需要完整历史，不支持服务端保存的 Responses 会话");
+    }
+    if body
+        .get("tools")
+        .is_some_and(|v| !v.is_null() && !v.is_array())
+        || body["input"].as_array().is_some_and(|items| {
+            items.iter().any(|item| {
+                matches!(item["type"].as_str(), None | Some("message"))
+                    && !matches!(
+                        item["role"].as_str(),
+                        Some("user" | "assistant" | "developer" | "system")
+                    )
+            })
+        })
+    {
+        return Err("Responses 模型请求的角色或工具格式无效");
+    }
+    let mut messages = crate::gateway::protocol::request("responses", "messages", body, "")?;
+    if body.get("max_output_tokens").is_none_or(Value::is_null) {
+        messages.as_object_mut().unwrap().remove("max_tokens");
+    }
+    Ok(messages)
+}
 fn tool_history(body: &Value) -> bool {
     body["messages"].as_array().is_some_and(|messages| {
         messages.iter().any(|m| {

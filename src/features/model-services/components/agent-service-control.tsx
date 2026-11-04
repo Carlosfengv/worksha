@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ColumnDef } from "@tanstack/react-table";
+import { useCallback, useEffect, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DataTable, useDataTable } from "@/components/ui/data-table";
 import {
   Dialog,
   DialogContent,
@@ -15,11 +13,17 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
 } from "@/components/ui/select";
 import { providersApi } from "@/features/providers/api";
+import { availableProviderModelIds } from "@/features/providers/catalog";
 import { LocalTokenRecovery } from "@/features/providers/components/local-token-recovery";
+import { NativeProviderImport } from "@/features/providers/components/native-provider-import";
+import { ProviderConfigControl } from "@/features/providers/components/provider-config-control";
 import {
   captureLocalTokenSource,
   LocalTokenPreparationError,
@@ -28,6 +32,7 @@ import {
 } from "@/features/providers/local-token-operation";
 import { useLocalTokenError } from "@/features/providers/hooks/use-local-token-error";
 import type { NativeConfig } from "@/features/providers/types";
+import { dynamicBindingFor } from "@/features/providers/types";
 import type {
   Provider,
   ProviderStatus,
@@ -36,6 +41,7 @@ import type {
 import { useSharedRead } from "@/shared/hooks/use-shared-read";
 import { providerStatusResource } from "@/features/providers/queries";
 import { modelServicesResource } from "../queries";
+import type { AgentProductId } from "@/shared/types/agent";
 import { modelServicesApi } from "../api";
 import {
   commonCapabilities,
@@ -52,6 +58,10 @@ export function AgentServiceControl({
   status,
   catalog,
   unavailable,
+  servicesUnavailable,
+  checking,
+  onProviderSelect,
+  showRecovery = true,
   reload,
   compact = false,
 }: {
@@ -61,6 +71,10 @@ export function AgentServiceControl({
   status: ProviderStatus | null;
   catalog: ModelServiceCatalog | null;
   unavailable?: boolean;
+  servicesUnavailable?: boolean;
+  checking?: boolean;
+  onProviderSelect: (config: NativeConfig, providerId: string) => void;
+  showRecovery?: boolean;
   reload: () => void;
   compact?: boolean;
 }) {
@@ -93,7 +107,52 @@ export function AgentServiceControl({
   const pendingAttachment = catalog?.attachments.find(
     (a) => !pending?.restoreOf && a.bindingId === pending?.routing?.id,
   );
-  const supported = ["claude", "opencode"].includes(agentId);
+  const serviceSupported = (
+    catalog?.connectionAgents ?? ["claude", "opencode"]
+  ).includes(agentId);
+  const native = ["claude", "codex"].includes(agentId);
+  const configured = providers.filter((provider) => provider.configured);
+  const activeRoute =
+    config?.endpoint &&
+    status?.transactions.find(
+      (t) =>
+        t.agentId === agentId &&
+        t.before.path === config.path &&
+        t.state === "applied" &&
+        (t.routing?.localEndpoint === config.endpoint ||
+          (agentId === "opencode" &&
+            t.routing &&
+            `${t.routing.localEndpoint}/v1` === config.endpoint)),
+    );
+  const dynamic =
+    status && config ? dynamicBindingFor(status, config) : undefined;
+  const serviceRoute =
+    !!config?.endpoint &&
+    status?.dynamicBindings?.some(
+      (b) =>
+        b.modelService &&
+        b.agentId === agentId &&
+        b.scope === config.path &&
+        b.localEndpoint === config.endpoint,
+    );
+  const providerName =
+    dynamic?.target.provider.name ||
+    (activeRoute && activeRoute.provider?.name) ||
+    config?.providerName;
+  const currentLabel =
+    unavailable || config?.error
+      ? "当前连接待核对"
+      : attachment
+        ? `模型服务 · ${current?.name ?? attachment.installed.name}`
+        : serviceRoute
+          ? "模型服务 · 目录未读取"
+          : config?.mode === "native" && native
+            ? "官方原生登录"
+            : config?.endpoint && providerName
+              ? `Provider · ${providerName}`
+              : !config
+                ? "正在读取当前连接…"
+                : "尚未选择连接";
   const open = (service: ModelService) => {
     setSourceConfig(config ? { ...config } : null);
     try {
@@ -180,15 +239,15 @@ export function AgentServiceControl({
       setBusy(false);
     }
   };
-  if (!supported)
+  if (!["claude", "opencode", "claude-desktop", "codex"].includes(agentId))
     return (
       <span className="text-label text-fg-muted">
-        兼容连接 · 尚未适配模型服务
+        {agentId === "antigravity" ? "在 Agent 内选择模型" : "暂不支持切换"}
       </span>
     );
   return (
     <div className={compact ? "min-w-48 max-w-72 space-y-1" : "space-y-4"}>
-      {!compact && !choice && !transaction && (
+      {showRecovery && !compact && !choice && !transaction && (
         <LocalTokenRecovery
           protocol={status?.localTokenProtocol}
           agentId={agentId}
@@ -200,10 +259,9 @@ export function AgentServiceControl({
       )}
       {!compact && (
         <div className="space-y-2">
-          <h3 className="text-heading-sm font-semibold">模型服务</h3>
+          <h3 className="text-heading-sm font-semibold">模型连接</h3>
           <p className="text-body text-fg-muted">
-            选择服务后，在 Agent 内使用“默认”或指定模型。Provider
-            由服务统一管理。
+            选择已配置的 Provider，或接入已发布的模型服务。
           </p>
         </div>
       )}
@@ -243,26 +301,82 @@ export function AgentServiceControl({
           </AlertDescription>
         </Alert>
       )}
-      <Select
-        value={current?.id ?? ""}
-        onValueChange={(value) => {
-          const service = catalog?.services.find((s) => s.id === value);
-          if (service) open(service);
-        }}
-        disabled={!catalog || !status || unavailable || busy || !!pending}
+      <p
+        role="status"
+        aria-label={`${name} 当前连接`}
+        className="text-label text-fg-muted break-words"
       >
-        <SelectTrigger
-          aria-label={`${name} 模型服务`}
-          placeholder={
-            catalog?.services.length ? "切换模型服务" : "尚无模型服务"
+        {currentLabel}
+      </p>
+      <Select
+        value=""
+        size="sm"
+        onValueChange={(value) => {
+          if (!config || !value) return;
+          if (value.startsWith("service:")) {
+            const service = catalog?.services.find(
+              (s) => s.id === value.slice(8),
+            );
+            if (service && serviceSupported && !servicesUnavailable)
+              open(service);
+          } else if (value === "native") {
+            onProviderSelect(config, "native");
+          } else if (value.startsWith("provider:")) {
+            onProviderSelect(config, value.slice(9));
           }
-        />
+        }}
+        disabled={!config || checking || unavailable || busy || !!pending}
+      >
+        <SelectTrigger aria-label={`${name} 模型连接`} placeholder="切换" />
         <SelectContent>
-          {catalog?.services.map((service) => (
-            <SelectItem key={service.id} value={service.id}>
-              {service.name}
-            </SelectItem>
-          ))}
+          <SelectGroup aria-label="Provider">
+            <SelectLabel>Provider</SelectLabel>
+            {!configured.length && (
+              <SelectItem value="empty-providers" disabled>
+                暂无已配置 Provider
+              </SelectItem>
+            )}
+            {configured.map((provider) => (
+              <SelectItem
+                key={provider.id}
+                value={`provider:${provider.id}`}
+                disabled={!availableProviderModelIds(provider).length}
+              >
+                {provider.name}
+                {!availableProviderModelIds(provider).length && " · 无可用模型"}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+          <SelectSeparator />
+          <SelectGroup aria-label="模型服务">
+            <SelectLabel>模型服务</SelectLabel>
+            {servicesUnavailable ||
+            !catalog ||
+            !serviceSupported ||
+            !catalog.services.length ? (
+              <SelectItem value="empty-services" disabled>
+                {servicesUnavailable
+                  ? "模型服务读取未完成"
+                  : !catalog
+                    ? "正在读取模型服务…"
+                    : !serviceSupported
+                      ? "当前后台尚未适配"
+                      : "暂无已发布模型服务"}
+              </SelectItem>
+            ) : (
+              catalog.services.map((service) => (
+                <SelectItem key={service.id} value={`service:${service.id}`}>
+                  {service.name}
+                </SelectItem>
+              ))
+            )}
+          </SelectGroup>
+          {native && (
+            <>
+              <SelectSeparator />
+              <SelectItem value="native">官方原生登录</SelectItem>
+            </>
+          )}
         </SelectContent>
       </Select>
       {current ? (
@@ -273,9 +387,10 @@ export function AgentServiceControl({
           {attachment?.directorySyncRequired ? " · 目录待同步" : ""}
         </p>
       ) : (
-        <p className="text-label text-fg-muted">
-          {config?.endpoint ? "现有兼容连接保留" : "尚未接入模型服务"}
-        </p>
+        !compact &&
+        !config?.endpoint && (
+          <p className="text-label text-fg-muted">尚未接入模型服务</p>
+        )
       )}
       {!compact && (
         <>
@@ -337,6 +452,8 @@ export function AgentServiceControl({
             <DialogDescription>
               {name} → {choice?.name ?? transaction?.targetName}
               。首次接入或目录同步会写入原生配置并保存加密备份；日常默认目标调整不改文件。
+              {agentId === "codex" &&
+                " CLI 与桌面端共用配置，应用前请退出两端。"}
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 space-y-4 overflow-y-auto px-1">
@@ -420,90 +537,21 @@ export function AgentServiceControl({
   );
 }
 
-type BackupRow = {
-  transaction: ProviderTransaction;
-  busy: boolean;
-  act: (action: "apply" | "cancel" | "restore") => void;
-};
-const backupColumns: ColumnDef<BackupRow>[] = [
-  {
-    id: "target",
-    header: "配置记录",
-    cell: ({ row }) => (
-      <div className="space-y-1">
-        <p className="text-body">{row.original.transaction.targetName}</p>
-        <p className="text-label text-fg-muted">
-          {formatDateTime(row.original.transaction.createdAt, "full")}
-        </p>
-      </div>
-    ),
-  },
-  {
-    id: "state",
-    header: "状态",
-    cell: ({ row }) => (
-      <span className="text-label">
-        {{
-          applied: "已写入 · 备份保留",
-          pending: "待应用",
-          cancelled: "已撤销",
-          failed: "未完成",
-        }[row.original.transaction.state] ?? row.original.transaction.state}
-      </span>
-    ),
-  },
-  {
-    id: "actions",
-    header: "操作",
-    cell: ({ row }) => (
-      <div className="flex flex-wrap gap-1">
-        {row.original.transaction.state === "pending" ? (
-          <>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={row.original.busy}
-              onClick={() => row.original.act("apply")}
-            >
-              应用预览
-            </Button>
-            <Button
-              variant="tertiary"
-              size="sm"
-              disabled={row.original.busy}
-              onClick={() => row.original.act("cancel")}
-            >
-              撤销
-            </Button>
-          </>
-        ) : row.original.transaction.state === "applied" ? (
-          <Button
-            variant="tertiary"
-            size="sm"
-            disabled={row.original.busy}
-            onClick={() => row.original.act("restore")}
-          >
-            预览恢复原配置
-          </Button>
-        ) : null}
-      </div>
-    ),
-  },
-];
-
 export function ModelServiceSettings({
   agentId,
+  agentProductId = "",
   name,
   providers,
+  refresh,
 }: {
   agentId: string;
+  agentProductId?: AgentProductId;
   name: string;
   providers: Provider[];
+  refresh?: () => Promise<void>;
 }) {
   const status = useSharedRead(providerStatusResource);
   const catalog = useSharedRead(modelServicesResource);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const reloadProviderStatus = status.reload;
   const reloadServiceCatalog = catalog.reload;
   const invalidateProviderStatus = status.invalidate;
@@ -516,52 +564,12 @@ export function ModelServiceSettings({
     void invalidateProviderStatus();
     void invalidateServiceCatalog();
   }, [invalidateProviderStatus, invalidateServiceCatalog]);
-  const transact = useCallback(
-    async (id: string, action: "apply" | "cancel" | "restore") => {
-      setBusy(true);
-      setError(null);
-      try {
-        await providersApi.providerSwitchAction(id, action);
-        window.dispatchEvent(new Event("provider-status-changed"));
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [],
-  );
-  const rows = useMemo(
-    () =>
-      (status.data?.transactions ?? [])
-        .filter((t) => t.agentId === agentId)
-        .map((transaction) => ({
-          transaction,
-          busy,
-          act: (action: "apply" | "cancel" | "restore") => {
-            void transact(transaction.id, action);
-          },
-        }))
-        .reverse(),
-    [status.data, agentId, busy, transact],
-  );
-  const { table } = useDataTable({
-    data: rows,
-    columns: backupColumns,
-    getRowId: (row) => row.transaction.id,
-    manualPagination: true,
-    enableRowSelection: false,
-    enableSorting: false,
-    enableHiding: false,
-  });
   return (
     <section className="space-y-4" aria-label="Agent 模型服务与配置恢复">
-      {(error || status.error || catalog.error) && (
+      {(status.error || catalog.error) && (
         <Alert status="danger" role="alert">
           <AlertTitle>读取或操作未完成</AlertTitle>
-          <AlertDescription>
-            {error || status.error || catalog.error}
-          </AlertDescription>
+          <AlertDescription>{status.error || catalog.error}</AlertDescription>
         </Alert>
       )}
       <Button
@@ -572,32 +580,44 @@ export function ModelServiceSettings({
       >
         重新读取服务与配置
       </Button>
-      <AgentServiceControl
-        agentId={agentId}
-        name={name}
-        providers={providers}
-        status={status.data}
-        catalog={catalog.data}
-        unavailable={!!status.error || !!catalog.error}
-        reload={invalidate}
-      />
-      <details className="space-y-3">
-        <summary className="cursor-pointer text-body font-medium">
-          配置备份与恢复（{rows.length}）
-        </summary>
-        <p className="text-label text-fg-muted">
-          包括此前的兼容连接。AES-256-GCM
-          加密备份保留；恢复先生成预览，原文件变化会拒绝覆盖。首次接入、目录同步和恢复需退出相关客户端。
-        </p>
-        <DataTable
-          table={table}
-          showPagination={false}
-          aria-label="模型服务配置备份"
-          role="region"
-          emptyMessage="还没有配置事务。"
+      {status.data ? (
+        <ProviderConfigControl
+          status={status.data}
+          providers={providers}
+          reload={invalidate}
+          checking={status.loading || !!status.error}
+          onlyAgent={agentId}
+          agentProductId={agentProductId}
+          renderPicker={(openSwitch, switching) => (
+            <AgentServiceControl
+              agentId={agentId}
+              name={name}
+              providers={providers}
+              status={status.data}
+              catalog={catalog.data}
+              unavailable={!!status.error}
+              servicesUnavailable={!!catalog.error}
+              checking={status.loading || switching}
+              onProviderSelect={openSwitch}
+              showRecovery={false}
+              reload={invalidate}
+            />
+          )}
         />
-      </details>
+      ) : (
+        !status.error && (
+          <p className="text-body text-fg-muted">正在读取本机配置…</p>
+        )
+      )}
+      {refresh && ["claude", "codex"].includes(agentId) && (
+        <NativeProviderImport
+          agentId={agentId}
+          onImported={async () => {
+            await refresh();
+            invalidate();
+          }}
+        />
+      )}
     </section>
   );
 }
-import { formatDateTime } from "@/shared/lib/date-time";

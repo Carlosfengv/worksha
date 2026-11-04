@@ -254,6 +254,7 @@ export interface DynamicBinding {
   agentId: string;
   scope: string;
   localEndpoint: string;
+  modelService?: boolean;
   lastObserved?: {
     providerName: string;
     model: string | null;
@@ -282,6 +283,7 @@ export function dynamicBindingFor(
 ) {
   return status.dynamicBindings?.find(
     (binding) =>
+      !binding.modelService &&
       binding.agentId === config.agentId &&
       binding.scope === config.path &&
       config.endpoint === binding.localEndpoint,

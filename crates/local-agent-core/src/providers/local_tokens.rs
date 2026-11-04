@@ -129,7 +129,7 @@ fn validate(request: &Request) -> Result<(), ConfigError> {
         || !valid_id(&identity.namespace_id)
         || !valid_id(&identity.operation_id)
         || !["claude", "codex", "opencode", "claude-desktop"].contains(&request.agent_id.as_str())
-        || request.purpose != Purpose::FixedRoute
+        || request.purpose == Purpose::DynamicBinding
             && !["claude", "opencode"].contains(&request.agent_id.as_str())
         || request.configuration_path.is_empty()
         || request.configuration_path.len() > 16384

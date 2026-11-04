@@ -12,11 +12,18 @@ const directory = realpathSync(mkdtempSync(path.join(tmpdir(), "local-agent-mode
 const home = path.join(directory, "home");
 mkdirSync(path.join(home, ".claude"), { recursive: true });
 mkdirSync(path.join(home, ".config/opencode"), { recursive: true });
+mkdirSync(path.join(home, ".codex"), { recursive: true });
+const desktop = path.join(home, "Library/Application Support/Claude-3p/configLibrary");
+const desktopProfile = randomUUID();
+mkdirSync(desktop, { recursive: true });
+writeFileSync(path.join(desktop, "_meta.json"), JSON.stringify({ appliedId: desktopProfile }), { mode: 0o600 });
 const originals = {
   claude: JSON.stringify({ permissions: { allow: ["Read"] }, enabledPlugins: { keep: true }, env: { KEEP_ME: "yes" } }) + "\n",
   opencode: JSON.stringify({ provider: { untouched: { npm: "@ai-sdk/anthropic" } }, mcp: { keep: { type: "local", command: ["fixture"] } }, keep: true }) + "\n",
+  "claude-desktop": JSON.stringify({ coworkEgressAllowedHosts: ["example.invalid"] }) + "\n",
+  codex: "# preserved\nmodel = 'original'\n[mcp_servers.keep]\ncommand = 'fixture'\n",
 };
-const files = { claude: path.join(home, ".claude/settings.json"), opencode: path.join(home, ".config/opencode/opencode.json") };
+const files = { claude: path.join(home, ".claude/settings.json"), opencode: path.join(home, ".config/opencode/opencode.json"), "claude-desktop": path.join(desktop, desktopProfile + ".json"), codex: path.join(home, ".codex/config.toml") };
 for (const agent of Object.keys(files)) writeFileSync(files[agent], originals[agent], { mode: 0o600 });
 const hash = file => createHash("sha256").update(readFileSync(file)).digest("hex");
 const servers = [], seen = [];
@@ -58,7 +65,9 @@ try {
     const r = await fetch(base + route, { method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(20000) });
     const text = await r.text(); assert.equal(r.status, expected, text); return JSON.parse(text);
   };
-  assert.deepEqual((await api("/api/model-services")).services, []);
+  const initialCatalog = await api("/api/model-services");
+  assert.deepEqual(initialCatalog.services, []);
+  assert.deepEqual(initialCatalog.connectionAgents.sort(), Object.keys(files).sort());
   const sources = [];
   for (const [index, server] of servers.entries()) {
     const provider = { id: `custom-${randomUUID()}`, name: `Source ${index + 1}`, vendor: "custom", protocol: index ? "chat-completions" : "messages", endpoint: `http://127.0.0.1:${server.address().port}${index ? "/v1" : ""}`, model: index ? "b" : "a", models: [index ? "b" : "a"], configured: true, credentialRef: null, credentialLabel: null, revision: 0, category: "local" };
@@ -72,7 +81,7 @@ try {
   await api("/api/model-services", draft, 409, "PUT");
   const unused = await api("/api/model-services", { ...draft, id: randomUUID(), name: "Unused" }, 200, "PUT");
   const transactions = {};
-  for (const agentId of ["claude", "opencode"]) {
+  for (const agentId of Object.keys(files)) {
     const config = (await api("/api/provider-status")).configs.find(c => c.agentId === agentId);
     const t = await api("/api/model-service-connections", { agentId, expectedRevision: config.revision, serviceId: service.id, expectedServiceRevision: service.revision });
     const attachmentsBeforeRetry = (await api("/api/model-services")).attachments.length;
@@ -91,6 +100,28 @@ try {
   const opencode = JSON.parse(readFileSync(files.opencode)); const group = opencode.model.split("/")[0]; const local = opencode.provider[group].options; const route = local.baseURL + "/messages";
   assert(opencode.keep && opencode.provider.untouched && opencode.mcp.keep); assert.equal(Object.keys(opencode.provider[group].models).length, 3); assert.equal(opencode.provider[group].models[`local-agent-model-${models[1].id}`].limit.context, 96000);
   const installedHashes = Object.fromEntries(Object.entries(files).map(([a, p]) => [a, hash(p)]));
+  const desktopConfig = JSON.parse(readFileSync(files["claude-desktop"]));
+  assert.deepEqual(desktopConfig.coworkEgressAllowedHosts, ["example.invalid"]);
+  assert.deepEqual(desktopConfig.inferenceModels.map(model => model.labelOverride), ["Coding · 默认", "A", "B"]);
+  assert(desktopConfig.inferenceModels.every(model => /^claude-sonnet-5-local-agent-/.test(model.name)));
+  const codexConfig = readFileSync(files.codex, "utf8");
+  assert.match(codexConfig, /model = "local-agent-default"/);
+  assert.match(codexConfig, /model_catalog_url = "http:\/\/127\.0\.0\.1:.*\/v1\/codex\/models\.json"/);
+  assert.match(codexConfig, /\[mcp_servers\.keep\]/);
+  for (const agentId of Object.keys(files)) {
+    const provider = sources[1];
+    const config = (await api("/api/provider-status")).configs.find(c => c.agentId === agentId);
+    const direct = await api("/api/provider-switches", { agentId, expectedRevision: config.revision, providerId: provider.id, expectedProviderRevision: provider.revision, model: provider.model });
+    assert.equal(hash(files[agentId]), installedHashes[agentId], "Direct selection only writes after confirmation");
+    assert.equal(readFileSync(direct.backupPath).subarray(0, 4).toString(), "LAC2");
+    await api(`/api/provider-switches/${direct.id}/apply`, {});
+    assert.notEqual(hash(files[agentId]), installedHashes[agentId]);
+    assert.equal((await api("/api/model-services")).attachments.some(a => a.agentId === agentId && a.attached), false);
+    if (agentId === "claude") assert.equal(JSON.parse(readFileSync(files.claude)).modelPicker, undefined);
+    const restore = await api(`/api/provider-switches/${direct.id}/restore`, {});
+    await api(`/api/provider-switches/${restore.id}/apply`, {});
+    assert.equal(hash(files[agentId]), installedHashes[agentId]);
+  }
   const request = async (history, session, model = "local-agent-default", expected = 200, extra = {}) => {
     const r = await fetch(route, { method: "POST", headers: { Authorization: `Bearer ${local.apiKey}`, "Content-Type": "application/json", "x-opencode-session": session }, body: JSON.stringify({ model, max_tokens: 30, messages: history, ...extra }), signal: AbortSignal.timeout(20000) });
     const text = await r.text(); assert.equal(r.status, expected, text); return JSON.parse(text);
@@ -146,7 +177,7 @@ try {
   const requests = await api("/api/requests");
   const rows = Array.isArray(requests) ? requests : requests.items ?? requests.requests ?? [];
   assert(rows.some(r => r.routing?.service?.serviceId === service.id));
-  for (const agent of ["claude", "opencode"]) {
+  for (const agent of Object.keys(files)) {
     const restore = await api(`/api/provider-switches/${transactions[agent].id}/restore`, {}); await api(`/api/provider-switches/${restore.id}/apply`, {}); assert.equal(readFileSync(files[agent], "utf8"), originals[agent]);
   }
   await api(`/api/model-services/${service.id}/delete`, { expectedRevision: service.revision });

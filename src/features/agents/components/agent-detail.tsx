@@ -60,7 +60,6 @@ export function AgentDetail({
     epoch: symbol;
     items: NativeSession[];
   } | null>(null);
-  // Model/configuration adapters remain closed until their write-path migration.
   const canConfigure = [
     "claude",
     "claude-desktop",
@@ -130,11 +129,7 @@ export function AgentDetail({
               window.location.hash = `/agents/${agent.id}?tab=connection`;
             }}
           >
-            {canConfigure
-              ? ["claude", "opencode"].includes(agent.configId)
-                ? "选择模型服务"
-                : "兼容连接"
-              : "连接与观测"}
+            {canConfigure ? "模型连接" : "连接与观测"}
           </Button>
         )}
         <Button
@@ -339,11 +334,13 @@ export function AgentDetail({
         <TabPanel value="connection">
           {canConfigure || agent.id === "antigravity" ? (
             <div className="mb-6">
-              {["claude", "opencode"].includes(agent.configId) ? (
+              {canConfigure ? (
                 <ModelServiceSettings
                   agentId={agent.configId}
+                  agentProductId={agent.id}
                   name={agent.name}
                   providers={data.providers}
+                  refresh={refresh}
                 />
               ) : (
                 <AgentProviderSettings

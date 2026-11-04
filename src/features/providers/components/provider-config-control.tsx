@@ -226,6 +226,7 @@ export function ProviderConfigControl({
     }
   };
   const [enrollDynamic, setEnrollDynamic] = useState(false);
+  const [fixedSelection, setFixedSelection] = useState(false);
   const [dynamicPreview, setDynamicPreview] = useState<DynamicChange | null>(
     null,
   );
@@ -532,7 +533,8 @@ export function ProviderConfigControl({
     }
   };
   const chosen = providers.find((p) => p.id === selection && p.configured);
-  const dynamicBinding = draft ? dynamicBindingFor(status, draft) : undefined;
+  const dynamicBinding =
+    draft && !fixedSelection ? dynamicBindingFor(status, draft) : undefined;
   const usingDynamic =
     selection !== "native" && (!!dynamicBinding || enrollDynamic);
   const modelIds = chosen ? availableProviderModelIds(chosen) : [];
@@ -568,6 +570,7 @@ export function ProviderConfigControl({
     config: NativeConfig,
     providerId: string,
     enroll = false,
+    fixed = false,
   ) => {
     if (busy || checking) return;
     setNotice(null);
@@ -588,6 +591,7 @@ export function ProviderConfigControl({
     setDraft(config);
     captureSource();
     setEnrollDynamic(enroll);
+    setFixedSelection(fixed);
     setSelection(providerId);
     setModel(provider ? (availableProviderModelIds(provider)[0] ?? "") : "");
     setError(null);
@@ -604,7 +608,10 @@ export function ProviderConfigControl({
           }}
         />
       )}
-      {renderPicker?.(openSwitch, !!busy)}
+      {renderPicker?.(
+        (config, id) => openSwitch(config, id, false, true),
+        !!busy,
+      )}
       <DynamicRouteControl
         status={status}
         config={status.configs.find((c) => c.agentId === onlyAgent)}
@@ -1181,7 +1188,7 @@ export function ProviderConfigControl({
                     两端共用用户配置、默认模型和加密备份，应用前需退出两端；重启后可在会话中直接选择已发布模型，无需回
                     App 重新应用。
                     会话选择可覆盖共享默认值，项目或启动参数也可能覆盖用户配置。
-                    目录变更后需重新应用；当前兼容 Codex 0.163 系列的文本、
+                    目录变更后需重新应用。此连接支持文本、
                     {chosen?.vendor === "deepseek" &&
                     chosen.protocol === "chat-completions"
                       ? "DeepSeek 思考模式"
