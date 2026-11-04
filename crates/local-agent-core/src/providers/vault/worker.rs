@@ -37,10 +37,11 @@ fn executable(directory: &Path, digest: &str) -> Result<PathBuf, ConfigError> {
         return Err(ConfigError::new("unsafe_path", "钥匙串助手摘要无效"));
     }
     let path = directory.join("bin").join(format!("vault-{digest}"));
-    let bytes = files::read_executable(&path)?
-        .bytes
+    let actual = files::read_executable(&path)?
+        .stamp
+        .digest
         .ok_or_else(|| ConfigError::new("unavailable", "钥匙串助手缺失"))?;
-    if files::hash(&bytes) != digest {
+    if actual != digest {
         return Err(ConfigError::new(
             "unsafe_path",
             "钥匙串助手已被修改，拒绝执行",
@@ -48,7 +49,7 @@ fn executable(directory: &Path, digest: &str) -> Result<PathBuf, ConfigError> {
     }
     Ok(path)
 }
-pub fn install_worker(source: &Path) -> Result<(), ConfigError> {
+pub fn install_worker() -> Result<(), ConfigError> {
     let dir = directory().ok_or_else(|| ConfigError::new("unavailable", "用户目录不可用"))?;
     files::private_dir(&dir)?;
     let _lock = files::exclusive_lock(&dir.join("vault-install.lock"))?;
@@ -59,10 +60,12 @@ pub fn install_worker(source: &Path) -> Result<(), ConfigError> {
         executable(&dir, &worker.digest)?;
         return Ok(());
     }
-    let bytes = files::read_executable(source)?
-        .bytes
-        .ok_or_else(|| ConfigError::new("unavailable", "打包助手缺失"))?;
-    let digest = files::hash(&bytes);
+    let source = std::env::current_exe()
+        .map_err(|_| ConfigError::new("unavailable", "无法确定应用包内服务的位置"))?;
+    let snapshot = files::read_worker_source(&source)?;
+    let (Some(bytes), Some(digest)) = (snapshot.bytes, snapshot.stamp.digest) else {
+        return Err(ConfigError::new("unavailable", "打包助手缺失"));
+    };
     files::private_dir(&dir.join("bin"))?;
     files::atomic_write(
         &dir.join("bin").join(format!("vault-{digest}")),

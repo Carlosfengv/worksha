@@ -737,33 +737,10 @@ fn connect_or_start(
         .spawn()
         .map_err(|_| "无法启动应用包内的本地服务")?;
     let ready = tauri::async_runtime::block_on(async {
-        tokio::time::timeout(Duration::from_secs(10), async {
-            let mut closed = false;
-            loop {
-                if let Some(record) = existing(&directory, client).await? {
-                    return Ok(record);
-                }
-                if closed {
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                    continue;
-                }
-                match tokio::time::timeout(Duration::from_millis(100), events.recv()).await {
-                    Ok(Some(CommandEvent::Stderr(bytes))) => {
-                        let message = String::from_utf8_lossy(&bytes);
-                        if message.contains("固定端口被占用") {
-                            return Err("本地网关固定端口被其他程序占用，请退出旧开发包或检查端口占用后重试".to_string());
-                        }
-                    }
-                    Ok(Some(CommandEvent::Terminated(payload))) => {
-                        backend.state()?.record(operation, Phase::Startup, Category::ChildExited, payload.code, payload.signal);
-                        closed = true;
-                    }
-                    Ok(Some(CommandEvent::Error(_))) => backend.state()?.record(operation, Phase::Startup, Category::ChildError, None, None),
-                    Ok(None) => closed = true,
-                    _ => {}
-                }
-            }
-        })
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            wait_for_startup(&directory, backend, operation, &mut events),
+        )
         .await
         .map_err(|_| "本地服务启动超时，请检查已有服务后重新打开".to_string())?
     });
@@ -806,6 +783,69 @@ fn connect_or_start(
         events, lifecycle, child, generation, operation, owned,
     ));
     Ok(())
+}
+
+async fn wait_for_startup(
+    directory: &std::path::Path,
+    backend: &Backend,
+    operation: &str,
+    events: &mut tauri::async_runtime::Receiver<CommandEvent>,
+) -> Result<ServiceRecord, String> {
+    let mut hint = None;
+    loop {
+        if let Some(record) = existing(directory, &backend.client).await? {
+            return Ok(record);
+        }
+        let exit = match tokio::time::timeout(Duration::from_millis(100), events.recv()).await {
+            Ok(Some(CommandEvent::Stderr(bytes))) => {
+                let message = String::from_utf8_lossy(&bytes);
+                // Map only known failures. Never retain or show raw child output.
+                if message.contains("固定端口被占用") {
+                    hint =
+                        Some("本地网关固定端口被其他程序占用，请退出旧开发包或检查端口占用后重试");
+                } else if message.contains("钥匙串助手初始化失败") {
+                    hint =
+                        Some("本地服务无法初始化钥匙串助手，请核对应用包完整性和本机数据目录权限");
+                }
+                continue;
+            }
+            Ok(Some(CommandEvent::Terminated(payload))) => {
+                backend.state()?.record(
+                    operation,
+                    Phase::Startup,
+                    Category::ChildExited,
+                    payload.code,
+                    payload.signal,
+                );
+                match (payload.code, payload.signal) {
+                    (Some(code), _) => {
+                        format!("本地服务在完成启动前退出（退出码 {code}），请查看最近诊断记录")
+                    }
+                    (_, Some(signal)) => {
+                        format!("本地服务在完成启动前被终止（信号 {signal}），请查看最近诊断记录")
+                    }
+                    _ => "本地服务在完成启动前退出，请查看最近诊断记录".into(),
+                }
+            }
+            Ok(Some(CommandEvent::Error(_))) => {
+                backend.state()?.record(
+                    operation,
+                    Phase::Startup,
+                    Category::ChildError,
+                    None,
+                    None,
+                );
+                continue;
+            }
+            Ok(None) => "本地服务的启动事件已中断，请查看最近诊断记录".into(),
+            _ => continue,
+        };
+        // The publication may have appeared between the initial read and the
+        // child exit, for example if a separately launched service took ownership.
+        return existing(directory, &backend.client)
+            .await?
+            .ok_or_else(|| hint.map(str::to_owned).unwrap_or(exit));
+    }
 }
 
 async fn observe_process(
@@ -873,7 +913,9 @@ mod lifecycle_tests;
 
 #[cfg(test)]
 mod tests {
-    use super::{existing, query_path, shutdown, wait_for_exit};
+    use super::{
+        Backend, CommandEvent, existing, query_path, shutdown, wait_for_exit, wait_for_startup,
+    };
     use local_agent_core::runtime::{self, ServiceGuard};
     use std::{
         io::{Read, Write},
@@ -1019,6 +1061,53 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn startup_reports_early_exit_with_safe_diagnostics_instead_of_timing_out() {
+        let directory = Temp::new();
+        let backend = Backend::new(reqwest::Client::new(), None, None);
+        tauri::async_runtime::block_on(async {
+            for (stderr, expected) in [
+                ("private-sentinel", "退出码 7"),
+                (
+                    "钥匙串助手初始化失败：private-sentinel",
+                    "无法初始化钥匙串助手",
+                ),
+            ] {
+                let (tx, mut rx) = tokio::sync::mpsc::channel(2);
+                tx.send(CommandEvent::Stderr(stderr.as_bytes().to_vec()))
+                    .await
+                    .unwrap();
+                tx.send(CommandEvent::Terminated(
+                    tauri_plugin_shell::process::TerminatedPayload {
+                        code: Some(7),
+                        signal: None,
+                    },
+                ))
+                .await
+                .unwrap();
+                let error = tokio::time::timeout(
+                    std::time::Duration::from_secs(1),
+                    wait_for_startup(&directory.0, &backend, "fixture", &mut rx),
+                )
+                .await
+                .expect("a terminated child must not wait for startup timeout")
+                .err()
+                .expect("there is no published service");
+                assert!(error.contains(expected), "{error}");
+                assert!(!error.contains("private-sentinel"));
+            }
+        });
+        let report = serde_json::to_value(backend.diagnostics().unwrap()).unwrap();
+        assert!(
+            report["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|event| { event["category"] == "child_exited" && event["exitCode"] == 7 })
+        );
+        assert!(!report.to_string().contains("private-sentinel"));
     }
 
     #[test]

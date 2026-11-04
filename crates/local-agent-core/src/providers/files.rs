@@ -9,12 +9,17 @@ use std::{
 };
 
 pub const LIMIT: u64 = 1024 * 1024;
+const EXECUTABLE_LIMIT: u64 = 128 * LIMIT;
 pub fn hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
 // Fixed roots only; don't follow user-controlled symlinks or write through hard links.
 pub fn checked_path(path: &Path) -> Result<(), ConfigError> {
+    check_path(path, false)
+}
+
+fn check_path(path: &Path, bundle_source: bool) -> Result<(), ConfigError> {
     if !path.is_absolute() {
         return fail("unsafe_path", "配置位置必须是绝对路径");
     }
@@ -31,7 +36,10 @@ pub fn checked_path(path: &Path) -> Result<(), ConfigError> {
             Ok(m)
                 if m.mode() & 0o022 != 0
                     && current != Path::new("/tmp")
-                    && current != Path::new("/private/tmp") =>
+                    && current != Path::new("/private/tmp")
+                    && !(bundle_source
+                        && m.is_dir()
+                        && is_macos_applications(&current, m.mode(), m.uid(), m.gid())) =>
             {
                 return fail("unsafe_path", "配置路径可被其他用户写入，拒绝覆盖");
             }
@@ -41,6 +49,15 @@ pub fn checked_path(path: &Path) -> Result<(), ConfigError> {
         }
     }
     Ok(())
+}
+
+fn is_macos_applications(path: &Path, mode: u32, uid: u32, gid: u32) -> bool {
+    // macOS installs shared apps under root:admin (GID 80), often mode 0775.
+    cfg!(target_os = "macos")
+        && path == Path::new("/Applications")
+        && uid == 0
+        && gid == 80
+        && mode & 0o002 == 0
 }
 
 pub fn private_dir(path: &Path) -> Result<(), ConfigError> {
@@ -73,10 +90,22 @@ pub(super) fn read_credential_record(path: &Path) -> Result<FileSnapshot, Config
     read_limit(path, 4096)
 }
 pub fn read_executable(path: &Path) -> Result<FileSnapshot, ConfigError> {
-    read_limit(path, 128 * LIMIT)
+    read_limit(path, EXECUTABLE_LIMIT)
+}
+
+/// Read the running service for the initial copy into the user's private vault.
+/// The installed bundle is only a read source. The pinned worker uses the
+/// ordinary private-file rules when opened for execution.
+pub(super) fn read_worker_source(path: &Path) -> Result<FileSnapshot, ConfigError> {
+    check_path(path, true)?;
+    read_checked(path, EXECUTABLE_LIMIT, true)
 }
 fn read_limit(path: &Path, limit: u64) -> Result<FileSnapshot, ConfigError> {
     checked_path(path)?;
+    read_checked(path, limit, false)
+}
+
+fn read_checked(path: &Path, limit: u64, bundle_source: bool) -> Result<FileSnapshot, ConfigError> {
     let mut file = match fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
@@ -101,7 +130,19 @@ fn read_limit(path: &Path, limit: u64) -> Result<FileSnapshot, ConfigError> {
     let m = file
         .metadata()
         .map_err(|_| ConfigError::new("unavailable", "无法检查配置文件"))?;
-    if !m.is_file() || m.nlink() != 1 || m.uid() != unsafe { libc::geteuid() } || m.len() > limit {
+    let owned = m.uid() == unsafe { libc::geteuid() } || (bundle_source && m.uid() == 0);
+    if !m.is_file()
+        || m.nlink() != 1
+        || !owned
+        || m.len() > limit
+        || (bundle_source && (m.mode() & 0o022 != 0 || m.mode() & 0o111 == 0))
+    {
+        if bundle_source {
+            return fail(
+                "unsafe_path",
+                "应用包内服务的所有者、权限或文件类型不符合要求",
+            );
+        }
         return fail(
             "unsafe_path",
             "配置必须是当前用户拥有的单链接普通文件，且小于 1 MiB",
@@ -134,6 +175,22 @@ fn read_limit(path: &Path, limit: u64) -> Result<FileSnapshot, ConfigError> {
         bytes: Some(bytes),
         stamp,
     })
+}
+
+#[cfg(all(test, target_os = "macos"))]
+#[test]
+fn bundle_source_allows_only_the_admin_managed_applications_parent() {
+    let apps = Path::new("/Applications");
+    assert!(is_macos_applications(apps, 0o775, 0, 80));
+    assert!(!is_macos_applications(apps, 0o777, 0, 80));
+    assert!(!is_macos_applications(apps, 0o775, 501, 80));
+    assert!(!is_macos_applications(apps, 0o775, 0, 20));
+    assert!(!is_macos_applications(
+        Path::new("/tmp/Applications"),
+        0o775,
+        0,
+        80
+    ));
 }
 
 pub fn atomic_write(path: &Path, bytes: &[u8], mode: u32) -> Result<(), ConfigError> {

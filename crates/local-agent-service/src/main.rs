@@ -121,8 +121,8 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
             .ok_or("Missing home")?
             .join("Library/Application Support/app.localagent.desktop")
     {
-        local_agent_core::providers::vault::install_worker(&std::env::current_exe()?)
-            .map_err(|e| e.message)?;
+        local_agent_core::providers::vault::install_worker()
+            .map_err(|e| format!("钥匙串助手初始化失败：{}", e.message))?;
     }
     let store = Store::open(&directory)?;
     gateway.validate_token_owners(&store)?;
