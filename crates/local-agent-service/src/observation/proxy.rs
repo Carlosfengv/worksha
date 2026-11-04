@@ -68,6 +68,9 @@ fn native_session(agent: &str, headers: &HeaderMap, body: &serde_json::Value) ->
         ],
         "claude" => &["session_id", "x-local-agent-session-id"],
         "codex" => &[
+            // Codex uses session-id (with a hyphen) for cache affinity. Its
+            // thread-id names the actual conversation, including for forks.
+            "thread-id",
             "session_id",
             "x-codex-session-id",
             "x-local-agent-session-id",

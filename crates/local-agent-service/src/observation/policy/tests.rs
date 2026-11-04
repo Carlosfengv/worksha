@@ -289,7 +289,8 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
             .client
             .post(format!("{codex}/responses"))
             .bearer_auth("model-service-fixture-key")
-            .header("session_id", &session)
+            .header("thread-id", &session)
+            .header("session-id", "cache-affinity-fixture")
             .json(&json!({"model":local_agent_core::routing::ALIAS,"input":input}))
     };
     let fallback: serde_json::Value = request(json!([user]))
@@ -315,6 +316,98 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
     .await
     .unwrap();
     assert_eq!(continuation["output"][0]["content"][0]["text"], "two");
+
+    let session_id = format!("codex:{session}");
+    let read_sessions = || {
+        fixture
+            .client
+            .get(format!(
+                "http://{}/api/sessions?includeGateway=true&query={session}",
+                fixture.state.host
+            ))
+            .bearer_auth(fixture.state.token.as_str())
+    };
+    let page: serde_json::Value = read_sessions()
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(page["coverage"], "gateway_history");
+    assert_eq!(page["total"], 1);
+    assert_eq!(page["items"][0]["id"], session_id);
+    assert_eq!(page["items"][0]["status"], "observed");
+    assert!(page["items"][0]["modelCalls"].as_u64().unwrap() >= 1);
+    assert!(page["items"][0]["projectPath"].is_null());
+    let requests: serde_json::Value = fixture
+        .client
+        .get(format!(
+            "http://{}/api/request-dashboard",
+            fixture.state.host
+        ))
+        .query(&[("source", "gateway"), ("session", session_id.as_str())])
+        .bearer_auth(fixture.state.token.as_str())
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let request_rows = requests["items"].as_array().unwrap();
+    assert!(!request_rows.is_empty());
+    assert!(
+        request_rows
+            .iter()
+            .all(|row| row["sessionId"] == session_id)
+    );
+
+    let sessions_dir = fixture.root.path().join("home/.codex/sessions");
+    std::fs::create_dir_all(&sessions_dir).unwrap();
+    let timestamp = chrono::Utc::now().to_rfc3339();
+    let meta = json!({"type":"session_meta","timestamp":timestamp,"payload":{"id":session}});
+    let message = json!({"type":"response_item","timestamp":timestamp,"payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Authorized fixture conversation"}]}});
+    std::fs::write(
+        sessions_dir.join("rollout-fixture.jsonl"),
+        format!("{meta}\n{message}\n"),
+    )
+    .unwrap();
+    fixture.state.sessions.set_enabled("codex", true).unwrap();
+    fixture.state.sessions.refresh().unwrap();
+    let page: serde_json::Value = read_sessions()
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        page["total"], 1,
+        "the native and observed identities are the same"
+    );
+    assert_eq!(page["items"][0]["id"], session_id);
+    assert_eq!(page["items"][0]["status"], "imported");
+    assert_eq!(page["items"][0]["title"], "Authorized fixture conversation");
+
+    fixture.state.sessions.set_enabled("codex", false).unwrap();
+    let page: serde_json::Value = read_sessions()
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(page["total"], 1);
+    assert_eq!(page["items"][0]["status"], "observed");
+    assert_ne!(page["items"][0]["title"], "Authorized fixture conversation");
 }
 impl Drop for Fixture {
     fn drop(&mut self) {

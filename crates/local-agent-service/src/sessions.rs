@@ -53,6 +53,33 @@ pub(crate) async fn query_sessions(
 ) -> ApiResult {
     crate::blocking::query(state.query_capacity.clone(), move || {
         let authorization = authorizations(&state)?;
+        if query.include_gateway == Some(true) {
+            let (gateway, partial) = state
+                .observation
+                .sql_query(|history| history.gateway_sessions())
+                .unwrap_or_else(|_| (Vec::new(), true));
+            let mut page = state
+                .sessions
+                .query_with_gateway(
+                    query,
+                    gateway,
+                    partial || state.observation.history_query_partial(),
+                )
+                .map_err(native_error)?;
+            let hidden = crate::projects::hidden(&state)?;
+            for session in &mut page.items {
+                local_agent_core::projects::visibility::mark_session(session, &hidden);
+            }
+            if authorization != authorizations(&state)?
+                || hidden != crate::projects::hidden(&state)?
+            {
+                return Err(native_error(local_agent_core::sessions::NativeError {
+                    code: "stale_snapshot",
+                    message: "会话来源已更新，请刷新后重试".into(),
+                }));
+            }
+            return json_value(page);
+        }
         let (mut page, catalog) = state
             .sessions
             .query_with_catalog(query)

@@ -2,6 +2,26 @@ import { expect, test } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 
+test("gateway sessions share the title list and open requests without native consent", async ({
+  page,
+}) => {
+  await page.goto(
+    "/tests/frontend/session-navigation.html?gateway=1#/sessions",
+  );
+  const list = page.getByLabel("会话列表滚动区域", { exact: true });
+  await expect(list.getByRole("button", { name: /^Session 0 / })).toBeVisible();
+  const observed = list.getByRole("button", { name: /^Codex 测试会话 / });
+  await expect(observed).toBeVisible();
+  await expect(page.getByLabel("会话来源范围")).toHaveCount(0);
+  await observed.click();
+  await expect(
+    page.getByLabel("会话模型请求").getByText("fixture-gateway-model"),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => window.sessionNav.conversations),
+  ).not.toContain("codex:00000000-0000-4000-8000-000000000001");
+});
+
 test("eight session pages keep title navigation bounded", async ({
   page,
 }, info) => {

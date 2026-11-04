@@ -51,8 +51,14 @@ export function SessionList({
               </span>
               <span className="flex flex-wrap gap-x-2 gap-y-1 text-label text-fg-subtle">
                 <span>{date(session.updatedAt)}</span>
-                <span>{number(session.usage.totalTokens)} Token</span>
-                <span>{sessionStorage(session)}</span>
+                {session.status === "observed" ? (
+                  <span>{number(session.modelCalls)} 条模型请求</span>
+                ) : (
+                  <>
+                    <span>{number(session.usage.totalTokens)} Token</span>
+                    <span>{sessionStorage(session)}</span>
+                  </>
+                )}
               </span>
             </span>
           </NavItemTrigger>

@@ -39,7 +39,8 @@ import {
   type RefObject,
 } from "react";
 import { SessionDateFilter } from "./components/session-date-filter";
-import { SessionScopeBoundary } from "@/features/domain/session-workspace";
+import { SessionRequests } from "./components/session-requests";
+import { UnifiedWorkspace } from "@/features/domain/session-workspace";
 
 interface SessionProps {
   initialUnified?: boolean;
@@ -52,21 +53,25 @@ interface SessionProps {
   returnAgent?: string;
   returnTab?: string;
   returnTo?: string;
-  initialView?: "context";
+  initialView?: "context" | "requests";
 }
 export function SessionsPage(props: SessionProps) {
   const sourceKey =
     props.data?.sessionSources
       .map((s) => `${s.agentId}:${s.enabled}`)
       .join(",") ?? "offline";
+  if (props.initialUnified && props.initialDomainSource)
+    return (
+      <UnifiedWorkspace
+        key={props.initialDomainSource}
+        initialSource={props.initialDomainSource}
+      />
+    );
   return (
-    <SessionScopeBoundary
-      key={`${sourceKey}:${props.initialUnified}:${props.initialDomainSource}:${JSON.stringify(props.data?.hiddenProjects ?? [])}`}
-      initialUnified={props.initialUnified}
-      initialSource={props.initialDomainSource}
-    >
-      <SessionWorkspace {...props} />
-    </SessionScopeBoundary>
+    <SessionWorkspace
+      key={`${sourceKey}:${JSON.stringify(props.data?.hiddenProjects ?? [])}`}
+      {...props}
+    />
   );
 }
 function SessionWorkspace({
@@ -115,6 +120,7 @@ function SessionWorkspace({
         query: deferredSearch || undefined,
         days: days === "all" ? undefined : Number(days),
         cursor,
+        includeGateway: true,
       }),
     [agent, deferredSearch, days],
   );
@@ -129,7 +135,8 @@ function SessionWorkspace({
       choice.epoch === epoch);
   const incoming = selectedId !== undefined && entry.id !== selectedId;
   const confirmedEmpty =
-    sessions.data?.total === 0 && sessions.data.coverage === "native_history";
+    sessions.data?.total === 0 &&
+    ["native_history", "gateway_history"].includes(sessions.data.coverage);
   const targetId =
     incoming || entry.relaxing
       ? selectedId
@@ -143,11 +150,20 @@ function SessionWorkspace({
     (s) => s.enabled && s.agentId === explicitAgent,
   );
   const selectedInList = items.some((s) => s.id === targetId);
+  const requestedRequests =
+    initialView === "requests" && targetId === selectedId;
+  const retainedChoice =
+    choice?.query === queryKey &&
+    choice.epoch === epoch &&
+    choice.id === targetId;
   const requestedVisible =
     targetId &&
-    !confirmedEmpty &&
+    (!confirmedEmpty || requestedRequests) &&
     !sessions.scopeInvalid &&
-    sourceEnabled &&
+    (sourceEnabled ||
+      selectedInList ||
+      requestedRequests ||
+      (retainedChoice && detailSummary?.status === "observed")) &&
     (incoming ||
       entry.relaxing ||
       agent === "all" ||
@@ -156,9 +172,7 @@ function SessionWorkspace({
     (incoming ||
       entry.relaxing ||
       selectedInList ||
-      (choice?.query === queryKey &&
-        choice.epoch === epoch &&
-        choice.id === targetId) ||
+      retainedChoice ||
       (!hasFilter && entry.query === queryKey && entry.id === selectedId));
   const effectiveId = sessions.scopeInvalid
     ? undefined
@@ -170,6 +184,17 @@ function SessionWorkspace({
     data?.sessionSources.some(
       (s) => s.enabled && s.agentId === effectiveId.split(":")[0],
     );
+  const selectedSession =
+    items.find((s) => s.id === effectiveId) ??
+    (retainedChoice && detailSummary?.id === effectiveId
+      ? detailSummary
+      : null);
+  const showRequests =
+    selectedSession?.status === "observed" ||
+    (initialView === "requests" && effectiveId === selectedId);
+  const canReadConversation = Boolean(
+    selectedSourceEnabled && selectedSession?.status !== "observed",
+  );
   const pinned =
     requestedVisible &&
     !selectedInList &&
@@ -199,6 +224,10 @@ function SessionWorkspace({
     },
     [queryKey, epoch, selectedId],
   );
+  useEffect(() => {
+    if (selectedSession?.status === "observed" && !retainedChoice)
+      onSummary(selectedSession);
+  }, [selectedSession, retainedChoice, onSummary]);
   useEffect(() => {
     const conflict =
       selectedId &&
@@ -230,15 +259,21 @@ function SessionWorkspace({
       cache.current = new ReadingCache();
     }
   }, [sessions.scopeInvalid]);
-  const select = (session: NativeSession) => {
-    window.location.hash = sessionLink(session.id, {
+  const openSession = (id: string, view?: "requests") => {
+    window.location.hash = sessionLink(id, {
       agent: agent === "all" ? undefined : agent,
       from: returnAgent,
       tab: returnTab,
       returnTo,
+      view,
     });
     setDrawer(false);
   };
+  const select = (session: NativeSession) =>
+    openSession(
+      session.id,
+      session.status === "observed" ? "requests" : undefined,
+    );
   const resetSelection = () => {
     window.location.hash = "/sessions";
   };
@@ -403,20 +438,20 @@ function SessionWorkspace({
           <ConnectionEmpty
             compact
             title={
-              data?.sessionSources.some((s) => s.enabled) &&
-              sessions.data.coverage !== "not_connected"
-                ? sessions.data.coverage !== "native_history"
+              hasFilter || agent !== "all"
+                ? "没有匹配会话"
+                : sessions.data.coverage === "partial"
                   ? "会话列表尚未完成核查"
-                  : sessions.data.total === 0
-                    ? "没有匹配会话"
-                    : "本页没有可读会话"
-                : "尚未读取会话"
+                  : sessions.data.coverage === "not_connected"
+                    ? "尚未读取会话"
+                    : sessions.data.coverage === "native_history"
+                      ? "没有匹配会话"
+                      : "暂无会话记录"
             }
             description={
-              data?.sessionSources.some((s) => s.enabled) &&
-              sessions.data.coverage !== "not_connected"
-                ? "可调整搜索或日期，或等待后台读取完成。"
-                : "在 Agents 中确认原生会话读取范围。"
+              hasFilter || agent !== "all"
+                ? "可调整搜索、Agent 或日期。"
+                : "有会话标识的模型请求会自动出现在这里。客户端保存的对话可在 Agents 中授权读取。"
             }
             action={hasFilter || agent !== "all" ? "清除筛选" : "查看 Agents"}
             onAction={() => {
@@ -479,12 +514,47 @@ function SessionWorkspace({
             切换会话 / 项目
           </Button>
         </div>
-        {effectiveId && selectedSourceEnabled ? (
+        {effectiveId && canReadConversation && (
+          <div
+            className="flex shrink-0 gap-2 border-b border-border p-2"
+            aria-label="会话视图"
+          >
+            <Button
+              size="sm"
+              variant="ghost"
+              active={!showRequests}
+              onClick={() => openSession(effectiveId)}
+            >
+              对话
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              active={showRequests}
+              onClick={() => openSession(effectiveId, "requests")}
+            >
+              模型请求
+            </Button>
+          </div>
+        )}
+        {effectiveId && showRequests ? (
+          <SessionRequests
+            key={effectiveId}
+            id={effectiveId}
+            title={selectedSession?.title}
+            returnTo={returnTo}
+            canReadConversation={canReadConversation}
+          />
+        ) : effectiveId && canReadConversation ? (
           <ConversationReader
             key={effectiveId}
             id={effectiveId}
             anchor={selectedId === effectiveId ? anchor : undefined}
-            initialView={selectedId === effectiveId ? initialView : undefined}
+            initialView={
+              selectedId === effectiveId && initialView === "context"
+                ? "context"
+                : undefined
+            }
             cache={cache.current}
             onSummary={onSummary}
             returnAgent={returnAgent}
@@ -498,7 +568,7 @@ function SessionWorkspace({
           >
             <ConnectionEmpty
               title={confirmedEmpty ? "没有匹配会话" : "从会话标题列表开始"}
-              description="读取 Claude Code 或 Codex 的本机会话后，在这里阅读完整对话与调用详情。"
+              description="选择会话后，可以查看相关模型请求和已授权读取的对话。"
               action="查看 Agents"
               onAction={() => navigate("agents")}
               icon="message-circle"

@@ -43,7 +43,7 @@ export interface NativeSession {
   gitRemote: string | null;
   createdAt: string | null;
   updatedAt: string | null;
-  status: "imported";
+  status: "imported" | "observed";
   messageCount: number;
   turnCount: number | null;
   modelCalls: number;
@@ -56,7 +56,8 @@ export interface NativeSession {
   usageQuality: "native_cumulative" | "native_requests" | "partial" | "unknown";
   diskBytes: number;
   diskAllocatedBytes: number | null;
-  diskScope: "native_transcript_file" | "native_database_payload";
+  diskScope:
+    "native_transcript_file" | "native_database_payload" | "gateway_metadata";
   sourcePath: string;
   partial: boolean;
 }
@@ -78,7 +79,7 @@ export interface NativePage<T> {
   nextCursor: string | null;
   summary: SessionTotals | null;
   asOf: string;
-  coverage: "native_history" | "partial" | "not_connected";
+  coverage: "native_history" | "gateway_history" | "partial" | "not_connected";
   missingCounts: number;
 }
 
@@ -88,6 +89,7 @@ export interface SessionQuery {
   days?: number;
   status?: string;
   cursor?: string;
+  includeGateway?: boolean;
 }
 
 export type CallKind = "model" | "tool" | "mcp" | "skill" | "diagnostic";

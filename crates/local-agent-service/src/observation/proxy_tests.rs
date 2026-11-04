@@ -150,6 +150,27 @@ fn ids_are_family_scoped_and_never_taken_from_prompt_text() {
 }
 
 #[test]
+fn codex_thread_id_is_independent_of_the_cache_affinity_header() {
+    let body = json!({});
+    assert_eq!(
+        native_session(
+            "codex",
+            &headers(&[("thread-id", ONE), ("session-id", TWO)]),
+            &body
+        ),
+        Some(format!("codex:{ONE}"))
+    );
+    for h in [
+        headers(&[("session-id", ONE), ("x-codex-parent-thread-id", TWO)]),
+        headers(&[("thread-id", ONE), ("thread-id", ONE)]),
+        headers(&[("thread-id", ONE), ("x-codex-session-id", TWO)]),
+        headers(&[("thread-id", "not-a-uuid"), ("session_id", ONE)]),
+    ] {
+        assert!(native_session("codex", &h, &body).is_none());
+    }
+}
+
+#[test]
 fn upstream_diagnostics_are_fixed_categories_and_never_echo_secrets() {
     for (message, expected) in [
         ("missing reasoning_content", "思考内容"),

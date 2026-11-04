@@ -685,6 +685,91 @@ impl History {
         dashboard::insert_fragments(&self.db, version, row)?;
         Ok(version)
     }
+    /// Only the session identity and request metadata observed by this gateway.
+    /// Native response enrichment is authorized separately by the session reader.
+    pub fn gateway_sessions(&self) -> Result<(Vec<crate::sessions::SessionSummary>, bool), String> {
+        use crate::sessions::{SessionSummary, Usage};
+        const LIMIT: usize = 10_000;
+        let mut query = self
+            .db
+            .prepare_cached(
+                "SELECT session,family,json_group_array(DISTINCT product),
+                    min(json_extract(raw,'$.startedAt')),max(json_extract(raw,'$.startedAt')),
+                    count(DISTINCT logical)
+             FROM attempts
+             WHERE session IS NOT NULL AND session LIKE family || ':%'
+                   AND json_extract(raw,'$.client') IS NULL
+             GROUP BY session,family
+             ORDER BY 5 DESC,session LIMIT ?1",
+            )
+            .map_err(fail)?;
+        let rows = query
+            .query_map([(LIMIT + 1) as i64], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    sql_count(row, 5)?,
+                ))
+            })
+            .map_err(fail)?;
+        let mut sessions = Vec::new();
+        for row in rows {
+            if sessions.len() == LIMIT {
+                return Ok((sessions, true));
+            }
+            let (id, agent_id, products, created_at, updated_at, model_calls) =
+                row.map_err(fail)?;
+            let Some(native_id) = id.strip_prefix(&format!("{agent_id}:")) else {
+                continue;
+            };
+            let products: Vec<Option<String>> = serde_json::from_str(&products).map_err(fail)?;
+            let has_unknown_client = products.iter().any(Option::is_none);
+            let mut agent_products: Vec<_> = products.into_iter().flatten().collect();
+            agent_products.sort();
+            let agent_product_id = (!has_unknown_client && agent_products.len() == 1)
+                .then(|| agent_products[0].clone());
+            let title = format!("会话 {}", native_id.chars().take(8).collect::<String>());
+            sessions.push(SessionSummary {
+                project_hidden: false,
+                native_id: native_id.to_owned(),
+                id,
+                agent_id,
+                agent_product_id,
+                agent_products,
+                has_unknown_client,
+                agent_version: None,
+                title,
+                title_source: "fallback".into(),
+                project_path: None,
+                project_name: None,
+                project_id: None,
+                project_root: None,
+                git_remote: None,
+                created_at,
+                updated_at,
+                status: "observed",
+                message_count: 0,
+                turn_count: None,
+                model_calls,
+                model_error_count: 0,
+                latest_failure_id: None,
+                tool_calls: 0,
+                mcp_calls: 0,
+                skill_calls: 0,
+                usage: Usage::default(),
+                usage_quality: "unknown",
+                disk_bytes: 0,
+                disk_allocated_bytes: None,
+                disk_scope: "gateway_metadata",
+                source_path: String::new(),
+                partial: false,
+            });
+        }
+        Ok((sessions, false))
+    }
     pub fn observation_page(
         &self,
         agent: Option<&str>,

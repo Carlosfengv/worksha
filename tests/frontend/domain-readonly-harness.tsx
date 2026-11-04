@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { IconProvider } from "@/lib/icon-context";
-import { SessionScopeBoundary } from "@/features/domain/session-workspace";
+import { UnifiedWorkspace } from "@/features/domain/session-workspace";
 import { DomainConsentControls } from "@/features/domain/consent-controls";
 import { domainApi } from "@/features/domain/api";
 import { domainDirectoryResource } from "@/features/domain/queries";
@@ -950,12 +950,11 @@ createRoot(document.getElementById("root")!).render(
         />
       </div>
       <div className="min-h-0 flex-1">
-        <SessionScopeBoundary
-          initialUnified={params.get("unified") === "1"}
-          initialSource={source}
-        >
+        {params.get("unified") === "1" ? (
+          <UnifiedWorkspace initialSource={source} />
+        ) : (
           <p>原生会话保持</p>
-        </SessionScopeBoundary>
+        )}
       </div>
     </main>
   </IconProvider>,

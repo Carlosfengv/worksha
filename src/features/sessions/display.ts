@@ -90,7 +90,7 @@ export function sessionLink(
     from?: string;
     tab?: string;
     returnTo?: string;
-    view?: "context";
+    view?: "context" | "requests";
   } = {},
 ) {
   const search = new URLSearchParams();

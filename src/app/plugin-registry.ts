@@ -17,7 +17,7 @@ export interface AppRoute {
   project?: string;
   returnTo?: string;
   scope?: string;
-  view?: "context";
+  view?: "context" | "requests";
 }
 export interface PageContext {
   route: AppRoute;
@@ -115,7 +115,12 @@ export function createUiRegistry(plugins: readonly UiPlugin[]) {
         returnTo: params.get("returnTo") ?? undefined,
         scope: params.get("scope") ?? undefined,
         domainSource: params.get("source") ?? undefined,
-        view: params.get("view") === "context" ? "context" : undefined,
+        view:
+          params.get("view") === "context"
+            ? "context"
+            : params.get("view") === "requests"
+              ? "requests"
+              : undefined,
       };
     },
   });

@@ -136,6 +136,8 @@ pub struct SessionQuery {
     pub days: Option<u16>,
     pub status: Option<String>,
     pub cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub include_gateway: Option<bool>,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -525,7 +527,7 @@ impl NativeSessions {
 
     pub fn query(&self, query: SessionQuery) -> NativeResult<Page<SessionSummary, SessionQuery>> {
         let state = self.lock()?;
-        self.query_locked(query, &state)
+        self.query_locked(query, &state, None)
     }
     /// The page and fee evidence share the same immutable file batches, even if
     /// the scanner publishes a new generation before the response is serialized.
@@ -537,13 +539,23 @@ impl NativeSessions {
         crate::projects::ProjectCatalog,
     )> {
         let state = self.lock()?;
-        let page = self.query_locked(query, &state)?;
+        let page = self.query_locked(query, &state, None)?;
         Ok((page, self.project_catalog_locked(&state)))
+    }
+    pub fn query_with_gateway(
+        &self,
+        query: SessionQuery,
+        gateway: Vec<SessionSummary>,
+        partial: bool,
+    ) -> NativeResult<Page<SessionSummary, SessionQuery>> {
+        let state = self.lock()?;
+        self.query_locked(query, &state, Some((gateway, partial)))
     }
     fn query_locked(
         &self,
         query: SessionQuery,
         state: &Catalog,
+        gateway: Option<(Vec<SessionSummary>, bool)>,
     ) -> NativeResult<Page<SessionSummary, SessionQuery>> {
         self.validate_agent(query.agent.as_deref())?;
         if query
@@ -599,10 +611,6 @@ impl NativeSessions {
             })
             .map(|f| f.summary.clone())
             .collect();
-        items.sort_by(|a, b| b.updated_at.cmp(&a.updated_at).then(a.id.cmp(&b.id)));
-        let offset = cursor(query.cursor.as_deref(), &state.revision.to_string())?;
-        let total = items.len();
-        let missing_counts = items.iter().filter(|s| s.partial).count();
         let mut summary = SessionTotals {
             usage_scope: if query
                 .agent
@@ -672,19 +680,75 @@ impl NativeSessions {
                 summary.usage_unknown_sessions += 1;
             }
         }
+        let mut coverage = coverage(state);
+        let mut revision = state.revision.to_string();
+        let include_gateway = gateway.is_some();
+        if let Some((gateway, partial)) = gateway {
+            let native_positions: HashMap<_, _> = items
+                .iter()
+                .enumerate()
+                .map(|(index, s)| (s.id.clone(), index))
+                .collect();
+            for observed in gateway {
+                if let Some(&index) = native_positions.get(&observed.id) {
+                    if observed.updated_at > items[index].updated_at {
+                        items[index].updated_at = observed.updated_at;
+                    }
+                    continue;
+                }
+                if session_matches(query.agent.as_deref(), &observed)
+                    && (needle.is_empty()
+                        || observed.title.to_lowercase().contains(&needle)
+                        || observed.native_id.to_lowercase().contains(&needle))
+                    && start.is_none_or(|cutoff| {
+                        observed
+                            .created_at
+                            .as_deref()
+                            .and_then(|t| DateTime::parse_from_rfc3339(t).ok())
+                            .is_some_and(|t| t.timestamp() >= cutoff)
+                    })
+                {
+                    if let Some(native) = by_id.get(observed.id.as_str()) {
+                        let mut session = native.summary.clone();
+                        session.updated_at = session.updated_at.max(observed.updated_at);
+                        items.push(session);
+                    } else {
+                        items.push(observed);
+                    }
+                }
+            }
+            coverage = if partial {
+                "partial"
+            } else if coverage == "not_connected" {
+                "gateway_history"
+            } else {
+                coverage
+            };
+        }
+        items.sort_by(|a, b| b.updated_at.cmp(&a.updated_at).then(a.id.cmp(&b.id)));
+        if include_gateway {
+            use std::hash::{Hash, Hasher};
+            let mut hash = std::hash::DefaultHasher::new();
+            for s in &items {
+                (&s.id, &s.updated_at).hash(&mut hash);
+            }
+            revision = format!("{}-{:x}", revision, hash.finish());
+        }
+        let offset = cursor(query.cursor.as_deref(), &revision)?;
+        let total = items.len();
+        let missing_counts = items.iter().filter(|s| s.partial).count();
         let selected_session_ids = items.iter().map(|s| s.id.clone()).collect();
         let page = items.into_iter().skip(offset).take(40).collect();
         Ok(Page {
             selected_session_ids,
             items: page,
             total,
-            next_cursor: (offset + 40 < total)
-                .then(|| format!("{}:{}", state.revision, offset + 40)),
+            next_cursor: (offset + 40 < total).then(|| format!("{}:{}", revision, offset + 40)),
             as_of: state.as_of.clone(),
-            coverage: coverage(state),
+            coverage,
             applied_filter: query,
             missing_counts,
-            summary: Some(summary),
+            summary: (!include_gateway).then_some(summary),
         })
     }
 

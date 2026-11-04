@@ -183,6 +183,7 @@ export function RequestDetail({
                     window.location.hash = sessionLink(r.sessionId!, {
                       anchor: r.native?.eventId,
                       returnTo: `/requests/${encodeURIComponent(id)}?${returnSearch}`,
+                      view: r.native ? undefined : "requests",
                     });
                   }}
                 >

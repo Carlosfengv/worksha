@@ -12,7 +12,13 @@ import type {
   SessionQuery,
 } from "@/features/sessions/types";
 import { notifyBackendRecovery } from "@/shared/lib/backend-recovery";
-import { activitySessions } from "./activity-fixture";
+import {
+  activityOverview,
+  activityQuery,
+  activitySessions,
+} from "./activity-fixture";
+import { requestDashboard, requestRecord } from "./request-fixture";
+import type { RequestQuery } from "@/features/observation/request-types";
 import "@/styles/globals.css";
 import "@/styles/app.css";
 
@@ -53,6 +59,7 @@ window.sessionNav = {
 };
 const fixture = window.sessionNav;
 const params = new URLSearchParams(location.search);
+const observedId = "codex:00000000-0000-4000-8000-000000000001";
 function session(index: number): NativeSession {
   return {
     ...activitySessions()[0],
@@ -71,6 +78,30 @@ function session(index: number): NativeSession {
   };
 }
 function page(query: SessionQuery): NativePage<NativeSession> {
+  if (params.has("gateway") && query.includeGateway)
+    return {
+      items: [
+        session(0),
+        {
+          ...session(1),
+          id: observedId,
+          agentId: "codex",
+          agentProductId: "codex-desktop",
+          agentProducts: ["codex-desktop"],
+          title: "Codex 测试会话",
+          status: "observed",
+          projectPath: null,
+          projectName: null,
+          modelCalls: 1,
+        },
+      ],
+      total: 2,
+      nextCursor: null,
+      summary: null,
+      asOf: "2026-10-28T01:00:00Z",
+      coverage: "native_history",
+      missingCounts: 0,
+    };
   const offset = query.cursor ? Number(query.cursor.split(":")[1]) : 0;
   if (query.cursor && !query.cursor.startsWith(`revision-${fixture.version}:`))
     throw { code: "stale_snapshot", message: "synthetic stale cursor" };
@@ -151,6 +182,22 @@ mockIPC(async (name, args) => {
     fixture.conversations.push(id);
     return conversation(id);
   }
+  if (name === "query_request_dashboard" && params.has("gateway")) {
+    const query = input.query as RequestQuery;
+    const row = activityOverview(activityQuery).gatewayActivities[0].request;
+    return requestDashboard(
+      query,
+      query.session === observedId
+        ? [
+            requestRecord({
+              ...row,
+              sessionId: observedId,
+              model: "fixture-gateway-model",
+            }),
+          ]
+        : [],
+    );
+  }
   if (name === "refresh_sessions") return;
   if (name === "list_plugins")
     return {
@@ -197,6 +244,8 @@ function Harness() {
   const selectedId = route.startsWith("#/sessions/")
     ? decodeURIComponent(route.split("?")[0].slice("#/sessions/".length))
     : undefined;
+  const showRequests =
+    new URLSearchParams(route.split("?")[1]).get("view") === "requests";
   return (
     <IconProvider>
       <main className="flex h-screen flex-col">
@@ -223,6 +272,7 @@ function Harness() {
             data={snapshot}
             navigate={() => {}}
             selectedId={selectedId}
+            initialView={showRequests ? "requests" : undefined}
           />
         )}
       </main>

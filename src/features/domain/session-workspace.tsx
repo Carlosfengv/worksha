@@ -1,16 +1,10 @@
 import { ObjectContributionSlots } from "@/features/plugins/object-detail-slots";
-import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable, useDataTable } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
 import { useSharedRead, useSharedQuery } from "@/shared/hooks/use-shared-read";
 import { useBackendReadEpoch } from "@/shared/hooks/use-backend-read-epoch";
 import { formatDateTime } from "@/shared/lib/date-time";
@@ -71,50 +65,11 @@ const columnsFor = (
     ),
   },
 ];
-export function SessionScopeBoundary({
-  initialUnified = false,
+export function UnifiedWorkspace({
   initialSource,
-  children,
 }: {
-  initialUnified?: boolean;
   initialSource?: string;
-  children: ReactNode;
 }) {
-  const [scope, setScope] = useState(initialUnified ? "unified" : "native");
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-        <Select
-          value={scope}
-          onValueChange={(value) => {
-            setScope(value);
-            window.location.hash =
-              value === "native" ? "/sessions" : "/sessions?scope=unified";
-          }}
-        >
-          <SelectTrigger aria-label="会话来源范围" />
-          <SelectContent>
-            <SelectItem value="native">原生范围</SelectItem>
-            <SelectItem value="unified">统一来源</SelectItem>
-          </SelectContent>
-        </Select>
-        <span className="text-label text-fg-muted">
-          {scope === "native"
-            ? "现有原生会话范围"
-            : "仅查询你明确选择并授权的来源"}
-        </span>
-      </div>
-      <div className="min-h-0 flex-1">
-        {scope === "native" ? (
-          children
-        ) : (
-          <UnifiedWorkspace initialSource={initialSource} />
-        )}
-      </div>
-    </div>
-  );
-}
-function UnifiedWorkspace({ initialSource }: { initialSource?: string }) {
   const directory = useSharedRead(domainDirectoryResource);
   const epoch = useBackendReadEpoch();
   const [identity, setIdentity] = useState({ epoch, revision: 0 });
@@ -236,7 +191,7 @@ function UnifiedWorkspace({ initialSource }: { initialSource?: string }) {
         )}
         {(directory.error || directory.data?.externalProblem) && (
           <p role="alert" className="text-label text-fg-muted">
-            扩展目录暂不可用，可返回原生范围继续使用。{directory.error}
+            扩展目录暂不可用。{directory.error}
           </p>
         )}
       </div>
