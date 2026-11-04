@@ -479,16 +479,8 @@ pub async fn capture(
             if pairs.len() != 1 || pairs[0].0 != "client_version" {
                 return reject();
             }
-            if pairs[0].1.len() > 80
-                || !local_agent_core::providers::config::builtin()
-                    .resolve("codex")
-                    .is_ok_and(|a| a.version_supported(&pairs[0].1))
-            {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    "此 Codex 客户端版本尚未通过模型目录适配验证",
-                )
-                    .into_response();
+            if !codex_catalog::valid_client_version(&pairs[0].1) {
+                return (StatusCode::BAD_REQUEST, "Codex 客户端版本参数格式无效").into_response();
             }
         } else if query != "beta=true"
             || !["v1/messages", "v1/messages/count_tokens"].contains(&path.as_str())

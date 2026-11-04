@@ -26,9 +26,6 @@ impl config::NativeConfigAdapter for RedirectedCodex {
     fn protocol(&self) -> Option<&'static str> {
         Some("responses")
     }
-    fn version_supported(&self, version: &str) -> bool {
-        version.starts_with("0.163.")
-    }
     fn model_id(&self, _: &str, model: &str) -> String {
         model.into()
     }
@@ -161,9 +158,6 @@ fn stopping_a_native_planner_in_flight_cannot_publish_a_late_preview() {
         }
         fn protocol(&self) -> Option<&'static str> {
             Some("responses")
-        }
-        fn version_supported(&self, version: &str) -> bool {
-            version.starts_with("0.163.")
         }
         fn model_id(&self, _: &str, model: &str) -> String {
             model.into()

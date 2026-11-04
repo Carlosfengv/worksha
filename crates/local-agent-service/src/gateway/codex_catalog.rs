@@ -1,6 +1,10 @@
 use local_agent_core::Provider;
 use serde_json::{Value, json};
 
+pub(crate) fn valid_client_version(version: &str) -> bool {
+    version.len() <= 80 && semver::Version::parse(version).is_ok()
+}
+
 /// Codex 0.163's ModelInfo format, validated against the bundled native client.
 /// Do not copy OpenAI model prompts or advertise unverified native hosted tools.
 pub fn catalog(provider: &Provider, models: &[String]) -> Value {

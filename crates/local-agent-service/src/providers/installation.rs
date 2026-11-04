@@ -279,26 +279,20 @@ fn assess(agent: &str, installations: Vec<(&str, Option<Version>)>) -> Compatibi
             "opencode" => "OpenCode",
             _ => return Err(ConfigError::new("unsupported", "不支持此 Agent")),
         };
-        let adapter = config::builtin().resolve(agent)?;
-        if installations.is_empty() {
+        config::builtin().resolve(agent)?;
+        let Some((detected_name, _)) = installations.first() else {
             return Err(ConfigError::new(
                 "agent_not_found",
                 &format!("未找到 {name}。请确认已安装后重试。"),
             ));
-        }
-        for (name, detected) in installations {
-            let detected = detected.ok_or_else(|| {
-                ConfigError::new(
-                    "agent_version_unreadable",
-                    &format!("已找到 {name}，但无法读取版本。请确认客户端可正常启动后重试。"),
-                )
-            })?;
-            if !adapter.version_supported(&detected.to_string()) {
-                return Err(ConfigError::new(
-                    "agent_version_unverified",
-                    &format!("{name} {detected} 的配置适配尚未验证。请使用已验证的版本后重试。"),
-                ));
-            }
+        };
+        // A readable version identifies an installation. The adapter checks
+        // the actual configuration before planning or applying any changes.
+        if version.is_none() {
+            return Err(ConfigError::new(
+                "agent_version_unreadable",
+                &format!("已找到 {detected_name}，但无法读取版本。请确认客户端可正常启动后重试。"),
+            ));
         }
         Ok(())
     })();
@@ -366,7 +360,7 @@ mod tests {
     }
 
     #[test]
-    fn desktop_and_cli_sharing_configuration_are_checked() {
+    fn new_codex_desktop_versions_can_use_the_shared_configuration() {
         let temp = tempfile::tempdir().unwrap();
         let home = temp.path();
         let bundled = home
@@ -374,25 +368,28 @@ mod tests {
             .join(CODEX_BINARIES[2]);
         write(
             &bundled,
-            "#!/bin/sh\necho 'codex-cli 0.166.0-alpha.5.1'\n",
+            "#!/bin/sh\necho 'codex-cli 0.166.0-alpha.6'\n",
             0o700,
         );
         let locations = Locations::new(Some(home), OsStr::new(""), &home.join("system"), [], None);
         assert_eq!(locations.bundled_codex(), Some(bundled.clone()));
-        detect("codex", &locations).result.unwrap();
+        let detected = detect("codex", &locations);
+        assert_eq!(detected.version.as_deref(), Some("0.166.0-alpha.6"));
+        detected.result.unwrap();
         write(
             &home.join(".local/bin/codex"),
-            "#!/bin/sh\necho 'codex-cli 0.166.0'\n",
+            "#!/bin/sh\necho 'codex-cli 0.167.1'\n",
             0o700,
         );
-        write(&bundled, "#!/bin/sh\necho 'codex-cli 0.167.0'\n", 0o700);
-        let error = detect("codex", &locations).result.unwrap_err();
-        assert_eq!(error.code, "agent_version_unverified");
-        assert!(error.message.contains("Codex 桌面端 0.167.0"));
+        detect("codex", &locations).result.unwrap();
+        write(&bundled, "#!/bin/sh\nexit 2\n", 0o700);
+        let detected = detect("codex", &locations);
+        assert_eq!(detected.version.as_deref(), Some("0.167.1"));
+        detected.result.unwrap();
     }
 
     #[test]
-    fn absent_failed_and_unverified_cli_probes_have_distinct_errors() {
+    fn absent_and_failed_cli_probes_have_distinct_errors_but_new_versions_pass() {
         let temp = tempfile::tempdir().unwrap();
         let home = temp.path();
         let locations = Locations::new(Some(home), OsStr::new(""), &home.join("system"), [], None);
@@ -407,9 +404,9 @@ mod tests {
             "agent_version_unreadable"
         );
         write(&cli, "#!/bin/sh\necho '2.1.319 (Claude Code)'\n", 0o700);
-        let error = detect("claude", &locations).result.unwrap_err();
-        assert_eq!(error.code, "agent_version_unverified");
-        assert!(error.message.contains("2.1.319"));
+        let detected = detect("claude", &locations);
+        assert_eq!(detected.version.as_deref(), Some("2.1.319"));
+        detected.result.unwrap();
     }
 
     #[cfg(target_os = "macos")]

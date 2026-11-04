@@ -19,7 +19,6 @@ use std::{
 pub trait NativeConfigAdapter: BuiltinPlugin {
     fn id(&self) -> &'static str;
     fn protocol(&self) -> Option<&'static str>;
-    fn version_supported(&self, version: &str) -> bool;
     fn model_id(&self, provider_id: &str, model: &str) -> String;
     fn supports_model_catalog(&self) -> bool;
     fn requires_inline_credential(&self) -> bool;
@@ -104,25 +103,6 @@ impl NativeConfigAdapter for Format {
     }
     fn protocol(&self) -> Option<&'static str> {
         self.protocol
-    }
-    fn version_supported(&self, version: &str) -> bool {
-        let Ok(version) = semver::Version::parse(version) else {
-            return false;
-        };
-        let stable = version.pre.is_empty();
-        match (self.id, version.major, version.minor) {
-            ("claude", 2, 1) => stable && (286..=318).contains(&version.patch),
-            ("codex", 0, 163) => true,
-            ("codex", 0, 164..=166) => {
-                version.patch == 0
-                    && (stable || (version.minor == 166 && version.pre.as_str() == "alpha.5.1"))
-            }
-            ("opencode", 1, 18) => true,
-            ("opencode", 1, 19) => stable && version.patch <= 5,
-            ("claude-desktop", 2, 2553 | 42304) => true,
-            ("claude-desktop", 3, 6556) => stable && version.patch == 2,
-            _ => false,
-        }
     }
     fn model_id(&self, provider_id: &str, model: &str) -> String {
         if self.id != "claude-desktop" {

@@ -333,18 +333,12 @@ pub async fn capture(
             let pairs: Vec<_> = url::form_urlencoded::parse(query.as_bytes()).collect();
             pairs.len() == 1
                 && pairs[0].0 == "client_version"
-                && pairs[0].1.len() <= 80
-                && local_agent_core::providers::config::builtin()
-                    .resolve("codex")
-                    .is_ok_and(|adapter| adapter.version_supported(&pairs[0].1))
+                && crate::gateway::codex_catalog::valid_client_version(&pairs[0].1)
         } else {
             path == "/v1/messages" && query == "beta=true"
         };
         if !valid {
-            return reject(
-                StatusCode::BAD_REQUEST,
-                "此接口的查询参数无效或客户端版本未经验证",
-            );
+            return reject(StatusCode::BAD_REQUEST, "此接口的查询参数无效");
         }
     }
     let protocol = match path {
