@@ -114,6 +114,6 @@ pnpm test:domain-isolation
 
 ## 许可与安全
 
-项目自身的授权方式尚未确定。第三方依赖与资源许可见 [第三方说明](THIRD_PARTY_NOTICES.md)、`licenses/` 和 `public/licenses/`。
+项目许可见 [LICENSE](LICENSE)。第三方依赖与资源许可见 [第三方说明](THIRD_PARTY_NOTICES.md)、`licenses/` 和 `public/licenses/`。
 
 安全问题的报告要求与渠道现状见 [SECURITY](SECURITY.md)。
