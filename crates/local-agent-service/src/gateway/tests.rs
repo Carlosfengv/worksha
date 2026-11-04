@@ -1031,6 +1031,11 @@ async fn http_gateway_converts_all_paths_authenticates_observes_and_restores_tem
             }));
             for (query, status) in [
                 ("client_version=0.162.0", 400),
+                ("client_version=0.164.0", 200),
+                ("client_version=0.165.0", 200),
+                ("client_version=0.166.0-alpha.5.1", 200),
+                ("client_version=0.166.0", 200),
+                ("client_version=0.167.0", 400),
                 ("client_version=0.163.1&extra=x", 401),
                 ("client_version=0.163.1&client_version=0.163.2", 401),
                 ("beta=true", 401),

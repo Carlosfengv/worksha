@@ -108,6 +108,7 @@ Object.defineProperty(globalThis, "isTauri", {
 });
 mockIPC(async (name, args) => {
   calls.push({ name, args: structuredClone(args) });
+  if (name === "get_provider_status") return structuredClone(status);
   if (name === "get_local_token_protocol") return structuredClone(protocol);
   if (name === "verify_provider") {
     return {

@@ -101,9 +101,12 @@ test("native enrollment blocks running clients, preserves dismissed previews, an
     .click();
   await page.getByRole("option", { name: "编程服务", exact: true }).click();
   await page.getByRole("button", { name: "验证并生成预览" }).click();
-  await expect(
-    page.getByRole("button", { name: "写入配置", exact: true }),
-  ).toBeDisabled();
+  const apply = page.getByRole("button", { name: "写入配置", exact: true });
+  await expect(apply).toBeEnabled();
+  await apply.click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
+    "配置未写入",
+  );
   expect(
     await page.evaluate(() => window.modelServiceFixture.config.revision),
   ).toBe("original");

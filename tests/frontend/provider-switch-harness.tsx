@@ -111,6 +111,7 @@ declare global {
       verified: boolean;
       failModel: string | null;
       readFailure: boolean;
+      runtimeFailure: string | null;
     };
   }
 }
@@ -122,6 +123,7 @@ const fixture = (window.providerSwitchFixture = {
   verified: !new URLSearchParams(location.search).has("expired"),
   failModel: null as string | null,
   readFailure: false,
+  runtimeFailure: null as string | null,
 });
 const configs = list
   ? [...new Set(agentProducts.map((p) => p.configId))]
@@ -212,9 +214,9 @@ providersApi.providerStatus = async (): Promise<ProviderStatus> => {
     runtimes: configs.map((c) => ({
       agentId: c.agentId,
       version: "1.18.13",
-      supported: true,
+      supported: fixture.runtimeFailure === null,
       processes: fixture.processes,
-      reason: "受支持的隔离配置",
+      reason: fixture.runtimeFailure ?? "",
     })),
   });
 };
@@ -280,6 +282,9 @@ providersApi.providerSwitchAction = async (_id, action) => {
     throw new Error("应用前发现 Agent 已重新启动，配置尚未写入");
   }
   if (action === "apply") {
+    if (fixture.processes !== 0) {
+      throw new Error("相关 Agent 仍在运行或进程状态无法确认，配置尚未写入");
+    }
     await new Promise<void>((resolve) => {
       fixture.finish = resolve;
     });

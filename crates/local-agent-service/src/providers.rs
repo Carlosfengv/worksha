@@ -4,12 +4,13 @@ pub(crate) mod credential_scope;
 pub(crate) mod draft_catalog;
 pub(crate) mod draft_grant;
 pub(crate) mod draft_recovery;
+mod installation;
 pub(crate) mod operations;
 pub(crate) mod presets;
 mod process;
 pub(crate) mod source_operation;
 
-use self::process::output;
+use self::{installation::Compatibility, process::output};
 use crate::{ApiResult, AppState, json_value};
 use axum::{
     Json,
@@ -19,11 +20,13 @@ use axum::{
 use local_agent_core::{
     Provider,
     providers::{self, BindingDraft, ConfigError, Verification, files, fingerprint, select_model},
-    sessions::sanitize_label,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{path::PathBuf, time::Duration};
+use std::{
+    path::{Path as FilePath, PathBuf},
+    time::Duration,
+};
 use zeroize::Zeroizing;
 
 pub(crate) fn error(e: ConfigError) -> (StatusCode, Json<Value>) {
@@ -142,63 +145,94 @@ struct Runtime {
     reason: String,
 }
 pub(crate) fn binary(agent: &str) -> Option<PathBuf> {
-    let mut paths = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
-        .map(|p| p.join(agent))
-        .collect::<Vec<_>>();
-    if agent == "claude"
-        && let Some(home) = dirs::home_dir()
-    {
-        paths.push(home.join(".local/bin/claude"));
-    }
-    if agent == "codex" {
-        paths.push(PathBuf::from("/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"));
-    }
-    if agent == "opencode"
-        && let Some(home) = dirs::home_dir()
-    {
-        paths.push(home.join(".opencode/bin/opencode"));
-    }
-    paths.into_iter().find(|p| p.is_file())
+    installation::binary(agent)
 }
-fn runtimes() -> Vec<Runtime> {
+
+const AGENTS: [&str; 4] = ["claude", "codex", "opencode", "claude-desktop"];
+
+fn fixture_version(agent: &str) -> Option<&'static str> {
     #[cfg(debug_assertions)]
     if std::env::var("LOCAL_AGENT_TEST_MEMORY_VAULT").as_deref() == Ok("1")
         && std::env::var("LOCAL_AGENT_TEST_IDLE_AGENTS").as_deref() == Ok("1")
     {
-        return ["claude", "codex", "opencode", "claude-desktop"]
-            .into_iter()
-            .map(|agent| Runtime {
-                agent_id: agent.into(),
-                version: Some(
-                    if agent == "claude" {
-                        "2.1.286"
-                    } else if agent == "codex" {
-                        "0.163.0"
-                    } else if agent == "opencode" {
-                        "1.18.15"
-                    } else {
-                        "2.2553.1"
-                    }
-                    .into(),
-                ),
-                supported: true,
-                processes: Some(0),
-                reason: "隔离临时目录测试进程状态".into(),
-            })
-            .collect();
+        return match agent {
+            "claude" => Some("2.1.286"),
+            "codex" => Some("0.163.0"),
+            "opencode" => Some("1.18.15"),
+            "claude-desktop" => Some("2.2553.1"),
+            _ => None,
+        };
     }
+    let _ = agent;
+    None
+}
+
+fn compatibility(agent: &str) -> Compatibility {
+    if let Some(version) = fixture_version(agent) {
+        return Compatibility {
+            version: Some(version.into()),
+            result: Ok(()),
+        };
+    }
+    installation::compatibility(agent)
+}
+
+fn runtimes() -> Vec<Runtime> {
+    let fixture = fixture_version("claude").is_some();
+    let (processes, node_commands) = if fixture {
+        (Some(String::new()), Some(String::new()))
+    } else {
+        process_snapshot(true)
+    };
+    AGENTS
+        .into_iter()
+        .map(|agent| {
+            let Compatibility { version, result } = compatibility(agent);
+            Runtime {
+                agent_id: agent.into(),
+                version,
+                supported: result.is_ok(),
+                processes: processes
+                    .as_deref()
+                    .and_then(|text| process_count(agent, text, node_commands.as_deref())),
+                reason: if fixture {
+                    "隔离临时目录测试进程状态".into()
+                } else {
+                    result.err().map_or_else(String::new, |error| error.message)
+                },
+            }
+        })
+        .collect()
+}
+
+pub(crate) fn require_supported(agent: &str) -> Result<(), ConfigError> {
+    compatibility(agent).result
+}
+
+fn agent_idle(agent: &str) -> bool {
+    if fixture_version(agent).is_some() {
+        return true;
+    }
+    let (processes, node_commands) = process_snapshot(agent == "claude");
+    processes
+        .as_deref()
+        .and_then(|text| process_count(agent, text, node_commands.as_deref()))
+        == Some(0)
+}
+
+fn process_snapshot(need_node_commands: bool) -> (Option<String>, Option<String>) {
     let uid = providers::current_uid().to_string();
-    let processes = output(
-        std::path::Path::new("/bin/ps"),
-        &["-U", &uid, "-o", "pid=,comm="],
-    );
+    let processes = output(FilePath::new("/bin/ps"), &["-U", &uid, "-o", "pid=,comm="]);
+    if !need_node_commands {
+        return (processes, None);
+    }
     let node_pids = processes
         .as_deref()
         .unwrap_or_default()
         .lines()
         .filter_map(|line| {
             let (pid, name) = line.trim().split_once(char::is_whitespace)?;
-            (std::path::Path::new(name.trim()).file_name()?.to_str()? == "node").then_some(pid)
+            (FilePath::new(name.trim()).file_name()?.to_str()? == "node").then_some(pid)
         })
         .collect::<Vec<_>>()
         .join(",");
@@ -206,29 +240,11 @@ fn runtimes() -> Vec<Runtime> {
         Some(String::new())
     } else {
         output(
-            std::path::Path::new("/bin/ps"),
+            FilePath::new("/bin/ps"),
             &["-p", &node_pids, "-o", "pid=,args="],
         )
     };
-    ["claude","codex","opencode","claude-desktop"].into_iter().map(|agent|{
-        let version=if agent=="claude-desktop" {output(std::path::Path::new("/usr/bin/defaults"),&["read","/Applications/Claude.app/Contents/Info","CFBundleShortVersionString"])}else{binary(agent).and_then(|p|output(&p,&["--version"]))}.and_then(|s|s.split_whitespace().find(|part|part.starts_with(|c:char|c.is_ascii_digit())).map(str::to_owned)).map(|s|sanitize_label(&s,80));
-        let supported=version.as_deref().is_some_and(|v|providers::config::builtin().resolve(agent).is_ok_and(|adapter| adapter.version_supported(v)));
-        let count=processes.as_deref().and_then(|text| process_count(agent,text,node_commands.as_deref()));
-        Runtime{agent_id:agent.into(),version,supported,processes:count,reason:if supported {"当前配置适配已核对；首次接入应用前需关闭相关 Agent。Node 宿主按 Claude CLI 入口识别，无法读取进程信息时仍阻止写入。"} else {"未找到已核对的版本；Claude Code 支持 2.1.286 / 2.1.310，Codex 支持 0.163.x，拒绝未经验证的配置写入。"}.into()}
-    }).collect()
-}
-pub(crate) fn require_supported(agent: &str) -> Result<(), ConfigError> {
-    if runtimes()
-        .iter()
-        .any(|r| r.agent_id == agent && r.supported)
-    {
-        Ok(())
-    } else {
-        Err(ConfigError::new(
-            "unsupported",
-            "当前 Agent 版本尚未核对，未改写配置",
-        ))
-    }
+    (processes, node_commands)
 }
 fn process_count(agent: &str, processes: &str, node_commands: Option<&str>) -> Option<usize> {
     let mut count = 0;
@@ -460,10 +476,6 @@ pub async fn prepare(State(state): State<AppState>, Json(draft): Json<BindingDra
                     .ok_or_else(|| error(ConfigError::new("not_found", "服务商不存在")))
             })
             .transpose()?;
-        let runtime = runtimes()
-            .into_iter()
-            .find(|r| r.agent_id == draft.agent_id)
-            .ok_or_else(|| error(ConfigError::new("unsupported", "不支持此 Agent")))?;
         if draft
             .expected_provider_revision
             .is_some_and(|revision| p.as_ref().is_none_or(|p| p.revision != revision))
@@ -473,9 +485,7 @@ pub async fn prepare(State(state): State<AppState>, Json(draft): Json<BindingDra
                 "供应商已改变，请重新选择连接",
             )));
         }
-        if !runtime.supported {
-            return Err(error(ConfigError::new("unsupported", &runtime.reason)));
-        }
+        require_supported(&draft.agent_id).map_err(error)?;
         if p.is_none() && draft.model.is_some() {
             return Err(error(ConfigError::new(
                 "invalid_model",
@@ -583,12 +593,8 @@ async fn switch(state: AppState, id: String, commit: bool) -> ApiResult {
         if commit && t.state == "applied" {
             return json_value(t);
         }
-        let runtime = runtimes()
-            .into_iter()
-            .find(|r| r.agent_id == t.agent_id)
-            .ok_or_else(|| error(ConfigError::new("unsupported", "不支持此 Agent")))?;
-        if !runtime.supported && t.restore_of.is_none() {
-            return Err(error(ConfigError::new("unsupported", &runtime.reason)));
+        if t.restore_of.is_none() {
+            require_supported(&t.agent_id).map_err(error)?;
         }
         let m = state.providers.lock().map_err(|_| error(unavailable()))?;
         if t.state == "pending"
@@ -645,7 +651,7 @@ async fn switch(state: AppState, id: String, commit: bool) -> ApiResult {
                         })
                         .transpose()
                 },
-                runtime.processes == Some(0)
+                agent_idle(&t.agent_id)
                     && state
                         .observation
                         .active_count(if t.agent_id == "claude-desktop" {

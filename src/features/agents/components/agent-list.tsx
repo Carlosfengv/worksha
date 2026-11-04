@@ -78,24 +78,16 @@ const columns: ColumnDef<AgentRow>[] = [
               {version && (
                 <span className="text-label text-fg-subtle">{version}</span>
               )}
-              {!agent.found && (
-                <Badge size="sm" status="neutral">
-                  未发现安装
-                </Badge>
-              )}
             </div>
             <p
               className="text-label text-fg-muted"
-              title={[connection.description, connection.reason, source?.error]
+              title={[connection.description, source?.error]
                 .filter(Boolean)
                 .join(" · ")}
             >
               {connection.label} · {connection.title} ·{" "}
               <span>{sourceLabel(source)}</span>
             </p>
-            {connection.reason && (
-              <p className="text-label text-fg-muted">{connection.reason}</p>
-            )}
             {activation && (
               <Badge size="sm" status="warning">
                 {activation}

@@ -126,6 +126,8 @@ try {
   const codexCatalog = await fetch(`${lanBase}/v1/codex/models.json?client_version=0.163.0`, { headers: headers(c.key) });
   assert.equal(codexCatalog.status, 200);
   assert.equal((await codexCatalog.json()).models.length, 3);
+  assert.equal((await fetch(`${lanBase}/v1/codex/models.json?client_version=0.166.0`, { headers: headers(c.key) })).status, 200);
+  assert.equal((await fetch(`${lanBase}/v1/codex/models.json?client_version=0.167.0`, { headers: headers(c.key) })).status, 400);
   assert.equal((await fetch(`${lanBase}/v1/codex/models.json?client_version=0.100.0`, { headers: headers(c.key) })).status, 400);
   await expectOk(await call(a.key, "fast", { headers: { "content-type": "application/json", "x-api-key": a.key } }));
   await expectOk(await call(d.key));

@@ -32,7 +32,6 @@ export function AgentProviderSelect({
       </p>
     );
   const config = status?.configs.find((item) => item.agentId === configId);
-  const runtime = status?.runtimes.find((item) => item.agentId === configId);
   const route = config?.endpoint
     ? status?.transactions.find(
         (item) =>
@@ -53,25 +52,12 @@ export function AgentProviderSelect({
         : configured.some((provider) => provider.id === route?.provider?.id)
           ? route!.provider!.id
           : "current";
-  const reason = unavailable
-    ? "配置读取失败，请重新读取"
-    : checking
-      ? "正在读取配置…"
-      : !config
-        ? "配置状态未知"
-        : config.error
-          ? "配置读取未完成"
-          : !runtime?.supported
-            ? (runtime?.reason ?? "当前版本暂不支持切换")
-            : !config.revision
-              ? "配置版本未知，请重新读取"
-              : null;
   return (
-    <div className="w-60 space-y-1">
+    <div className="w-60">
       <Select
         size="sm"
         value={current}
-        disabled={!!reason}
+        disabled={checking || unavailable || !config}
         onValueChange={(value) => {
           if (config && value !== "current") onSelect(config, value);
         }}
@@ -79,13 +65,13 @@ export function AgentProviderSelect({
         <SelectTrigger
           className="w-full"
           aria-label={`${name} Provider`}
-          title={reason ?? "选择 Provider，确认后应用"}
-          placeholder={reason ?? "选择 Provider"}
+          title="切换 Provider，确认后应用"
+          placeholder="切换 Provider"
         />
         <SelectContent align="end">
           {current === "current" && (
             <SelectItem value="current" disabled>
-              {reason ?? config?.providerName ?? "连接待确认"}
+              {config?.providerName || "切换 Provider"}
             </SelectItem>
           )}
           {native && <SelectItem value="native">官方原生登录</SelectItem>}
@@ -103,15 +89,6 @@ export function AgentProviderSelect({
           ))}
         </SelectContent>
       </Select>
-      <p
-        className="truncate text-label text-fg-subtle"
-        title={reason ?? config?.model ?? undefined}
-      >
-        {reason ??
-          dynamic?.target.provider.model ??
-          config?.model ??
-          "模型由 Agent 管理"}
-      </p>
     </div>
   );
 }

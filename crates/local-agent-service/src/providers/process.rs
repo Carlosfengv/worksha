@@ -1,5 +1,6 @@
 //! Bounded output for local version and process inspection, on a blocking worker.
 use std::{
+    ffi::{OsStr, OsString},
     io::{ErrorKind, Read},
     os::fd::AsRawFd,
     path::Path,
@@ -13,10 +14,36 @@ pub(super) fn output(binary: &Path, args: &[&str]) -> Option<String> {
     output_with_budget(binary, args, Duration::from_millis(1200))
 }
 
+pub(super) fn cli_version(binary: &Path, search_path: &OsStr) -> Option<String> {
+    // Version discovery only needs filesystem and interpreter lookup. Keep the
+    // management token and provider credentials in the service. env replaces
+    // itself with the CLI after clearing any macOS launch environment.
+    let mut command = Command::new("/usr/bin/env");
+    command.env_clear().arg("-i");
+    let mut path = OsString::from("PATH=");
+    path.push(search_path);
+    command.arg(path);
+    for key in ["HOME", "TMPDIR"] {
+        if let Some(value) = std::env::var_os(key) {
+            let mut setting = OsString::from(key);
+            setting.push("=");
+            setting.push(value);
+            command.arg(setting);
+        }
+    }
+    command.arg(binary).arg("--version");
+    run(command, Duration::from_millis(2500))
+}
+
 fn output_with_budget(binary: &Path, args: &[&str], budget: Duration) -> Option<String> {
+    let mut command = Command::new(binary);
+    command.args(args);
+    run(command, budget)
+}
+
+fn run(mut command: Command, budget: Duration) -> Option<String> {
     let deadline = Instant::now() + budget;
-    let mut child = Command::new(binary)
-        .args(args)
+    let mut child = command
         .current_dir("/")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

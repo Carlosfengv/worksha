@@ -47,7 +47,7 @@ GATEWAY_DATA="$HOME/Library/Application Support/app.localagent.gateway"
 客户端支持自定义模型端点时，填写 `http://网关私有IP:端口/v1` 和自己的客户端密钥。当前为显式私有地址上的 HTTP，仅用于受控局域网；未提供 TLS、公网监听、浏览器 CORS 或远程管理功能。
 
 - `claude`、`opencode` 客户端：`POST /v1/messages`，支持 Anthropic 的 `?beta=true`。Claude Code 可通过独立进程的 `ANTHROPIC_BASE_URL=http://IP:PORT`、`ANTHROPIC_AUTH_TOKEN=客户端密钥`、`ANTHROPIC_MODEL=授权模型` 接入；不需要向客户端提供上游 Provider 密钥。
-- `codex` 客户端：`POST /v1/responses`；此处只验证离线协议回放，不启动 Codex 真实模型测试。Codex 0.163 系列的模型目录为 `GET /v1/codex/models.json?client_version=0.163.x`，配置时模型 ID 仍须在授权范围内。
+- `codex` 客户端使用 `POST /v1/responses`。模型目录使用 `GET /v1/codex/models.json?client_version=<版本>`，接受与桌面配置适配器一致的版本范围，包括 0.163.x、0.164.0、0.165.0、0.166.0 和 0.166.0-alpha.5.1。兼容性通过离线协议回放核对，模型 ID 须在客户端授权范围内。
 - `GET /v1/models` 仅返回该客户端仍有效的授权模型。
 - Bearer 或 `x-api-key` 认证；管理密钥不能代替客户端密钥。Origin、错误 Host、未授权模型和不适用的协议会被拒绝。
 

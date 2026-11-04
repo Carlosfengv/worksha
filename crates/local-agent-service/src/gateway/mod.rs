@@ -479,14 +479,14 @@ pub async fn capture(
             if pairs.len() != 1 || pairs[0].0 != "client_version" {
                 return reject();
             }
-            if !local_agent_core::providers::config::builtin()
-                .resolve("codex")
-                .is_ok_and(|a| a.version_supported(&pairs[0].1))
-                || pairs[0].1.len() > 80
+            if pairs[0].1.len() > 80
+                || !local_agent_core::providers::config::builtin()
+                    .resolve("codex")
+                    .is_ok_and(|a| a.version_supported(&pairs[0].1))
             {
                 return (
                     StatusCode::BAD_REQUEST,
-                    "此 Codex 模型目录仅验证过 0.163 系列客户端",
+                    "此 Codex 客户端版本尚未通过模型目录适配验证",
                 )
                     .into_response();
             }

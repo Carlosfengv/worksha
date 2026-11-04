@@ -106,11 +106,21 @@ impl NativeConfigAdapter for Format {
         self.protocol
     }
     fn version_supported(&self, version: &str) -> bool {
-        match self.id {
-            "claude" => ["2.1.286", "2.1.310"].contains(&version),
-            "codex" => version.starts_with("0.163."),
-            "opencode" => version.starts_with("1.18."),
-            "claude-desktop" => version.starts_with("2.2553.") || version.starts_with("2.42304."),
+        let Ok(version) = semver::Version::parse(version) else {
+            return false;
+        };
+        let stable = version.pre.is_empty();
+        match (self.id, version.major, version.minor) {
+            ("claude", 2, 1) => stable && (286..=318).contains(&version.patch),
+            ("codex", 0, 163) => true,
+            ("codex", 0, 164..=166) => {
+                version.patch == 0
+                    && (stable || (version.minor == 166 && version.pre.as_str() == "alpha.5.1"))
+            }
+            ("opencode", 1, 18) => true,
+            ("opencode", 1, 19) => stable && version.patch <= 5,
+            ("claude-desktop", 2, 2553 | 42304) => true,
+            ("claude-desktop", 3, 6556) => stable && version.patch == 2,
             _ => false,
         }
     }

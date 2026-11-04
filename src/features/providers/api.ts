@@ -592,6 +592,15 @@ export const providersApi = {
   providerStatus(): Promise<ProviderStatus> {
     return command<unknown>("get_provider_status").then(providerStatus);
   },
+  async requireCompatibleAgent(agentId: string): Promise<void> {
+    const status = await providersApi.providerStatus();
+    const runtime = status.runtimes.find((item) => item.agentId === agentId);
+    if (!runtime?.supported) {
+      throw new Error(
+        runtime?.reason || "无法确认 Agent 的配置兼容性，请重试。",
+      );
+    }
+  },
   discoverProviderImports(): Promise<ProviderImportCandidate[]> {
     return command<unknown>("discover_provider_imports").then(
       providerImportCandidates,

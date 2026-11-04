@@ -425,7 +425,7 @@ export function ProviderConfigControl({
   };
   const prepare = async () => {
     if (
-      !draft?.revision ||
+      !draft ||
       busy ||
       (!nativeSelection && (!chosen || !modelIds.includes(model)))
     )
@@ -440,6 +440,14 @@ export function ProviderConfigControl({
     setError(null);
     setNotice(null);
     try {
+      if (!(dynamicBinding && chosen && usingDynamic)) {
+        await providersApi.requireCompatibleAgent(draft.agentId);
+      }
+      if (draft.error || !draft.revision) {
+        throw new Error(
+          draft.error || "无法确认当前配置版本，请重新读取后重试。",
+        );
+      }
       if (!nativeSelection && !(dynamicBinding && chosen && usingDynamic))
         requireLocalTokenSource(tokenSource);
       const modelsToVerify =
@@ -556,20 +564,18 @@ export function ProviderConfigControl({
       ? t.agentId === onlyAgent
       : !onlyAgent || t.agentId === onlyAgent,
   );
-  const openSwitch = (config: NativeConfig, providerId: string) => {
-    if (
-      busy ||
-      checking ||
-      config.error ||
-      !config.revision ||
-      !status.runtimes.find((runtime) => runtime.agentId === config.agentId)
-        ?.supported
-    )
-      return;
+  const openSwitch = (
+    config: NativeConfig,
+    providerId: string,
+    enroll = false,
+  ) => {
+    if (busy || checking) return;
+    setNotice(null);
     const provider = providers.find(
       (item) => item.id === providerId && item.configured,
     );
     if (
+      providerId &&
       providerId !== "native" &&
       (!provider || !availableProviderModelIds(provider).length)
     )
@@ -581,11 +587,10 @@ export function ProviderConfigControl({
       return;
     setDraft(config);
     captureSource();
-    setEnrollDynamic(false);
+    setEnrollDynamic(enroll);
     setSelection(providerId);
     setModel(provider ? (availableProviderModelIds(provider)[0] ?? "") : "");
     setError(null);
-    setNotice(null);
   };
   return (
     <section className="space-y-4" aria-label="Agent 原生配置与切换">
@@ -630,9 +635,6 @@ export function ProviderConfigControl({
                   t.state === "applied" &&
                   t.routing?.localEndpoint === config.endpoint,
               );
-              const runtime = status.runtimes.find(
-                (r) => r.agentId === config.agentId,
-              );
               return (
                 <article
                   key={config.agentId}
@@ -642,21 +644,15 @@ export function ProviderConfigControl({
                     <h3 className="text-title font-medium">
                       {agentName(config.agentId)}
                     </h3>
-                    <Badge status={config.error ? "warning" : "neutral"}>
-                      {config.state === "absent"
-                        ? "默认文件未创建"
-                        : config.error
-                          ? "读取未完成"
+                    {!config.error && (
+                      <Badge status="neutral">
+                        {config.state === "absent"
+                          ? "默认文件未创建"
                           : "用户级配置已读取"}
-                    </Badge>
+                      </Badge>
+                    )}
                   </div>
-                  {config.error ? (
-                    <Alert status="warning">
-                      <AlertDescription>{config.error}</AlertDescription>
-                    </Alert>
-                  ) : (
-                    <ConfigDetails config={config} />
-                  )}
+                  {!config.error && <ConfigDetails config={config} />}
                   {currentRoute?.provider &&
                     !dynamicBindingFor(status, config) && (
                       <p className="text-body text-fg-muted">
@@ -670,46 +666,23 @@ export function ProviderConfigControl({
                         。此连接使用切换时快照，目录修改后需重新切换。
                       </p>
                     )}
-                  <p className="text-label text-fg-muted">
-                    {runtime?.version
-                      ? `检测版本 ${runtime.version}`
-                      : "未检测到 CLI 版本"}{" "}
-                    ·{" "}
-                    {runtime?.processes === null
-                      ? "进程状态未知"
-                      : `${runtime?.processes ?? 0} 个相关进程`}
-                  </p>
                   <p className="text-label text-fg-subtle">
                     {config.warnings.join(" ")}
                   </p>
-                  {!runtime?.supported && (
-                    <p className="text-label text-fg-muted">
-                      {runtime?.reason}
-                    </p>
-                  )}
                   <div className="flex flex-wrap gap-2">
                     <Button
                       variant="neutral"
                       size="sm"
-                      disabled={
-                        checking ||
-                        !!config.error ||
-                        !runtime?.supported ||
-                        !!busy
-                      }
-                      onClick={() => {
-                        setEnrollDynamic(false);
-                        setDraft(config);
-                        captureSource();
-                        setSelection(
+                      disabled={checking || !!busy}
+                      onClick={() =>
+                        openSwitch(
+                          config,
                           config.mode === "native" &&
                             ["claude", "codex"].includes(config.agentId)
                             ? "native"
                             : "",
-                        );
-                        setModel("");
-                        setError(null);
-                      }}
+                        )
+                      }
                     >
                       切换 Provider
                       <span className="sr-only">
@@ -722,28 +695,14 @@ export function ProviderConfigControl({
                         <Button
                           variant="tertiary"
                           size="sm"
-                          disabled={
-                            checking ||
-                            !!busy ||
-                            !!config.error ||
-                            !runtime?.supported
-                          }
+                          disabled={checking || !!busy}
                           onClick={() => {
-                            setEnrollDynamic(true);
-                            setDraft(config);
-                            captureSource();
                             const provider = providers.find(
                               (p) =>
                                 p.configured &&
                                 availableProviderModelIds(p).length,
                             );
-                            setSelection(provider?.id ?? "");
-                            setModel(
-                              provider
-                                ? (availableProviderModelIds(provider)[0] ?? "")
-                                : "",
-                            );
-                            setError(null);
+                            openSwitch(config, provider?.id ?? "", true);
                           }}
                         >
                           接入固定入口
@@ -775,20 +734,9 @@ export function ProviderConfigControl({
         <section className="space-y-3" aria-label="配置切换与备份记录">
           <h3 className="text-title font-medium">切换与恢复记录</h3>
           {transactions.slice(0, 20).map((t) => {
-            const runtime = status.runtimes.find(
-              (item) => item.agentId === t.agentId,
-            );
             const currentConfig = status.configs.find(
               (item) => item.agentId === t.agentId,
             );
-            const blockedReason =
-              runtime?.processes == null
-                ? "无法确认相关 Agent 是否已退出，请重新检查运行状态后应用。"
-                : runtime.processes > 0
-                  ? `检测到 ${runtime.processes} 个相关进程。请保存任务并退出${t.agentId === "codex" ? " Codex CLI 和 Codex 桌面端" : ` ${agentName(t.agentId)}`}，再重新检查。`
-                  : !runtime.supported && !t.restoreOf
-                    ? runtime.reason
-                    : null;
             const operation =
               feedback?.transactionId === t.id ? feedback : null;
             return (
@@ -850,10 +798,6 @@ export function ProviderConfigControl({
                         待应用目标：{t.targetName}。应用成功并重新启动 Agent
                         后使用。
                       </p>
-                      <p id={`provider-switch-blocked-${t.id}`}>
-                        {blockedReason ??
-                          "已确认相关 Agent 已退出，可以应用；写入前会再次复核。"}
-                      </p>
                     </AlertDescription>
                   </Alert>
                 )}
@@ -881,7 +825,6 @@ export function ProviderConfigControl({
                         size="sm"
                         loading={busy === t.id}
                         disabled={!!busy || checking}
-                        aria-describedby={`provider-switch-blocked-${t.id}`}
                         onClick={() => setRestart(t)}
                       >
                         重启 Agent 并生效
@@ -981,14 +924,6 @@ export function ProviderConfigControl({
               ? "请先保存该客户端所有窗口中的任务。确认后将请求整个桌面客户端正常退出，检查相关进程已退出，再写入配置并重新打开。客户端拒绝退出、仍有 CLI 或状态未知时会停止，不会强制结束进程。"
               : "请先保存任务，在原终端退出 CLI；确认应用后，在原项目目录按原方式重新启动，以保留工作目录和启动参数。"}
           </p>
-          {!desktopRestart && (
-            <p className="text-body text-fg-muted">
-              {status.runtimes.find((r) => r.agentId === restart?.agentId)
-                ?.processes === 0
-                ? "已检测到相关进程退出，可以确认应用。"
-                : "相关进程尚未退出或状态未知，请退出后重新检查。"}
-            </p>
-          )}
           {restart && verificationControl(restart)}
           {feedback && restart && feedback.transactionId === restart.id && (
             <Alert
@@ -1013,11 +948,7 @@ export function ProviderConfigControl({
             <Button
               variant="neutral"
               disabled={
-                !!busy ||
-                checking ||
-                status.runtimes.find((r) => r.agentId === restart?.agentId)
-                  ?.processes !== 0 ||
-                (!!restart && needsVerification(restart))
+                !!busy || checking || (!!restart && needsVerification(restart))
               }
               onClick={() => restart && void act(restart.id, "apply")}
             >
@@ -1086,7 +1017,7 @@ export function ProviderConfigControl({
                   reload();
                 }}
               />
-              <ConfigDetails config={draft} />
+              {!draft.error && <ConfigDetails config={draft} />}
               {error && (
                 <Alert status="danger">
                   <AlertTitle>未生成预览</AlertTitle>

@@ -11,6 +11,21 @@
       "outcomeUnknown": false,
       "initialProviderWrite": "query"
     },
+    "agent_not_found": {
+      "httpStatus": 400,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "reject"
+    },
+    "agent_version_unreadable": {
+      "httpStatus": 400,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "reject"
+    },
+    "agent_version_unverified": {
+      "httpStatus": 400,
+      "outcomeUnknown": false,
+      "initialProviderWrite": "reject"
+    },
     "busy": {
       "httpStatus": 409,
       "outcomeUnknown": false,

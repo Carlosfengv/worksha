@@ -80,7 +80,6 @@ export function AgentServiceControl({
   const [progress, setProgress] = useState("");
   const [error, setError] = useLocalTokenError();
   const config = status?.configs.find((c) => c.agentId === agentId);
-  const runtime = status?.runtimes.find((r) => r.agentId === agentId);
   const attachment = catalog?.attachments.find(
     (a) => a.agentId === agentId && a.attached,
   );
@@ -123,12 +122,17 @@ export function AgentServiceControl({
     window.dispatchEvent(new Event("model-services-changed"));
   };
   const prepare = async () => {
-    if (!choice || !sourceConfig?.revision || busy) return;
+    if (!choice || busy) return;
     setBusy(true);
     setError(null);
     try {
       if (pending)
         throw new Error("请先继续处理或撤销已有预览，再准备新的切换。");
+      await providersApi.requireCompatibleAgent(agentId);
+      if (sourceConfig?.error || !sourceConfig?.revision)
+        throw new Error(
+          sourceConfig?.error || "无法确认当前配置版本，请重新读取后重试。",
+        );
       const source = requireLocalTokenSource(tokenSource);
       const defaultProvider = choice.models.find(
         (model) => model.id === choice.defaultModelId,
@@ -245,21 +249,12 @@ export function AgentServiceControl({
           const service = catalog?.services.find((s) => s.id === value);
           if (service) open(service);
         }}
-        disabled={
-          !catalog ||
-          !status ||
-          unavailable ||
-          busy ||
-          !!pending ||
-          !runtime?.supported ||
-          !!config?.error ||
-          !config?.revision
-        }
+        disabled={!catalog || !status || unavailable || busy || !!pending}
       >
         <SelectTrigger
           aria-label={`${name} 模型服务`}
           placeholder={
-            catalog?.services.length ? "选择模型服务" : "尚无模型服务"
+            catalog?.services.length ? "切换模型服务" : "尚无模型服务"
           }
         />
         <SelectContent>
@@ -365,15 +360,6 @@ export function AgentServiceControl({
                 MCP、权限及其他配置。
               </p>
             )}
-            {!!runtime?.processes && (
-              <Alert status="warning">
-                <AlertTitle>先退出 {name}</AlertTitle>
-                <AlertDescription>
-                  检测到 {runtime.processes}{" "}
-                  个相关进程。可以准备预览，全部退出后才能写入；不会强制结束进程。
-                </AlertDescription>
-              </Alert>
-            )}
             {transaction && (
               <>
                 <p className="text-label text-fg-muted">
@@ -417,11 +403,7 @@ export function AgentServiceControl({
                   取消
                 </Button>
                 {transaction ? (
-                  <Button
-                    loading={busy}
-                    disabled={runtime?.processes !== 0}
-                    onClick={() => void action("apply")}
-                  >
+                  <Button loading={busy} onClick={() => void action("apply")}>
                     写入配置
                   </Button>
                 ) : (

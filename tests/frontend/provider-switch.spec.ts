@@ -91,11 +91,43 @@ test("Agent list selects a model service without changing the current connection
   await expect(dialog).toContainText("Claude Code CLI → 编程服务");
   await dialog.getByRole("button", { name: "取消", exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(selector).toContainText("选择模型服务");
+  await expect(selector).toContainText("切换模型服务");
   expect(
     await page.evaluate(() => window.providerSwitchFixture.actions),
   ).toEqual([]);
   expect(new URL(page.url()).hash).toBe("");
+});
+
+test("runtime failures appear after attempting a switch and the same selection can be retried", async ({
+  page,
+}) => {
+  await page.goto("/tests/frontend/provider-switch.html?list=1&ready=1");
+  const failure = "已找到 Codex CLI，但无法读取版本。";
+  await page.evaluate((reason) => {
+    window.providerSwitchFixture.runtimeFailure = reason;
+  }, failure);
+  await page.getByRole("button", { name: "重新读取配置", exact: true }).click();
+  const selector = page.getByRole("combobox", {
+    name: "Codex 桌面端 Provider",
+    exact: true,
+  });
+  await expect(selector).toBeEnabled();
+  await expect(page.getByText(failure, { exact: true })).toHaveCount(0);
+  await selector.click();
+  await page.getByRole("option", { name: "目标供应商", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const prepare = dialog.getByRole("button", { name: "生成切换预览与备份" });
+  await expect(dialog).not.toContainText(failure);
+  await prepare.click();
+  await expect(dialog.getByRole("alert")).toContainText(failure);
+  expect(
+    await page.evaluate(() => window.providerSwitchFixture.actions),
+  ).toEqual([]);
+  await page.evaluate(() => {
+    window.providerSwitchFixture.runtimeFailure = null;
+  });
+  await prepare.click();
+  await expect(dialog).toContainText("重启 Agent 并生效");
 });
 
 test("Agent list keeps shared Codex configuration pending until confirmed", async ({
@@ -367,7 +399,7 @@ for (const agent of [
   });
 }
 
-test("CLI requires manual exit, supports unknown state, and applies only after recheck", async ({
+test("CLI reports unknown process state on apply and can retry after exit", async ({
   page,
 }) => {
   await page.goto("/tests/frontend/provider-switch.html?agent=codex-cli");
@@ -376,17 +408,18 @@ test("CLI requires manual exit, supports unknown state, and applies only after r
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("同时影响 Codex CLI 与桌面端");
   await expect(dialog).toContainText("原项目目录");
-  await expect(
-    dialog.getByRole("button", { name: "已退出，应用配置" }),
-  ).toBeDisabled();
+  const apply = dialog.getByRole("button", { name: "已退出，应用配置" });
+  await expect(apply).toBeEnabled();
   await page.evaluate(() => {
     window.providerSwitchFixture.processes = null;
   });
   await dialog.getByRole("button", { name: "重新检查运行状态" }).click();
-  await expect(dialog).toContainText("相关进程尚未退出或状态未知");
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await expect(dialog).not.toContainText("进程状态无法确认");
+  await apply.click();
   await expect(
-    dialog.getByRole("button", { name: "已退出，应用配置" }),
-  ).toBeDisabled();
+    dialog.getByRole("alert").filter({ hasText: "进程状态无法确认" }),
+  ).toBeVisible();
   await page.evaluate(() => {
     window.providerSwitchFixture.processes = 0;
     window.providerSwitchFixture.failNext = true;
