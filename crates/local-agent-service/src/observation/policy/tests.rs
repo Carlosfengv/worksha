@@ -106,6 +106,10 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
                 if body["messages"].to_string().contains("empty gateway fixture") {
                     return StatusCode::BAD_GATEWAY.into_response();
                 }
+                if body["messages"].to_string().contains("empty namespace fixture") {
+                    assert!(body.get("tools").is_none());
+                    assert!(body.get("tool_choice").is_none());
+                }
                 let result = json!({"id":"msg-service-fixture","type":"message","role":"assistant","model":model,"content":[{"type":"text","text":model}],"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":2}});
                 if body["stream"] == true {
                     let frames = [
@@ -212,6 +216,26 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
             assert_eq!(body["output"][0]["content"][0]["text"], "two");
         }
     }
+    let response = fixture
+        .client
+        .post(format!("{codex}/responses"))
+        .bearer_auth("model-service-fixture-key")
+        .json(&json!({
+            "model":catalog["models"][0]["slug"],
+            "input":"empty namespace fixture",
+            "tools":[{"type":"namespace","name":"functions","description":"","tools":[]}],
+            "tool_choice":"auto","parallel_tool_calls":false,"store":false,"stream":true
+        }))
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = response.text().await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("response.completed") && body.contains("\"delta\":\"one\""),
+        "{body}"
+    );
     let rejected = fixture.client.post(format!("{codex}/responses"))
         .bearer_auth("model-service-fixture-key")
         .json(&json!({"model":catalog["models"][2]["slug"],"input":"empty gateway fixture","stream":true}))

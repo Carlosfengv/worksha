@@ -86,13 +86,20 @@ impl Tools {
         let mut registry = Self::default();
         let mut v = value.clone();
         if source == "responses" {
-            let mut tools = vec![];
-            registry.definitions(
-                value["tools"].as_array().map(Vec::as_slice).unwrap_or(&[]),
-                None,
-                &mut tools,
-            )?;
-            if !tools.is_empty() {
+            if let Some(definitions) = value["tools"].as_array() {
+                let mut tools = vec![];
+                registry.definitions(definitions, None, &mut tools)?;
+                if tools.is_empty() {
+                    let request = v.as_object_mut().unwrap();
+                    request.remove("parallel_tool_calls");
+                    if matches!(
+                        request.get("tool_choice").and_then(Value::as_str),
+                        Some("auto" | "none")
+                    ) {
+                        request.remove("tool_choice");
+                    }
+                }
+                // An empty namespace contributes no tool definitions.
                 v["tools"] = json!(tools);
             }
             for item in v["input"].as_array_mut().into_iter().flatten() {
