@@ -11,32 +11,14 @@ pub(super) fn preserve_service_selection(
     after: &mut Vec<u8>,
     catalog: &crate::model_services::ServiceAttachment,
 ) -> Result<(), ConfigError> {
+    if agent == "codex" {
+        return preserve_codex_service(before, after, catalog);
+    }
     let Some(endpoint) = &catalog.previous_endpoint else {
         return Ok(());
     };
     let Some(before) = before else { return Ok(()) };
     if agent == "claude-desktop" {
-        return Ok(());
-    }
-    if agent == "codex" {
-        let old = parse_toml(Some(before))?;
-        let provider = old.get("model_provider").and_then(Item::as_str);
-        let previous = provider.and_then(|id| {
-            old.get("model_providers")?
-                .get(id)?
-                .get("base_url")?
-                .as_str()
-        });
-        if previous == Some(endpoint.as_str())
-            && let Some(alias) = old
-                .get("model")
-                .and_then(Item::as_str)
-                .filter(|alias| catalog.accepts(alias))
-        {
-            let mut next = parse_toml(Some(after))?;
-            next["model"] = value(alias);
-            *after = next.to_string().into_bytes();
-        }
         return Ok(());
     }
     let old: Value = serde_json::from_slice(before)
@@ -90,6 +72,72 @@ pub(super) fn preserve_service_selection(
     *after = serde_json::to_vec_pretty(&next)
         .map_err(|_| ConfigError::new("invalid_config", "模型服务选择无法生成"))?;
     after.push(b'\n');
+    Ok(())
+}
+
+fn preserve_codex_service(
+    before: Option<&[u8]>,
+    after: &mut Vec<u8>,
+    catalog: &crate::model_services::ServiceAttachment,
+) -> Result<(), ConfigError> {
+    let Some(before) = before else { return Ok(()) };
+    if catalog.previous_codex_endpoints.is_empty() && catalog.previous_endpoint.is_none() {
+        return Ok(());
+    }
+    let old = parse_toml(Some(before))?;
+    let Some(providers) = old.get("model_providers").and_then(Item::as_table) else {
+        return Ok(());
+    };
+    let active = old.get("model_provider").and_then(Item::as_str);
+    let retained = catalog
+        .previous_endpoint
+        .iter()
+        .chain(&catalog.previous_codex_endpoints)
+        .find_map(|endpoint| {
+            let matches = |id: &str, provider: &Item| {
+                id.strip_prefix("local_agent_").is_some_and(|digest| {
+                    digest.len() == 24 && digest.bytes().all(|b| b.is_ascii_hexdigit())
+                }) && provider.get("base_url").and_then(Item::as_str) == Some(endpoint.as_str())
+            };
+            active
+                .filter(|id| {
+                    providers
+                        .get(id)
+                        .is_some_and(|provider| matches(id, provider))
+                })
+                .or_else(|| {
+                    providers
+                        .iter()
+                        .find_map(|(id, provider)| matches(id, provider).then_some(id))
+                })
+        });
+    let Some(retained) = retained else {
+        return Ok(());
+    };
+    let mut next = parse_toml(Some(after))?;
+    let generated = next["model_provider"]
+        .as_str()
+        .ok_or_else(|| ConfigError::new("invalid_config", "新模型服务的 Codex 供应商缺失"))?
+        .to_owned();
+    if retained != generated {
+        let providers = next["model_providers"]
+            .as_table_mut()
+            .ok_or_else(|| ConfigError::new("invalid_config", "新模型服务的 Codex 供应商缺失"))?;
+        let entry = providers
+            .remove(&generated)
+            .ok_or_else(|| ConfigError::new("invalid_config", "新模型服务的 Codex 供应商缺失"))?;
+        providers.insert(retained, entry);
+        next["model_provider"] = value(retained);
+    }
+    if active == Some(retained)
+        && let Some(alias) = old
+            .get("model")
+            .and_then(Item::as_str)
+            .filter(|alias| catalog.accepts(alias))
+    {
+        next["model"] = value(alias);
+    }
+    *after = next.to_string().into_bytes();
     Ok(())
 }
 

@@ -110,6 +110,9 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
                     assert!(body.get("tools").is_none());
                     assert!(body.get("tool_choice").is_none());
                 }
+                if body["system"].as_str() == Some("Offline test instructions") {
+                    assert!(body["messages"].to_string().contains("<environment_context>"));
+                }
                 let result = json!({"id":"msg-service-fixture","type":"message","role":"assistant","model":model,"content":[{"type":"text","text":model}],"stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":2}});
                 if body["stream"] == true {
                     let frames = [
@@ -197,12 +200,16 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
             .json(&json!({
                 "model":catalog["models"][2]["slug"],
                 "input":[{"type":"message","role":"developer","content":[{"type":"input_text","text":"Offline test instructions"}]},
+                    {"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>\n<cwd>/offline/fixture</cwd>\n</environment_context>"}]},
                     {"type":"message","role":"user","content":[{"type":"input_text","text":"offline fixture"}]}],
                 "tools":[{"type":"custom","name":"apply_patch","description":"Apply patch","format":{"type":"text"}}],
                 "reasoning":{"effort":"none"},"tool_choice":"auto","parallel_tool_calls":false,
                 "include":["reasoning.encrypted_content"],"store":false,"stream":stream
             }))
-            .send().await.unwrap().error_for_status().unwrap().text().await.unwrap();
+            .send().await.unwrap();
+        let status = response.status();
+        let response = response.text().await.unwrap();
+        assert_eq!(status, StatusCode::OK, "{response}");
         if stream {
             assert!(
                 response.contains("response.created")
@@ -283,6 +290,7 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
     assert_eq!(response["content"][0]["text"], "one");
 
     let session = uuid::Uuid::new_v4().to_string();
+    let context = json!({"type":"message","role":"user","content":"# AGENTS.md instructions for /offline/fixture\nUse fixture data only"});
     let user = json!({"type":"message","role":"user","content":"fallback fixture"});
     let request = |input| {
         fixture
@@ -293,7 +301,7 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
             .header("session-id", "cache-affinity-fixture")
             .json(&json!({"model":local_agent_core::routing::ALIAS,"input":input}))
     };
-    let fallback: serde_json::Value = request(json!([user]))
+    let fallback: serde_json::Value = request(json!([context, user]))
         .send()
         .await
         .unwrap()
@@ -303,9 +311,10 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
         .await
         .unwrap();
     assert_eq!(fallback["output"][0]["content"][0]["text"], "two");
-    let continuation: serde_json::Value = request(json!([user,
+    let continuation: serde_json::Value = request(json!([context,user,
         {"type":"function_call","call_id":"fixture-call","name":"read","arguments":"{}"},
-        {"type":"function_call_output","call_id":"fixture-call","output":"fixture output"}
+        {"type":"function_call_output","call_id":"fixture-call","output":"fixture output"},
+        {"type":"message","role":"user","content":"<environment_context>\n<cwd>/offline/fixture</cwd>\n</environment_context>"}
     ]))
     .send()
     .await

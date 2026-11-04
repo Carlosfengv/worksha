@@ -188,17 +188,24 @@ pub(super) fn service_evidence(
         if message["role"] != "user" {
             continue;
         }
-        let tool = message["content"]
+        let content = &message["content"];
+        let tool = content
             .as_array()
             .is_some_and(|parts| parts.iter().any(|p| p["type"] == "tool_result"));
-        continuation = tool;
         if tool {
+            continuation = true;
             continue;
         }
         let single = json!({"messages":[message]});
-        let hash = hub
-            .message_identity(&single, Some("dynamic-user-chain"), product)
-            .ok_or("用户轮次标识不可用；未选择新的路由")?;
+        let Some(hash) = hub.message_identity(&single, Some("dynamic-user-chain"), product) else {
+            // Codex sends environment and workspace instructions as user-role
+            // items. Keep forwarding them, without creating a routing boundary.
+            if local_agent_core::sessions::activity_input::preview(content).is_none() {
+                continue;
+            }
+            return Err("用户轮次标识不可用；未选择新的路由");
+        };
+        continuation = false;
         chain.push(hash);
         if chain.len() > 256 {
             return Err("动态入口用户轮次超过上限，请新建会话");

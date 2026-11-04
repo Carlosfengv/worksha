@@ -170,6 +170,8 @@ pub struct ServiceAttachment {
     pub installed: ModelService,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_endpoint: Option<String>,
+    #[serde(skip)]
+    pub previous_codex_endpoints: Vec<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -245,6 +247,7 @@ pub(crate) fn attachment(
             service_id,
             installed: version(db, &id)?,
             previous_endpoint: None,
+            previous_codex_endpoints: Vec::new(),
         })
     })
     .transpose()

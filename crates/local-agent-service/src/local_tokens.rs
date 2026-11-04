@@ -307,21 +307,25 @@ pub(crate) fn execute(
                     .into_iter()
                     .find(|c| c.agent_id == request.agent_id)
                     .ok_or_else(unknown)?;
-                for old in store.model_service_attachments()? {
+                for old in store.model_service_attachments()?.into_iter().rev() {
                     if old.binding_id == binding.id || old.service_id != a.service_id {
                         continue;
                     }
                     if let Some(old_binding) = store.dynamic_binding(&old.binding_id)?
                         && old_binding.agent_id == request.agent_id
                         && old_binding.scope == request.configuration_path
-                        && config.endpoint.as_deref()
-                            == Some(
-                                crate::gateway::dynamic::configured_endpoint(state, &old_binding)
-                                    .as_str(),
-                            )
                     {
-                        a.previous_endpoint = config.endpoint.clone();
-                        break;
+                        let endpoint =
+                            crate::gateway::dynamic::configured_endpoint(state, &old_binding);
+                        if request.agent_id == "codex" {
+                            a.previous_codex_endpoints.push(endpoint.clone());
+                        }
+                        if config.endpoint.as_deref() == Some(endpoint.as_str()) {
+                            a.previous_endpoint = Some(endpoint);
+                            if request.agent_id != "codex" {
+                                break;
+                            }
+                        }
                     }
                 }
             }

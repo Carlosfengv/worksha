@@ -185,6 +185,29 @@ try {
   assert.notEqual(hash(files.opencode), installedHashes.opencode);
   const synced=JSON.parse(readFileSync(files.opencode)); assert.equal(synced.model.split("/")[0],group); assert.equal(synced.small_model,opencode.small_model); assert(synced.provider[synced.small_model.split("/")[0]]); assert.deepEqual(Object.keys(synced.provider).sort(),Object.keys(opencode.provider).sort());
   const undoSync = await api(`/api/provider-switches/${sync.id}/restore`, {}); await api(`/api/provider-switches/${undoSync.id}/apply`, {}); assert.equal(hash(files.opencode), installedHashes.opencode);
+  const codexProviderId = () => readFileSync(files.codex, "utf8").match(/^model_provider = "([^"]+)"/m)[1];
+  const installedCodexId = codexProviderId();
+  const applyCodexService = async (target) => {
+    const config = (await api("/api/provider-status")).configs.find(c => c.agentId === "codex");
+    const preview = await api("/api/model-service-connections", { agentId: "codex", expectedRevision: config.revision, serviceId: target.id, expectedServiceRevision: target.revision });
+    await api(`/api/provider-switches/${preview.id}/apply`, {});
+    return preview;
+  };
+  const codexSync = await applyCodexService(service);
+  assert.notEqual(codexSync.routing.id, transactions.codex.routing.id);
+  assert.equal(codexProviderId(), installedCodexId, "Codex sessions keep the same provider ID across a catalog sync");
+  assert(readFileSync(files.codex, "utf8").includes(`base_url = "${codexSync.routing.localEndpoint}"`));
+  const alternate = await api("/api/model-services", { ...draft, id: randomUUID(), name: "Alternate" }, 200, "PUT");
+  const alternateSwitch = await applyCodexService(alternate);
+  assert.notEqual(codexProviderId(), installedCodexId, "Different model services retain separate provider identities");
+  const returnSwitch = await applyCodexService(service);
+  assert.equal(codexProviderId(), installedCodexId, "Returning to a model service restores its prior provider ID");
+  for (const transaction of [returnSwitch, alternateSwitch, codexSync]) {
+    const restore = await api(`/api/provider-switches/${transaction.id}/restore`, {});
+    await api(`/api/provider-switches/${restore.id}/apply`, {});
+  }
+  assert.equal(hash(files.codex), installedHashes.codex, "Restore uses the original Codex config bytes");
+  await api(`/api/model-services/${alternate.id}/delete`, { expectedRevision: alternate.revision });
   const requests = await api("/api/requests");
   const rows = Array.isArray(requests) ? requests : requests.items ?? requests.requests ?? [];
   assert(rows.some(r => r.routing?.service?.serviceId === service.id));
