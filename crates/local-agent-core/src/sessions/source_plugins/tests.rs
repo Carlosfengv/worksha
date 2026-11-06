@@ -1,6 +1,6 @@
 use super::*;
 use crate::plugin::{PluginDescriptor, PluginError, PluginResources};
-use crate::sessions::{CallQuery, SessionQuery, antigravity, antigravity_tests::Fixture};
+use crate::sessions::{CallQuery, SessionQuery, opencode, source_plugins::test_fixture::Fixture};
 use std::sync::{Mutex, mpsc};
 use std::time::Duration;
 
@@ -90,7 +90,7 @@ fn paused(
     fixture: &Fixture,
     phase: Phase,
 ) -> (Arc<NativeSessions>, mpsc::Receiver<()>, mpsc::Sender<()>) {
-    paused_with(fixture, phase, Arc::new(antigravity::AntigravitySource))
+    paused_with(fixture, phase, Arc::new(opencode::OpenCodeSource))
 }
 fn paused_with(
     fixture: &Fixture,
@@ -114,7 +114,7 @@ fn paused_with(
 fn count(sessions: &NativeSessions) -> usize {
     sessions
         .query(SessionQuery {
-            agent: Some("antigravity".into()),
+            agent: Some("opencode".into()),
             ..Default::default()
         })
         .unwrap()
@@ -251,10 +251,7 @@ fn configuration_publication_does_not_hold_the_history_lock_or_escape_source_sto
 fn stopping_one_source_stops_all_its_readers_and_keeps_other_sources_and_consent() {
     let fixture = Fixture::new();
     seed_claude(&fixture);
-    let sessions = NativeSessions::new(
-        fixture.home.clone(),
-        &["claude".into(), "antigravity".into()],
-    );
+    let sessions = NativeSessions::new(fixture.home.clone(), &["claude".into(), "opencode".into()]);
     sessions.refresh().unwrap();
     let id = sessions
         .query(SessionQuery {
@@ -323,19 +320,13 @@ fn preparing_a_source_does_not_discover_or_read_unconsented_files() {
     let fixture = Fixture::new();
     let sessions = NativeSessions::new(fixture.home.clone(), &[]);
     // Even an unreadable known source must not be touched without consent.
-    std::fs::remove_file(
-        fixture
-            .home
-            .join(".gemini/antigravity/conversations")
-            .join(format!("{}.db", fixture.id)),
-    )
-    .unwrap();
+    std::fs::remove_file(super::super::opencode::path(&fixture.home)).unwrap();
     sessions.refresh().unwrap();
     let source = sessions
         .sources()
         .unwrap()
         .into_iter()
-        .find(|s| s.agent_id == "antigravity")
+        .find(|s| s.agent_id == "opencode")
         .unwrap();
     assert!(!source.enabled);
     assert_eq!(source.status, "disabled");
@@ -356,9 +347,9 @@ fn completed_scan_cannot_publish_after_revocation_or_reauthorization_or_stop() {
         if action == "stop" {
             sessions.stop_source_plugins().unwrap();
         } else {
-            sessions.set_enabled("antigravity", false).unwrap();
+            sessions.set_enabled("opencode", false).unwrap();
             if action == "reauthorize" {
-                sessions.set_enabled("antigravity", true).unwrap();
+                sessions.set_enabled("opencode", true).unwrap();
             }
         }
         resume.send(()).unwrap();
@@ -376,7 +367,7 @@ fn completed_scan_cannot_publish_after_revocation_or_reauthorization_or_stop() {
                 .sources()
                 .unwrap()
                 .into_iter()
-                .find(|s| s.agent_id == "antigravity")
+                .find(|s| s.agent_id == "opencode")
                 .unwrap();
             assert!(
                 source.enabled,
@@ -405,8 +396,8 @@ fn loaded_conversation_is_discarded_after_reauthorization_or_stop() {
         if stop {
             sessions.stop_source_plugins().unwrap();
         } else {
-            sessions.set_enabled("antigravity", false).unwrap();
-            sessions.set_enabled("antigravity", true).unwrap();
+            sessions.set_enabled("opencode", false).unwrap();
+            sessions.set_enabled("opencode", true).unwrap();
         }
         resume.send(()).unwrap();
         let error = match worker.join().unwrap() {
@@ -431,16 +422,13 @@ fn stopping_the_pilot_keeps_other_sources_and_neutral_usage_serialization() {
     let claude = fixture.home.join(".claude/projects/fixture");
     std::fs::create_dir_all(&claude).unwrap();
     std::fs::write(claude.join("fixture.jsonl"), "{\"type\":\"user\",\"sessionId\":\"claude-fixture\",\"timestamp\":\"2026-10-22T00:00:00Z\",\"message\":{\"role\":\"user\",\"content\":\"fixture\"}}\n").unwrap();
-    let sessions = NativeSessions::new(
-        fixture.home.clone(),
-        &["claude".into(), "antigravity".into()],
-    );
+    let sessions = NativeSessions::new(fixture.home.clone(), &["claude".into(), "opencode".into()]);
     sessions.refresh().unwrap();
     assert_eq!(count(&sessions), 1);
-    sessions.stop_source_plugin("antigravity").unwrap();
+    sessions.stop_source_plugin("opencode").unwrap();
     assert_eq!(count(&sessions), 0);
     let stopped_revision = sessions.revision().unwrap();
-    sessions.stop_source_plugin("antigravity").unwrap();
+    sessions.stop_source_plugin("opencode").unwrap();
     assert_eq!(sessions.revision().unwrap(), stopped_revision);
     assert_eq!(
         sessions

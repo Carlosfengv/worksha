@@ -134,15 +134,10 @@ fn domain_invocations_keep_each_mounted_sources_actual_implementation_identity()
     let home = tempfile::tempdir().unwrap();
     let native = NativeSessions::new(
         home.path().into(),
-        &[
-            "claude".into(),
-            "codex".into(),
-            "opencode".into(),
-            "antigravity".into(),
-        ],
+        &["claude".into(), "codex".into(), "opencode".into()],
     );
     let mut identities = std::collections::BTreeSet::new();
-    for source in ["claude", "codex", "opencode", "antigravity"] {
+    for source in ["claude", "codex", "opencode"] {
         native
             .with_source_context(source, None, true, |plugin, context| {
                 let provider = plugin.domain_provider().unwrap();
@@ -162,7 +157,7 @@ fn domain_invocations_keep_each_mounted_sources_actual_implementation_identity()
             })
             .unwrap();
     }
-    assert_eq!(identities.len(), 4);
+    assert_eq!(identities.len(), 3);
 }
 
 #[test]

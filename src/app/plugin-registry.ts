@@ -46,6 +46,7 @@ const coreRoutes: readonly Page[] = [
   "overview",
   "agents",
   "projects",
+  "tasks",
   "providers",
   "model-services",
   "mcp",

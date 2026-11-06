@@ -186,11 +186,11 @@ mod tests {
         assert!(serde_json::from_value::<CapabilityCatalog>(json).is_err());
     }
     #[test]
-    fn native_metadata_has_four_shared_sources_and_does_not_authorize_reading() {
+    fn native_metadata_has_three_sources_and_does_not_authorize_reading() {
         let home = tempfile::tempdir().unwrap();
         let sessions = crate::sessions::NativeSessions::new(home.path().to_owned(), &[]);
         let entries = sessions.domain_capabilities().unwrap();
-        assert_eq!(entries.len(), 21);
+        assert_eq!(entries.len(), 16);
         assert!(
             entries
                 .iter()
@@ -200,7 +200,7 @@ mod tests {
         let mut all = catalog();
         all.entries = entries;
         all.validate().unwrap();
-        assert_eq!(sessions.domain_catalog().unwrap().products.len(), 6);
+        assert_eq!(sessions.domain_catalog().unwrap().products.len(), 5);
         assert!(
             sessions
                 .query(crate::sessions::SessionQuery::default())

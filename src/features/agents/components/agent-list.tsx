@@ -21,7 +21,6 @@ const agentLogos: Record<string, string> = {
   claude: "/agent-logos/claude.png",
   codex: "/agent-logos/codex.png",
   opencode: "/agent-logos/opencode.png",
-  antigravity: "/agent-logos/antigravity.png",
 };
 type AgentRow = {
   agent: AgentDiscovery;

@@ -119,6 +119,7 @@ const requestedActivity = new URLSearchParams(location.search).get("activity");
 window.activityCase =
   requestedActivity === "completed" ||
   requestedActivity === "error" ||
+  requestedActivity === "empty" ||
   requestedActivity === "recent-history" ||
   requestedActivity === "recent-history-window" ||
   requestedActivity === "recent-history-expired"

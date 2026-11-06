@@ -268,7 +268,6 @@ try {
       "codex-cli",
       "codex-desktop",
       "opencode",
-      "antigravity",
     ],
   );
   assert.deepEqual(
@@ -279,11 +278,7 @@ try {
   );
   assert.ok(data.sessionSources.every((source) => !source.enabled));
   assert.equal(data.agentConnections.error, null);
-  assert.equal(data.agentConnections.items.length, 5);
-  assert.equal(
-    data.agentConnections.items.find((c) => c.agentId === "antigravity").mode,
-    "unknown",
-  );
+  assert.equal(data.agentConnections.items.length, 4);
   assert.equal(
     data.agentConnections.items.find((item) => item.agentId === "codex").mode,
     "official_login",

@@ -5,7 +5,7 @@
 // @base-ui/react/scroll-area, whose scrollbars stay mounted while scrollable
 // and expose hover/scroll state as data attributes instead of a JS-driven
 // show/hide presence animation.
-import { createContext, forwardRef, useContext, type ComponentPropsWithoutRef, type ComponentRef, } from "react";
+import { createContext, forwardRef, useContext, type ComponentPropsWithoutRef, type ComponentRef, type HTMLAttributes, type Ref, } from "react";
 import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area";
 import { cn } from "@/lib/utils";
 import { useTouchPrimary } from "@/hooks/use-touch-primary";
@@ -16,23 +16,28 @@ const ScrollAreaContext = createContext<boolean>(false);
 type Orientation = "vertical" | "horizontal" | "both";
 interface ScrollAreaProps extends ComponentPropsWithoutRef<"div"> {
     viewportClassName?: string;
+    /** Access to the actual scrolling element on both desktop and touch. */
+    viewportRef?: Ref<HTMLDivElement>;
+    viewportProps?: Omit<HTMLAttributes<HTMLDivElement>, "children" | "className">;
     /** Class applied to the presentation layer that directly wraps the content. */
     contentClassName?: string;
+    /** Props for the content layer; use minWidth: 0 for width-constrained transcripts. */
+    contentProps?: Omit<HTMLAttributes<HTMLDivElement>, "children" | "className">;
     /** Which axes get scrollbars. Defaults to `"vertical"`. */
     orientation?: Orientation;
 }
-const ScrollArea = forwardRef<ComponentRef<typeof ScrollAreaPrimitive.Root>, ScrollAreaProps>(({ className, children, viewportClassName, contentClassName, orientation = "vertical", ...props }, ref) => {
+const ScrollArea = forwardRef<ComponentRef<typeof ScrollAreaPrimitive.Root>, ScrollAreaProps>(({ className, children, viewportClassName, viewportRef, viewportProps, contentClassName, contentProps, orientation = "vertical", ...props }, ref) => {
     const isTouch = useTouchPrimary();
     return (<ScrollAreaContext.Provider value={isTouch}>
         {isTouch ? (<div ref={ref} role="group" data-slot="scroll-area" aria-roledescription="scroll area" className={cn("relative overflow-hidden", className)} {...props}>
-            <div data-slot="scroll-area-viewport" className={cn("size-full rounded-[inherit]", orientation === "vertical" && "overflow-y-auto", orientation === "horizontal" && "overflow-x-auto", orientation === "both" && "overflow-auto", viewportClassName)} tabIndex={0}>
-              {contentClassName ? <div className={contentClassName} role="presentation">{children}</div> : children}
+            <div ref={viewportRef} data-slot="scroll-area-viewport" className={cn("size-full rounded-[inherit]", orientation === "vertical" && "overflow-y-auto", orientation === "horizontal" && "overflow-x-auto", orientation === "both" && "overflow-auto", viewportClassName)} tabIndex={0} {...viewportProps}>
+              {contentClassName || contentProps ? <div className={contentClassName} role="presentation" {...contentProps}>{children}</div> : children}
             </div>
           </div>) : (<ScrollAreaPrimitive.Root ref={ref} data-slot="scroll-area" className={cn("relative overflow-hidden", className)} {...props}>
-            <ScrollAreaPrimitive.Viewport data-slot="scroll-area-viewport" className={cn("size-full rounded-[inherit]", viewportClassName)}>
+            <ScrollAreaPrimitive.Viewport ref={viewportRef} data-slot="scroll-area-viewport" className={cn("size-full rounded-[inherit]", viewportClassName)} {...viewportProps}>
               {/* Content gives Base UI an intrinsic size to measure
                 horizontal overflow against. */}
-              <ScrollAreaPrimitive.Content className={contentClassName}>
+              <ScrollAreaPrimitive.Content className={contentClassName} {...contentProps}>
                 {children}
               </ScrollAreaPrimitive.Content>
             </ScrollAreaPrimitive.Viewport>

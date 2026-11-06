@@ -370,6 +370,20 @@ assert(
   ),
   "Policy scope recovery IPC cannot replace existing IPC",
 );
+const workbenchCommands = JSON.parse(
+  fs.readFileSync("tests/workbench-ipc-contract.json", "utf8"),
+);
+assert(
+  Object.keys(workbenchCommands).every(
+    (name) =>
+      !Object.hasOwn(existingCommands, name) &&
+      !Object.hasOwn(routingPolicyCommands, name) &&
+      !Object.hasOwn(objectContributionCommands, name) &&
+      !Object.hasOwn(requestExportCommands, name) &&
+      !Object.hasOwn(policyRecoveryCommands, name),
+  ),
+  "Workbench IPC cannot replace existing IPC",
+);
 const expected = Object.fromEntries(
   Object.entries({
     ...original,
@@ -388,6 +402,7 @@ const expected = Object.fromEntries(
     ...objectContributionCommands,
     ...requestExportCommands,
     ...policyRecoveryCommands,
+    ...workbenchCommands,
   }).sort(),
 );
 assert.deepEqual(

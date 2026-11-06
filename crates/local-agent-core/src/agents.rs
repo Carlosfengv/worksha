@@ -109,7 +109,7 @@ mod tests {
 
     #[test]
     fn products_do_not_inherit_unknown_family_records() {
-        assert_eq!(PRODUCTS.len(), 6);
+        assert_eq!(PRODUCTS.len(), 5);
         assert!(!matches(Some("codex-cli"), "codex", None));
         assert!(!matches(Some("codex-desktop"), "codex", Some("codex-cli")));
         assert!(matches(Some("codex"), "codex", Some("codex-desktop")));

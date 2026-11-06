@@ -14,7 +14,6 @@ import { AccountQuota } from "@/features/accounts/components/account-quota";
 import { AgentConnectionStatus } from "@/features/agents/components/agent-connection-status";
 import { AgentModelUsage } from "@/features/agents/components/agent-model-usage";
 import { ObservationConnection } from "@/features/observation/components/observation-connection";
-import { AgentProviderSettings } from "@/features/providers/components/provider-config-control";
 import { ModelServiceSettings } from "@/features/model-services/components/agent-service-control";
 import { ProviderActivationStatus } from "@/features/providers/components/provider-activation-status";
 import { sessionsApi } from "@/features/sessions/api";
@@ -316,11 +315,7 @@ export function AgentDetail({
             <ConnectionEmpty
               compact
               title="账户额度读取尚未接入"
-              description={
-                agent.id === "antigravity"
-                  ? "请在 Antigravity 的用量页面查看套餐与剩余额度；原生 Token 不代表订阅额度或费用。"
-                  : "此只读来源尚未提供账户额度；原生 Token 不代表订阅额度或费用。"
-              }
+              description="此只读来源尚未提供账户额度；原生 Token 不代表订阅额度或费用。"
             />
           ) : (
             <AccountQuota agentId={agent.configId} />
@@ -332,24 +327,15 @@ export function AgentDetail({
           )}
         </TabPanel>
         <TabPanel value="connection">
-          {canConfigure || agent.id === "antigravity" ? (
+          {canConfigure ? (
             <div className="mb-6">
-              {canConfigure ? (
-                <ModelServiceSettings
-                  agentId={agent.configId}
-                  agentProductId={agent.id}
-                  name={agent.name}
-                  providers={data.providers}
-                  refresh={refresh}
-                />
-              ) : (
-                <AgentProviderSettings
-                  refresh={refresh}
-                  agentId={agent.configId}
-                  agentProductId={agent.id}
-                  providers={data.providers}
-                />
-              )}
+              <ModelServiceSettings
+                agentId={agent.configId}
+                agentProductId={agent.id}
+                name={agent.name}
+                providers={data.providers}
+                refresh={refresh}
+              />
             </div>
           ) : (
             <ConnectionEmpty

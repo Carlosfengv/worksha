@@ -42,61 +42,6 @@ pub(in crate::sessions) fn claude_global(
     }
 }
 
-pub(in crate::sessions) fn antigravity_global(
-    context: &SourceContext<'_>,
-    scope: &mut ConfigScope<'_>,
-    inventory: &mut Inventory,
-) {
-    let mut configs = vec![
-        (
-            context.home.join(".gemini/antigravity/mcp_config.json"),
-            None,
-        ),
-        (context.home.join(".gemini/config/mcp_config.json"), None),
-    ];
-    for project in scope
-        .files
-        .iter()
-        .filter(|f| f.agent == "antigravity")
-        .filter_map(|f| f.project_path.clone())
-        .collect::<BTreeSet<_>>()
-    {
-        if valid_project(&project) {
-            configs.push((
-                Path::new(&project).join(".agents/mcp_config.json"),
-                Some(project),
-            ));
-        }
-        if configs.len() >= 502 {
-            inventory.issue(
-                "antigravity",
-                &context.home.join(".gemini/config/mcp_config.json"),
-            );
-            break;
-        }
-    }
-    for (path, project) in configs {
-        if !inventory.within_budget() {
-            inventory.issue("antigravity", &path);
-            break;
-        }
-        if let Some((data, modified)) = inventory.json("antigravity", &path) {
-            inventory.json_entries(
-                "antigravity",
-                &data["mcpServers"],
-                &path,
-                modified,
-                if project.is_some() {
-                    "project_local"
-                } else {
-                    "local"
-                },
-                project.as_deref(),
-            );
-        }
-    }
-}
-
 pub(in crate::sessions) fn claude_projects(
     context: &SourceContext<'_>,
     scope: &mut ConfigScope<'_>,

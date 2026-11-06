@@ -271,10 +271,6 @@ pub fn path(home: &Path, agent: &str) -> Result<PathBuf, ConfigError> {
         "opencode" | "claude-desktop" => super::super::desktop_clients::path(home, agent),
         "claude" => Ok(home.join(".claude/settings.json")),
         "codex" => Ok(home.join(".codex/config.toml")),
-        "antigravity" => fail(
-            "unsupported",
-            "Antigravity App 尚无已验证的自定义 Provider / 网关配置入口；请在原应用选择模型。CLI / SDK 的端点配置不适用于桌面 App，原配置未修改",
-        ),
         _ => fail("unsupported", "当前仅支持 Claude Code 和 Codex"),
     }
 }
@@ -346,15 +342,6 @@ pub(crate) fn routing_endpoint(raw: &str) -> Result<String, ConfigError> {
     endpoint(raw).ok_or_else(|| ConfigError::new("invalid_config", "连接 Endpoint 无法识别"))
 }
 pub fn inspect(home: &Path, agent: &str) -> NativeConfig {
-    if agent == "antigravity" {
-        return NativeConfig {
-            agent_id: agent.into(), path: home.join(".gemini/antigravity").to_string_lossy().into(),
-            state: "unsupported".into(), revision: None, mode: "unknown".into(), endpoint: None, catalog_endpoints:vec![], model: None,
-            provider_name: "Antigravity App 原生模型连接".into(), credential: "不读取原生登录凭据".into(),
-            error: Some("Antigravity App 尚无已验证的自定义 Provider / 网关配置入口；请在原应用选择模型。安装发现不表示已登录或连接成功".into()),
-            warnings: vec!["CLI 的 Gemini 兼容端点与 SDK 的 OpenAI 兼容端点属于不同产品接口，不能据此声明桌面 App 已接入网关。原生模型历史仅证明对应记录的实际调用，不代表当前模型选择。".into()],
-        };
-    }
     if ["opencode", "claude-desktop"].contains(&agent) {
         return super::super::desktop_clients::inspect(home, agent);
     }

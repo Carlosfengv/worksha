@@ -1,12 +1,12 @@
 use super::*;
 use crate::{
     agents::{AgentDirectory, ProductDescriptor, SourceDescriptor},
-    sessions::{CallQuery, SessionQuery, antigravity, antigravity_tests::Fixture},
+    sessions::{CallQuery, SessionQuery, opencode, source_plugins::test_fixture::Fixture},
 };
 const AGENT: &str = "fixture-agent";
 struct FixtureSource;
 fn remap(summary: &mut super::super::SessionSummary) {
-    summary.id = summary.id.replacen("antigravity:", "fixture-agent:", 1);
+    summary.id = summary.id.replacen("opencode:", "fixture-agent:", 1);
     summary.agent_id = AGENT.into();
     summary.agent_product_id = Some(AGENT.into());
     summary.agent_products = vec![AGENT.into()];
@@ -29,7 +29,7 @@ impl ReadOnlySessionSource for FixtureSource {
         context: &SourceContext<'_>,
         previous: &HashMap<PathBuf, IndexedFile>,
     ) -> NativeResult<SourceScan> {
-        let mut result = antigravity::AntigravitySource.scan(context, previous)?;
+        let mut result = opencode::OpenCodeSource.scan(context, previous)?;
         for file in result.files.values_mut() {
             file.agent = AGENT.into();
             remap(&mut file.summary);
@@ -38,7 +38,7 @@ impl ReadOnlySessionSource for FixtureSource {
                 call.agent_id = AGENT.into();
                 call.agent_product_id = Some(AGENT.into());
                 call.native_agent_product_id = Some(AGENT.into());
-                call.id = call.id.replacen("antigravity:", "fixture-agent:", 1);
+                call.id = call.id.replacen("opencode:", "fixture-agent:", 1);
                 call.session_id = file.summary.id.clone();
             }
             file.fact_calls = super::super::domain_facts::CallIndex::new(&file.calls);
@@ -52,8 +52,7 @@ impl ReadOnlySessionSource for FixtureSource {
         cursor: Option<&str>,
         anchor: Option<&str>,
     ) -> NativeResult<Conversation> {
-        let mut result =
-            antigravity::AntigravitySource.conversation(context, indexed, cursor, anchor)?;
+        let mut result = opencode::OpenCodeSource.conversation(context, indexed, cursor, anchor)?;
         remap(&mut result.session);
         for event in &mut result.items {
             event.agent_product_id = Some(AGENT.into());
@@ -65,7 +64,7 @@ impl ReadOnlySessionSource for FixtureSource {
 #[test]
 fn new_shared_family_keeps_product_groups_visible_under_family_and_unknown_filters() {
     let fixture = Fixture::new();
-    let sessions = NativeSessions::new(fixture.home.clone(), &["antigravity".into()]);
+    let sessions = NativeSessions::new(fixture.home.clone(), &["opencode".into()]);
     sessions.refresh().unwrap();
     let mut catalog = sessions.project_catalog().unwrap();
     let directory = Arc::new(

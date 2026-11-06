@@ -24,7 +24,7 @@ test("Agent source state distinguishes partial transcripts from read failure wit
   }
 });
 
-test("six independent Agent rows navigate to their own details and shared Codex scope", async ({
+test("five independent Agent rows navigate to their own details and shared Codex scope", async ({
   page,
 }) => {
   await page.goto("/tests/frontend/tables.html?mode=agents#/agents");
@@ -34,7 +34,6 @@ test("six independent Agent rows navigate to their own details and shared Codex 
     "Codex CLI",
     "Codex 桌面端",
     "OpenCode",
-    "Antigravity",
   ];
   const ids = [
     "claude-code-cli",
@@ -42,13 +41,12 @@ test("six independent Agent rows navigate to their own details and shared Codex 
     "codex-cli",
     "codex-desktop",
     "opencode",
-    "antigravity",
   ];
   for (const name of names)
     await expect(
       page.getByRole("heading", { name, exact: true }),
     ).toBeVisible();
-  await expect(page.getByRole("link", { name: /^详情 / })).toHaveCount(6);
+  await expect(page.getByRole("link", { name: /^详情 / })).toHaveCount(5);
   for (let i = 0; i < ids.length; i++) {
     await page
       .getByRole("link", { name: /^详情 / })

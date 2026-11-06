@@ -51,7 +51,7 @@ GATEWAY_DATA="$HOME/Library/Application Support/app.localagent.gateway"
 - `GET /v1/models` 仅返回该客户端仍有效的授权模型。
 - Bearer 或 `x-api-key` 认证；管理密钥不能代替客户端密钥。Origin、错误 Host、未授权模型和不适用的协议会被拒绝。
 
-当前不提供 Chat Completions/Gemini 原生下游入口，也不把 Antigravity App 的登录账号或原生记录转换为可共享 Provider。上游复用现有 Messages / Responses / Chat Completions 转发与转换规则。
+当前不提供 Chat Completions/Gemini 原生下游入口。上游复用现有 Messages / Responses / Chat Completions 转发与转换规则。
 
 ## 并发与记录
 

@@ -63,7 +63,6 @@ jobs:
       - run: pnpm test:management-admission 2>&1 | tee .work/ci/management-admission.log
       - run: pnpm test:read-admission 2>&1 | tee .work/ci/read-admission.log
       - run: pnpm test:service 2>&1 | tee .work/ci/service.log
-      - run: pnpm test:antigravity
       - run: pnpm test:observation
       - run: pnpm test:projects
       - run: pnpm test:providers

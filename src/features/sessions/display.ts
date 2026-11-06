@@ -36,8 +36,6 @@ export function clientAttributionLabel(
   if (value === "native_exec_turn")
     return "原生 CLI 本轮标记：exec、轮次与根轮次一致；仅确认当前活动";
   if (value === "native_record") return "原生逐条客户端标识";
-  if (value === "native_app_store")
-    return "Antigravity App 专属会话库；不包含 IDE / CLI";
   if (value === "sdk_client") return "SDK 模式未报告最终客户端，保留未知";
   if (value === "unrecognized_client")
     return "原生客户端标识无法识别，保留未知";

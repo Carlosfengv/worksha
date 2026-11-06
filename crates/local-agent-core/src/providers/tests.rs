@@ -354,35 +354,6 @@ fn changed_adapter_path_cannot_redirect_a_pending_plan_even_when_both_files_are_
     );
 }
 #[test]
-fn antigravity_app_rejects_provider_switch_before_touching_native_configuration() {
-    let f = fixture();
-    let path = f.home.join(".gemini/config/config.json");
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    let original = br#"{"userSettings":{"permissionPreset":"native-sentinel"}}"#;
-    fs::write(&path, original).unwrap();
-    let status = config::inspect(&f.home, "antigravity");
-    assert_eq!(status.state, "unsupported");
-    assert!(status.endpoint.is_none() && status.model.is_none() && status.revision.is_none());
-    let error = f
-        .manager
-        .prepare(
-            BindingDraft {
-                operation: None,
-                agent_id: "antigravity".into(),
-                expected_revision: "absent".into(),
-                provider_id: None,
-                expected_provider_revision: None,
-                model: None,
-            },
-            None,
-        )
-        .unwrap_err();
-    assert_eq!(error.code, "unsupported");
-    assert!(error.message.contains("CLI / SDK"));
-    assert_eq!(fs::read(path).unwrap(), original);
-    assert!(f.manager.status().unwrap().transactions.is_empty());
-}
-#[test]
 fn deferred_switch_is_durable_and_never_writes_before_idle_commit() {
     for agent in ["claude", "claude-desktop", "codex", "opencode"] {
         let f = fixture();

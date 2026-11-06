@@ -23,6 +23,7 @@ mod sessions;
 mod settings;
 mod state;
 mod tasks;
+mod workbench;
 use api::{ApiResult, error, json_value, native_error};
 use local_agent_core::Store;
 use state::AppState;
@@ -33,6 +34,12 @@ use std::{
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::args().nth(1).as_deref() == Some("--workbench-opencode") {
+        return workbench::supervise();
+    }
+    if std::env::args().nth(1).as_deref() == Some("--workbench-claude") {
+        return workbench::supervise_claude();
+    }
     if std::env::args().nth(1).as_deref() == Some("--vault-worker") {
         local_agent_core::providers::vault::run_worker()?;
         return Ok(());
@@ -170,6 +177,11 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
         &directory,
         readonly.accounts.clone(),
     )));
+    let workbench = if options.persistent {
+        None
+    } else {
+        workbench::Workbench::open(&directory, source_home.clone()).ok()
+    };
     let sessions = Arc::new(plugin_host::sessions(
         source_home,
         &store.native_sources()?,
@@ -177,6 +189,7 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
     let address = listener.local_addr()?;
     let state = AppState {
+        workbench: workbench.clone(),
         provider_adapters: provider_models::adapters::builtin(),
         provider_client: state::provider_client().map_err(|_| "无法建立模型连接服务")?,
         credentials: provider_vault.clone(),
@@ -268,6 +281,9 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
         )
     };
     let stop_readers = || {
+        if let Some(workbench) = &workbench {
+            workbench.stop();
+        }
         session_work.stop();
         external_plugins.stop();
         readonly.stop();
@@ -290,6 +306,9 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     };
+    if let Some(workbench) = &workbench {
+        workbench.drain(std::time::Duration::from_secs(6)).await;
+    }
     let remaining = std::time::Duration::from_secs(10).saturating_sub(draining_at.elapsed());
     if !readonly.collectors.drain(remaining).await {
         eprintln!("只读采集器已取消，排空预算已用尽");

@@ -1,7 +1,6 @@
 use super::{CallSummary, NativeError, NativeResult};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
-mod antigravity;
 mod builder;
 mod claude;
 mod codex;
@@ -10,8 +9,6 @@ mod opencode;
 mod text;
 mod usage;
 pub use crate::usage::Usage;
-pub(super) use antigravity::model as antigravity_model;
-pub(super) use antigravity::parse as antigravity;
 pub(super) use index::IndexCache;
 #[cfg(test)]
 pub use index::parse;

@@ -407,7 +407,7 @@ impl Builder {
             if ["model", "tool", "mcp", "skill", "diagnostic"].contains(&event.kind.as_str()) {
                 calls.push(CallSummary {
                     // OpenCode message IDs are local transcript identities, not upstream response IDs.
-                    response_id: (!matches!(self.agent.as_str(), "opencode" | "antigravity"))
+                    response_id: (self.agent != "opencode")
                         .then(|| event.native_id.strip_prefix("model:").map(str::to_owned))
                         .flatten(),
                     native_agent_product_id: event.agent_product_id.clone(),

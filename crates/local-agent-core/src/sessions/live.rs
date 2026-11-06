@@ -1233,14 +1233,7 @@ impl NativeWatch {
                             .retain(|id, a| a.agent_id != "opencode" || current.contains(id));
                     }
                     if limited {
-                        self.error = Some(
-                            if source.agent_id == "antigravity" {
-                                "部分 Antigravity 活动来源不可读取或超限"
-                            } else {
-                                "部分原生活动来源不可读取"
-                            }
-                            .into(),
-                        );
+                        self.error = Some("部分原生活动来源不可读取".into());
                     }
                     for mut activity in rows {
                         activity.id = message_key(&activity);
@@ -1261,14 +1254,7 @@ impl NativeWatch {
                 }
                 Ok(None) => {}
                 Err(_) => {
-                    self.error = Some(
-                        if source.agent_id == "antigravity" {
-                            "Antigravity 活动来源暂不可读取"
-                        } else {
-                            "部分原生活动来源不可读取"
-                        }
-                        .into(),
-                    );
+                    self.error = Some("部分原生活动来源不可读取".into());
                 }
             }
         }
@@ -1620,7 +1606,7 @@ mod retention_tests {
     fn database_recent_keeps_newest_128_per_family_without_retiming() {
         let now = DateTime::from_timestamp(1_800_000_000, 0).unwrap();
         let mut watch = NativeWatch::default();
-        for agent in ["opencode", "antigravity"] {
+        for agent in ["opencode", "fixture-database"] {
             for i in 0..140 {
                 let a = activity(
                     agent,
@@ -1632,7 +1618,7 @@ mod retention_tests {
         }
         watch.trim_database_recent(now);
         assert_eq!(watch.database_recent.len(), 256);
-        for agent in ["opencode", "antigravity"] {
+        for agent in ["opencode", "fixture-database"] {
             for i in 0..140 {
                 let row = watch.database_recent.get(&format!("{agent}:{i}"));
                 assert_eq!(row.is_some(), i < 128);

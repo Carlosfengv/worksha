@@ -82,9 +82,11 @@ test("expired snapshots retain records while clearing claims of running activity
 test("an Agent without observed activity offers source management without fabricating records", async ({
   page,
 }) => {
-  await page.goto(overview);
+  await page.goto(
+    `${overview.replace("#/overview", "")}&sourceState=disabled&activity=empty#/overview`,
+  );
   await page.getByRole("combobox", { name: "首页筛选 Agent" }).click();
-  await page.getByRole("option", { name: "Antigravity", exact: true }).click();
+  await page.getByRole("option", { name: "OpenCode", exact: true }).click();
   const activity = page.getByRole("region", {
     name: "当前活动列表",
     exact: true,
@@ -94,7 +96,7 @@ test("an Agent without observed activity offers source management without fabric
   await activity
     .getByRole("button", { name: "连接观测来源", exact: true })
     .click();
-  await expect(page).toHaveURL(/#\/agents\/antigravity\?tab=connection$/);
+  await expect(page).toHaveURL(/#\/agents\/opencode\?tab=connection$/);
 });
 
 test("disconnected native sources retain gateway history and explain a truly empty feed", async ({

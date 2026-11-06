@@ -6,10 +6,6 @@ mod activity_history_tests;
 pub mod activity_input;
 pub mod activity_input_cache;
 pub mod activity_performance;
-mod antigravity;
-mod antigravity_proto;
-#[cfg(test)]
-mod antigravity_tests;
 mod calls;
 mod codex_attribution;
 #[cfg(test)]
@@ -76,6 +72,7 @@ pub use mcp::{McpQuery, McpSnapshot};
 pub use memory::MemorySnapshot;
 pub use opencode_mcp::{install_reader_worker, read_config_worker};
 pub use parser::{Event, SessionSummary, Usage};
+pub use parser::{Window as TranscriptWindow, parse_snapshot as read_transcript_snapshot};
 pub use source_plugins::NativeSourcePlugins;
 
 pub fn now() -> String {
@@ -936,13 +933,6 @@ fn roots(home: &Path, agent: &str) -> Vec<PathBuf> {
     }
 }
 fn source_locations(home: &Path, agent: &str) -> Vec<PathBuf> {
-    if agent == "antigravity" {
-        return vec![
-            antigravity::root(home),
-            home.join(".gemini/antigravity/mcp_config.json"),
-            home.join(".gemini/config"),
-        ];
-    }
     if agent == "opencode" {
         let mut paths = vec![opencode::path(home), opencode_log::path(home)];
         paths.extend(opencode_mcp::global_paths(home));
@@ -1133,41 +1123,37 @@ fn collect(
     }
 }
 
-fn source_capabilities(agent: &str) -> Vec<Capability> {
-    if agent == "antigravity" {
-        antigravity::capabilities()
-    } else {
-        vec![
-            Capability {
-                name: "Session / 消息",
-                status: "supported",
-                reason: "只读原生 JSONL / OpenCode SQLite；正文按需读取，不另存副本",
-            },
-            Capability {
-                name: "工具 / MCP",
-                status: "partial",
-                reason: "按原生 call_id 关联；OpenCode 支持当前本机 / 项目配置关联，歧义保留未知",
-            },
-            Capability {
-                name: "Skill",
-                status: "partial",
-                reason: "仅展示明确 Skill 工具调用；不从工具名或指令正文猜测",
-            },
-            Capability {
-                name: "Token",
-                status: "partial",
-                reason: "仅使用原生 usage；累计与单次记录互斥去重",
-            },
-            Capability {
-                name: "模型异常",
-                status: "partial",
-                reason: "读取明确原生错误；OpenCode 补充当前日志末尾的 Session 关联错误。未落盘 / 未经入口的异常可能缺失，不把错误日志条数当 HTTP 请求数",
-            },
-            Capability {
-                name: "实时 TTFT / 速度 / 费用",
-                status: "unsupported",
-                reason: "本通道读取历史会话，不等于网关流式计时或 API 账单",
-            },
-        ]
-    }
+fn source_capabilities() -> Vec<Capability> {
+    vec![
+        Capability {
+            name: "Session / 消息",
+            status: "supported",
+            reason: "只读原生 JSONL / OpenCode SQLite；正文按需读取，不另存副本",
+        },
+        Capability {
+            name: "工具 / MCP",
+            status: "partial",
+            reason: "按原生 call_id 关联；OpenCode 支持当前本机 / 项目配置关联，歧义保留未知",
+        },
+        Capability {
+            name: "Skill",
+            status: "partial",
+            reason: "仅展示明确 Skill 工具调用；不从工具名或指令正文猜测",
+        },
+        Capability {
+            name: "Token",
+            status: "partial",
+            reason: "仅使用原生 usage；累计与单次记录互斥去重",
+        },
+        Capability {
+            name: "模型异常",
+            status: "partial",
+            reason: "读取明确原生错误；OpenCode 补充当前日志末尾的 Session 关联错误。未落盘 / 未经入口的异常可能缺失，不把错误日志条数当 HTTP 请求数",
+        },
+        Capability {
+            name: "实时 TTFT / 速度 / 费用",
+            status: "unsupported",
+            reason: "本通道读取历史会话，不等于网关流式计时或 API 账单",
+        },
+    ]
 }

@@ -170,7 +170,6 @@ const memoryFixtures = [
   ".claude/CLAUDE.md",
   ".codex/memories/MEMORY.md",
   ".config/opencode/AGENTS.md",
-  ".gemini/config/GEMINI.md",
 ].map((name) => path.join(home, name));
 for (const file of memoryFixtures) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -185,7 +184,6 @@ const memoryProducts = [
   "codex-cli",
   "codex-desktop",
   "opencode",
-  "antigravity",
 ];
 const sha = (p) =>
   createHash("sha256").update(fs.readFileSync(p)).digest("hex");
@@ -444,19 +442,19 @@ async function legacy() {
 try {
   await boot();
   const capabilities = await api("/api/domain/capabilities");
-  assert.equal(capabilities.entries.length, 34);
+  assert.equal(capabilities.entries.length, 29);
   assert.equal(capabilities.externalProblem, null);
   assert.equal(
     capabilities.entries.filter(
       (e) => e.provider.capability.name === "domain.session-source",
     ).length,
-    4,
+    3,
   );
   assert.equal(
     capabilities.entries.filter(
       (e) => e.provider.capability.name === "domain.mcp-source",
     ).length,
-    5,
+    4,
   );
   assert.equal(
     capabilities.entries.filter(
@@ -474,8 +472,8 @@ try {
       ),
   );
   const directory = await api("/api/domain/directory");
-  assert.equal(directory.catalog.sources.length, 4);
-  assert.equal(directory.catalog.products.length, 6);
+  assert.equal(directory.catalog.sources.length, 3);
+  assert.equal(directory.catalog.products.length, 5);
   assert(
     directory.catalog.sources.every(
       (s) => s.status.authorization === "required",
@@ -707,8 +705,8 @@ try {
     400,
   );
   report.cases.push(
-    "four mounted sources represent six products; explicit multi-native scope, deduplication, body and cross-scope denial preserve the original reader",
-    "a separate 34-entry read-only capability catalog includes actual source, project, Git, listener, account, MCP, activity and native/gateway request projection facades without refreshing resources",
+    "three mounted sources represent five products; explicit multi-native scope, deduplication, body and cross-scope denial preserve the original reader",
+    "a separate 29-entry read-only capability catalog includes actual source, project, Git, listener, account, MCP, activity and native/gateway request projection facades without refreshing resources",
   );
   await api(
     "/api/session-sources",
@@ -759,7 +757,7 @@ try {
     "revocation invalidates frozen generations and retains healthy source results without fabricated zero totals",
   );
   if (process.env.DOMAIN_SOURCES_BASELINE_BINARY) {
-    for (const agentId of ["opencode", "antigravity"])
+    for (const agentId of ["opencode"])
       await api("/api/session-sources", { agentId, enabled: true }, 200, "PUT");
     const expected = await legacy();
     await stop();
@@ -769,7 +767,7 @@ try {
     await boot();
     assert.deepEqual(await legacy(), expected);
     report.cases.push(
-      "the same managed data reopens under accepted D2 and D3 with complete original session, call, body, MCP, account and six-product memory responses; metadata, explicit Unicode previews, redaction and exact not-found behavior are preserved",
+      "the same managed data reopens under accepted D2 and D3 with complete original session, call, body, MCP, account and five-product memory responses; metadata, explicit Unicode previews, redaction and exact not-found behavior are preserved",
       "71 native MCP executions retain complete name groups, response usage and 40/31 pagination across D2/current reopen; cursor replay works in its own generation and cross-filter reuse is rejected; opaque cursor bytes are process-bound and are compared by presence",
       "complete native Claude and Codex activity responses survive common-contract consumption and accepted D2/current round trips on the same managed files, without real agents or model calls",
     );

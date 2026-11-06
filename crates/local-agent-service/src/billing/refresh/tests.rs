@@ -54,6 +54,7 @@ impl Fixture {
         let (gateway, _listener) = crate::gateway::Gateway::bind(&data).await.unwrap();
         let (sources, source) = sources::controlled();
         let state = AppState {
+            workbench: None,
             provider_adapters: crate::provider_models::adapters::builtin(),
             provider_client: crate::state::provider_client().unwrap(),
             credentials: vault.clone(),

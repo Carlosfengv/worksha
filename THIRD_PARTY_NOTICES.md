@@ -9,7 +9,6 @@
 | `claude.png`      | Claude.app / Contents/Resources/electron.icns                                   |
 | `codex.png`       | bundle ID 为 com.openai.codex 的 ChatGPT.app / Contents/Resources/electron.icns |
 | `opencode.png`    | OpenCode.app / Contents/Resources/icon.icns                                     |
-| `antigravity.png` | Antigravity.app / Contents/Resources/icon.icns                                  |
 
 ## Zeron UI
 

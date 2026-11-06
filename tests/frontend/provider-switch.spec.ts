@@ -74,8 +74,7 @@ test("Agent list selects a model service without changing the current connection
 }) => {
   await page.goto("/tests/frontend/provider-switch.html?list=1");
   const table = page.getByRole("table");
-  await expect(table.getByRole("row")).toHaveCount(13);
-  await expect(page.getByText("在 Agent 内选择模型")).toBeVisible();
+  await expect(table.getByRole("row")).toHaveCount(12);
   for (const name of [
     "Claude Code 桌面端",
     "Codex CLI",

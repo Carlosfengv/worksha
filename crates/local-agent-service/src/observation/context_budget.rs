@@ -4,6 +4,7 @@ use local_agent_core::{
     model_services::{Capabilities, ContextBudget},
 };
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
 use tokenizers::Tokenizer;
 
@@ -73,16 +74,44 @@ pub(super) fn inspect(
         estimated: true,
     })
 }
+// Carried only in this request's extensions through policy admission/rebuilds.
+// Include all inputs so a different attempt cannot reuse a stale token budget.
+#[derive(Clone)]
+pub(super) struct Evaluation {
+    fingerprint: [u8; 32],
+    pub budget: ContextBudget,
+}
+
+fn evaluate_once(
+    body: &Value,
+    caps: &Capabilities,
+    provider: &Provider,
+    previous: Option<Evaluation>,
+) -> Result<Evaluation, &'static str> {
+    let input = serde_json::to_vec(&(body, caps, provider)).map_err(|_| "请求输入无法计数")?;
+    let fingerprint = Sha256::digest(input).into();
+    if let Some(previous) = previous
+        && previous.fingerprint == fingerprint
+    {
+        return Ok(previous);
+    }
+    Ok(Evaluation {
+        fingerprint,
+        budget: inspect(body, caps, Some(provider))?,
+    })
+}
+
 pub(super) async fn evaluate(
     body: Value,
     caps: Capabilities,
     provider: Provider,
-) -> Result<ContextBudget, &'static str> {
+    previous: Option<Evaluation>,
+) -> Result<Evaluation, &'static str> {
     static CAPACITY: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
     let permit = CAPACITY.acquire().await.map_err(|_| "上下文计数暂不可用")?;
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        inspect(&body, &caps, Some(&provider))
+        evaluate_once(&body, &caps, &provider, previous)
     })
     .await
     .map_err(|_| "上下文计数未完成")?
@@ -111,6 +140,114 @@ pub(super) fn rejection(budget: &ContextBudget) -> axum::response::Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn deepseek_provider() -> Provider {
+        serde_json::from_value(json!({
+            "id":"deepseek-test", "name":"DeepSeek", "configured":true,
+            "endpoint":"https://api.deepseek.com", "protocol":"chat-completions",
+            "model":"deepseek-v4-pro"
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn request_budget_is_reused_only_for_identical_input_capabilities_and_provider() {
+        let body = json!({"max_tokens":160,"messages":[{"role":"user","content":"hello"}]});
+        let caps = Capabilities::default();
+        let provider = deepseek_provider();
+        let mut cached = evaluate_once(&body, &caps, &provider, None).unwrap();
+        // Mark the private memo to distinguish reuse from another successful count.
+        cached.budget.method = "reused-in-this-request".into();
+        assert_eq!(
+            evaluate_once(&body, &caps, &provider, Some(cached.clone()))
+                .unwrap()
+                .budget
+                .method,
+            "reused-in-this-request"
+        );
+        for (pointer, value) in [
+            ("/messages/0/content", json!("different input")),
+            ("/max_tokens", json!(40_000)),
+            ("/tools", json!([{"name":"new_tool"}])),
+            ("/system", json!("different instructions")),
+            ("/tool_choice", json!({"type":"auto"})),
+        ] {
+            let mut changed = body.clone();
+            if pointer.matches('/').count() == 1 {
+                changed[&pointer[1..]] = value;
+            } else {
+                *changed.pointer_mut(pointer).unwrap() = value;
+            }
+            let budget = evaluate_once(&changed, &caps, &provider, Some(cached.clone()))
+                .unwrap()
+                .budget;
+            assert_ne!(budget.method, "reused-in-this-request", "{pointer}");
+            if pointer == "/max_tokens" {
+                assert_eq!(budget.output_tokens, 40_000);
+                assert!(
+                    budget.input_tokens + budget.output_tokens > u64::from(caps.context_window)
+                );
+            }
+        }
+        let changed_caps = Capabilities {
+            context_window: 64_000,
+            ..caps.clone()
+        };
+        let budget = evaluate_once(&body, &changed_caps, &provider, Some(cached.clone()))
+            .unwrap()
+            .budget;
+        assert_eq!(budget.context_window, 64_000);
+        assert_ne!(budget.method, "reused-in-this-request");
+        for (endpoint, model) in [
+            ("https://api.deepseek.com", "deepseek-v4-flash"),
+            ("https://example.test", "deepseek-v4-pro"),
+        ] {
+            let mut changed = provider.clone();
+            changed.endpoint = endpoint.into();
+            changed.model = model.into();
+            assert_ne!(
+                evaluate_once(&body, &caps, &changed, Some(cached.clone()))
+                    .unwrap()
+                    .budget
+                    .method,
+                "reused-in-this-request"
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "manual CPU benchmark; no timing assertions"]
+    fn compare_repeated_counting_with_request_memo() {
+        let body = json!({"max_tokens":160,"messages":[{"role":"user","content":"Benchmark context: preserve all facts, avoid tools. ".repeat(700)}]});
+        let caps = Capabilities::default();
+        let provider = deepseek_provider();
+        let expected = inspect(&body, &caps, Some(&provider)).unwrap();
+        let iterations = 10;
+        let start = std::time::Instant::now();
+        for _ in 0..iterations {
+            for _ in 0..2 {
+                std::hint::black_box(inspect(&body, &caps, Some(&provider)).unwrap());
+            }
+        }
+        let original = start.elapsed();
+        let start = std::time::Instant::now();
+        for _ in 0..iterations {
+            let first = evaluate_once(&body, &caps, &provider, None).unwrap();
+            let next = evaluate_once(&body, &caps, &provider, Some(first)).unwrap();
+            assert_eq!(next.budget.input_tokens, expected.input_tokens);
+            assert_eq!(next.budget.output_tokens, expected.output_tokens);
+            std::hint::black_box(next);
+        }
+        eprintln!(
+            "context budget: input={} output={} iterations={} original_ms={:.3} memo_ms={:.3}",
+            expected.input_tokens,
+            expected.output_tokens,
+            iterations,
+            original.as_secs_f64() * 1000.0,
+            start.elapsed().as_secs_f64() * 1000.0
+        );
+    }
+
     #[test]
     fn large_utf8_json_is_not_equivalent_to_tokens_and_output_is_reserved() {
         let body = json!({"max_tokens":8192,"system":"tool documentation ".repeat(2000),"messages":[{"role":"user","content":"请分析上下文问题。".repeat(100)}]});

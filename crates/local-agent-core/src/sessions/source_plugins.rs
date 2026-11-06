@@ -1,6 +1,8 @@
 //! Typed, trusted read-only source seam. The catalog and consent stay in NativeSessions.
 #[cfg(test)]
 mod domain_tests;
+#[cfg(test)]
+mod test_fixture;
 use super::{Conversation, IndexedFile, NativeError, NativeResult, NativeSessions};
 use crate::plugin::{BuiltinPlugin, CapabilityKey, PluginHost, PluginLease};
 use std::{collections::BTreeMap, collections::HashMap, path::Path, path::PathBuf, sync::Arc};
@@ -130,7 +132,7 @@ pub(super) trait ReadOnlySessionSource: BuiltinPlugin {
         super::source_locations(home, self.agent())
     }
     fn capabilities(&self) -> Vec<super::Capability> {
-        super::source_capabilities(self.agent())
+        super::source_capabilities()
     }
     fn scan(
         &self,
@@ -201,9 +203,6 @@ impl NativeSourcePlugins {
             ))),
             Arc::new(super::domain_source::BuiltinSessionAdapter::wrap(Arc::new(
                 super::opencode::OpenCodeSource,
-            ))),
-            Arc::new(super::domain_source::BuiltinSessionAdapter::wrap(Arc::new(
-                super::antigravity::AntigravitySource,
             ))),
         ]
     }

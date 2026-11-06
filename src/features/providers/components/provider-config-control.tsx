@@ -71,29 +71,7 @@ export function AgentProviderSettings({
   providers: Provider[];
   refresh: () => Promise<void>;
 }) {
-  const status = useSharedRead(
-    providerStatusResource,
-    agentId !== "antigravity",
-  );
-  if (agentId === "antigravity") {
-    return (
-      <section className="space-y-3" aria-label="Antigravity 模型连接">
-        <Alert>
-          <AlertTitle>模型连接由 Antigravity 管理</AlertTitle>
-          <AlertDescription>
-            桌面 App 尚无已验证的自定义 Provider / 网关配置入口。CLI 与 SDK
-            的端点配置属于不同产品接口，不能用于此桌面入口。
-          </AlertDescription>
-        </Alert>
-        <p className="text-body text-fg-muted">
-          请在 Antigravity
-          输入框下方选择模型。当前轮次会继续使用原模型，结束或取消后，后续消息才使用新选择。
-          授权读取后可在调用与用量中核对已落盘的实际模型和
-          Token；历史记录不代表当前模型选择。
-        </p>
-      </section>
-    );
-  }
+  const status = useSharedRead(providerStatusResource);
   return (
     <section className="space-y-3" aria-label="本机 Agent 配置">
       <div className="flex flex-wrap items-center justify-between gap-2">

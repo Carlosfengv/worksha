@@ -100,7 +100,6 @@ fn common_mcp_consumer_preserves_all_filters_full_range_statistics_and_cursor_pa
         "codex-cli",
         "codex-desktop",
         "opencode",
-        "antigravity",
         "unknown",
     ] {
         compare(

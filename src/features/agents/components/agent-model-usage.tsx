@@ -53,7 +53,7 @@ export function AgentModelUsage({
 }) {
   const { agentFamily, isSharedSource } = useAgentDirectory();
   const [source, setSource] = useState<AgentUsageQuery["source"]>(
-    nativeEnabled || agentId === "antigravity" ? "native" : "gateway",
+    nativeEnabled ? "native" : "gateway",
   );
   const [days, setDays] = useState("all");
   const [attribution, setAttribution] = useState("current");
@@ -137,9 +137,7 @@ export function AgentModelUsage({
           <SelectTrigger aria-label="模型用量来源" />
           <SelectContent>
             <SelectItem value="native">原生记录 · 官方 / 第三方</SelectItem>
-            {agentId !== "antigravity" && (
-              <SelectItem value="gateway">本地网关 · 上游服务</SelectItem>
-            )}
+            <SelectItem value="gateway">本地网关 · 上游服务</SelectItem>
           </SelectContent>
         </Select>
         <Select
@@ -274,9 +272,7 @@ export function AgentModelUsage({
             title={disconnected ? "尚未读取此原生来源" : "没有匹配的已记录用量"}
             description={
               disconnected
-                ? agentId === "antigravity"
-                  ? "可在连接与观测中授权只读来源；仅展示原生记录已报告的用量。"
-                  : "可在连接与观测中授权只读来源；网关记录仍可独立查看。"
+                ? "可在连接与观测中授权只读来源；网关记录仍可独立查看。"
                 : "可调整来源、Provider、模型或日期；未记录不代表没有调用。"
             }
           />

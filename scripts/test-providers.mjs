@@ -200,12 +200,11 @@ try {
     status.runtimes.every((r) => r.reason === "隔离临时目录测试进程状态"),
     "Test requires the isolated in-memory vault service; refusing to create credentials",
   );
-  assert.equal(status.configs.length, 5);
-  assert.equal(status.configs.find((c) => c.agentId === "antigravity").state,"unsupported");
+  assert.equal(status.configs.length, 4);
   assert.equal(status.transactions.length, 0);
   assert(
     status.configs
-      .filter((c) => !["claude-desktop", "antigravity"].includes(c.agentId))
+      .filter((c) => c.agentId !== "claude-desktop")
       .every((c) => c.revision),
   );
   assert(status.configs.find((c) => c.agentId === "claude-desktop").error);

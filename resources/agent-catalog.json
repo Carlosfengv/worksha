@@ -2,15 +2,13 @@
   "sources": [
     { "id": "claude", "name": "Claude", "shared": true },
     { "id": "codex", "name": "Codex", "shared": true },
-    { "id": "opencode", "name": "OpenCode", "shared": false },
-    { "id": "antigravity", "name": "Antigravity", "shared": false }
+    { "id": "opencode", "name": "OpenCode", "shared": false }
   ],
   "products": [
     { "id": "claude-code-cli", "name": "Claude Code CLI", "family": "claude", "configId": "claude", "locations": ["~/.claude"] },
     { "id": "claude-code-desktop", "name": "Claude Code 桌面端", "family": "claude", "configId": "claude-desktop", "locations": ["/Applications/Claude.app"] },
     { "id": "codex-cli", "name": "Codex CLI", "family": "codex", "configId": "codex", "locations": ["~/.codex"] },
     { "id": "codex-desktop", "name": "Codex 桌面端", "family": "codex", "configId": "codex", "locations": ["/Applications/Codex.app", "/Applications/ChatGPT.app"] },
-    { "id": "opencode", "name": "OpenCode", "family": "opencode", "configId": "opencode", "locations": ["~/.local/share/opencode"] },
-    { "id": "antigravity", "name": "Antigravity", "family": "antigravity", "configId": "antigravity", "locations": ["/Applications/Antigravity.app", "~/Applications/Antigravity.app", "~/.gemini/antigravity"] }
+    { "id": "opencode", "name": "OpenCode", "family": "opencode", "configId": "opencode", "locations": ["~/.local/share/opencode"] }
   ]
 }

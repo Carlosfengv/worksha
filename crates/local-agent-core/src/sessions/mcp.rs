@@ -275,8 +275,6 @@ impl Inventory {
                 self.issue(agent, path);
                 continue;
             }
-            // Antigravity's serverUrl does not distinguish HTTP from SSE.
-            // Keep that transport unknown rather than guessing from its URL.
             let transport = match entry["type"].as_str() {
                 Some("stdio") => Some("stdio"),
                 Some("http" | "streamable-http") => Some("streamable_http"),
@@ -295,11 +293,7 @@ impl Inventory {
                     modified_at: modified.clone(),
                 }],
                 transport,
-                if agent == "antigravity" {
-                    entry["disabled"].as_bool().map(|v| !v)
-                } else {
-                    entry["enabled"].as_bool()
-                },
+                entry["enabled"].as_bool(),
             );
         }
     }
@@ -714,8 +708,7 @@ impl NativeSessions {
             .into_values()
             .filter(|s| {
                 query.agent.as_deref().is_none_or(|a| {
-                    (matches!(a, "claude" | "codex" | "opencode" | "antigravity")
-                        && a == s.agent_id)
+                    (matches!(a, "claude" | "codex" | "opencode") && a == s.agent_id)
                         || s.applicable_agent_ids.iter().any(|id| id == a)
                         || calls.iter().any(|c| c.service_id == s.id)
                 })
@@ -832,7 +825,6 @@ pub(super) enum ConfigPhase {
     Projects,
 }
 pub(super) struct ConfigScope<'a> {
-    pub files: &'a [ConfigFile],
     pub projects: &'a mut BTreeSet<String>,
     pub scanned_projects: &'a [String],
     pub opencode_contexts: &'a mut HashMap<String, opencode_mcp::Context>,
@@ -840,14 +832,12 @@ pub(super) struct ConfigScope<'a> {
 }
 /// Configuration discovery needs project metadata, never transcripts or call vectors.
 pub(super) struct ConfigFile {
-    pub agent: String,
     pub project_path: Option<String>,
     pub project_root: Option<String>,
 }
 impl From<&super::IndexedFile> for ConfigFile {
     fn from(file: &super::IndexedFile) -> Self {
         Self {
-            agent: file.agent.clone(),
             project_path: file.summary.project_path.clone(),
             project_root: file.summary.project_root.clone(),
         }
@@ -879,7 +869,6 @@ impl NativeSessions {
             ConfigPhase::Global,
             sources,
             &mut ConfigScope {
-                files,
                 projects: &mut projects,
                 scanned_projects: &[],
                 opencode_contexts: &mut contexts,
@@ -888,13 +877,9 @@ impl NativeSessions {
             &mut inventory,
         )?;
         if projects.len() > 500 {
-            inventory.blocked_agents.extend(
-                self.directory()
-                    .sources()
-                    .iter()
-                    .filter(|s| s.id != "antigravity")
-                    .map(|s| s.id.clone()),
-            );
+            inventory
+                .blocked_agents
+                .extend(self.directory().sources().iter().map(|s| s.id.clone()));
             inventory
                 .warnings
                 .insert("已知项目位置超过 500 项，本次配置扫描不完整。".into());
@@ -904,7 +889,6 @@ impl NativeSessions {
             ConfigPhase::Projects,
             sources,
             &mut ConfigScope {
-                files,
                 projects: &mut projects,
                 scanned_projects: &scanned,
                 opencode_contexts: &mut contexts,

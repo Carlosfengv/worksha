@@ -240,11 +240,7 @@ export function AgentServiceControl({
     }
   };
   if (!["claude", "opencode", "claude-desktop", "codex"].includes(agentId))
-    return (
-      <span className="text-label text-fg-muted">
-        {agentId === "antigravity" ? "在 Agent 内选择模型" : "暂不支持切换"}
-      </span>
-    );
+    return <span className="text-label text-fg-muted">暂不支持切换</span>;
   return (
     <div className={compact ? "min-w-48 max-w-72 space-y-1" : "space-y-4"}>
       {showRecovery && !compact && !choice && !transaction && (

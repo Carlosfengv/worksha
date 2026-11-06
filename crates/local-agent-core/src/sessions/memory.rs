@@ -246,18 +246,6 @@ pub(super) fn read(
     };
     let home = context.home;
     match family {
-        "antigravity" => {
-            for name in ["AGENTS.md", "GEMINI.md"] {
-                d.file(home.join(".gemini/config").join(name), "全局规则", None);
-            }
-            d.directory(&home.join(".gemini/config/rules"), "全局规则", None, 2);
-            d.directory(
-                &home.join(".gemini/config/skills"),
-                "全局 Skill 定义",
-                None,
-                2,
-            );
-        }
         "codex" => {
             d.file(home.join(".codex/AGENTS.md"), "全局规则", None);
             d.file(home.join(".codex/AGENTS.override.md"), "全局覆盖规则", None);
@@ -278,7 +266,6 @@ pub(super) fn read(
             continue;
         }
         let names: &[&str] = match family {
-            "antigravity" => &["AGENTS.md", "GEMINI.md"],
             "claude" => &["CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md"],
             "codex" => &["AGENTS.md", "AGENTS.override.md"],
             _ => &["AGENTS.md", "CLAUDE.md"],
@@ -288,15 +275,6 @@ pub(super) fn read(
         }
         if family == "claude" {
             d.directory(&root.join(".claude/rules"), "项目规则", Some(path), 2);
-        }
-        if family == "antigravity" {
-            d.directory(&root.join(".agents/rules"), "项目规则", Some(path), 2);
-            d.directory(
-                &root.join(".agents/skills"),
-                "项目 Skill 定义",
-                Some(path),
-                2,
-            );
         }
     }
     if family == "claude" {

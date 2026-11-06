@@ -149,7 +149,7 @@ impl NativeConfigAdapter for Format {
         }
     }
 }
-static FORMATS: [Format; 5] = [
+static FORMATS: [Format; 4] = [
     Format {
         id: "claude",
         protocol: Some("messages"),
@@ -165,10 +165,6 @@ static FORMATS: [Format; 5] = [
     Format {
         id: "claude-desktop",
         protocol: Some("messages"),
-    },
-    Format {
-        id: "antigravity",
-        protocol: None,
     },
 ];
 pub struct ConfigAdapters {

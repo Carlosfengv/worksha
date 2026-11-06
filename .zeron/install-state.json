@@ -2138,6 +2138,1963 @@
         "@visx/heatmap@4.0.0"
       ],
       "devDependencies": []
+    },
+    {
+      "items": [
+        "surfaces",
+        "tailwind-merge-tokens",
+        "utils",
+        "textarea"
+      ],
+      "registryBase": "https://zeron-ui.vercel.app/r",
+      "cliVersion": "0.2.0-beta.19",
+      "files": [
+        "src/lib/tailwind-merge-tokens.ts",
+        "src/lib/utils.ts",
+        "src/components/ui/textarea.tsx"
+      ],
+      "fileHashes": {
+        "src/lib/tailwind-merge-tokens.ts": {
+          "sourceHash": "1277e5cfadb06fad8ce615472603bf5e75ae2270269ca42aa253459a74a7a317",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "79ed798cc175b8842548d59f0e7fd737b807af5817e2b7cea881190e9d642e8e"
+        },
+        "src/lib/utils.ts": {
+          "sourceHash": "cd8413121df9b741a6ae601589bfda72da030ea7f97e767365e058f414acb933",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1831f143258d6933514dc37d1be90dbc5289489fb345e2eb7e8ea5f29b34a2b8"
+        },
+        "src/components/ui/textarea.tsx": {
+          "sourceHash": "459603de58d1cc76c7920aef7448547ca62ce3acb82bc511c47d54de0c4d3795",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "86ebda8b0e5b8ae5e02bb5f5d7192a01d009f0f25e739547fd2b7277657ad417"
+        }
+      },
+      "dependencies": [
+        "tw-animate-css@^1.4.0",
+        "clsx@^2.1.1",
+        "tailwind-merge@^3.4.0",
+        "@base-ui/react@^1.4.1",
+        "class-variance-authority@^0.7.1"
+      ],
+      "devDependencies": []
+    },
+    {
+      "items": [
+        "surfaces",
+        "tailwind-merge-tokens",
+        "utils",
+        "icon-context",
+        "control-size",
+        "button",
+        "springs",
+        "use-touch-primary",
+        "file-thumbnail",
+        "portal-container-context",
+        "tooltip",
+        "textarea",
+        "badge",
+        "inline-notice",
+        "chat-message",
+        "empty",
+        "surface-classes",
+        "surface-context",
+        "popover",
+        "message-navigation",
+        "scroll-area",
+        "separator",
+        "toast",
+        "checkbox",
+        "code-engine",
+        "code-block",
+        "skeleton",
+        "use-proximity-hover",
+        "table",
+        "markdown",
+        "chat-thread"
+      ],
+      "registryBase": "https://zeron-ui.vercel.app/r",
+      "cliVersion": "0.2.0-beta.19",
+      "files": [
+        "src/lib/tailwind-merge-tokens.ts",
+        "src/lib/utils.ts",
+        "src/lib/icon-context.tsx",
+        "src/lib/huge-icon.tsx",
+        "src/lib/icon-catalog.ts",
+        "src/lib/hugeicons.d.ts",
+        "src/lib/tokens/control-size.ts",
+        "src/components/ui/button.tsx",
+        "src/lib/springs.ts",
+        "src/hooks/use-touch-primary.tsx",
+        "src/components/ui/file-thumbnail.tsx",
+        "src/lib/portal-container-context.tsx",
+        "src/components/ui/tooltip.tsx",
+        "src/components/ui/textarea.tsx",
+        "src/components/ui/badge.tsx",
+        "src/components/ui/badge-colors.ts",
+        "src/components/ui/inline-notice.tsx",
+        "src/components/ui/chat-message.tsx",
+        "src/components/ui/chat-message/actions.tsx",
+        "src/components/ui/chat-message/attachments.tsx",
+        "src/components/ui/chat-message/editor.tsx",
+        "src/components/ui/chat-message/author.tsx",
+        "src/components/ui/chat-message/scroll-to-latest.tsx",
+        "src/components/ui/chat-message/meta.tsx",
+        "src/components/ui/empty.tsx",
+        "src/lib/surface-classes.ts",
+        "src/lib/surface-context.tsx",
+        "src/components/ui/popover.tsx",
+        "src/components/ui/message-navigation.tsx",
+        "src/components/ui/scroll-area.tsx",
+        "src/components/ui/separator.tsx",
+        "src/components/ui/toast.tsx",
+        "src/components/ui/checkbox.tsx",
+        "src/lib/code-engine/components/CodeView.ts",
+        "src/lib/code-engine/components/File.ts",
+        "src/lib/code-engine/components/FileDiff.ts",
+        "src/lib/code-engine/components/FileStream.ts",
+        "src/lib/code-engine/components/UnresolvedFile.ts",
+        "src/lib/code-engine/components/VirtualizedFile.ts",
+        "src/lib/code-engine/components/VirtualizedFileDiff.ts",
+        "src/lib/code-engine/components/Virtualizer.ts",
+        "src/lib/code-engine/components/VirtulizerDevelopment.d.ts",
+        "src/lib/code-engine/components/web-components.ts",
+        "src/lib/code-engine/constants.ts",
+        "src/lib/code-engine/core.ts",
+        "src/lib/code-engine/edit/index.ts",
+        "src/lib/code-engine/editor/EditStateManager.ts",
+        "src/lib/code-engine/editor/cloneRetainedDiffSessionSnapshot.ts",
+        "src/lib/code-engine/editor/command.ts",
+        "src/lib/code-engine/editor/editPrediction.ts",
+        "src/lib/code-engine/editor/editStack.ts",
+        "src/lib/code-engine/editor/editor.ts",
+        "src/lib/code-engine/editor/languages.ts",
+        "src/lib/code-engine/editor/lineAnnotations.ts",
+        "src/lib/code-engine/editor/marker.ts",
+        "src/lib/code-engine/editor/matchBrackets.ts",
+        "src/lib/code-engine/editor/pieceTable.ts",
+        "src/lib/code-engine/editor/platform.ts",
+        "src/lib/code-engine/editor/popover.ts",
+        "src/lib/code-engine/editor/searchPanel.ts",
+        "src/lib/code-engine/editor/selection.ts",
+        "src/lib/code-engine/editor/selectionAction.ts",
+        "src/lib/code-engine/editor/sprite.ts",
+        "src/lib/code-engine/editor/textDocument.ts",
+        "src/lib/code-engine/editor/textDocumentChangeTransaction.ts",
+        "src/lib/code-engine/editor/textMeasure.ts",
+        "src/lib/code-engine/editor/tokenizer.ts",
+        "src/lib/code-engine/editor/types.ts",
+        "src/lib/code-engine/editor/utils.ts",
+        "src/lib/code-engine/highlighter/languages/areLanguagesAttached.ts",
+        "src/lib/code-engine/highlighter/languages/attachResolvedLanguages.ts",
+        "src/lib/code-engine/highlighter/languages/cleanUpResolvedLanguages.ts",
+        "src/lib/code-engine/highlighter/languages/constants.ts",
+        "src/lib/code-engine/highlighter/languages/getResolvedLanguages.ts",
+        "src/lib/code-engine/highlighter/languages/getResolvedOrResolveLanguage.ts",
+        "src/lib/code-engine/highlighter/languages/hasResolvedLanguages.ts",
+        "src/lib/code-engine/highlighter/languages/registerCustomLanguage.ts",
+        "src/lib/code-engine/highlighter/languages/resolveLanguage.ts",
+        "src/lib/code-engine/highlighter/languages/resolveLanguages.ts",
+        "src/lib/code-engine/highlighter/shared_highlighter.ts",
+        "src/lib/code-engine/highlighter/themes/areThemesAttached.ts",
+        "src/lib/code-engine/highlighter/themes/attachResolvedThemes.ts",
+        "src/lib/code-engine/highlighter/themes/cleanUpResolvedThemes.ts",
+        "src/lib/code-engine/highlighter/themes/constants.ts",
+        "src/lib/code-engine/highlighter/themes/getResolvedOrResolveTheme.ts",
+        "src/lib/code-engine/highlighter/themes/getResolvedThemes.ts",
+        "src/lib/code-engine/highlighter/themes/hasResolvedThemes.ts",
+        "src/lib/code-engine/highlighter/themes/registerCustomCSSVariableTheme.ts",
+        "src/lib/code-engine/highlighter/themes/registerCustomTheme.ts",
+        "src/lib/code-engine/highlighter/themes/resolveTheme.ts",
+        "src/lib/code-engine/highlighter/themes/resolveThemes.ts",
+        "src/lib/code-engine/highlighter/themes/themeResolution.ts",
+        "src/lib/code-engine/highlighter/themes/themeResolver.ts",
+        "src/lib/code-engine/index.ts",
+        "src/lib/code-engine/managers/InteractionManager.ts",
+        "src/lib/code-engine/managers/ResizeManager.ts",
+        "src/lib/code-engine/managers/ScrollSyncManager.ts",
+        "src/lib/code-engine/managers/UniversalRenderingManager.ts",
+        "src/lib/code-engine/react/CodeView.tsx",
+        "src/lib/code-engine/react/EditContext.tsx",
+        "src/lib/code-engine/react/File.tsx",
+        "src/lib/code-engine/react/FileDiff.tsx",
+        "src/lib/code-engine/react/MultiFileDiff.tsx",
+        "src/lib/code-engine/react/PatchDiff.tsx",
+        "src/lib/code-engine/react/UnresolvedFile.tsx",
+        "src/lib/code-engine/react/Virtualizer.tsx",
+        "src/lib/code-engine/react/WorkerPoolContext.tsx",
+        "src/lib/code-engine/react/constants.ts",
+        "src/lib/code-engine/react/index.ts",
+        "src/lib/code-engine/react/jsx.d.ts",
+        "src/lib/code-engine/react/types.ts",
+        "src/lib/code-engine/react/utils/assignRef.ts",
+        "src/lib/code-engine/react/utils/renderDiffChildren.tsx",
+        "src/lib/code-engine/react/utils/renderFileChildren.tsx",
+        "src/lib/code-engine/react/utils/templateRender.tsx",
+        "src/lib/code-engine/react/utils/useFileDiffInstance.ts",
+        "src/lib/code-engine/react/utils/useFileInstance.ts",
+        "src/lib/code-engine/react/utils/useStableCallback.ts",
+        "src/lib/code-engine/react/utils/useUnresolvedFileInstance.ts",
+        "src/lib/code-engine/renderers/DiffHunksRenderer.ts",
+        "src/lib/code-engine/renderers/FileRenderer.ts",
+        "src/lib/code-engine/renderers/UnresolvedFileHunksRenderer.ts",
+        "src/lib/code-engine/shiki-stream/index.ts",
+        "src/lib/code-engine/shiki-stream/stream.ts",
+        "src/lib/code-engine/shiki-stream/tokenizer.ts",
+        "src/lib/code-engine/shiki-stream/types.ts",
+        "src/lib/code-engine/sprite.ts",
+        "src/lib/code-engine/ssr/FileDiffReact.tsx",
+        "src/lib/code-engine/ssr/index.ts",
+        "src/lib/code-engine/ssr/preloadDiffs.ts",
+        "src/lib/code-engine/ssr/preloadFile.ts",
+        "src/lib/code-engine/ssr/preloadPatchFile.ts",
+        "src/lib/code-engine/ssr/renderHTML.ts",
+        "src/lib/code-engine/string-import.d.ts",
+        "src/lib/code-engine/styles/base-css.generated.ts",
+        "src/lib/code-engine/styles/base.css",
+        "src/lib/code-engine/styles/editor-css.generated.ts",
+        "src/lib/code-engine/styles/editor.css",
+        "src/lib/code-engine/themes/pierre-dark-protanopia-deuteranopia.json",
+        "src/lib/code-engine/themes/pierre-dark-soft.json",
+        "src/lib/code-engine/themes/pierre-dark-tritanopia.json",
+        "src/lib/code-engine/themes/pierre-dark-vibrant.json",
+        "src/lib/code-engine/themes/pierre-dark.json",
+        "src/lib/code-engine/themes/pierre-light-protanopia-deuteranopia.json",
+        "src/lib/code-engine/themes/pierre-light-soft.json",
+        "src/lib/code-engine/themes/pierre-light-tritanopia.json",
+        "src/lib/code-engine/themes/pierre-light-vibrant.json",
+        "src/lib/code-engine/themes/pierre-light.json",
+        "src/lib/code-engine/theming/collections/pierre.ts",
+        "src/lib/code-engine/theming/collections/shiki.ts",
+        "src/lib/code-engine/theming/color.ts",
+        "src/lib/code-engine/theming/index.ts",
+        "src/lib/code-engine/theming/modules/color.ts",
+        "src/lib/code-engine/theming/modules/createTheme.ts",
+        "src/lib/code-engine/theming/modules/createThemeCatalog.ts",
+        "src/lib/code-engine/theming/modules/createThemeCollection.ts",
+        "src/lib/code-engine/theming/modules/createThemeController.ts",
+        "src/lib/code-engine/theming/modules/createThemeResolver.ts",
+        "src/lib/code-engine/theming/modules/normalizeThemeColors.ts",
+        "src/lib/code-engine/theming/modules/types.ts",
+        "src/lib/code-engine/theming/modules/unwrapDefault.ts",
+        "src/lib/code-engine/theming/react.ts",
+        "src/lib/code-engine/theming/themes.ts",
+        "src/lib/code-engine/types.ts",
+        "src/lib/code-engine/utils/annotationHelpers.ts",
+        "src/lib/code-engine/utils/appendItems.ts",
+        "src/lib/code-engine/utils/applyLineTextWithNewline.ts",
+        "src/lib/code-engine/utils/areDiffLineAnnotationsEqual.ts",
+        "src/lib/code-engine/utils/areDiffRenderOptionsEqual.ts",
+        "src/lib/code-engine/utils/areDiffTargetsEqual.ts",
+        "src/lib/code-engine/utils/areFileRenderOptionsEqual.ts",
+        "src/lib/code-engine/utils/areFileTargetsEqual.ts",
+        "src/lib/code-engine/utils/areFilesEqual.ts",
+        "src/lib/code-engine/utils/areHunkDataEqual.ts",
+        "src/lib/code-engine/utils/areLineAnnotationsEqual.ts",
+        "src/lib/code-engine/utils/areManagedSnapshotsEqual.ts",
+        "src/lib/code-engine/utils/areMergeConflictActionsEqual.ts",
+        "src/lib/code-engine/utils/areObjectsEqual.ts",
+        "src/lib/code-engine/utils/areOptionsEqual.ts",
+        "src/lib/code-engine/utils/arePrePropertiesEqual.ts",
+        "src/lib/code-engine/utils/areRenderRangesEqual.ts",
+        "src/lib/code-engine/utils/areSelectionPointsEqual.ts",
+        "src/lib/code-engine/utils/areSelectionsEqual.ts",
+        "src/lib/code-engine/utils/areThemesEqual.ts",
+        "src/lib/code-engine/utils/areVirtualWindowSpecsEqual.ts",
+        "src/lib/code-engine/utils/areWorkerStatsEqual.ts",
+        "src/lib/code-engine/utils/awaitWithTimeout.ts",
+        "src/lib/code-engine/utils/cleanLastNewline.ts",
+        "src/lib/code-engine/utils/cloneFileDiffMetadata.ts",
+        "src/lib/code-engine/utils/composeCacheKey.ts",
+        "src/lib/code-engine/utils/computeEstimatedDiffHeights.ts",
+        "src/lib/code-engine/utils/computeFileOffsets.ts",
+        "src/lib/code-engine/utils/computeVirtualFileMetrics.ts",
+        "src/lib/code-engine/utils/createAnnotationElement.ts",
+        "src/lib/code-engine/utils/createAnnotationWrapperNode.ts",
+        "src/lib/code-engine/utils/createCodeViewHeaderFooterHostElement.ts",
+        "src/lib/code-engine/utils/createContentColumn.ts",
+        "src/lib/code-engine/utils/createEmptyRowBuffer.ts",
+        "src/lib/code-engine/utils/createFileHeaderElement.ts",
+        "src/lib/code-engine/utils/createGutterUtilityContentNode.ts",
+        "src/lib/code-engine/utils/createGutterUtilityElement.ts",
+        "src/lib/code-engine/utils/createNoNewlineElement.ts",
+        "src/lib/code-engine/utils/createPreElement.ts",
+        "src/lib/code-engine/utils/createRowNodes.ts",
+        "src/lib/code-engine/utils/createSeparator.ts",
+        "src/lib/code-engine/utils/createSpanNodeFromToken.ts",
+        "src/lib/code-engine/utils/createStyleElement.ts",
+        "src/lib/code-engine/utils/createTransformerWithState.ts",
+        "src/lib/code-engine/utils/createUnsafeCSSStyleNode.ts",
+        "src/lib/code-engine/utils/createWindowFromScrollPosition.ts",
+        "src/lib/code-engine/utils/cssWrappers.ts",
+        "src/lib/code-engine/utils/detachString.ts",
+        "src/lib/code-engine/utils/diffAcceptRejectHunk.ts",
+        "src/lib/code-engine/utils/editSessionAnnotations.ts",
+        "src/lib/code-engine/utils/editSessionHunks.ts",
+        "src/lib/code-engine/utils/formatCSSVariablePrefix.ts",
+        "src/lib/code-engine/utils/getDiffFileInput.ts",
+        "src/lib/code-engine/utils/getDiffHunksRendererOptions.ts",
+        "src/lib/code-engine/utils/getFileRendererOptions.ts",
+        "src/lib/code-engine/utils/getFiletypeFromFileName.ts",
+        "src/lib/code-engine/utils/getHighlighterOptions.ts",
+        "src/lib/code-engine/utils/getHighlighterThemeStyles.ts",
+        "src/lib/code-engine/utils/getHunkSeparatorSlotName.ts",
+        "src/lib/code-engine/utils/getHunkSideBoundaries.ts",
+        "src/lib/code-engine/utils/getIconForType.ts",
+        "src/lib/code-engine/utils/getLineAnnotationName.ts",
+        "src/lib/code-engine/utils/getLineEndingType.ts",
+        "src/lib/code-engine/utils/getLineNodes.ts",
+        "src/lib/code-engine/utils/getMergeConflictActionSlotName.ts",
+        "src/lib/code-engine/utils/getMergeConflictLineTypes.ts",
+        "src/lib/code-engine/utils/getOrCreateCodeNode.ts",
+        "src/lib/code-engine/utils/getSingularPatch.ts",
+        "src/lib/code-engine/utils/getThemes.ts",
+        "src/lib/code-engine/utils/getTotalLineCountFromHunks.ts",
+        "src/lib/code-engine/utils/guardWebKitScrollDuringRebuild.ts",
+        "src/lib/code-engine/utils/hast_utils.ts",
+        "src/lib/code-engine/utils/hostTheme.ts",
+        "src/lib/code-engine/utils/hydratePartialDiff.ts",
+        "src/lib/code-engine/utils/includesFileAnnotations.ts",
+        "src/lib/code-engine/utils/isDefaultRenderRange.ts",
+        "src/lib/code-engine/utils/isDiffPlainText.ts",
+        "src/lib/code-engine/utils/isFilePlainText.ts",
+        "src/lib/code-engine/utils/isGutterUtilityPath.ts",
+        "src/lib/code-engine/utils/isStyleNode.ts",
+        "src/lib/code-engine/utils/isWorkerContext.ts",
+        "src/lib/code-engine/utils/iterateOverDiff.ts",
+        "src/lib/code-engine/utils/lineAnnotationIdentity.ts",
+        "src/lib/code-engine/utils/normalizeDiffResolution.ts",
+        "src/lib/code-engine/utils/parseDiffDecorations.ts",
+        "src/lib/code-engine/utils/parseDiffFromFile.ts",
+        "src/lib/code-engine/utils/parseLineType.ts",
+        "src/lib/code-engine/utils/parseMergeConflictDiffFromFile.ts",
+        "src/lib/code-engine/utils/parsePatchFiles.ts",
+        "src/lib/code-engine/utils/parseQuotedDiffFileName.ts",
+        "src/lib/code-engine/utils/platform.ts",
+        "src/lib/code-engine/utils/prefersReducedMotion.ts",
+        "src/lib/code-engine/utils/prerenderHTMLIfNecessary.ts",
+        "src/lib/code-engine/utils/processLine.ts",
+        "src/lib/code-engine/utils/realignChangeContent.ts",
+        "src/lib/code-engine/utils/renderDiffWithHighlighter.ts",
+        "src/lib/code-engine/utils/renderFileWithHighlighter.ts",
+        "src/lib/code-engine/utils/renderPlainFile.ts",
+        "src/lib/code-engine/utils/resolveConflict.ts",
+        "src/lib/code-engine/utils/resolveRegion.ts",
+        "src/lib/code-engine/utils/roundToDevicePixel.ts",
+        "src/lib/code-engine/utils/scrollbarGutter.ts",
+        "src/lib/code-engine/utils/setLanguageOverride.ts",
+        "src/lib/code-engine/utils/setWrapperNodeProps.ts",
+        "src/lib/code-engine/utils/shouldUseTokenTransformer.ts",
+        "src/lib/code-engine/utils/splitFileContents.ts",
+        "src/lib/code-engine/utils/trimPatchContext.ts",
+        "src/lib/code-engine/utils/updateDiffHunks.ts",
+        "src/lib/code-engine/utils/virtualDiffLayout.ts",
+        "src/lib/code-engine/utils/wrapTokenFragments.ts",
+        "src/lib/code-engine/worker/WorkerPoolManager.ts",
+        "src/lib/code-engine/worker/index.ts",
+        "src/lib/code-engine/worker/types.ts",
+        "src/lib/code-engine/worker/worker-factory.ts",
+        "src/lib/code-engine/worker/worker-portable.ts",
+        "src/lib/code-engine/worker/worker.js",
+        "src/lib/code-engine/worker/worker.ts",
+        "src/components/ui/code-block/code-block-messages.ts",
+        "src/components/ui/code-block/code-block-styles.ts",
+        "src/components/ui/code-block/code-block-theme.ts",
+        "src/components/ui/code-block/code-block-toolbar.tsx",
+        "src/components/ui/code-block/code-block-types.ts",
+        "src/components/ui/code-block/code-block.tsx",
+        "src/components/ui/code-block/code-conflict.tsx",
+        "src/components/ui/code-block/code-diff-header.tsx",
+        "src/components/ui/code-block/code-diff.tsx",
+        "src/components/ui/code-block/code-patch.tsx",
+        "src/components/ui/code-block/code-view.tsx",
+        "src/components/ui/code-block/edit.tsx",
+        "src/components/ui/code-block/index.ts",
+        "src/components/ui/code-block/server.ts",
+        "src/components/ui/code-block/stream.tsx",
+        "src/components/ui/code-block/worker.tsx",
+        "src/components/ui/skeleton.tsx",
+        "src/hooks/use-proximity-hover.ts",
+        "src/components/ui/table.tsx",
+        "src/components/ui/markdown.tsx",
+        "src/components/ui/chat-thread.tsx",
+        "src/components/ui/chat-thread/context.ts",
+        "src/components/ui/chat-thread/types.ts",
+        "src/components/ui/chat-thread/labels.ts",
+        "src/components/ui/chat-thread/history.ts",
+        "src/components/ui/chat-thread/messages.tsx",
+        "src/components/ui/chat-thread/markdown.tsx",
+        "src/components/ui/chat-thread/use-thread-scroll.ts"
+      ],
+      "fileHashes": {
+        "src/lib/tailwind-merge-tokens.ts": {
+          "sourceHash": "1277e5cfadb06fad8ce615472603bf5e75ae2270269ca42aa253459a74a7a317",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "79ed798cc175b8842548d59f0e7fd737b807af5817e2b7cea881190e9d642e8e"
+        },
+        "src/lib/utils.ts": {
+          "sourceHash": "cd8413121df9b741a6ae601589bfda72da030ea7f97e767365e058f414acb933",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1831f143258d6933514dc37d1be90dbc5289489fb345e2eb7e8ea5f29b34a2b8"
+        },
+        "src/lib/icon-context.tsx": {
+          "sourceHash": "07f0868e8fe45508ced8b0928eecd67655f5707c5ed3bd7725930802080fd655",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c8f1da9d186866d68f25db9e3843644deee2256a44d952d6129fbf954a203484"
+        },
+        "src/lib/huge-icon.tsx": {
+          "sourceHash": "f9957071efd430d3e6f76a52966ee906d707e418b584270e6daa04ffd36c4b9b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "584994e6218791a875d50ba24b0685a442c1f3cffd3a65258da705a4b13c458b"
+        },
+        "src/lib/icon-catalog.ts": {
+          "sourceHash": "3737b6e64010f1f798836e2f88f3bf617ad61a90961270dee77f6ff3e87ba305",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "50f7dbc34e3ea18201ee9d4d2286f8c66d69f86eb0d58cc3e5a87a88b2f84aec"
+        },
+        "src/lib/hugeicons.d.ts": {
+          "sourceHash": "956607cd138a8e94e7ce66dca087ef34f51295e466abbf488850134025b2903e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b964d3891cdd6e57638f0affc647ade61724aa668dce4f7606c63e32d010e70c"
+        },
+        "src/lib/tokens/control-size.ts": {
+          "sourceHash": "54d54ff80e87d6af2ea17f4a9997fbb3f7037719c3233802dc5338e0fb6a2d74",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "4e6a2572c6d452f058d7cbf096e3c9a86c107c94350dd5919d8dccb35c5e6fa9"
+        },
+        "src/components/ui/button.tsx": {
+          "sourceHash": "90a7bcaec0077f7b6e42ab9a985f030287a7f132e81c5269276d9ed7d2b6aaec",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1c423dcc0352fa34212be3a180cfcdcb0b92a24770780af058679a11c5c8ac94"
+        },
+        "src/lib/springs.ts": {
+          "sourceHash": "ed42d0bca6bce0d36d79a70cb162e38be422a45ad70155c5d008946d8cf4823f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5453027c1a35a2bb8879cfb883fc24ddebc041c59524095f8052d035df62be58"
+        },
+        "src/hooks/use-touch-primary.tsx": {
+          "sourceHash": "d621743c1c0837c8a19e19b5215999b567e5006f5ac5bb9f78cd39a28f819a9e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "068cb9e8d5ac11dc6b5f21d836d526fcbac04d1462b53587375ae4d4e04c311b"
+        },
+        "src/components/ui/file-thumbnail.tsx": {
+          "sourceHash": "3b2115d372c798a5903328b387f0fd762728c74488a9be65f496a5b0fc527fa3",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "35e2bdd268e4d0fb94ff7442e03acc27823bc3ffe05e46e7239cc1cef44c839c"
+        },
+        "src/lib/portal-container-context.tsx": {
+          "sourceHash": "d54747ee09d40f90939a98ea843641f5aa6268fca5300b1bd003615e87711e74",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b13806446c6a669c943111aa1a361e587223492a75657d8bafd6743b1de200c2"
+        },
+        "src/components/ui/tooltip.tsx": {
+          "sourceHash": "7346e4bc2686df2de72b2bbb95cfed082080e38055617d1556913a1bae0e590a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "2659adcb19221fae729f6caf9493cd53f33a58d455e8f3bd5b1545e73aa4a62b"
+        },
+        "src/components/ui/textarea.tsx": {
+          "sourceHash": "459603de58d1cc76c7920aef7448547ca62ce3acb82bc511c47d54de0c4d3795",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "86ebda8b0e5b8ae5e02bb5f5d7192a01d009f0f25e739547fd2b7277657ad417"
+        },
+        "src/components/ui/badge.tsx": {
+          "sourceHash": "11b3367a37b6d7ca6c60d418cd7fcd37915becd9fd0f03e190f42442d44c2cbc",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8e34b79ed8d6bf4ee467fe0cc3d611fb49e8714be9619798ecae7d8f752c6783"
+        },
+        "src/components/ui/badge-colors.ts": {
+          "sourceHash": "c70396c77a0de00736ead56707e8f8b3b47d8119088bcea920681bbc59563cb7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1fc1da77799937969804f959cf3466a1fa6a53e87044886703532a16291fb00b"
+        },
+        "src/components/ui/inline-notice.tsx": {
+          "sourceHash": "cb41740e814b03a560659003c33e0c4975ecf5a29e031381d414abea732a28f5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "db22b68c3bb1e8b6b1a3dc3f28a2e9ba2aa509719503d4dd59bc60933b9b2e8b"
+        },
+        "src/components/ui/chat-message.tsx": {
+          "sourceHash": "e7457e76e0dbcdca6063af24f1c5c2767089ebc077b8e37f00d17e2f46ea0781",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c9b67ad12a8917b2343764776e596649d91952378f9f4134c8256ba166532e2a"
+        },
+        "src/components/ui/chat-message/actions.tsx": {
+          "sourceHash": "0fd4c554afc4f666394676d843f7a08e33f4175f9cc936a71f74453ec141a891",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8f5840817e14e9429821f7762a9741dfc8b4634b15d683253848032f988d5b55"
+        },
+        "src/components/ui/chat-message/attachments.tsx": {
+          "sourceHash": "5e873817caa13172286df6940de55912c1967e855b559a76b64cc535f5e49e4a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "98227e9926de77c47ffab2bad7805ebd405fc219147a08e9c2e5e3cacafd0a77"
+        },
+        "src/components/ui/chat-message/editor.tsx": {
+          "sourceHash": "ebfd5989f7f5890ffd3094ae3bf7f3323f60889241221553799fbae667d62798",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "727a878ab206a2d060a89adc25726e93bb38a0e793d3d473aca67501999b4f1a"
+        },
+        "src/components/ui/chat-message/author.tsx": {
+          "sourceHash": "a72db4e4fc12973e5d5811d004897134419aa9f3c02765203e80e727b902ee2e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "318ced620a2e02ff811c58b946aeb03010173b3c390e80e6a42d1ef5744fa1fb"
+        },
+        "src/components/ui/chat-message/scroll-to-latest.tsx": {
+          "sourceHash": "de3512ced6b57ae9e7dba54f9fb1087f67d1ae7ac450200e74d3b41455ff469a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "de620d87b2830645aaf4fe503a1d6fd712f40d2e6fe08aa7b3d2d90eee73ab1e"
+        },
+        "src/components/ui/chat-message/meta.tsx": {
+          "sourceHash": "d7b126ea7484611b36482549819a4c2806de2e922801dac0ed0d48520f71ea18",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d9eb2b4ff6c43d50a18d26488121fcb508629d908df1f0901772bf5f27d970a9"
+        },
+        "src/components/ui/empty.tsx": {
+          "sourceHash": "01bfa5c07c45496751d475bf91df43341f58150560e49ae8cb065a4abaa3d64e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "202767ab9d3a170e5b80a849b7e9dddd6bf18606c65fd2b971e200c1b86c4340"
+        },
+        "src/lib/surface-classes.ts": {
+          "sourceHash": "0ffd51810e24abe46e9a6b9c49bcc6c502031bc96ebe7c2a4685384cc69d7a71",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1be43ecf97b2259a07c3e0d663040f3ecf50fd071ea48397267b87948b93b65e"
+        },
+        "src/lib/surface-context.tsx": {
+          "sourceHash": "29e215c6c587d16f30fffac78f4d6bc28caed0484c3a3397929066f60d5b301e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e5331794b0cb164c5d59cfe87abcd1887666be5e9bdc2e50965ea645db3f83ad"
+        },
+        "src/components/ui/popover.tsx": {
+          "sourceHash": "35240136c8629aa21ff9f804b59bbcee7c06a0d317ab97f952410809f887d5e0",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "700abcebac2b1ccccda5fa053285416f2db35818618ae81866391ca0ac297a9a"
+        },
+        "src/components/ui/message-navigation.tsx": {
+          "sourceHash": "a92556e08e8e1d46831c6a7338c840c532168689baffd0ad8082e574da91002f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "21f962e24447d75b2507eeb562e5a618063720d181394d21012b303a22805ae3"
+        },
+        "src/components/ui/scroll-area.tsx": {
+          "sourceHash": "c502944fb545f812db497355f0a02b0b490c67c156eaf526ebb0498934091e8c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b3996d6a7331322ff00b342e3b29af2f156c6b6c6d035d78dbb9f8853aca45ad"
+        },
+        "src/components/ui/separator.tsx": {
+          "sourceHash": "4aff511ba32f86d6974676dce77e3ecef9dd78966fe6f3cfd01d74c2f14125be",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "334eee7b8b9611cbb4134924211df7a94851ae7ecea392d1fb36df526580f595"
+        },
+        "src/components/ui/toast.tsx": {
+          "sourceHash": "d3fe21f6aca1a4d06ec4a58fafe8640feb044fcc4dcb1af7a2a25f484cab38e7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5fd0b690115e178bad36499ab6c1cfabbbae013e94413a050cfb476e25b28fcb"
+        },
+        "src/components/ui/checkbox.tsx": {
+          "sourceHash": "1dc217d8239d691dcf85bf40bc97235c5dd94653e69fc237ca147094fa4d8f51",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f3effb93ab6ad32da382c1fd5fd7b1cf269083f3a91144168c37fcf01d246941"
+        },
+        "src/lib/code-engine/components/CodeView.ts": {
+          "sourceHash": "5ba10ee8c61ff6ca66712fba0ed93f6fad1878effe778f8b791b0615d6498814",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fbcab231e1a1fbdbbb7ff06e85c36da3ed4ff4dff1b5a77cecb0941638d78fe1"
+        },
+        "src/lib/code-engine/components/File.ts": {
+          "sourceHash": "a5aef91ed014234cfca54b06f0f281cdb0a71167ad3728a435e265ecb46e9249",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ef072592983dcb3fee28e0173db5e2b0330f94e0e0175916036e90bd4ca18db0"
+        },
+        "src/lib/code-engine/components/FileDiff.ts": {
+          "sourceHash": "c81808bbb9d1c71981057048d7073e3456b12218f09440306891e9e7798a9035",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "470892dbdf41e0ca814acac355748ce1ccb471bf7c776b3d7bd12d17e86fb228"
+        },
+        "src/lib/code-engine/components/FileStream.ts": {
+          "sourceHash": "c9c13573ff4db5b3a495349be64edc2ca1cd5841a4ad7035bda354ff97416df0",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "bc984281555e7c16744de2ee4fd07b9d7bdb52fec9bc49fc1e992302abaad9d5"
+        },
+        "src/lib/code-engine/components/UnresolvedFile.ts": {
+          "sourceHash": "86836f8161a77e801a36caded327df3c60883c9d453fcd8924c396470cf8a34c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fa0ab990b80a5fa592826f109b3a7fa0a5ff38974e5d6d9cbffd5fd80794e84a"
+        },
+        "src/lib/code-engine/components/VirtualizedFile.ts": {
+          "sourceHash": "3faadc20e19f25cdc9e8ac4c2badcd2ef23d5b8867328b65802d181729851c5a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "32d6ad26818a26ebcf0be2830dd9f31db3f64dab1454daec199c93391ecd4387"
+        },
+        "src/lib/code-engine/components/VirtualizedFileDiff.ts": {
+          "sourceHash": "1d64d481affa8eeaa35ac752f5e90cb7ac081783631b428ceed9c85f776b7c9f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "bea9c742268f3c144a5351230daabe14d79845672f9f1e3d4149b94bc5d2f8b6"
+        },
+        "src/lib/code-engine/components/Virtualizer.ts": {
+          "sourceHash": "f5ed124c9e5a5a429116ae842751e00fa88c29ef57c083c2a270007e30fa9bbe",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "a51eeac5bab648133f7a0d2cc15b62c7bcc67bb844dd0714d442515c47c469ff"
+        },
+        "src/lib/code-engine/components/VirtulizerDevelopment.d.ts": {
+          "sourceHash": "d8c592d5aad702f43718210a0eb131431734f13fb863f121981480700ba5dff8",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5536074549568f0ecf1de2184a1ca9d51d83d95cfdc0261149b464209656134c"
+        },
+        "src/lib/code-engine/components/web-components.ts": {
+          "sourceHash": "a9e0d2858f358fc2861954b42bdc35a150e4b4c7ca94d16a23a215f65c46a4e0",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fb5007c82c5fdeb2de99c44bf7f2071a377cb59680c76bc8dbfeaef24d949cb6"
+        },
+        "src/lib/code-engine/constants.ts": {
+          "sourceHash": "1a96740a826293b69dd244e966de955724cc7bb28267698c8252aa1156a0091d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "4baa3a40b4b2a17d3bbfaccf5b2dec97be0d12c46e01f86bd386cd1b1aad99ad"
+        },
+        "src/lib/code-engine/core.ts": {
+          "sourceHash": "2bb7c5cd343aa5aaa04819e8629279ea659df00ebd44fb07ddc028d296725250",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "11a61647aa5c4003a83d4a6235183847aea9d5967da15fd0af404327d2ef3895"
+        },
+        "src/lib/code-engine/edit/index.ts": {
+          "sourceHash": "1d6a684f9c6691d36146025c38f6e7915ba8fa50f95ac0d5e25b414c81413a50",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "892ffe60f0b88348498a0c1b11cca1db60e4c203e8a23c53de6ae42b09304344"
+        },
+        "src/lib/code-engine/editor/EditStateManager.ts": {
+          "sourceHash": "10316a0ab57c501204e46b4d3b8a18a1a39848a6869d5002a7a3ac6364bc69b6",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9f6c9f6bd3433595327511831f15d0c3abf568fb89bad84a98d1fd5b4bb24fd7"
+        },
+        "src/lib/code-engine/editor/cloneRetainedDiffSessionSnapshot.ts": {
+          "sourceHash": "84164b0cfc2ff83c899c3c0597a91448382016787b29b92a5e506c02d7eb3ed0",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "34243fbbb4ef2f6d8758f487e63ac62fe944191a04ff8932ef071c6c28de3c16"
+        },
+        "src/lib/code-engine/editor/command.ts": {
+          "sourceHash": "e7894a7c5048ec99acbc99b4e2ddf7a39c3c546fb722d246f76ed1effe1a6e2d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "dcc015943556e32193ea169dbbe0c96cc70932946949dfde18797bb0c29cd3ef"
+        },
+        "src/lib/code-engine/editor/editPrediction.ts": {
+          "sourceHash": "e6f5c1e7958ccd428b68d3aec2547bec85c40afba98ed01705185aeff278001c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "02f9ab775d78d501812fff012e842cb93dcd8adb5858f4632b5b2ef36b2ac28f"
+        },
+        "src/lib/code-engine/editor/editStack.ts": {
+          "sourceHash": "cc75427373e225d83d71851a77737f844e64258bb45c2d362723003512be9247",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "bde94b2df62599bf6c2ce2b2494fcc597a2e8ea0159c6bbea4767c2d4207a5f3"
+        },
+        "src/lib/code-engine/editor/editor.ts": {
+          "sourceHash": "ac186fca6cde4c3b26b9c7abbdc2897228f033bc956d197a9568a2770a77ffa0",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "934c1669a3c57d7e6495d7b6486bfc09024a8f9259b665e8b8b5978acfc68210"
+        },
+        "src/lib/code-engine/editor/languages.ts": {
+          "sourceHash": "2122d967109a7cec6648e9db88b48d0bc74ce4294dc67f8f0d35338698ff2b13",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "649f55fce56c4592c9636a72e4b082b0344c02af980b35a8b1ec8335d7aae996"
+        },
+        "src/lib/code-engine/editor/lineAnnotations.ts": {
+          "sourceHash": "29dda23e7ebe9366e579be237ae20ba71b34a2f1421a5207b1bad632a266eb86",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "3beb696cd2ae25fdc01b4183566f28b6c0476a4f632e79f372689d308cf7afd9"
+        },
+        "src/lib/code-engine/editor/marker.ts": {
+          "sourceHash": "99f03d26d5c42499737837ceef31f4f9a0cbfdd26d225c3ba44e3cb054bc6194",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "3655862e3875f1e2549029a799a69d867dcfabf74027f2ecb01446b6060b2877"
+        },
+        "src/lib/code-engine/editor/matchBrackets.ts": {
+          "sourceHash": "cafafb9729efba3d602b6a9bfdaf83b2c825ea4cecb4522e16a0b641f99d4ec4",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "2ee59d3fe41567194af018b15952aa091d799c72b96676356a8d5ac693bc4d6f"
+        },
+        "src/lib/code-engine/editor/pieceTable.ts": {
+          "sourceHash": "4bf85611c028de15b0d9657ad09ea1726255ac60d89f99b55f1cac8b83615f02",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "34eecad40ff375b8b5580f7a82262801b384ace7532e5523189e17cd239428bc"
+        },
+        "src/lib/code-engine/editor/platform.ts": {
+          "sourceHash": "6692e8ca8b300c0c9de724536637700f72f1a05e7b5d73ac159c642acae11dbd",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "846c45955bcf37bce208af2e1340d647197a329d97a472d128a58a7d5a4c204e"
+        },
+        "src/lib/code-engine/editor/popover.ts": {
+          "sourceHash": "07dd4ec8368e4761ac0197e0a83d3e2eb50f39a92f0cef115b6cf546230259dc",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ee6666256c22875cfe6debd1011b6245decf41c89ac00aa338e71be48569ee61"
+        },
+        "src/lib/code-engine/editor/searchPanel.ts": {
+          "sourceHash": "e6b27a79c5c871b5e455d0fc2ebeaf8d195e03eed0fddbbfe12445b0500a34be",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "2b7f5f154021b07bd98a81bc5b24020b37b922a4a6a4af0c4df926ff06087fa4"
+        },
+        "src/lib/code-engine/editor/selection.ts": {
+          "sourceHash": "504ea237bed45cf92bce229ed4caac797e84c5391863225e45cb88ba9158f79c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b0abf3ef89d0ef6a5ef0ec6254460d4219bce785b3c9a47d92c43f3c2d2587cf"
+        },
+        "src/lib/code-engine/editor/selectionAction.ts": {
+          "sourceHash": "91877e17796ef551a3cb93dfa9500c0da8daaba475eaf412564fa40822cb9c0f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "85b9a780d1f20cad584cf324c22441688402b04d10264f3d154da2300e1ded7d"
+        },
+        "src/lib/code-engine/editor/sprite.ts": {
+          "sourceHash": "b6b181b7d112ae6e9f4d9bc675ee5ec67771bb97cfd9f54dbf17e2cad0353fe8",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "92a86df48fbcae12a882a7cc5d0e2268f8f284dc94b5a0a8ab46e1e8afd57dac"
+        },
+        "src/lib/code-engine/editor/textDocument.ts": {
+          "sourceHash": "06320b20dcaee8f1ef0adfbee2a190dc5f61918f589b8c5796a50511cdd6ec81",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "277698543f2d7fbbb4027da6016f89d0c9cf51dabf10944bbc7c814507b954a8"
+        },
+        "src/lib/code-engine/editor/textDocumentChangeTransaction.ts": {
+          "sourceHash": "b857d4b60e0ec36bf5172acffff4388382c5d2e255cca0b63e7926ed09fd24a7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "33fb927a71cff715f1c2a3876fc5c9bf048ae9441d39b5314b7ea2f0b217dc52"
+        },
+        "src/lib/code-engine/editor/textMeasure.ts": {
+          "sourceHash": "51337bd0e9a68990a840f557c0b156fd397b7fd713a3a7bfcd67ffe8aff779d3",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e8f50ee3341250893a611cab5cfa050fec079e384fd1d936162d92cdad05dfb8"
+        },
+        "src/lib/code-engine/editor/tokenizer.ts": {
+          "sourceHash": "18fdbdb2fe11ea324f75988fad28c8be596d58010420df5ba836071aa10fdd4f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ba64a15c1ac0a3524803b582f3a0614bea4a5a38c58879e4a19bf2db1901e7f3"
+        },
+        "src/lib/code-engine/editor/types.ts": {
+          "sourceHash": "5c86fc2a4a137859883eae433c6cdebd5a289729f4784e677dc086854027b075",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d2dd77d7055fdae89590e0834216cde2a1d4ce93f8ebca896b774946821df09e"
+        },
+        "src/lib/code-engine/editor/utils.ts": {
+          "sourceHash": "54ab67bb69c39cc57106643498db25430708c0757bf3c79b32019ef543ab203d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c883bb74bf7bea840bf472408c260db5940d7a920f5bc20008b41648faf6fe53"
+        },
+        "src/lib/code-engine/highlighter/languages/areLanguagesAttached.ts": {
+          "sourceHash": "f50db0bf404a67f3a2ab6a684a47d244e2afcf75795abb6b096196d3d0213133",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "75b248ab60c714e8937e7c4692d90db35cab2a8e959cadf48617e33f7680eca5"
+        },
+        "src/lib/code-engine/highlighter/languages/attachResolvedLanguages.ts": {
+          "sourceHash": "f6f25e4fb82b93ec89d6e1016c87ddf0ea74c5a1de8157f848758832bfbc0fde",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "18ae6b8e6427b309d2eae2b9d50c9a2847b5a9afcdd2ec568ddf636a34433e2d"
+        },
+        "src/lib/code-engine/highlighter/languages/cleanUpResolvedLanguages.ts": {
+          "sourceHash": "3f0f35ffcf0c938077aa3b824e381430068e844ffc61891fedc107f7478a4c72",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5297d23ef4af50a4cedb62a4e13b81f2c63eba24a8209aa4fa41edaf1e69dd5b"
+        },
+        "src/lib/code-engine/highlighter/languages/constants.ts": {
+          "sourceHash": "d5d2e454f457365258bba3e1b97a1367aa2eabcbfdba221d3a410ea78d328a2c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fb8092428b8437da5ae2688cf05760e76266b004dea21ccbb21f6f87c97e67f1"
+        },
+        "src/lib/code-engine/highlighter/languages/getResolvedLanguages.ts": {
+          "sourceHash": "9ea364367e5255d50c403acf5014d2d98ccc438dcf7f9d8bb7ea5ba9abbe41cf",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "594e710133b389f27254caca8f7981799f1d30b6a42b3886385fd4c39a72a025"
+        },
+        "src/lib/code-engine/highlighter/languages/getResolvedOrResolveLanguage.ts": {
+          "sourceHash": "5fe393bd9ce9a5d4817b85c0bc01b1a9586d42a4ddcfb3d9aea2363aa0b87a2e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "32f248ef3f9ea3b63a3245e6ece2ecfc850bef69edab7b0a8caaf962ca24e846"
+        },
+        "src/lib/code-engine/highlighter/languages/hasResolvedLanguages.ts": {
+          "sourceHash": "d96a25a3bf3b4435f958fcf17f405c31e84d4ebc125561fed9b1ff8a9c7353dd",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b63dda71b7661768e2f015630a0f7c302d7c37dfa3b532327a8cb1d1aac73a52"
+        },
+        "src/lib/code-engine/highlighter/languages/registerCustomLanguage.ts": {
+          "sourceHash": "03c4c8f3f764adfab5bfc09f16a19defd5919de62138cf24c8238364d36ac1f2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "35831bf908b8c75344a6dd00019664f2efdb228c02d576210694f6fd32f2d891"
+        },
+        "src/lib/code-engine/highlighter/languages/resolveLanguage.ts": {
+          "sourceHash": "9fb5427d3ce074a61fdfa9b7d26eff1efec3d9cd3a3599d73fdb43e4a92d8187",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f31263925e7114e0cde4df3f823fdc910f7a48f3165f96c243a24dae7519f832"
+        },
+        "src/lib/code-engine/highlighter/languages/resolveLanguages.ts": {
+          "sourceHash": "023e8f231a5ea3e0014b8800f49be01092e4d28be36c68228257b4b61fcd27eb",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e7880c5ae3d3db51bf4b773bfc1db2528eb6751556d00b8b881bde923a1b55b6"
+        },
+        "src/lib/code-engine/highlighter/shared_highlighter.ts": {
+          "sourceHash": "0918fbe7cbc7e783a418959021d483a47b17a5e44c04c957f9e89d638eb64258",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8e917b3f3c4df8d72bc57631831bb0b821d89596eb45ca8ae4f24aa548863363"
+        },
+        "src/lib/code-engine/highlighter/themes/areThemesAttached.ts": {
+          "sourceHash": "a7385b3609adceaa526bce5b33a8051d369002ca71555d6340ed82a06bd283d3",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "2687387bd726768653594e8aed12ec8f20c12f6887d5c621f5679285657e9cb6"
+        },
+        "src/lib/code-engine/highlighter/themes/attachResolvedThemes.ts": {
+          "sourceHash": "bf2454b92eb9db1323ff94b43b4c9b4a6a155d632d2d5db274d227c4305af7c1",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c74e6d54285fb179183c2502862bc8b361094e683b59f3031de233f2a24b6376"
+        },
+        "src/lib/code-engine/highlighter/themes/cleanUpResolvedThemes.ts": {
+          "sourceHash": "08e53258f54e67efe094f5bc5a4c393def7c6ac63f597703b20ca633aeded85d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7ed4c659cb47137b3182a81e3b3d4f5ce65cab2df9006853238fec2367af0b73"
+        },
+        "src/lib/code-engine/highlighter/themes/constants.ts": {
+          "sourceHash": "e382b18fa9b7df96b99aebb7db0ab39bca4e016fdc3a45ab353265a3adc37bef",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "61844134c801fe42f1ee7f32f0f47f3d1150bb0fd706fb648d58d11f5149b818"
+        },
+        "src/lib/code-engine/highlighter/themes/getResolvedOrResolveTheme.ts": {
+          "sourceHash": "affb61fa369531af1888501e8df68c4b8d6172afb9a72978aa7830d3f8f310b3",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c86fce8a89e991cb58c59bba6ef91dd6d20d8ad2363b566408770d5b4c4c14ef"
+        },
+        "src/lib/code-engine/highlighter/themes/getResolvedThemes.ts": {
+          "sourceHash": "e7a6f069f7692366858ff57aadd44fdd080fc64d7a91939a45532866e2c9254a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "4b5eb21537336e19557b85ea36fcab9029bd8e66b99c1802378310dd2aa7e353"
+        },
+        "src/lib/code-engine/highlighter/themes/hasResolvedThemes.ts": {
+          "sourceHash": "a84f634f651137b79ef8ef883979fb1a4fb2ccb2bbedda1485b15f412868177b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "762beca6fc6f1a261a3f6071d3efb558143212e3aa4028f47928f67deccd116b"
+        },
+        "src/lib/code-engine/highlighter/themes/registerCustomCSSVariableTheme.ts": {
+          "sourceHash": "cae0a073650ddd3f62e4a9801c00c37b198c98c587ff5fa62617f93a3491bc9c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "94a77bdeb521f5260420170c2478365636633606412921792b0921ff18fe72c5"
+        },
+        "src/lib/code-engine/highlighter/themes/registerCustomTheme.ts": {
+          "sourceHash": "9d3a86240d0dabfb290a5753faafc7c694b98c555cc985440c3f3079260d6ac7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e990b55ba6ca8bca21403306337b3cb9657d4ab38b0b631f09411dff0cf32203"
+        },
+        "src/lib/code-engine/highlighter/themes/resolveTheme.ts": {
+          "sourceHash": "bbfb41d34740c7c6a1076b47d07bda5063f6d21bce8afb478709551cfe8c057f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "696788ba9acd099f1a619aa231ada593b6d5e4d882feb8552a5ec4343392edd1"
+        },
+        "src/lib/code-engine/highlighter/themes/resolveThemes.ts": {
+          "sourceHash": "c24b33b53a26080c07688c1689f72e987c66bb03e80f328c89e07ca637c2a8c3",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "238f8a909a93bb4e3f8f157f31198d6f556c82f1539f2a0f527a3a7ae5966f8a"
+        },
+        "src/lib/code-engine/highlighter/themes/themeResolution.ts": {
+          "sourceHash": "9b1c72a805c6d89527bf15413896465588332b57a7f6d150f7dd637fbc429ff7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "599dfe6d319be181d35d668b0c64c5d7c6ef9eec1336e03bc5f7045169bc7d7e"
+        },
+        "src/lib/code-engine/highlighter/themes/themeResolver.ts": {
+          "sourceHash": "6d077249c9b61731b290a249003199f4aa69f5d7759ba85bd4247d4bdcb31f2e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "000c0b1bb1ca8d3b5dcd738eac650774f4f43eac977e13ce46edb1fcf29499cd"
+        },
+        "src/lib/code-engine/index.ts": {
+          "sourceHash": "f55edbc6442cb408c659c8e3b51881eefed4342ebf86c47005ca18f9101f9473",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "2771a61a8ae67ad648b535549fad95e62c7447c0d068e858442b442a9f3483af"
+        },
+        "src/lib/code-engine/managers/InteractionManager.ts": {
+          "sourceHash": "1df6a2e4f9e890a70887bf8eb1e38bd0c1590efb273004b84b3b00661a30a3f5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "825939105edcb1dc63b717229f2401cf925196fdc0e05d0fbca72483a62b098f"
+        },
+        "src/lib/code-engine/managers/ResizeManager.ts": {
+          "sourceHash": "ff98e0f3a6c1bd8865d965d6dc132467aed1bfacd84d2f3cdff8ee40bdd6a347",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f9b2d94cc5a4796c91cdde659b5985608fd1d06a7b6976e5786e8ed24d44bc5c"
+        },
+        "src/lib/code-engine/managers/ScrollSyncManager.ts": {
+          "sourceHash": "633f358ca6668154b138397b779afb7b4c1b39bad5322614e60bcde839b9504e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d784852886d9b8f9aa5e14cb09cec1c7cd87f6739634d2f4f1679d46cb19c90f"
+        },
+        "src/lib/code-engine/managers/UniversalRenderingManager.ts": {
+          "sourceHash": "2ed3361efad760d75cd088393edb7bf50eb46bc2f9074f074207dcc84be1bf9e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "75bc26e7c9c92ba1cd23128d17ba319396806f82702f4b8e1c8e1cff81061442"
+        },
+        "src/lib/code-engine/react/CodeView.tsx": {
+          "sourceHash": "1f0950323f5c07f790765300583a350683a296054994966df3a1a6e6dd7957b3",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "52720715cff901190e8f0ae9b5a87774c80f77defe1a86994a71078efc36d9ec"
+        },
+        "src/lib/code-engine/react/EditContext.tsx": {
+          "sourceHash": "70ec55d4b3af65b4b4f523f3a272d27cf737b2f99a60d55133493984c69cdc24",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "2ec771873e29285aefb4a69530c94d8c089cff319f4778488dc7db1245f528b4"
+        },
+        "src/lib/code-engine/react/File.tsx": {
+          "sourceHash": "fc98a0b79e655a258b5c0e8f3bcdb8334de143feae07362d730417b6b2ea79d8",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "0ffcb58cce5f16ba067bd95e0c091d36545a4035b74ba60ef2347f1ba18262ed"
+        },
+        "src/lib/code-engine/react/FileDiff.tsx": {
+          "sourceHash": "c49b5940c31e29957fcb6050151e3323faa697caac057b746a7a1b06d154b5f5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b3652719a87eadcb514f1a89c2d27aedf12b8e2e1028dbba4c656c517fccc148"
+        },
+        "src/lib/code-engine/react/MultiFileDiff.tsx": {
+          "sourceHash": "0c0d53d443e3be4a4eb42afccb0dd3ecb533018e9c763ea4b3e4368a1edc7fa1",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "0d23535f103d9a6da41d7fb04b4f2d86077882134eaee9ee00c5c25f1672d433"
+        },
+        "src/lib/code-engine/react/PatchDiff.tsx": {
+          "sourceHash": "3847eaa92b15718c5c80bf75610a9857eaed3cadcf486490db9a238ea3c02dc9",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1278d56a2d3c9db8722ad6ad4a38cd1b7ddb50e2ad8a050118675ea8ec8d6e63"
+        },
+        "src/lib/code-engine/react/UnresolvedFile.tsx": {
+          "sourceHash": "892a6b867ce5d979124a84fedd2c61df5991fa0d1ea17ba49bcb744b3b11054e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9d8b4d399646e792b3f0764a65abc3eefd7f83cd71299402b1a7e6854908b895"
+        },
+        "src/lib/code-engine/react/Virtualizer.tsx": {
+          "sourceHash": "ff74cee00a2dcba50a18efc3c280feeebb6e911598e2285b717300dd996d611e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ae5feaca4c763e17406ded453d476114de3249fd1b44211fbc95159388e020db"
+        },
+        "src/lib/code-engine/react/WorkerPoolContext.tsx": {
+          "sourceHash": "332ba5ccd8544e0538b9234515ffdc95c77ae25c065388fc695f1763507cfe63",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "4216f66caa280c98bdaf6fd710218eac8ae34c73a0f0241abe07d19e3a4534a1"
+        },
+        "src/lib/code-engine/react/constants.ts": {
+          "sourceHash": "c16b5939f0ca63f31920ccf5ee6eae0436883745bb8a663c9ab60f54925f9519",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "aa751908c555ba478136c73bc870f1fcc65debc9fff93001f9b13f690c76264a"
+        },
+        "src/lib/code-engine/react/index.ts": {
+          "sourceHash": "332721c7a3ec88ea689f52dcc0f1c7322abfb5c3f3d1b5f919845632c66e13ec",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "89096bc08a7312ab470fc25aa4ac9a333e81dce48270f2edde6e555e1198e83e"
+        },
+        "src/lib/code-engine/react/jsx.d.ts": {
+          "sourceHash": "dfc2dc5672d2463356614e709d3c8bb044b002ede37554688ddea1d746bd9391",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "2225f117a0dd6281c31c17cec3c1ccc5afc91eb65df423d4aa8440a1f5a5287a"
+        },
+        "src/lib/code-engine/react/types.ts": {
+          "sourceHash": "9fc45383222eb60fa8de27d51c0758eff24413b4a49e3d1a16d9fccc0b15f420",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "cad5b7bf83605d1fdac3918aad269014a7fc8a908bf0a1c8cbf75782ce5bf8ff"
+        },
+        "src/lib/code-engine/react/utils/assignRef.ts": {
+          "sourceHash": "04a717f182f3fef0b5dca517c7b293c20b43fce08581df092380c09bc7251fd3",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "bde365216a05b3492961d610c514fb9c3a9cb9a0c422fb011731a443fd004ada"
+        },
+        "src/lib/code-engine/react/utils/renderDiffChildren.tsx": {
+          "sourceHash": "31065e11e6bd9562e01f43b2083361a4e1eb9962aea91992fe36799a63c286c2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "0c80336bed3e1a9856dee9556831b2a3f6bd944c7b0a485ff8be4fdeaf6c0b2c"
+        },
+        "src/lib/code-engine/react/utils/renderFileChildren.tsx": {
+          "sourceHash": "bafabb220e63d6e614bf2045898dc725d65f7735baa8d5a27b4c81f369858063",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "578e67e68bd2e76e0ee39764d4ed4117357d14e066f85d6175279886f4b00336"
+        },
+        "src/lib/code-engine/react/utils/templateRender.tsx": {
+          "sourceHash": "fe7c550acbc66e50c6fc5c8fddd4fad3c735a44a1f2ea3b372241905f1dcd0c4",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fd4a49416997072829f93f85686095e4e97d659db0ae35930cf67d1884ba07af"
+        },
+        "src/lib/code-engine/react/utils/useFileDiffInstance.ts": {
+          "sourceHash": "85fe0c630befff9acf9dacfd4de376abece3311a0527fa96668b4b63dac49738",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ab97e967ac1db93b2410a51c3d7d9fa91f420c82b2759e6e8facebca0ca62e2b"
+        },
+        "src/lib/code-engine/react/utils/useFileInstance.ts": {
+          "sourceHash": "0b6010fef2710f4d70245c927354ff9c1daaf0a9aa4fef1eb4947c169ace4ee9",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8049926a4d276d950d23dd5fa8b1123326f15c369708b881729fdba5bdc67cbd"
+        },
+        "src/lib/code-engine/react/utils/useStableCallback.ts": {
+          "sourceHash": "0f4e2a422d7c037ad261560851f5ac32c8331fc61364c8f3e7e3407258a2c111",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "069d43ff828ddf9b611a4add400f8c90a0445e649dafa010df52b844de39102f"
+        },
+        "src/lib/code-engine/react/utils/useUnresolvedFileInstance.ts": {
+          "sourceHash": "72cfbe08d1fe7ed95b150ca3f737086267b9ab4396255de2369af65a07066815",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9d93def0150238e97a35577591eb3d16f1688227e843d1f97b5ab318e3987b65"
+        },
+        "src/lib/code-engine/renderers/DiffHunksRenderer.ts": {
+          "sourceHash": "c668fb96da9ff4d42d7ef86b3532690e21d8e4a6978afaafb35b148c2060dbc1",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b8779b8fea42300e1f18fc0179aabd4fb51e4d3a19484f335e6bec8851bec70c"
+        },
+        "src/lib/code-engine/renderers/FileRenderer.ts": {
+          "sourceHash": "08c05df767451b16cdf3a10e46792891da656b09a9879c8843eef2a986b29378",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7d1a28b1a0bd16dc8e649ed7299bf50dc2a3c5d98c31ff3627cb5b13ec5bd94b"
+        },
+        "src/lib/code-engine/renderers/UnresolvedFileHunksRenderer.ts": {
+          "sourceHash": "5c09a7bc3710c4a800a1817eac2028523c08a3a637c09c52e5c1ddba5b134bac",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7bebe70dcc692818ad45cb2987f259bb29c6dc54aa1fdf75d221158f257a547c"
+        },
+        "src/lib/code-engine/shiki-stream/index.ts": {
+          "sourceHash": "3a2d47b88fdffb656755dadfb0a3d2287bdf378acb74d5d9766750f1b3d91709",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7a8a7b01892a6b5342b36402ad4e3dbbbcd2810388f14386efd532148b4b626f"
+        },
+        "src/lib/code-engine/shiki-stream/stream.ts": {
+          "sourceHash": "f446b3c3034833b1a4f845ac60689ed967f3ab58c3881635dc34a8f42d5a85d5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "131e4a67874ecbed3eeda698f78df72ce1ecd517063a5da722331ae832e4e8db"
+        },
+        "src/lib/code-engine/shiki-stream/tokenizer.ts": {
+          "sourceHash": "5f1e3046f1b02ae37ae15712e97d589d231ed1f95ff2fdeaa0a8146cd566beb1",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "bccd6e1a3e0a5a0c739ff4663a9b9f0642a02ec910c3d378625fc830d4a4aa2a"
+        },
+        "src/lib/code-engine/shiki-stream/types.ts": {
+          "sourceHash": "1c5ecf5b0baf688eb207b7710f293ff601bcba89188508bae52762565d096ee9",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9c6e535898e1e043cedc25ba95401658cee2e8be5eff87ac53720ed0bcaf7a52"
+        },
+        "src/lib/code-engine/sprite.ts": {
+          "sourceHash": "7bdbde1880f12eba092a7483a8a499b49cf84c63a7aa7492cfd0aeb2ec0a6cdf",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "20bdb41ed379363e45e4b8e1b5761019a2ab04f14747f987dbc2d34bb7759a8e"
+        },
+        "src/lib/code-engine/ssr/FileDiffReact.tsx": {
+          "sourceHash": "e7ffc2c6099d273c05a3f836bd1b73924905124fa8922e471f051754aaa8a751",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b93c9c93b3f46a0f1f7e8a52fba791dd7434dbc7ff9035d25d303ac91a273d56"
+        },
+        "src/lib/code-engine/ssr/index.ts": {
+          "sourceHash": "beedd88aad33cab016d42d9c18cbdef4f9062dfd5478c660fc49a4bfb999f68d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ddc6ee96a1a93e1deccdfd5d0998b234c2bc98f2a9e158aa71d9df3f4a1b1dfd"
+        },
+        "src/lib/code-engine/ssr/preloadDiffs.ts": {
+          "sourceHash": "8bfafdb526eda7db7dc07e3692a8f9200151eccf61dd632b55fab69867bffdca",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9038915546ed2855325aee960d25675004bc52b430c3ac7d1833aad4d004fc55"
+        },
+        "src/lib/code-engine/ssr/preloadFile.ts": {
+          "sourceHash": "ffceaef7ccc79491405d8979df042ff10ea33d7117ee8edd0d588518f01f4989",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f2a50adef2321c888e78957db27e5e9ab29a9182df01766d386135e5018b121e"
+        },
+        "src/lib/code-engine/ssr/preloadPatchFile.ts": {
+          "sourceHash": "c7c09ad401c9a929a25b5b408cfdc0f9e0f2e5f3c1fc63bd09f0936254f23449",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "3ea51ed5419152fa47c130f7dca4d8d74dedd676643a04d2ab7d56df27685827"
+        },
+        "src/lib/code-engine/ssr/renderHTML.ts": {
+          "sourceHash": "8fa1d695fe2529312cbbdd97a859cdf572b533977d996abe056657b18d9dd6aa",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "af59adf024941730865652780fbfeadad8cc42a0979ffe2f3b67ff97a58a75d2"
+        },
+        "src/lib/code-engine/string-import.d.ts": {
+          "sourceHash": "160dc83fef1b6daf2cbf6c9209250d8f9a9d8596bc106ef19ca78affc8b848e4",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "213158c3b66ce5cc72580c1f2595783b919bcb545b33e37a32759e6365ef1275"
+        },
+        "src/lib/code-engine/styles/base-css.generated.ts": {
+          "sourceHash": "29950fe56adbff36eb4acacf599bba3ed489862b2c9d89c902b12be6fdd5df2c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "20d5321ba0b13701e2cdbf11e2004c25e8a2d4aea6c6b83abe8228e6a51974c1"
+        },
+        "src/lib/code-engine/styles/base.css": {
+          "sourceHash": "4eabcefb5c044763cdf56fbf3b19c9e12a1ce1dabd6207f5396bc0eda633b1a5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8b37257e93623f6c26b72f6cf2410a0e48b046a15740a2d90dd9f8125f0b63c3"
+        },
+        "src/lib/code-engine/styles/editor-css.generated.ts": {
+          "sourceHash": "518731c22d75375e3fd9f20237d37acfb54d7e35a7e0ba28b8d7df477c9a6c7f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b7eb4596c894549c5b442eafb7a91cf7bb1f3969b1dd241e65501daed915457c"
+        },
+        "src/lib/code-engine/styles/editor.css": {
+          "sourceHash": "211359960cd9bd63e7a1d33e7a696f11ec089be13b3d35e4dbbac4462eb0cfbc",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "850d4d50ee890f2cfa1c4ffd62462b3cc0c216fdd08efd042a55de75de338fba"
+        },
+        "src/lib/code-engine/themes/pierre-dark-protanopia-deuteranopia.json": {
+          "sourceHash": "f48cd870864e2b1e14be30789a2f1e0050a90ab791d3a26c4fb6fbbf8cc7831e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "6b4899423ea479a7da899a340a456b883b0b392992c23430b51b8fb29f98a76c"
+        },
+        "src/lib/code-engine/themes/pierre-dark-soft.json": {
+          "sourceHash": "a05836cdd7c8e9bf245a1610a865cda2301bcccc93bb9ffd9a1558ce1d3aa0d3",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ec44248b9656c1987c080847688185708c9f75d0feacf424da8038f52d08d30b"
+        },
+        "src/lib/code-engine/themes/pierre-dark-tritanopia.json": {
+          "sourceHash": "0fd0a894ceb0037df287d418febe973abd8c0f876de8229cc7ba48d5f1104c5a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5568c25f497ba1396447c91940ef97e6973f9405febfe7a6b4739c79140be6b0"
+        },
+        "src/lib/code-engine/themes/pierre-dark-vibrant.json": {
+          "sourceHash": "b3b525ff63e2fb7f6e109b05321dc6b43cb0a26b4eb8be57457ed884100e1a01",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1a18737392dd3697f8b18c3be7ad3bf6f91c5d7a59f09b3c9419992a70395626"
+        },
+        "src/lib/code-engine/themes/pierre-dark.json": {
+          "sourceHash": "49e99abb9831afd3c7bbcab34ecc6c5bb1c4f6dde1142846975fc97c838881cd",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "86eb6bc3cc3f37603093e152b6b58ecb6dc0dd39c78a0a054c21f95a9e3dbcaf"
+        },
+        "src/lib/code-engine/themes/pierre-light-protanopia-deuteranopia.json": {
+          "sourceHash": "2ae2b44771a02006f366fea0e26d893c7078b41a4c2386362cf0a267141a8b9d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5839f4a6ef559c2547785c512a94610d0a5a6ee57acf6911fb80ca72e5506494"
+        },
+        "src/lib/code-engine/themes/pierre-light-soft.json": {
+          "sourceHash": "901b83e2efa24abc50aeec609be1bed8c8bb7bea5a0f0b2f8ffc767a828a5e21",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1c0df99075805338c583eb65ef12f473cf2830e46b6802830bcd319ce230be00"
+        },
+        "src/lib/code-engine/themes/pierre-light-tritanopia.json": {
+          "sourceHash": "741f2c99d4a3dc7ee8990ca54e3189705cad371843f23284ca1c689d4a5c3bdc",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "523e35581e8c216c5987d06a663ca580d562e172ffd9bcfe972e2c3094a581fb"
+        },
+        "src/lib/code-engine/themes/pierre-light-vibrant.json": {
+          "sourceHash": "ab101c0d899088d449f0a8c2573488a267524a2032a344b633ec6aee71f7c4f9",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "562726d316557924ece903aaf1108a14d0c1528a5788e870e5a606e51ac1daa4"
+        },
+        "src/lib/code-engine/themes/pierre-light.json": {
+          "sourceHash": "7efd38db4da0ab4b20ad5505393769b5886c1d934e44a0791cd1140f5eec97a6",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ef5113f5fec894cd63f685f52d73a7f596ea6a00bb839ed60aebd7ee1e275edd"
+        },
+        "src/lib/code-engine/theming/collections/pierre.ts": {
+          "sourceHash": "fd192ee380a62baf5aad69aaafe2715397f5b7be42d107f589af14c55c9b9511",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "04d86d68819f90006f38784de270657a97923fbd32113cf412e900a475ecb7bd"
+        },
+        "src/lib/code-engine/theming/collections/shiki.ts": {
+          "sourceHash": "d3051ab2c42d643064ede685a8c5c123db99cb189507ffe4bf2d1c1c6bd39f9d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c1d2f13c4b56c8a4536a24f6821daa13ff14b6dc97385977cdcd042a7502039b"
+        },
+        "src/lib/code-engine/theming/color.ts": {
+          "sourceHash": "9adc1ce03e0a8f318af770c38cc23c3732b072ffd0a0501830fb6bc8e7fc5d10",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "99f4c1b590cba289e76873a1b2c18a7d9802e3755a944d258412b9bf6ef73778"
+        },
+        "src/lib/code-engine/theming/index.ts": {
+          "sourceHash": "8f36192a17b785ff8acd1cc143699e3b84cf7ac30b94545d978645f3c8218e0d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "88f1c704378368af940400dccc3c3ca434ac0b8f4c7cd95b38e59c1ddb34a79c"
+        },
+        "src/lib/code-engine/theming/modules/color.ts": {
+          "sourceHash": "bcdf5399bf741bfb951f75c7f76a48c7f80e19527638940230e7993d74ea4c21",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1c63070d2f2831c36984ef2e8365ea3acb3f81e0cb1cb1fbdd48257e1f5c6a80"
+        },
+        "src/lib/code-engine/theming/modules/createTheme.ts": {
+          "sourceHash": "8c8726ddb470851050f85d3d1acbec98d75be9acaeb9e7e86df87b12ba3a8c52",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9c5d73c3879f8241280e0d881caa840abfa83e78b22b1c32a0e2f524fc59ef5f"
+        },
+        "src/lib/code-engine/theming/modules/createThemeCatalog.ts": {
+          "sourceHash": "774229153df9a3e45d40d6211190c5a96d135e5c984a89ddaeebed627dfa3697",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "834d37ceeb17af2c4c253718a0dd8d504f22a87906dac4526a69dbfd3f57ae41"
+        },
+        "src/lib/code-engine/theming/modules/createThemeCollection.ts": {
+          "sourceHash": "0c484a1708aa0f02550cfa04ecb7421ba3bda9f182a1f93e3d2b9590e59d197c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8a72361ffcf9c29e1abf956dd0349af4c9724d0023edc9dc751cc9e2e6c8733b"
+        },
+        "src/lib/code-engine/theming/modules/createThemeController.ts": {
+          "sourceHash": "9f6a1d615ba45f324a5eba41f31afa900bc7fac667fc8e18f5527560112b312e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "77bb4c9d64d90b60e1a56af7335caadf665ebecd58a699e57650457110854589"
+        },
+        "src/lib/code-engine/theming/modules/createThemeResolver.ts": {
+          "sourceHash": "155c583cc7b53f2c12ba28975faabcbe3f106098fd500391a184044dbcb14d05",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "81e06d3469ff1d8db0973fa2713bfd104fa17a419b6016012ff2dc400991f430"
+        },
+        "src/lib/code-engine/theming/modules/normalizeThemeColors.ts": {
+          "sourceHash": "a808a2278ac9bc2d1ffdbb747c871c4182a0a7741aea82d7d0e1548412a2e499",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "485a72abb600005477735da34e3e24c24d624b875024c681e73cf07a41aec5f1"
+        },
+        "src/lib/code-engine/theming/modules/types.ts": {
+          "sourceHash": "9998a78b84eb76479dde9550a59001991137915e330e90fe8136077dec426065",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fe7b4d15b2638df4bd66e8714e638f26b1dc52f7a7a3124591359c64061d559f"
+        },
+        "src/lib/code-engine/theming/modules/unwrapDefault.ts": {
+          "sourceHash": "2d6a1a8ff2912b53fd7dea0eecd354da176510cb89bc4c51bf896f7548ca7073",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8706462462cae660e11883ee0b8a32383aea42257aeef98a9bf6ab7300122148"
+        },
+        "src/lib/code-engine/theming/react.ts": {
+          "sourceHash": "4ded29f98d7f4af9332dc77652a69a646c99b5cd1a2c3280103bb64c564cbe52",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d97e9fccad4e16cb8511a2cb0f952dd75d5a676449a30aa22e939216b9a08bd7"
+        },
+        "src/lib/code-engine/theming/themes.ts": {
+          "sourceHash": "93306a740100b2ee8c1cf5a4ba414ee932ba173e83485ca1554dce75d88d3f9f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "14a70ffe337ee7cd95fbe093ec33ca76c4661ed365cfdab7b0fb90b7569e1770"
+        },
+        "src/lib/code-engine/types.ts": {
+          "sourceHash": "ff263ecdcd4513189d0afece1b674074cbf087c950c7c5d2e68771f9d86d34bc",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c141ddf12c94f152f7d21516517e93eb6133c67ce131f6148dacd556e28827d5"
+        },
+        "src/lib/code-engine/utils/annotationHelpers.ts": {
+          "sourceHash": "df115b1e938057b7f6fa6df95adcc72a19ff5d458b9851293119d1250194eca5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b207b88c6787226a54056c7b37c1832d37bcdc8322f81a3a3f588e35684f42be"
+        },
+        "src/lib/code-engine/utils/appendItems.ts": {
+          "sourceHash": "7b75de7129253863b30ade10168dae1144dc6dbad78bc642650757a02f776090",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "51ffd001ea849561865cbf77a18f9e7d62c3de16aafe68363d72263f656f6aff"
+        },
+        "src/lib/code-engine/utils/applyLineTextWithNewline.ts": {
+          "sourceHash": "c47aa8b52dff71d08d2d9a96efdb723fca961f1c14173cd0b199e57024b780aa",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ef05b359f7c1484ecd0e2ec5fc272e4a6d40bb9716ce1de26553a915fb2242f1"
+        },
+        "src/lib/code-engine/utils/areDiffLineAnnotationsEqual.ts": {
+          "sourceHash": "74b178f0023791d3ec5064f188ef45288091670db616174d5a9a535d76b6e411",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1e4604f8b396d327b04416b5d2c7a94f8325ce373df03abb30ab7d7be07fca35"
+        },
+        "src/lib/code-engine/utils/areDiffRenderOptionsEqual.ts": {
+          "sourceHash": "227558b4bc34f9505a2ed50f2df9d3843aaf314715065069e49766cc4577bbf6",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "bbe2425c730515a5ca4ea844b981491dadbd11a3966cbe237ab5964f27c8c920"
+        },
+        "src/lib/code-engine/utils/areDiffTargetsEqual.ts": {
+          "sourceHash": "a5d7f34294b61f5df33756afa23047f85d922004ba30796d11b96c4349f45fe2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ae7cc836ae0d9bf1bfbe570eac2dd9c60ffc1d81337b6ef25252eef70d0a9ac1"
+        },
+        "src/lib/code-engine/utils/areFileRenderOptionsEqual.ts": {
+          "sourceHash": "9bbe7b3754bc01d90b0263f6cae12d573d185490d2d1a82771abdedd5e46f805",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c34c3f3464d644ba23506e56d9cabffe5739657eea88679494d626bffe1c34ab"
+        },
+        "src/lib/code-engine/utils/areFileTargetsEqual.ts": {
+          "sourceHash": "95d7e5f620e081d4712c50134d446454e6529d221f8830d90a8ab99ef290541d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "02255c82b931027e003819dd53cd65592df920bc757e0ece32c613d07f75ef6c"
+        },
+        "src/lib/code-engine/utils/areFilesEqual.ts": {
+          "sourceHash": "a1ae40dbe50aed1b55c4a95f60b3a567aef2d3c407cdf9c6032cf9eedc4473ce",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "63fac44435af85020212b4e5e04b8dae34f2d0df776105e3159d61cff4c0e816"
+        },
+        "src/lib/code-engine/utils/areHunkDataEqual.ts": {
+          "sourceHash": "b327fb78eadc6b967d7753e646a31b4eb216e131ee2a7023b139288ccda07463",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "30147822d5d4117e7396ba9119bd072c514084cbab11f20197816148b722bf4c"
+        },
+        "src/lib/code-engine/utils/areLineAnnotationsEqual.ts": {
+          "sourceHash": "4cdc9ddc4b033c7d009c763396fb922afd363bf23452ac5d6b10d29971c51885",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ac1490a03661f1e356ca80077fd6a03d68cb589f6a17c98f027b361ae0dde491"
+        },
+        "src/lib/code-engine/utils/areManagedSnapshotsEqual.ts": {
+          "sourceHash": "e5f5f576064a9873e9befc904141d7714b21abaad301cc4a1d514de162ca2fea",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e78c3b3451a806db96e1fc613b7c00027da573a94e85c2a4c3845ca964e5b80a"
+        },
+        "src/lib/code-engine/utils/areMergeConflictActionsEqual.ts": {
+          "sourceHash": "2561585db8df1e7d7b6dffb66ca4097568f336e359619193ae03863e40250398",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "06bbde6823e3039f519360e57b28a23243ac70db9a96c3dd3c59c75f69d5cb97"
+        },
+        "src/lib/code-engine/utils/areObjectsEqual.ts": {
+          "sourceHash": "a70ba5601718f31fcc58a6a842290eb2a463859796463f20ac1df7374da9886c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "91a81804abcb2fd6b5a7fe98451418a4e1e2b6925ab7a7cb27e82ca8651ba100"
+        },
+        "src/lib/code-engine/utils/areOptionsEqual.ts": {
+          "sourceHash": "56b6959547bfe7f1bc70d9bf794a9302bd538f5b1497bde99c3a87460d89ec9e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "0c59f562dc5b9163cfa52c64998ecfbe31658a46c60a1aa162cbaa83ea6ceec0"
+        },
+        "src/lib/code-engine/utils/arePrePropertiesEqual.ts": {
+          "sourceHash": "3fa630ada4164beb57066a27addee90eec0388da75a3958e141d25efdd07cb54",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "0014d8b211c30d2afebc7edcd1d4f012e98817b0bae53c330079aa606123a74b"
+        },
+        "src/lib/code-engine/utils/areRenderRangesEqual.ts": {
+          "sourceHash": "2321a7ebff2476e02221ae8201a8fd8d694ce45a70458b7543a88996e8d7b91e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "727fa4254f1c33d83bf16f3a6b558ea340b2759354d08fb2f1cf943ba2237589"
+        },
+        "src/lib/code-engine/utils/areSelectionPointsEqual.ts": {
+          "sourceHash": "c6d76eb72e9df288137893dfb73fb689812e5edf1ecdec3ada8f8513893f8d15",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "20f42dee34987671056cdd1483bc75b1673132390ec15689a97c34c9833cd8cd"
+        },
+        "src/lib/code-engine/utils/areSelectionsEqual.ts": {
+          "sourceHash": "58fab72df764cd33b3353d18c5e71b0c789f4cdb3424e2cb4f57a924acb63e89",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "388e6a95a53bb7a8bf07b0afe4a687f0c2cab405a7b454ddf088aa576cadd33b"
+        },
+        "src/lib/code-engine/utils/areThemesEqual.ts": {
+          "sourceHash": "b145b3ad4b62719c7e705f90306826e03174d147e7c8dbd3d8877ad38502305d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "12489647f09ada233ce4e11709539044a45b25ed9bd724ff8deaf4188eacae8c"
+        },
+        "src/lib/code-engine/utils/areVirtualWindowSpecsEqual.ts": {
+          "sourceHash": "aaeffea54873bc212c88ee5de3504419a8bc49f36de766726627bf29736c5d8c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d323195d52efd2db90f21dc9f391286f53c488353672f7bdc1a4bdc2bb413eb6"
+        },
+        "src/lib/code-engine/utils/areWorkerStatsEqual.ts": {
+          "sourceHash": "35d9845686c505db77a3c51d65e0123990333f8fd71d240f1c9a1c45a69fdc34",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fce07a9abd16d6b9368eacdd3d83c0e2180c56d2f7bc0a2d297df025439bc916"
+        },
+        "src/lib/code-engine/utils/awaitWithTimeout.ts": {
+          "sourceHash": "9930bbf0d977aefd2cbce419c2e27938b8279530b0c0cc8574a343bc615f1d02",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "a51ad7e519639717b160507abbc4c222a48defa6222593c5da4e81489be21179"
+        },
+        "src/lib/code-engine/utils/cleanLastNewline.ts": {
+          "sourceHash": "54158cef1f5d5ec429d75e2bac8a8daf826efe591c262565347f7bd373d24366",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "920be636ccfa9fd53b5be6185689210fbf3e9a75a64ea708c0a3feec5dfa717a"
+        },
+        "src/lib/code-engine/utils/cloneFileDiffMetadata.ts": {
+          "sourceHash": "c2b122906479c3b967fcd8991cf227ea69e71b37369968a8333e9faca910b828",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "919629a0c7f317e84eb19c1bcfaab2b6366d9e018417dafeacbfb1f8e9457b77"
+        },
+        "src/lib/code-engine/utils/composeCacheKey.ts": {
+          "sourceHash": "04496c539d403ada5bf6d52bbd5a7efae5ceed41e72f087ccb8a2d72d37adce4",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d0109e2347bcb29cb266320302c28677d11749974a76350395e9a63a4687a61f"
+        },
+        "src/lib/code-engine/utils/computeEstimatedDiffHeights.ts": {
+          "sourceHash": "51045a8e715bf84a5d5eae2c9c041714246b1f363e47f9b9e0e87baac9ad8fb1",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "0647e96fc9f3cf401ed21087b06fcd1bfe62a14cfc5634543f6f8554ceffea3f"
+        },
+        "src/lib/code-engine/utils/computeFileOffsets.ts": {
+          "sourceHash": "604bca9a891bb3432c97539c9429b6d6f0f468a8c1d606011cf393ae19b5ce61",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "16a656e850f921a3b75e05398c23d53b799e882ba105116e2865569837dd5240"
+        },
+        "src/lib/code-engine/utils/computeVirtualFileMetrics.ts": {
+          "sourceHash": "279cff5766aed45f69abd74412c27bb104741b82b6bddabb5f3c7f58f243e8e9",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "bd09e46330dd598531a2875e33f41a5cc3d974e7af56b9f8792c75a7648eb425"
+        },
+        "src/lib/code-engine/utils/createAnnotationElement.ts": {
+          "sourceHash": "d18a64c50193c08256460932ae2fbae6c53d136a911d6296ed54fe2d22e046ee",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "70ba64422c63ff9b6b3606746a9aa19b448f922ba1e5de4985d77ada09af100f"
+        },
+        "src/lib/code-engine/utils/createAnnotationWrapperNode.ts": {
+          "sourceHash": "321693b243bb67c436b52f4fb942f1ef07cac0008621ef4f5ea54d6e290a55b1",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8bcfed8a50eeee22816112d526cf7cc5c8a8f38a36fc0ea3cb87c8c391f13783"
+        },
+        "src/lib/code-engine/utils/createCodeViewHeaderFooterHostElement.ts": {
+          "sourceHash": "8c86712acf8fa2ef91bb0cd5876ef71a59993808aae406cf04ea1304315daaac",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c502b21bd4af048a4e02580fe119fcbe6f2d6f4e62872fdfdab9fe29db9fd99d"
+        },
+        "src/lib/code-engine/utils/createContentColumn.ts": {
+          "sourceHash": "c9eab5bd317a8ade5c4646903e6413d509ead951c628c1f0aa25a22160e362d7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "36d7155aa330a8d45e45474b8f5b9f6521b8c2bc3e452ee6424ba2c6fc95687a"
+        },
+        "src/lib/code-engine/utils/createEmptyRowBuffer.ts": {
+          "sourceHash": "cc9d3af60596cb4995e4d203e94fd49c169a03b6afc01789a34f2893e916682d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "4ab62d9c83afad207710aae0d2c6b923feaac0718d6393de7f22cad45a5e6ad4"
+        },
+        "src/lib/code-engine/utils/createFileHeaderElement.ts": {
+          "sourceHash": "8c139acdd839d8d353077e4fc00f5140803fd7b36a764ab2096435dc7a9b5c52",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "0921931e918ccc1c6e015006824fe08c09543cb5ebf35cb0dd48e3c5db5072e8"
+        },
+        "src/lib/code-engine/utils/createGutterUtilityContentNode.ts": {
+          "sourceHash": "cea9c25c1350857f665fe2d2ba9c1d5e2fe45f11ac36c3e66fd5ad75a395949a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "a6aa1db93e1311906f2070abf93f33219376af69f455ed0d754d39f39c72eff3"
+        },
+        "src/lib/code-engine/utils/createGutterUtilityElement.ts": {
+          "sourceHash": "5742adeccc892a8cb02014b080c1e1013c7b441c77595e81d481fc526dcd7abe",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7d8e17703c6330067e1e5c9dc474e3c7035a9f438f4884936f7d65ce9300ae86"
+        },
+        "src/lib/code-engine/utils/createNoNewlineElement.ts": {
+          "sourceHash": "97ec78398ff4f277132888adaec9821247b85a328cbcd4640ac2df124f3c07da",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b43491c166c1bc58a0e50163310932cacd6c39ab21f730d7d5824b16c4568e9f"
+        },
+        "src/lib/code-engine/utils/createPreElement.ts": {
+          "sourceHash": "f7377c7f7db4cc096fce9ddf6245a5888392a81bd14a11a710a251da26815e2e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c0861e0858c4a755e98703a33c6fccd5b30689e21d93abc5217e5fbeb7845de5"
+        },
+        "src/lib/code-engine/utils/createRowNodes.ts": {
+          "sourceHash": "4f8564c015f0e6d3fe7c3952bcd818308175a6cede55caf51f9a15d5bfa79039",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "466e65b3b6a68cb65442203e835ea7e98db90da01ab406a3a0e46732b4b9138e"
+        },
+        "src/lib/code-engine/utils/createSeparator.ts": {
+          "sourceHash": "ab1418c0f00f71e39c9a419c154ed70b7e134a12116b1bf3066d2ae679358803",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "536d8d6b160840aada6c3fd37d474c9fc470beaf9fec78e7196b5fbdaa01131f"
+        },
+        "src/lib/code-engine/utils/createSpanNodeFromToken.ts": {
+          "sourceHash": "f8ba40a4dce54da107ad8dd90dcd757a3ff13b401fb93d512b81261f4403d234",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "cb85ceb9c6b7967d07c525f11b17fbbb50cef800d6c306ad5fee5611ac7cfc4a"
+        },
+        "src/lib/code-engine/utils/createStyleElement.ts": {
+          "sourceHash": "b84696c325bceefb539f7ec118db318fba2cebf1ee4457a213284be27351b84b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d8f48fc7a99a78f56638a08ac297df20fcc9ba89e0c2b7b463a63c0c49a77b6a"
+        },
+        "src/lib/code-engine/utils/createTransformerWithState.ts": {
+          "sourceHash": "a58fc77ba9248e604566311f3dd085248823350d1a7044c50f7d1540444beee1",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "dae5edfe2912d9b5cbfb72e7f754635fdbb334ab718ddd14e7437177cb9a5b8f"
+        },
+        "src/lib/code-engine/utils/createUnsafeCSSStyleNode.ts": {
+          "sourceHash": "1412261cfded0ec1466401c96788a615b13458d7e3fb9e1ac41da646b6f890bf",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "48eabb05fd38f499e69496df840eccb7e898acaac4b697bbc7afad581a42c51b"
+        },
+        "src/lib/code-engine/utils/createWindowFromScrollPosition.ts": {
+          "sourceHash": "87318909f0c9e4789f0bdcaf403fef1c92949dd67f1d3b449bd3882b039bd213",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e01768904cd1916ea2361617f5335305b94c6c4e1f92c49d0c32fe39f4309c2d"
+        },
+        "src/lib/code-engine/utils/cssWrappers.ts": {
+          "sourceHash": "f005edc5ccdf5a9c40e42079cb67e87b2853ae2df06782ed283fa7bffc91fa62",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "369c6f64f8cf41db84ba2c8512b0e7b27f068127104eadc1c69dfa51ba76852b"
+        },
+        "src/lib/code-engine/utils/detachString.ts": {
+          "sourceHash": "451002d46efaae4c3fb22c4bf6834125b60156f8b6c9c20d3a4fbb28bc70b074",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b62c301cd2e8d6cbc320604cc0a8d00153bc6eda29c3dcd855f2bcb1218c4399"
+        },
+        "src/lib/code-engine/utils/diffAcceptRejectHunk.ts": {
+          "sourceHash": "9d090bbf5bb464a414c232070bbab8bd86907b060585b245faf883f7e824e3d7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "399859564e0e69af5cdbd5399e2647b06a260a22515724b7be917f30e13816a0"
+        },
+        "src/lib/code-engine/utils/editSessionAnnotations.ts": {
+          "sourceHash": "569c4031ea4102a5acaa4d55c776e40329bf91bc76c4acc2cf900190bf5eb51c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "36a028fd56e0647c72558141038856a70728776d7bbc1537403ca7344ce05c2e"
+        },
+        "src/lib/code-engine/utils/editSessionHunks.ts": {
+          "sourceHash": "a79730552978c7d4928c13929aca90fd3612f123c799586d3785e9efafdd4e2f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "146ebd1f72903c0eb00ee7f1da9f1c0c11993e4221151c5f84a0d76a075775f1"
+        },
+        "src/lib/code-engine/utils/formatCSSVariablePrefix.ts": {
+          "sourceHash": "756d9a1450396a98c2b3a9ae607d9fc7b9ee9aa078bd06e172542bc6643cc342",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e237540b59057b6d2a08f0043193343bc712efe1fb8fc2c483acb9e67f94a14b"
+        },
+        "src/lib/code-engine/utils/getDiffFileInput.ts": {
+          "sourceHash": "d7d0fcffb28d55e6250e54fa632a1a524db307dd6b8b43644463f29e3b86d296",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d18f8a38da40313ca7a0509729ffa770aade10830d3caa50eefcad5178bec742"
+        },
+        "src/lib/code-engine/utils/getDiffHunksRendererOptions.ts": {
+          "sourceHash": "0e598d138ecc128ddc1b157fa5ae4e613e3e40f0b199189e3209c994d4157f0c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "483eff9f858ca49a272441d936e16b00a364ec2f44f8bb166c21421fce805386"
+        },
+        "src/lib/code-engine/utils/getFileRendererOptions.ts": {
+          "sourceHash": "fbe09be20e1a572115c0f485df1eff123496ff1f784c5b46d8653e31704acd0d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "a21d8f39cdb710746802f1995b866b3e15e53682b305561d248170ee8cfb6975"
+        },
+        "src/lib/code-engine/utils/getFiletypeFromFileName.ts": {
+          "sourceHash": "2fe55f5d4c9747dd88ae225442fc08cb08394df27b07cca5b7fecb5f1ce00d7f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c6097676b07214debb874099981801a301bcbfa01c03a0a7c03c6cc97c597753"
+        },
+        "src/lib/code-engine/utils/getHighlighterOptions.ts": {
+          "sourceHash": "cf7aa51436846fd4b1451e1fbc07e14f517857a37df98e4b41f6d960bd59d7b0",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c9aba6fafbda4570d14b9de3dd760efd1da643ee84ad003206645466bc7b8601"
+        },
+        "src/lib/code-engine/utils/getHighlighterThemeStyles.ts": {
+          "sourceHash": "277aae5169224205e41f4c7859174e0a8d59a195c076ef2ecdab6e1944ff99e9",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "130d4a647c8a03fc95e16be503de3f9e811787cf8317741f9f713ec22b47e138"
+        },
+        "src/lib/code-engine/utils/getHunkSeparatorSlotName.ts": {
+          "sourceHash": "4b2947b3090ddf9c9c9b6bf328c90139215f6337b3905d5ce23eade89e03456e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7a52352124d9ac294e2290ec46964b2fa16581d96e13ccd6ab6f475f25e9c735"
+        },
+        "src/lib/code-engine/utils/getHunkSideBoundaries.ts": {
+          "sourceHash": "37984d938b031a1607b6634dc4c300513e28b28a52b8d8927b469d65987f1cdb",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e6f1471e5b8fc259a3e64c528e309b0221d19b76f78b7f25bfe7fe2893dcd4a0"
+        },
+        "src/lib/code-engine/utils/getIconForType.ts": {
+          "sourceHash": "b22c2079d940b69edec9f3128c8398e85b1b7c73e53c59d49516c93197f2850d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f7157725c6f3a78bbf8a7d18abc3c413cc35aef79bb4232657d6eda5c3c8639e"
+        },
+        "src/lib/code-engine/utils/getLineAnnotationName.ts": {
+          "sourceHash": "13232d6a95c832ba6b4a9575973f2a84509257dd60c2ab85921c782ef7885383",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "3632358b42ff1bc982747f0d44e786d1ed9fcf0a77d426b1a560277a757c7b59"
+        },
+        "src/lib/code-engine/utils/getLineEndingType.ts": {
+          "sourceHash": "88d8feb671aba1210b31fd95f774a4486914920ac0c90fa11af28430b9a870e6",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "df5b92ad9c99d66fffb86bab636bfc5cde0d35658a953896813d657088afb7f2"
+        },
+        "src/lib/code-engine/utils/getLineNodes.ts": {
+          "sourceHash": "279c177ed74c5d8a9b814e81be54d3b313e696831c37520d6cface805e98c89e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f4128460b992f8923cf254c9a273c83ad4d7155f49b956e154972397ddc3527e"
+        },
+        "src/lib/code-engine/utils/getMergeConflictActionSlotName.ts": {
+          "sourceHash": "afb3820ff4665445f1274b8ee142d046d0d6360aec511ca9b3ac03de7f65b515",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "349252ee2ec88fcada208d6d1d03425303837cb11016093df6f4cfcad99a65c9"
+        },
+        "src/lib/code-engine/utils/getMergeConflictLineTypes.ts": {
+          "sourceHash": "3c8d2e4a196837c8ab4889d96c0db2924cfe293bfa861829d0f2c2da4f465889",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "08c174a79713d45b259b6c67f25cb5d516fe68ebf0d23619512e6e4c1363785e"
+        },
+        "src/lib/code-engine/utils/getOrCreateCodeNode.ts": {
+          "sourceHash": "20c6826a15a7dcd144a52e1c1fe49d5de75f6b520ef6d51a288fe258ad7dfec7",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "191c428ec54b34968d577073408a72942e677d7c53c73d9a536921a6f76f91a5"
+        },
+        "src/lib/code-engine/utils/getSingularPatch.ts": {
+          "sourceHash": "42ef1100cbeeaa20cf119dddcc7d0446c5c636644e14cd1e22b7505f367adcd0",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "bf13f33d2f61274566f756c15bb6ebb72933ecf3bb24f4024f41d5bc41f9702e"
+        },
+        "src/lib/code-engine/utils/getThemes.ts": {
+          "sourceHash": "4d6cd71d47eb0f4cd0f0f9e156d0ded32d9c0142d54c9a75d2308675a36c9b28",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f196939338abc392395ac289c7778774a82a5f1c81916a3d9c59c3249c4587b7"
+        },
+        "src/lib/code-engine/utils/getTotalLineCountFromHunks.ts": {
+          "sourceHash": "34cd3bf43cbfebba8e87d40200c661625c838bbedbdb5bd0ae126f27c8e2e68b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "34da8b1d2314469487926d71c5f34d11ffdfe0acd1264967e86396f0152a25fc"
+        },
+        "src/lib/code-engine/utils/guardWebKitScrollDuringRebuild.ts": {
+          "sourceHash": "be3f64db03e57a12ed0c05cfb8a66d4c12cda06862148d5db0f9fa00cef423a4",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "6d86d9641d6577d74a804575a87325c3b08d20e588462387fb840d7a2c4a7f8c"
+        },
+        "src/lib/code-engine/utils/hast_utils.ts": {
+          "sourceHash": "9c2cd7768d655b06f1a8f078668bc5fb1cd7ebe1097111176771446a80650768",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "18bdb3462ee1590ed83b65e71b59a1a02121bf2d3912c8da46030dc85a124718"
+        },
+        "src/lib/code-engine/utils/hostTheme.ts": {
+          "sourceHash": "2c370d66cb6aeefb574086477ac4a2944250428eb65a5ffc1babd07496b5dcde",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7107d6c5bb7ba7f8b2b8a032e8f29dee23262021a46dea3e950efa0096574daf"
+        },
+        "src/lib/code-engine/utils/hydratePartialDiff.ts": {
+          "sourceHash": "6d00a82129abab8acd62769ea789b712736179e48fbc04ea5f4bebb75924195d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "4a94d44fc2e6a4619186a53551569e399e15c1fa92267361474582d2e6ba4759"
+        },
+        "src/lib/code-engine/utils/includesFileAnnotations.ts": {
+          "sourceHash": "ff933c7d40c5c454001efb0612fda5bac9b7a60c78fffdc3227c9960e02feebc",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "de9105901f291e111ec80abcd5e6feda8b968377547f429853719dc64b4fb8e2"
+        },
+        "src/lib/code-engine/utils/isDefaultRenderRange.ts": {
+          "sourceHash": "e48e524d84dd0febf8f5af35f889806edb632069049aabf5f93e6aec7e585df4",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c69f8875f1c3048687d0bc6f5dec8cf54283719f506426edab369756932f2263"
+        },
+        "src/lib/code-engine/utils/isDiffPlainText.ts": {
+          "sourceHash": "bc178efcd151d06dce28b992d5a1c9f6f048e23fcde3d67ceda5408ba7a3cdcd",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "00ab564b971811727a32b3dd37f0cc06a5d024c82642f2f5edd86a6fa55fbeab"
+        },
+        "src/lib/code-engine/utils/isFilePlainText.ts": {
+          "sourceHash": "dfe53cad0e1541654035c1cc8a2a2d85c6c539264f94a9a108e963cd3c76045f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "77d8ba130b84f06c1eb4f02c26fbfb3e5356e9b565de14cf9978eaf077b3f5c2"
+        },
+        "src/lib/code-engine/utils/isGutterUtilityPath.ts": {
+          "sourceHash": "1fa5aff7d3cde20a293e2047e1e35fd2d64ab91a0fb86abb82ce909825990e00",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "88c5d125fdec7d59598e12410ddac165038ef67198811e85d3f6e094bff7dcdb"
+        },
+        "src/lib/code-engine/utils/isStyleNode.ts": {
+          "sourceHash": "a1c1cb53b076cd1b755cb0318f3c0030383d74030f27389c2b98005798f6537f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c76f59ea0a39dc8f07d2f8ce9c162f5b2272a1b2c635b4eeee0d751e24f3d39c"
+        },
+        "src/lib/code-engine/utils/isWorkerContext.ts": {
+          "sourceHash": "f4294fd527fc7de4f4c496d99c99e13d3aeecaa492b81acf31995c0985ed2ced",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d3657ff22dc435b4c195487feec5803110e917cb6b38535e343252050365f8d5"
+        },
+        "src/lib/code-engine/utils/iterateOverDiff.ts": {
+          "sourceHash": "436bbf4283f8f925e5712e6493ea396be3aefb2e1dc7bff8374cb1bee4a0b669",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8dfc7ef74b08599a8f59f1e55c5fa52cf122e228860536449b01762221f9377b"
+        },
+        "src/lib/code-engine/utils/lineAnnotationIdentity.ts": {
+          "sourceHash": "23b7765068ba132a08f465df73942a67fb4073cd4738bdf9dd0284dace33fa80",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "614bc212da6fdcd7134890411b8980d73f93fe6b9ba03b5d7bd7aa2dfcf1f6e9"
+        },
+        "src/lib/code-engine/utils/normalizeDiffResolution.ts": {
+          "sourceHash": "3132626756c78082fd73186de7605dad65e7be9869931c3bb710185094287698",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d7b4758f32c2bd71a7bc2655af38f5badd4aaf0179147b51b1656bffa80cf6fc"
+        },
+        "src/lib/code-engine/utils/parseDiffDecorations.ts": {
+          "sourceHash": "12290d5f1109d1b6d8b6f475eccb950f5dc33c29b411ed7b7257acafe41e282c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9d4b1f1172c40288ee01e123420bdd5dffd2773ac4e7243f92355566146e9834"
+        },
+        "src/lib/code-engine/utils/parseDiffFromFile.ts": {
+          "sourceHash": "bb11d1e735112cf7a3fc20376f1a230c6e2886fe2cb299563d8d4b53f56a9eff",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "bb456f328106ce4724211f5e9fc60571f81936fddfe3c97510464e6c59af75a5"
+        },
+        "src/lib/code-engine/utils/parseLineType.ts": {
+          "sourceHash": "352a9b051de708e4b6eb345674c7998b3512d625bea4d8f5f83f4cfc65411121",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d80242c08da27331bd08ce72811c460bd37af0bec8ff38639f5bb3de0b4b0b4f"
+        },
+        "src/lib/code-engine/utils/parseMergeConflictDiffFromFile.ts": {
+          "sourceHash": "432e79dd6b1420fc8e0c505bc7650e6d5831fd5663b9762e72c4f00108851718",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "51d94aecf909b5e779a0cddda2ebb51fc4de432cb1520b460508b5b72f9500bf"
+        },
+        "src/lib/code-engine/utils/parsePatchFiles.ts": {
+          "sourceHash": "bb4b24adf3889c4ab92980c0fbca2a73bed24a4da8f53e3b7ea0500d944fe40f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "29d31639b53f1b1b33f124e5133d1c675ae0228ac64f5178301bab2260f28693"
+        },
+        "src/lib/code-engine/utils/parseQuotedDiffFileName.ts": {
+          "sourceHash": "0e0a40ee9d97f2f47f66324517026fff93e8550b5b448959868ca413550aadad",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7fc94508d9bb213657ec5d2a9cb4c94370d99290647636fb352e295b7451acea"
+        },
+        "src/lib/code-engine/utils/platform.ts": {
+          "sourceHash": "d24776b17e76cc62f5e4ba5224dd002cb0c5d51b8f0b60fd41877431a3cd6048",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "50eb3865f172f66f99e825c0d8bf95652a22462b7687eb06e47f5b285b64196e"
+        },
+        "src/lib/code-engine/utils/prefersReducedMotion.ts": {
+          "sourceHash": "7bdcc6722c282c6e3e58782723f6d63d90680f84d43727cb39a495c3e89df088",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9941a67b2d3ce74f3554768afdb73fe3499e0fa351e4aab0d5a5aa21b3c786c1"
+        },
+        "src/lib/code-engine/utils/prerenderHTMLIfNecessary.ts": {
+          "sourceHash": "1aa84109f751b2f0eb9446314392bd98c929a14454ff5d89cff563ac0d932a0c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "dbdfb5803263f4cc1df2baad071dce425d849640dda3bed4e9a39c86e136707b"
+        },
+        "src/lib/code-engine/utils/processLine.ts": {
+          "sourceHash": "b788cd48fb73fa6ebbeeec606bf263bc162b40d4fb3a3505e0d23d94b1f692fb",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b1212e9822243264f80e4d62e098ee081aded03c7d332c913bc71b5baad1792f"
+        },
+        "src/lib/code-engine/utils/realignChangeContent.ts": {
+          "sourceHash": "b110113a36881dc4b11c23a7b67b85014a159b3bccfd03eefd0ead0c5bcc8fa4",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "25997402cb9e0d7d802dea367d9a94d708ff4ea5c80f87f73444f24329414807"
+        },
+        "src/lib/code-engine/utils/renderDiffWithHighlighter.ts": {
+          "sourceHash": "b1497f208d6121fa37e1c6bf68fe8e703230145f739ca56ad96fc6a64e5c94d6",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "0448cd57655592b4889fa42e58d1c6bab85022dc5ed93555d893e743bb91ad6c"
+        },
+        "src/lib/code-engine/utils/renderFileWithHighlighter.ts": {
+          "sourceHash": "eea44b267e174ad78832837227354d4ed8f6bb9f93e0c1b4ae12c84dfc252c75",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "78c9b78a2e2c0449e5578bfcb919845a2f47bb373b222c53c3ccc1ee68a16a28"
+        },
+        "src/lib/code-engine/utils/renderPlainFile.ts": {
+          "sourceHash": "4bfbe36fec80ad1fd2e6fa3278b3ad3ec5c7a260eb2b8c084170a2cb0cb412b0",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "260c709075f39b4a8f728c10aa7ef6afcf281d0dcea1fd558431e19c1e947fe8"
+        },
+        "src/lib/code-engine/utils/resolveConflict.ts": {
+          "sourceHash": "21efe7e10efcf115eef8e0cc60ff5b37c6241e198c2b4075ba8a85945731cbfb",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b0214bbba6ab3e0558f82f259cb43d01c3a30a04a9b026ac8aec4b09ed96c1dd"
+        },
+        "src/lib/code-engine/utils/resolveRegion.ts": {
+          "sourceHash": "b8ce31402bc9911b19c781b70187232287d0cf8b6fbe4bf7e3c551ff069f2ff9",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "c0d441bc0f59e72acf6b51b48da98257674000a9debaa4de1df78e3b07ea901d"
+        },
+        "src/lib/code-engine/utils/roundToDevicePixel.ts": {
+          "sourceHash": "11671958696e6674cfc51dc03cf1935262b0e59971fdab4247545bd2861e9ab5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5495ff540f04888f7544d4d5e372b8a7f55af2c9b6ad75de05a56c95a3f84c71"
+        },
+        "src/lib/code-engine/utils/scrollbarGutter.ts": {
+          "sourceHash": "6ee382719fb42a11f76967fae1136570f2c0ba524ab77b38e73555d6962e6ebe",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fb94dbca3f50ad939835c36a0a319d58e224d558d9350abba4d35e58b7610514"
+        },
+        "src/lib/code-engine/utils/setLanguageOverride.ts": {
+          "sourceHash": "3cf7cf6182ae9033aea94d7ba8b8d9e808e6214a257b3e15b571a840a29d95c8",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1f647dd21a9c5dd88ffe41cb8b14422c4325972efebc7c12ddabc82bdd34e1ad"
+        },
+        "src/lib/code-engine/utils/setWrapperNodeProps.ts": {
+          "sourceHash": "72945752dc7305d329034db29d9462b6cb9f46106b14dfb7b24b090c6096e65d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e44f2391557596a24d93ee849d09be89cc8d5a4b3c3723b5e94c38022d998b7d"
+        },
+        "src/lib/code-engine/utils/shouldUseTokenTransformer.ts": {
+          "sourceHash": "474bca725adf8684d29687647fe7f9ea356924adeb9d49f8f317e7d8715595c1",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5299455ee4fc8ad4796725c747156082c5c42ba93ec9655da48c06422c27a371"
+        },
+        "src/lib/code-engine/utils/splitFileContents.ts": {
+          "sourceHash": "8c89b82dbdcea5ad13ed6434e9a16175ee0314864a43f32e754656d66cf87925",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ea8ccd2ca5cfc0d98f5fcf4e49e83fb3dc3cb9d615fb97d179be6859a3a7e249"
+        },
+        "src/lib/code-engine/utils/trimPatchContext.ts": {
+          "sourceHash": "66a3c63b0a1a3395d3b6f4e4568fbc4451ca567eaa1f7670bb303fdb328c4dc3",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "a2a0eb507e7e786b1c724ad9def6aaa673ed707ac9b3946bc3e48e4729bee1fe"
+        },
+        "src/lib/code-engine/utils/updateDiffHunks.ts": {
+          "sourceHash": "d7b66b7c5ff1390b43cb6690176585980c9fb177732edaa52e79cdb4723b354f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "2dd16a3d99e4138056e128d3760de313b37126f2f04bb37723e3340d16b77d3d"
+        },
+        "src/lib/code-engine/utils/virtualDiffLayout.ts": {
+          "sourceHash": "fe8a832c4bdde8bc8ddbc070e34b01548f65f22bae36088a742a00121bd0828e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "34044a8b07c98ff949abee91f1b56af3ddb7d38a9a69b3ab9ec86dad2388b469"
+        },
+        "src/lib/code-engine/utils/wrapTokenFragments.ts": {
+          "sourceHash": "b4b95cd3de74349c962f606fa107c51a6097982c7eb4580b230ca3bf9b87d8e5",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ae4d775b84dadf57fcf73a8bc5cedd7d3b36743b8b103d36190ae2885bca613a"
+        },
+        "src/lib/code-engine/worker/WorkerPoolManager.ts": {
+          "sourceHash": "3564c809ff1c12419042cc38f06134778efa59ef6ac51b2c24333e33e851d4fa",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "a7c10d961cf2e19c5da2b423589f1658ce033c91f7fa3f309306b7f0fef10c37"
+        },
+        "src/lib/code-engine/worker/index.ts": {
+          "sourceHash": "e3d32e722d54c3bb6a7aa83dedd57a035b59f6065cf9a7e0b4a1736fb83f64a8",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "b00b408a9973265adfe24873a0053a44a877fab6c1d7b6591c666a64fbb72a95"
+        },
+        "src/lib/code-engine/worker/types.ts": {
+          "sourceHash": "b90344c6ee378a9b29fc927a3b1ea523280ec353398f7d9dec97206f0ccfefe6",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "9d14ec10a12b0277b7557c9f9107218ad25e9efead92777a47f8cee1c635c95f"
+        },
+        "src/lib/code-engine/worker/worker-factory.ts": {
+          "sourceHash": "a27724a8851fbb37be8aa2b816828102efe9cb3a9b9357eb0aa62edb0843c26b",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "f5b3bf3453a81e13b08381633a9973effa725e8029e4525e87ae818089d05b55"
+        },
+        "src/lib/code-engine/worker/worker-portable.ts": {
+          "sourceHash": "1281a5c980941948b96a3394f7327b2ea2f8321666fc93d987080b3687392c47",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "4ab7f9b8d3cb6a0b8148951a502b2a39db4f03138dbcf0cc609819792196f774"
+        },
+        "src/lib/code-engine/worker/worker.js": {
+          "sourceHash": "13d3b16a662a4c52b29f9f637560011f5ac811624606b73e1a1c185e2207feb3",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fd91fa4d2456f9ca2568145565d96f3b94d6ee3baf589196e30978090d3c9d7a"
+        },
+        "src/lib/code-engine/worker/worker.ts": {
+          "sourceHash": "99991e844b2c9db27abfa28fc3b3696d27131db2f79d25b64f3afed810a2a856",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "05b3dc888c028dee13907422eac03c36869bcc0e437d28fbde359987d9e6d9e9"
+        },
+        "src/components/ui/code-block/code-block-messages.ts": {
+          "sourceHash": "2c217c4ec9d87ad849bd6d7d016447950e814d5d665f0d46e9e5b789bcd87f58",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "3342a2b31bddaf67a60e12cd5b097d6371661a590a367c1e31a869cf45b6a5ce"
+        },
+        "src/components/ui/code-block/code-block-styles.ts": {
+          "sourceHash": "ce94635d05e6f4c57a9eaaea50b2ac75218c5aac657b1aa851f8657d4279c782",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fb0d36386beb68c665ea0d1da760cfd100b492eb1f901e952a703947204bf793"
+        },
+        "src/components/ui/code-block/code-block-theme.ts": {
+          "sourceHash": "084263af5c7527c78607f7041b8f25d904c6997d5d5a67d554eb78518aa0c0f2",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "e44df8ea632dd04d895b5aaf8954181ff77091106a869c1f2994344ca75704dd"
+        },
+        "src/components/ui/code-block/code-block-toolbar.tsx": {
+          "sourceHash": "6e05097b3333d6ffcf28538b6526ace81b7d4381326ac7346641ecbd78a9e998",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "8473a974c6c4b06cb4a3ddb1f8405a79587f75fc30756445430be2f990cd0b62"
+        },
+        "src/components/ui/code-block/code-block-types.ts": {
+          "sourceHash": "b8907e628a503dd3a50597bbb90f0f473cf44c50a5772905fc522be12954d235",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "6b234395e53fbff2eb851a5a5a28338e58f6461f8f3dfc262f1f1b72090968fd"
+        },
+        "src/components/ui/code-block/code-block.tsx": {
+          "sourceHash": "1e1e384182a3128a360b2eec0c61726971ef03ac2cbcc1af0e7529409d7ded43",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "eadeb87ccdc9b82705c5d3fda26cf88df9c60eaed31652fc356517c50650cd66"
+        },
+        "src/components/ui/code-block/code-conflict.tsx": {
+          "sourceHash": "24c0e31d5d21f8c795b22a9af514c4192c938bad3a5332bdc46f648e24ac10aa",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5d288a58c1df4653d7bfe2e980f8f7676c1cb0ff5ba5400769ef4bf2d2f0d24c"
+        },
+        "src/components/ui/code-block/code-diff-header.tsx": {
+          "sourceHash": "277c633c5494116d22e45073f8e7f89119415dcfd02746fcfdb49a22d49d844c",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "5eaabd01a4f1a6cb5b85f2afb118b5092253d3f7df3516309a749f47316dc8ec"
+        },
+        "src/components/ui/code-block/code-diff.tsx": {
+          "sourceHash": "b73534a6f4af3c895125caa9c9375241bd8b11715c2080ae26b4d3f046ffbe9d",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "0a92b5251c70bafdf545fd2f46fd27eb2f35e67ebdebd30d5273633e249b338f"
+        },
+        "src/components/ui/code-block/code-patch.tsx": {
+          "sourceHash": "2084431f3e8ca57f26896e6fabf04135089869f74763f2a7d7bbe885aa2bf495",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d4127072eb676ba5185c9b1f34f08673e97af007babc89f031b0573490d8eb45"
+        },
+        "src/components/ui/code-block/code-view.tsx": {
+          "sourceHash": "750d28a29f626d90dfecbd15fde294884dcec31b425912eaae170eedeb3bd745",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "0216c85092948bdbaa6c0d75f4ebd82cf7cbc3eacac86a34d5fdc70c2b1324cb"
+        },
+        "src/components/ui/code-block/edit.tsx": {
+          "sourceHash": "e5e0a8b1d29a55cb97b25ab8b84d0b869280991f91b122b2a0f0dbd2a728cfff",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "fb8de216b780b5c3c34b09aa09f997ab7523d7bd74a8f27dfc23c05da6b91d22"
+        },
+        "src/components/ui/code-block/index.ts": {
+          "sourceHash": "4d74d3ad8d097135f96d67d1c26433fbc37c0cb7291c08cc3d5e77240fb59278",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "a8d611549459bd156bc46dbe5188d3e982ec5d9203e79484bc6b32a58daccec6"
+        },
+        "src/components/ui/code-block/server.ts": {
+          "sourceHash": "b291e972d3b4bad6903c6904a0a50e69ef284127373d12dad2322bbd5d6d8fbb",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "4aaccf45e6d5b47c89df42435428dfc67f236f775952be1b9b3e9e6e15e018c8"
+        },
+        "src/components/ui/code-block/stream.tsx": {
+          "sourceHash": "691dd13d91f80fa3d30478fff4de8c4aaa41bcb542893ac969dde01a9cea4c25",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "3f5c3924d7ff956baf9cea4139213bd364e4c819163e3fd94f536d266a45287d"
+        },
+        "src/components/ui/code-block/worker.tsx": {
+          "sourceHash": "745b41712305ebfd3a3f4138c94cffe5c3cff1c7e9b76466b3bba44e57ea0fe1",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "0374a6e49385d5fb2bc8b34b778e753771375db9d2867758f696170aed7c8957"
+        },
+        "src/components/ui/skeleton.tsx": {
+          "sourceHash": "25a6b53b732ae9ccd16164bceae5b263bbb7953006d66aad46f6f2891e62554a",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "7b4f0da87bceef218455895664128f678567a46ff8d892ece007c87b6ffb103d"
+        },
+        "src/hooks/use-proximity-hover.ts": {
+          "sourceHash": "9b0d8f949290d3dcb2b6ad5cad38305007d41e9d7b8cfa6525b3713bee2ba657",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "67e0b976ccd96fef96f59cdbd568eb59264d8b3bd98ff5ba24ff314ff65e9e72"
+        },
+        "src/components/ui/table.tsx": {
+          "sourceHash": "557d6846a83c0acf414503a8dd4069a8799b5c19f2f62375ab4125b46c4c24fa",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "20601123c80ac01d3b59911571a60e0cc9792158c8466fa0a973eed5e4c75c80"
+        },
+        "src/components/ui/markdown.tsx": {
+          "sourceHash": "7136dd735de6820460e15dea8ac69c83b1502b27c1e69d84e5176b52254ac964",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "1748c9818552fda7ceea4c381277f15662953fa23ecdb1e4f650ce56302a2792"
+        },
+        "src/components/ui/chat-thread.tsx": {
+          "sourceHash": "5e75fb06fc630e44d216252279330b4136e5a25d7f30f90a36ea4702673352ed",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "2e10f41d6737536f4c648525b8f0e50c3e22c8c139a916ac0c0b87c61eb0c5fc"
+        },
+        "src/components/ui/chat-thread/context.ts": {
+          "sourceHash": "06cc312f2e8fa6cc98a3dbf61e46bb239e12671044dfe106d30395871105b27f",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "607711e8fc48804d493e3aefcb95f9dfb26d862915aed2463547f828596b668b"
+        },
+        "src/components/ui/chat-thread/types.ts": {
+          "sourceHash": "c4bb56692cfade284a9d6f0063751e2d8d606c27c09d8bb8779df939849e3e94",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "663673b8ea4a4c8575b6d7c3b5c1441ab12b92820bbd049bb0d7a0baef89e569"
+        },
+        "src/components/ui/chat-thread/labels.ts": {
+          "sourceHash": "3f095b99cf31b5596671397634686200ca9faa4bd554f46453c6f6444c126fab",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "d8afe22ae1d881cb831d0f9dd2acb41e993c3e0bc9a66e741d109449d77407c7"
+        },
+        "src/components/ui/chat-thread/history.ts": {
+          "sourceHash": "95ede1792f461357e78f117c2af8642c9c28d6c34daceca0d58644ffa0e239fd",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "43177451f207d99c18cf8f189a0c1abc7ee5d1caf3ae45a6126e4bcb1e81090d"
+        },
+        "src/components/ui/chat-thread/messages.tsx": {
+          "sourceHash": "a7ce27728b18e79f4c3ea8032bb377e2114d8ff12f5807b299f13f5da419a4f9",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "71a5ec28fb20b0cd2c4ba84c0fdf117588b4112a2794a25bc4d151cdc0371bfc"
+        },
+        "src/components/ui/chat-thread/markdown.tsx": {
+          "sourceHash": "a8b4133f9ced34825f8fabc19fc79375ab9c71f2cccc41ff9874c32fe4e063b4",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ce98d9a5fa6f87f379c3eb9f09a94432807540a882f83cc2caf702ebce5409f0"
+        },
+        "src/components/ui/chat-thread/use-thread-scroll.ts": {
+          "sourceHash": "4ff9bcfc32f4442010ad6bc8ec6021bdb3d9949803514ff08d1a094ec1f76f9e",
+          "configHash": "eea928c78a5657a7ee3ee4e323ab9796d97f61876c0b0a7b271cbb2100082ada",
+          "installedHash": "ddce083ebc3ba51fa420c9e33e7cc8017e35881c8ab03a599d2999db87517659"
+        }
+      },
+      "dependencies": [
+        "tw-animate-css@^1.4.0",
+        "clsx@^2.1.1",
+        "tailwind-merge@^3.4.0",
+        "@hugeicons/core-free-icons@^4.1.1",
+        "@hugeicons/react@^1.1.6",
+        "@base-ui/react@^1.4.1",
+        "class-variance-authority@^0.7.1",
+        "pdfjs-dist@^5.7.284",
+        "framer-motion@^12.34.0",
+        "@shikijs/themes@4.4.3",
+        "@shikijs/transformers@4.4.3",
+        "@types/hast@3.0.5",
+        "diff@9.0.0",
+        "hast-util-to-html@9.0.5",
+        "lru_map@0.4.1",
+        "shiki@4.4.3",
+        "react-markdown@^10.1.0",
+        "remark-gfm@^4.0.1",
+        "remark-breaks@^4.0.0"
+      ],
+      "devDependencies": []
     }
   ]
 }

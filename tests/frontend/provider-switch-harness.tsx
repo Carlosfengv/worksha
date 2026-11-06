@@ -126,9 +126,10 @@ const fixture = (window.providerSwitchFixture = {
   runtimeFailure: null as string | null,
 });
 const configs = list
-  ? [...new Set(agentProducts.map((p) => p.configId))]
-      .filter((id) => id !== "antigravity")
-      .map((agentId) => ({ ...config, agentId }))
+  ? [...new Set(agentProducts.map((p) => p.configId))].map((agentId) => ({
+      ...config,
+      agentId,
+    }))
   : [config];
 modelServicesApi.catalog = async () => ({
   connectionAgents: ["claude", "opencode", "claude-desktop", "codex"],

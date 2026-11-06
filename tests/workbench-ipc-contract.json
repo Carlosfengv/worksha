@@ -1,0 +1,21 @@
+{
+  "find_workbench_session": ["sessionId"],
+  "control_workbench_live": ["action"],
+  "read_workbench_live": [],
+  "read_workbench_live_board": [],
+  "control_workbench_turn": ["action"],
+  "create_workbench_task": [
+    "agent",
+    "parentTaskId",
+    "projectId",
+    "route",
+    "taskId"
+  ],
+  "export_workbench_opencode": ["taskId"],
+  "get_workbench_routes": ["agent"],
+  "open_workbench_desktop": ["agent", "handoff"],
+  "read_workbench_tasks": ["revision", "taskId"],
+  "send_workbench_message": ["taskId", "text", "turnId"],
+  "get_workbench_shared_routes": [],
+  "create_workbench_shared": ["projectId", "route", "taskId", "text"]
+}

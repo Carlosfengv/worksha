@@ -218,7 +218,7 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
     };
     let client = admission.as_ref().map(|a| a.client.clone());
     let permit = (local_permit, admission);
-    let (parts, body) = request.into_parts();
+    let (mut parts, body) = request.into_parts();
     let agent_product_id = if agent == "codex" {
         if ["originator", "user-agent"].into_iter().any(|name| {
             parts.headers.get_all(name).iter().count() > 1
@@ -304,7 +304,11 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             .map_or_else(|| session.clone(), |c| format!("lan:{}:{session}", c.id))
     });
     let mut routing = None;
-    if let Some(context) = parts.extensions.get::<crate::gateway::dynamic::Context>() {
+    if let Some(context) = parts
+        .extensions
+        .get::<crate::gateway::dynamic::Context>()
+        .cloned()
+    {
         let requested = parsed["model"].as_str().unwrap_or("");
         let alias = context.service.as_ref().map_or_else(
             || (requested == local_agent_core::routing::ALIAS).then(|| requested.to_owned()),
@@ -411,10 +415,17 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         let max_output_tokens = input["max_tokens"].clone();
         let provider = selected.version.provider.clone();
         let counter_caps = caps.clone();
-        let budget = match super::context_budget::evaluate(input, counter_caps, provider).await {
-            Ok(b) => b,
-            Err(e) => return reject(StatusCode::SERVICE_UNAVAILABLE, e),
-        };
+        let previous = parts
+            .extensions
+            .get::<super::context_budget::Evaluation>()
+            .cloned();
+        let evaluation =
+            match super::context_budget::evaluate(input, counter_caps, provider, previous).await {
+                Ok(b) => b,
+                Err(e) => return reject(StatusCode::SERVICE_UNAVAILABLE, e),
+            };
+        let budget = evaluation.budget.clone();
+        parts.extensions.insert(evaluation);
         if budget.input_tokens.saturating_add(budget.output_tokens) > u64::from(caps.context_window)
         {
             return super::context_budget::rejection(&budget);

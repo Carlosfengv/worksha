@@ -1,0 +1,15 @@
+'use client';
+import { UnresolvedFile, type UnresolvedFileProps, } from "@/lib/code-engine/react/UnresolvedFile";
+import type { MergeConflictMessages } from "@/lib/code-engine/renderers/UnresolvedFileHunksRenderer";
+import { cn } from "@/lib/utils";
+import { getCodeBlockStyle } from './code-block-theme';
+import type { CodeBlockPresentationProps } from './code-block-types';
+import { codeBlockSurfaceClassName } from './code-block-styles';
+export type CodeConflictMessages = MergeConflictMessages;
+export type CodeConflictProps<LAnnotation = undefined> = Omit<UnresolvedFileProps<LAnnotation>, 'options'> & CodeBlockPresentationProps & {
+    options?: UnresolvedFileProps<LAnnotation>['options'];
+    messages?: Partial<CodeConflictMessages>;
+};
+export function CodeConflict<LAnnotation = undefined>({ appearance = 'zeron', themeMode = 'inherit', className, style, options, messages, ...props }: CodeConflictProps<LAnnotation>): React.JSX.Element {
+    return (<UnresolvedFile {...props} options={{ ...options, mergeConflictMessages: messages }} className={cn(appearance === 'zeron' && 'zeron-code-block', 'block overflow-hidden', codeBlockSurfaceClassName, className)} style={getCodeBlockStyle(themeMode, style)}/>);
+}

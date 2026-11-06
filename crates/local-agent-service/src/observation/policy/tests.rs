@@ -439,6 +439,7 @@ impl Fixture {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let host = listener.local_addr().unwrap().to_string();
         let state = AppState {
+            workbench: None,
             provider_adapters: crate::provider_models::adapters::builtin(),
             provider_client: crate::state::provider_client().unwrap(),
             credentials: vault,

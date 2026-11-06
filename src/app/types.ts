@@ -29,6 +29,7 @@ export type Page =
   | "overview"
   | "agents"
   | "projects"
+  | "tasks"
   | "providers"
   | "model-services"
   | "mcp"

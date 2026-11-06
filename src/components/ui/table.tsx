@@ -9,22 +9,30 @@ import { useProximityHover } from "@/hooks/use-proximity-hover";
 interface TableContextValue {
     registerItem: (index: number, element: HTMLElement | null) => void;
     activeIndex: number | null;
+    variant: "plain" | "bordered";
+    size: "sm" | "md";
 }
 const TableContext = createContext<TableContextValue | null>(null);
 // ── Table ────────────────────────────────────────────────
-interface TableProps extends HTMLAttributes<HTMLTableElement> {
+export interface TableProps extends HTMLAttributes<HTMLTableElement> {
     children: ReactNode;
+    /** A framed content table or the default unframed table. */
+    variant?: "plain" | "bordered";
+    /** Compact or standard table typography. */
+    size?: "sm" | "md";
+    /** External layout classes applied to the wrapper, not the table element. */
+    containerClassName?: string;
 }
-const Table = forwardRef<HTMLTableElement, TableProps>(({ children, className, ...props }, ref) => {
+const Table = forwardRef<HTMLTableElement, TableProps>(({ children, className, variant = "plain", size = "md", containerClassName, ...props }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const { activeIndex, itemRects, sessionRef, handlers, registerItem, measureItems, } = useProximityHover(containerRef);
     useEffect(() => {
         measureItems();
     }, [measureItems, children]);
     const activeRect = activeIndex !== null ? itemRects[activeIndex] : null;
-    const contextValue = useMemo(() => ({ registerItem, activeIndex }), [registerItem, activeIndex]);
+    const contextValue = useMemo(() => ({ registerItem, activeIndex, variant, size }), [registerItem, activeIndex, variant, size]);
     return (<TableContext.Provider value={contextValue}>
-        <div ref={containerRef} className="relative" onMouseEnter={handlers.onMouseEnter} onMouseMove={handlers.onMouseMove} onMouseLeave={handlers.onMouseLeave}>
+        <div ref={containerRef} data-slot="table-container" className={cn("relative", variant === "bordered" && "max-w-full overflow-x-auto rounded-md border border-border", containerClassName)} onMouseEnter={handlers.onMouseEnter} onMouseMove={handlers.onMouseMove} onMouseLeave={handlers.onMouseLeave}>
           {/* Hover background */}
           <AnimatePresence>
             {activeRect && (<motion.div key={sessionRef.current} className="absolute bg-hover pointer-events-none" initial={{
@@ -45,7 +53,7 @@ const Table = forwardRef<HTMLTableElement, TableProps>(({ children, className, .
             }}/>)}
           </AnimatePresence>
 
-          <table ref={ref} className={cn("w-full text-body border-collapse", className)} {...props}>
+          <table ref={ref} data-slot="table" className={cn("w-full border-collapse", size === "sm" ? "text-label" : "text-body", variant === "bordered" && "text-left", className)} {...props}>
             {children}
           </table>
         </div>
@@ -53,10 +61,13 @@ const Table = forwardRef<HTMLTableElement, TableProps>(({ children, className, .
 });
 Table.displayName = "Table";
 // ── TableHeader ──────────────────────────────────────────
-const TableHeader = forwardRef<HTMLTableSectionElement, HTMLAttributes<HTMLTableSectionElement>>(({ className, ...props }, ref) => (<thead ref={ref} className={cn("", className)} {...props}/>));
+const TableHeader = forwardRef<HTMLTableSectionElement, HTMLAttributes<HTMLTableSectionElement>>(({ className, ...props }, ref) => {
+    const ctx = useContext(TableContext);
+    return (<thead ref={ref} data-slot="table-header" className={cn(ctx?.variant === "bordered" && "bg-surface-raised text-fg-default", className)} {...props}/>);
+});
 TableHeader.displayName = "TableHeader";
 // ── TableBody ────────────────────────────────────────────
-const TableBody = forwardRef<HTMLTableSectionElement, HTMLAttributes<HTMLTableSectionElement>>(({ className, ...props }, ref) => (<tbody ref={ref} className={cn("[&>tr:last-child]:border-b-0", className)} {...props}/>));
+const TableBody = forwardRef<HTMLTableSectionElement, HTMLAttributes<HTMLTableSectionElement>>(({ className, ...props }, ref) => (<tbody ref={ref} data-slot="table-body" className={cn("[&>tr:last-child]:border-b-0", className)} {...props}/>));
 TableBody.displayName = "TableBody";
 // ── TableSkeletonBody ───────────────────────────────────
 export interface TableSkeletonBodyProps extends Omit<HTMLAttributes<HTMLTableSectionElement>, "children"> {
@@ -112,7 +123,7 @@ const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(({ index, classN
     const activeIdx = ctx?.activeIndex ?? null;
     const hideBorder = activeIdx !== null && ((isBodyRow && (index === activeIdx || index === activeIdx - 1)) ||
         (!isBodyRow && activeIdx === 0));
-    return (<tr ref={(node) => {
+    return (<tr data-slot="table-row" ref={(node) => {
             (internalRef as React.MutableRefObject<HTMLTableRowElement | null>).current = node;
             if (typeof ref === "function")
                 ref(node);
@@ -122,10 +133,16 @@ const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(({ index, classN
 });
 TableRow.displayName = "TableRow";
 // ── TableHead ────────────────────────────────────────────
-const TableHead = forwardRef<HTMLTableCellElement, ThHTMLAttributes<HTMLTableCellElement>>(({ className, ...props }, ref) => (<th ref={ref} className={cn("px-3 py-2 text-left text-body font-medium text-fg-default", className)} {...props}/>));
+const TableHead = forwardRef<HTMLTableCellElement, ThHTMLAttributes<HTMLTableCellElement>>(({ className, ...props }, ref) => {
+    const ctx = useContext(TableContext);
+    return (<th ref={ref} data-slot="table-head" className={cn("px-3 py-2 text-left text-fg-default", ctx?.size === "sm" ? "text-label" : "text-body", ctx?.variant === "bordered" ? "font-semibold" : "font-medium", className)} {...props}/>);
+});
 TableHead.displayName = "TableHead";
 // ── TableCell ────────────────────────────────────────────
-const TableCell = forwardRef<HTMLTableCellElement, TdHTMLAttributes<HTMLTableCellElement>>(({ className, ...props }, ref) => (<td ref={ref} className={cn("px-3 py-2 text-fg-muted transition-colors duration-fast group-[.is-active]/row:text-fg-default", className)} {...props}/>));
+const TableCell = forwardRef<HTMLTableCellElement, TdHTMLAttributes<HTMLTableCellElement>>(({ className, ...props }, ref) => {
+    const ctx = useContext(TableContext);
+    return (<td ref={ref} data-slot="table-cell" className={cn("px-3 py-2 transition-colors duration-fast group-[.is-active]/row:text-fg-default", ctx?.variant === "bordered" ? "font-normal text-fg-default" : "text-fg-muted", className)} {...props}/>);
+});
 TableCell.displayName = "TableCell";
 // ── Exports ──────────────────────────────────────────────
 export { Table, TableHeader, TableBody, TableSkeletonBody, TableRow, TableHead, TableCell, };

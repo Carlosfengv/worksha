@@ -273,8 +273,13 @@ export function McpPage({
             </SelectContent>
           </Select>
         </div>
-        <Button variant="tertiary" loading={loading} onClick={refreshData}>
-          刷新 MCP 数据
+        <Button
+          variant="tertiary"
+          loading={loading}
+          disabled={loading}
+          onClick={refreshData}
+        >
+          重新读取 MCP 配置
         </Button>
       </div>
       {state.key === key && state.error && (
@@ -347,7 +352,11 @@ export function McpPage({
                   title={
                     search ? "没有匹配的 MCP" : "当前范围未发现 MCP 配置或调用"
                   }
-                  description="未发现不代表本机没有 MCP 服务。"
+                  description="这里只读已授权 Agent 的标准配置与历史，不会自动连接或启动 MCP。可重新读取配置，或在 Agents 中检查读取授权。"
+                  action="检查 Agent 读取范围"
+                  onAction={() => {
+                    window.location.hash = "/agents";
+                  }}
                 />
               )}
             </>

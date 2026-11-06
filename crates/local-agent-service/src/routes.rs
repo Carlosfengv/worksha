@@ -6,6 +6,7 @@ use axum::{Router, middleware, routing::get};
 
 pub(crate) fn management(state: AppState) -> Router {
     Router::new()
+        .merge(crate::workbench::routes())
         .route("/api/domain/catalog", get(crate::domain::catalog))
         .route("/api/domain/directory", get(crate::domain::directory))
         .route(

@@ -18,3 +18,5 @@ pub(crate) mod sessions;
 pub(crate) mod settings;
 
 pub(crate) mod routing_policy;
+
+pub(crate) mod workbench;

@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub(crate) struct AppState {
+    pub(crate) workbench: Option<Arc<crate::workbench::Workbench>>,
     pub(crate) provider_adapters: Arc<crate::provider_models::adapters::Adapters>,
     pub(crate) provider_client: reqwest::Client,
     pub(crate) credentials: Arc<dyn local_agent_core::providers::vault::Vault>,

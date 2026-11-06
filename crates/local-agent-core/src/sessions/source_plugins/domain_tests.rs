@@ -49,7 +49,6 @@ fn legacy(home: &Path) -> NativeSessions {
         Arc::new(super::super::jsonl::JsonlSource("claude")),
         Arc::new(super::super::jsonl::JsonlSource("codex")),
         Arc::new(super::super::opencode::OpenCodeSource),
-        Arc::new(super::super::antigravity::AntigravitySource),
     ];
     NativeSessions::with_source_plugins(
         home.into(),
@@ -133,12 +132,6 @@ fn opencode_domain_adapter_keeps_sqlite_legacy_sessions_calls_and_bodies() {
         json!({"type":"text","text":"domain source output"}),
     );
     assert_native_domain_equivalence(home.path(), "opencode");
-}
-
-#[test]
-fn antigravity_domain_adapter_keeps_protobuf_legacy_sessions_calls_and_bodies() {
-    let fixture = super::super::antigravity_tests::Fixture::new();
-    assert_native_domain_equivalence(&fixture.home, "antigravity");
 }
 
 #[test]
@@ -301,8 +294,8 @@ fn partial_unread_and_revoked_catalog_states_do_not_claim_current_data() {
     let home = tempfile::tempdir().unwrap();
     let native = NativeSessions::new(home.path().into(), &[]);
     let initial = native.domain_catalog().unwrap();
-    assert_eq!(initial.providers.len(), 4);
-    assert_eq!(initial.products.len(), 6);
+    assert_eq!(initial.providers.len(), 3);
+    assert_eq!(initial.products.len(), 5);
     assert_eq!(
         initial
             .sources
@@ -431,7 +424,7 @@ fn pilot_crosses_batch_boundaries_without_losing_legacy_files_or_pagination() {
 }
 
 #[test]
-fn six_products_keep_complete_legacy_memory_metadata_preview_and_errors() {
+fn builtin_products_keep_complete_legacy_memory_metadata_preview_and_errors() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path().canonicalize().unwrap();
     let content = format!(
@@ -442,7 +435,6 @@ fn six_products_keep_complete_legacy_memory_metadata_preview_and_errors() {
         ".claude/CLAUDE.md",
         ".codex/memories/MEMORY.md",
         ".config/opencode/AGENTS.md",
-        ".gemini/config/GEMINI.md",
     ];
     for name in files {
         let path = home.join(name);
@@ -450,17 +442,12 @@ fn six_products_keep_complete_legacy_memory_metadata_preview_and_errors() {
         std::fs::write(path, &content).unwrap();
     }
     let before = legacy(&home);
-    for source in ["codex", "opencode", "antigravity"] {
+    for source in ["codex", "opencode"] {
         before.set_enabled(source, true).unwrap();
     }
     let after = NativeSessions::new(
         home.clone(),
-        &[
-            "claude".into(),
-            "codex".into(),
-            "opencode".into(),
-            "antigravity".into(),
-        ],
+        &["claude".into(), "codex".into(), "opencode".into()],
     );
     let hidden = std::collections::HashSet::new();
     for (product, _, _, _) in crate::agents::PRODUCTS.iter().copied() {

@@ -2,6 +2,11 @@ import { retryableLazy as lazy } from "./render-boundary";
 import type { PageContext } from "./plugin-registry";
 import { createUiRegistry, type UiPlugin } from "./plugin-registry";
 
+const WorkbenchPage = lazy(() =>
+  import("@/features/workbench/page").then((module) => ({
+    default: module.WorkbenchPage,
+  })),
+);
 const OverviewPage = lazy(() =>
   import("@/features/observation/overview-page").then((module) => ({
     default: module.OverviewPage,
@@ -104,6 +109,26 @@ export const builtinPlugins: readonly UiPlugin[] = [
             selectedId={route.objectId}
             selectedTab={route.tab}
             refresh={refresh}
+          />
+        ),
+      },
+    ],
+  },
+  {
+    id: "builtin.workbench",
+    version: 1,
+    pages: [
+      {
+        id: "tasks",
+        label: "任务",
+        icon: "message-circle",
+        ownsBody: true,
+        render: ({ route }) => (
+          <WorkbenchPage
+            selectedId={route.objectId}
+            projectId={route.project}
+            newTask={route.tab === "new" || Boolean(route.project)}
+            liveMode={route.tab === "live"}
           />
         ),
       },

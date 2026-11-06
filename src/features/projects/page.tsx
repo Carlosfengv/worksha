@@ -320,10 +320,22 @@ export function ProjectsPage({
                 <h2 className="text-heading font-medium">
                   {current.project.name}
                 </h2>
-                <HideProject
-                  project={current.project}
-                  onChanged={visibilityChanged}
-                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={current.project.locationState !== "available"}
+                    onClick={() => {
+                      window.location.hash = `/tasks?tab=new&project=${encodeURIComponent(current.project.id)}`;
+                    }}
+                  >
+                    在此项目发任务
+                  </Button>
+                  <HideProject
+                    project={current.project}
+                    onChanged={visibilityChanged}
+                  />
+                </div>
               </div>
               <p className="break-all text-body text-fg-muted">
                 {current.project.path}
@@ -601,14 +613,41 @@ export function ProjectsPage({
             <ConnectionEmpty
               compact
               title={
-                list.loading
-                  ? "正在关联项目…"
-                  : search
-                    ? "没有匹配的项目"
-                    : "尚未关联项目"
+                list.error
+                  ? "项目读取未完成"
+                  : list.loading
+                    ? "正在关联项目…"
+                    : search
+                      ? "没有匹配的项目"
+                      : scope === "workspace"
+                        ? "当前范围没有常规项目"
+                        : "尚未关联项目"
               }
-              description="项目来自已授权会话的工作目录，不扫描其他项目文件夹。"
+              description={
+                list.error
+                  ? "请重新读取项目；当前不能确认项目数量。"
+                  : scope === "workspace"
+                    ? "常规项目范围隐藏了临时与验证目录。可查看全部会话目录，或在 Agents 中读取已有会话。"
+                    : "项目来自已授权会话的工作目录，不扫描其他项目文件夹。"
+              }
               icon="folder"
+              action={
+                list.error
+                  ? "重新读取项目"
+                  : scope === "workspace"
+                    ? "查看全部会话目录"
+                    : "检查 Agent 读取范围"
+              }
+              onAction={() => {
+                if (list.error) {
+                  void list.reload();
+                  return;
+                }
+                window.location.hash =
+                  scope === "workspace"
+                    ? projectListLink(agent, "all")
+                    : "/agents";
+              }}
             />
           )}
           {list.data?.nextCursor && (

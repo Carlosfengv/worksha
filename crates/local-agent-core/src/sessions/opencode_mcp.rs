@@ -29,7 +29,6 @@ pub fn read_config_worker(path: &Path) -> super::NativeResult<Option<(String, Op
                     | "opencode.jsonc"
                     | "config.json"
                     | "config.toml"
-                    | "mcp_config.json"
             )
         )
     {
@@ -778,12 +777,6 @@ mod tests {
         );
         assert!(read_config_worker(Path::new("opencode.jsonc")).is_err());
         assert!(read_config_worker(&temp.path().join("credentials.json")).is_err());
-        let antigravity = temp.path().join(".agents/mcp_config.json");
-        write(&antigravity, "{\"mcpServers\":{}}");
-        assert_eq!(
-            read_config_worker(&antigravity).unwrap().unwrap().0,
-            "{\"mcpServers\":{}}"
-        );
         assert!(
             read_config_worker(&temp.path().join("config.toml"))
                 .unwrap()

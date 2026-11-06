@@ -252,7 +252,7 @@ fn opencode_inflight_zero_is_not_observed_context_and_cannot_replace_a_sample() 
     assert_eq!(c.data.input_tokens, Some(0));
 }
 #[test]
-fn six_agents_memory_is_read_only_shared_and_requires_consent() {
+fn builtin_agents_memory_is_read_only_shared_and_requires_consent() {
     let home = tempfile::tempdir().unwrap();
     for (file, content) in [
         (
@@ -261,7 +261,6 @@ fn six_agents_memory_is_read_only_shared_and_requires_consent() {
         ),
         (".claude/CLAUDE.md", "rules"),
         (".config/opencode/AGENTS.md", "open rules"),
-        (".gemini/config/GEMINI.md", "antigravity rules"),
     ] {
         let path = home.path().join(file);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -269,12 +268,7 @@ fn six_agents_memory_is_read_only_shared_and_requires_consent() {
     }
     let sessions = NativeSessions::new(
         home.path().canonicalize().unwrap(),
-        &[
-            "codex".into(),
-            "claude".into(),
-            "opencode".into(),
-            "antigravity".into(),
-        ],
+        &["codex".into(), "claude".into(), "opencode".into()],
     );
     let mut codex_id = String::new();
     for (agent, _, family, _) in crate::agents::PRODUCTS.iter().copied() {

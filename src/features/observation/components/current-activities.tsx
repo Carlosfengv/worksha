@@ -37,7 +37,6 @@ const agentLogos: Record<string, string> = {
   claude: "/agent-logos/claude.png",
   codex: "/agent-logos/codex.png",
   opencode: "/agent-logos/opencode.png",
-  antigravity: "/agent-logos/antigravity.png",
 };
 const activityWindowMs = 3 * 60 * 60 * 1000;
 function withinActivityWindow(time: string, now: number) {

@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { IconProvider } from "@/lib/icon-context";
 import { RequestsPage } from "@/features/observation/requests-page";
 import { observationApi } from "@/features/observation/api";
+import { workbenchApi } from "@/features/workbench/api";
+import type { LiveAction } from "@/features/workbench/types";
 import type { ModelObservation } from "@/features/observation/types";
 import type {
   RequestQuery,
@@ -166,11 +168,58 @@ declare global {
     requestExports: string[];
     requestFail: boolean;
     resolveRequestExport?: () => void;
+    requestWorkbenchSelections: LiveAction[];
   }
 }
 window.requestQueries = [];
 window.requestExports = [];
 window.requestFail = false;
+window.requestWorkbenchSelections = [];
+const workbenchMode = new URLSearchParams(location.search).get("workbench");
+if (workbenchMode) {
+  const claude = workbenchMode.startsWith("claude");
+  const session = "00000000-0000-4000-8000-000000000002";
+  const native = "ses_00000000000040008000000000000001";
+  rows[1].agentId = claude ? "claude" : "opencode";
+  rows[1].agentProductId = null;
+  rows[1].sessionId = claude ? `claude:${session}` : `opencode:${native}`;
+  workbenchApi.findSession = async (id) => {
+    if (workbenchMode === "claude-slow")
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    if (workbenchMode === "claude-offline")
+      throw new Error("Local service offline");
+    return {
+      taskId:
+        id === `claude:${session}` &&
+        !["claude-missing", "claude-desktop"].includes(workbenchMode)
+          ? "00000000-0000-4000-8000-000000000003"
+          : null,
+    };
+  };
+  workbenchApi.readLiveBoard = async () => {
+    if (workbenchMode === "slow")
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    if (workbenchMode === "offline") throw new Error("Desktop offline");
+    return {
+      connectionId: "current-connection",
+      sessions:
+        workbenchMode === "missing"
+          ? []
+          : [
+              {
+                id: native,
+                title: "原任务",
+                directory: "/fixture",
+                updated: 1,
+                phase: "ended",
+              },
+            ],
+    };
+  };
+  workbenchApi.controlLive = async (action) => {
+    window.requestWorkbenchSelections.push(action);
+  };
+}
 observationApi.requestDashboard = async (query) => {
   window.requestQueries.push(query);
   const search = query.search;
