@@ -8,6 +8,7 @@ import type { Page } from "@/app/types";
 const pages: Page[] = [
   "overview",
   "agents",
+  "tasks",
   "projects",
   "providers",
   "model-services",

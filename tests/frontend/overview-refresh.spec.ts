@@ -80,7 +80,7 @@ test("activity cards preserve their order and contain long content as membership
   await page.goto(url);
   await openAgentHistory(page);
   const cards = page.getByRole("article", { name: /实时活动$/ });
-  await expect(cards).toHaveCount(6);
+  await expect(cards).toHaveCount(5);
   const order = () => cards.getByRole("heading").allTextContents();
   const contained = () =>
     cards.evaluateAll((elements) =>
@@ -93,6 +93,13 @@ test("activity cards preserve their order and contain long content as membership
         })),
     );
   const before = await order();
+  expect(before).toEqual([
+    "Claude Code CLI",
+    "Claude Code 桌面端",
+    "Codex CLI",
+    "Codex 桌面端",
+    "OpenCode",
+  ]);
   for (const mode of [
     "completed",
     "many",
