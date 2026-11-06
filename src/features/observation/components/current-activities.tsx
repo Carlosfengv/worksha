@@ -377,7 +377,7 @@ export function CurrentActivities({
   const { agentNames, agentProducts, agentFamily, isSharedSource } =
     useAgentDirectory();
   const family = agentFamily(filter);
-  const nativeConnected = data.sessionSources.some(
+  const nativeSourceEnabled = data.sessionSources.some(
     (source) =>
       source.enabled &&
       (filter === "all" ||
@@ -488,6 +488,8 @@ export function CurrentActivities({
     <div className="space-y-2">
       <ActivitySummary
         summary={summary}
+        nativeSourceEnabled={nativeSourceEnabled}
+        sourceHref={sourceHref}
         state={
           !overview
             ? error
@@ -533,10 +535,12 @@ export function CurrentActivities({
             <Empty reason="no-results" scope="inline">
               <EmptyHeader>
                 <EmptyTitle>
-                  {nativeConnected ? "暂无活动记录" : "尚未连接原生观测来源"}
+                  {nativeSourceEnabled
+                    ? "暂无活动记录"
+                    : "尚未连接原生观测来源"}
                 </EmptyTitle>
                 <EmptyDescription>
-                  {nativeConnected
+                  {nativeSourceEnabled
                     ? "仅显示最近 3 小时的活动，按最后活动时间排序。"
                     : "当前范围未开启原生会话读取，请在 Agent 的“连接与观测”中确认读取范围。网关请求经过本应用时会自动显示。"}
                 </EmptyDescription>
@@ -549,7 +553,7 @@ export function CurrentActivities({
                 </EmptyContent>
               )}
               <EmptyActions>
-                {!nativeConnected && (
+                {!nativeSourceEnabled && (
                   <Button
                     size="sm"
                     variant="tertiary"
@@ -560,7 +564,7 @@ export function CurrentActivities({
                     连接观测来源
                   </Button>
                 )}
-                {(nativeConnected || recentLatest) && (
+                {(nativeSourceEnabled || recentLatest) && (
                   <Button
                     size="sm"
                     variant="tertiary"

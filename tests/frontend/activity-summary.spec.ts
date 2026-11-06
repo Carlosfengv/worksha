@@ -18,6 +18,43 @@ async function scenario(page: Page, value: Window["activityCase"]) {
   }, value);
 }
 
+test("unconfigured native observation keeps an empty gateway feed unknown and offers the scoped consent entry", async ({
+  page,
+}) => {
+  await page.goto(
+    "/tests/frontend/tables.html?mode=activity&connection=official&sourceState=disabled&activity=empty#/overview",
+  );
+  await expect(summary(page)).toContainText("仅网关");
+  await expect(summary(page)).toContainText("当前执行状态待确认");
+  await expect(
+    sessions(page).locator('[data-slot="metric-card-value-row"]'),
+  ).toContainText("—");
+  await expect(rate(page)).not.toContainText(/0\.0\s*Token\/s/);
+  await expect(summary(page)).not.toContainText("空闲");
+  await page.getByRole("combobox", { name: "首页筛选 Agent" }).click();
+  await page.getByRole("option", { name: "Codex 桌面端", exact: true }).click();
+  await summary(page).getByRole("link", { name: "开启原生观测" }).click();
+  await expect(page).toHaveURL(/#\/agents\/codex-desktop\?tab=connection$/);
+});
+
+test("gateway measurements remain live while native observation is not enabled", async ({
+  page,
+}) => {
+  await page.goto(
+    "/tests/frontend/tables.html?mode=activity&sourceState=disabled#/overview",
+  );
+  await page.getByRole("combobox", { name: "首页筛选 Agent" }).click();
+  await page
+    .getByRole("option", { name: "Claude Code CLI", exact: true })
+    .click();
+  await expect(summary(page)).toContainText("仅网关");
+  await expect(summary(page)).toContainText("当前仅统计经本应用的网关请求");
+  await expect(
+    sessions(page).locator('[data-slot="metric-card-value-row"]'),
+  ).toHaveText(/\s*2\s*个\s*/);
+  await expect(rate(page)).toContainText(/60\.0\s*Token\/s/);
+});
+
 test("summary counts Sessions once and sums simultaneous measured text rates", async ({
   page,
 }) => {

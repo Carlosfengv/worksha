@@ -207,9 +207,13 @@ function ModelActivityFlow({
 export function ActivitySummary({
   summary,
   state,
+  nativeSourceEnabled,
+  sourceHref,
 }: {
   summary: ActivitySummaryData;
   state: MetricCardState;
+  nativeSourceEnabled: boolean;
+  sourceHref: string;
 }) {
   const [paused, setPaused] = useState(false);
   const [colors, setColors] =
@@ -222,6 +226,8 @@ export function ActivitySummary({
   useEffect(() => saveModelColors(colors), [colors]);
   const ready = state === "ready";
   const hasActivity = summary.sources > 0;
+  const metricsAvailable = ready && (hasActivity || nativeSourceEnabled);
+  const metricState = ready && !metricsAvailable ? "unavailable" : state;
   const message =
     state === "loading"
       ? "正在读取当前任务…"
@@ -230,7 +236,9 @@ export function ActivitySummary({
         : state === "error"
           ? "暂时无法读取当前任务，恢复后自动更新。"
           : !hasActivity
-            ? "当前没有观测到正在执行的任务。"
+            ? nativeSourceEnabled
+              ? "当前没有观测到正在执行的任务。"
+              : "未开启原生会话读取，当前执行状态待确认。"
             : `近 ${summary.windowMs / 1000} 秒可观测输出 Token 估算相加；包含正文与已上报的思考增量，网关另含工具参数。最近实测值保留时间，不参与当前合计；工具结果和未上报的隐藏思考不作推算。`;
   return (
     <section
@@ -241,9 +249,11 @@ export function ActivitySummary({
         <h3 className="text-body font-medium">当前执行</h3>
         <Badge size="sm" status={ready && hasActivity ? "success" : "neutral"}>
           {ready
-            ? hasActivity
-              ? "实时"
-              : "空闲"
+            ? !nativeSourceEnabled
+              ? "仅网关"
+              : hasActivity
+                ? "实时"
+                : "暂无活动"
             : state === "loading"
               ? "读取中"
               : "待更新"}
@@ -252,9 +262,9 @@ export function ActivitySummary({
       <div className="grid gap-3 sm:grid-cols-3">
         <MetricCard
           label="执行中的 Session"
-          value={ready ? summary.sessions : "—"}
+          value={metricsAvailable ? summary.sessions : "—"}
           unit="个"
-          state={state}
+          state={metricState}
           meta={
             ready && summary.unlinked
               ? `另有 ${summary.unlinked} 个网关请求待关联 Session`
@@ -273,7 +283,7 @@ export function ActivitySummary({
               : "—"
           }
           unit={ready && summary.ttft !== null ? "秒" : undefined}
-          state={state}
+          state={metricState}
           meta={
             ready && hasActivity
               ? `${summary.ttftSamples}/${summary.sources} 个活动来源已记录 · 原生含事件传递延迟`
@@ -286,9 +296,13 @@ export function ActivitySummary({
               ? "已测 Token 速率"
               : "总 Token 速率"
           }
-          value={ready && summary.rate !== null ? speed(summary.rate) : "—"}
+          value={
+            metricsAvailable && summary.rate !== null
+              ? speed(summary.rate)
+              : "—"
+          }
           unit="Token/s"
-          state={state}
+          state={metricState}
           footer={
             ready &&
             hasActivity &&
@@ -345,6 +359,17 @@ export function ActivitySummary({
             </Button>
           )}
       </div>
+      {ready && !nativeSourceEnabled && (
+        <p className="text-label text-fg-muted">
+          当前仅统计经本应用的网关请求。官方登录及其他直连会话需开启原生观测。
+          <a
+            href={`#${sourceHref}`}
+            className="ml-2 rounded-lg text-fg-muted outline-none hover:text-fg-default focus-visible:ring-1 focus-visible:ring-focus-ring"
+          >
+            开启原生观测
+          </a>
+        </p>
+      )}
     </section>
   );
 }
