@@ -77,6 +77,8 @@ pub struct ResponseCandidate {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ActivityPhase {
+    /// An explicit source status; no host timing or token rate is implied.
+    Running,
     Thinking,
     Generating,
     Tool,

@@ -133,6 +133,9 @@ function LegacyPluginViewContent({
   diagnosticsUnavailable,
   embedded = false,
 }: ViewContentProps) {
+  const sourceReport = status.manifest.requires?.includes(
+    "host.domain-services@1",
+  );
   const [cursor, setCursor] = useState<string | null>(null);
   const loader = useCallback(
     () => pluginsApi.query({ pluginId: status.manifest.id, viewId, cursor }),
@@ -231,7 +234,7 @@ function LegacyPluginViewContent({
           )}
           <p className="mt-1 text-body text-fg-muted">{view.description}</p>
           <p className="mt-2 text-label text-fg-subtle">
-            外部插件 · {status.manifest.displayName} · {status.manifest.version}
+            用户上传 · {status.manifest.displayName} · {status.manifest.version}
           </p>
         </div>
         <Button variant="tertiary" asChild>
@@ -308,9 +311,32 @@ function LegacyPluginViewContent({
         </p>
       )}
       {data && !resource.error && view.kind === "report" && (
-        <section className="space-y-3" aria-label="网关摘要报表">
-          <h2 className="text-title font-medium">最近 24 小时网关摘要</h2>
-          {data.report ? (
+        <section
+          className="space-y-3"
+          aria-label={sourceReport ? "来源会话报表" : "网关摘要报表"}
+        >
+          <h2 className="text-title font-medium">
+            {sourceReport ? "已授权来源摘要" : "最近 24 小时网关摘要"}
+          </h2>
+          {data.report?.sources?.length ? (
+            <div className="space-y-3">
+              {data.report.sources.map((source) => (
+                <div key={source.sourceId} className="space-y-1">
+                  <p className="text-body">
+                    {source.sourceName || source.sourceId} · {source.sessions}{" "}
+                    个会话 · {source.totalTokens ?? "未知"} Token
+                  </p>
+                  <p className="text-label text-fg-muted">
+                    {source.coverage === "complete"
+                      ? "范围已核查"
+                      : "范围不完整"}{" "}
+                    · 授权或来源变化后需重新读取
+                    {data.reportExpired ? " · 上次快照已过期" : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : data.report ? (
             <>
               <p className="text-body">
                 逻辑请求 {data.report.requests} · 尝试 {data.report.attempts}

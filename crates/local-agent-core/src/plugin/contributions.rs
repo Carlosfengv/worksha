@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 pub const OPTIONAL: &str = "host.optional-dependencies@1";
 pub const DETAILS: &str = "host.detail-slots@1";
+pub const NAVIGATION: &str = "host.ui-navigation@1";
+pub const SERVICES: &str = "host.domain-services@1";
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -13,6 +15,26 @@ pub struct Contributions {
     pub optional_dependencies: Vec<OptionalDependency>,
     #[serde(default)]
     pub detail_slots: Vec<DetailSlot>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub navigation: Vec<Navigation>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub data_queries: Vec<DataQuery>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DataQuery {
+    pub view_id: String,
+    pub source_id: String,
+    /// Versioned host-mediated capability, never an implementation method name.
+    pub capability: String,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Navigation {
+    pub id: String,
+    pub title: String,
+    /// An existing host-rendered view, never executable frontend code or a URL.
+    pub view_id: String,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -64,6 +86,10 @@ pub struct ContributionStatus {
     pub digest: String,
     pub dependencies: Vec<DependencyStatus>,
     pub slots: Vec<DetailSlot>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub navigation: Vec<Navigation>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub data_queries: Vec<DataQuery>,
     pub error_code: Option<String>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]

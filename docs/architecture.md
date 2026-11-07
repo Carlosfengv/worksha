@@ -80,5 +80,6 @@ CLI 与共享 OpenCode 使用相同的当前网关监听地址规则，CLI 创�
 
 桌面、后台与恢复使用同一服务二进制。部署预设由宿主管理，插件中心按业务功能展示安装、运行与依赖状态。恢复模式保留快照、插件目录、操作回执、来源撤销和恢复入口。工作台的任务执行由原适配器负责，功能切换前核查在途任务。系统插件管理契约由 `contracts/plugins/builtin` 的 Rust schema 生成，写入结果未知时沿用原编号核查。
 
+上传的 Agent 来源按声明能力向 Agents、Sessions、请求、活动和项目发布数据。停用来源会从业务目录移除贡献，插件中心继续管理包与授权。
 
 普通桌面服务随应用退出；独立常驻服务通过显式 LaunchAgent 管理，桌面退出不停止它。LAN 模型入口使用独立客户端授权和监听配置，详见 [常驻网关](standalone-gateway.md)。模型版本、绑定和发布分别持久化，见 [动态路由](dynamic-routing.md)、[模型服务](model-services.md) 与 [策略恢复](../sdk/plugins/docs/routing-policy-recovery.md)。

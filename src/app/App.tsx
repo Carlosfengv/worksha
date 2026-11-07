@@ -4,7 +4,11 @@ import {
   renderExtension,
 } from "./builtin-plugins";
 import { useSharedRead } from "@/shared/hooks/use-shared-read";
-import { builtinPluginResource } from "@/features/plugins/queries";
+import {
+  builtinPluginResource,
+  pluginDirectoryResource,
+} from "@/features/plugins/queries";
+import { pluginNavigation } from "@/features/plugins/navigation";
 import type { IconName } from "@/lib/icon-context";
 import type { PageContext, PageContribution } from "./plugin-registry";
 import { RenderBoundary } from "./render-boundary";
@@ -143,6 +147,15 @@ function Workspace() {
   const [pageRefresh, setPageRefresh] = useState(0);
   const { data, error, loading, refresh } = useSnapshot();
   const builtin = useSharedRead(builtinPluginResource);
+  const uploaded = useSharedRead(pluginDirectoryResource);
+  const extensionNavigation = pluginNavigation(
+    uploaded.error ? undefined : (uploaded.data ?? undefined),
+  );
+  const extension = extensionNavigation.find(
+    (item) =>
+      item.pluginId === route.extensionPlugin &&
+      item.viewId === route.extensionView,
+  );
   const featureOwner = (page: string) =>
     builtinPlugins.find((plugin) => plugin.pages.some((p) => p.id === page))
       ?.id;
@@ -168,7 +181,10 @@ function Workspace() {
     )
       pageBodyRef.current?.scrollTo({ top: 0 });
   }, [route.page, route.objectId, route.extensionPlugin, route.extensionView]);
-  const current = navigation.find((item) => item.id === route.page)!;
+  const registered = navigation.find((item) => item.id === route.page)!;
+  const current = extension
+    ? { ...registered, label: extension.label }
+    : registered;
   const navigate = (page: Page) => {
     window.location.hash = `/${page}`;
   };
@@ -206,7 +222,10 @@ function Workspace() {
                 className="h-full max-xl:pt-8"
               >
                 <SidebarContent>
-                  <NavMenu activeValue={route.page} aria-label="主导航">
+                  <NavMenu
+                    activeValue={extension?.id ?? route.page}
+                    aria-label="主导航"
+                  >
                     {navigation
                       .filter(
                         (item) => !item.footer && featureAvailable(item.id),
@@ -220,6 +239,13 @@ function Workspace() {
                           }
                         />
                       ))}
+                    {extensionNavigation.map((item) => (
+                      <NavigationLink
+                        key={item.id}
+                        item={item}
+                        active={extension?.id === item.id}
+                      />
+                    ))}
                   </NavMenu>
                 </SidebarContent>
                 <SidebarFooter>
@@ -234,6 +260,14 @@ function Workspace() {
             </AppShellSidebar>
             <AppShellMain className="flex min-h-0 flex-col">
               <PageLayout size="full">
+                {data?.agentDirectoryError && (
+                  <Alert status="warning">
+                    <AlertTitle>Agent 来源目录暂不可读取</AlertTitle>
+                    <AlertDescription>
+                      当前来源列表可能不完整。已有客户端的观测继续保留，请稍后重试。
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <BuiltinCompositionNotice
                   composition={data?.builtinComposition}
                   className="px-3 pb-3"

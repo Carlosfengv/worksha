@@ -131,7 +131,14 @@ async fn source(State(state): State<AppState>, Json(request): Json<SourcePath>) 
     )
 }
 async fn view(State(state): State<AppState>, Json(query): Json<ViewQuery>) -> ApiResult {
-    response(run_sync(move || state.plugins.query_view(&query)).await)
+    response(
+        run_sync(move || {
+            let value = state.plugins.query_view(&query)?;
+            crate::domain::validate_plugin_report(&state, &value)?;
+            Ok(value)
+        })
+        .await,
+    )
 }
 async fn action(State(state): State<AppState>, Json(request): Json<ActionRequest>) -> ApiResult {
     let operation = match &request.action {
@@ -311,6 +318,14 @@ async fn refresh_report(state: &AppState, id: &str, digest: &str) -> Result<Valu
     if !before.enabled || !before.report_authorized {
         return Err(fail("permission_denied"));
     }
+    if before
+        .manifest
+        .requires
+        .iter()
+        .any(|r| r == local_agent_core::plugin::contributions::SERVICES)
+    {
+        return crate::domain::refresh_plugin_report(state, before).await;
+    }
     let observation = state.observation.clone();
     let now = chrono::Utc::now();
     let value = run_sync(move || {
@@ -339,6 +354,7 @@ async fn refresh_report(state: &AppState, id: &str, digest: &str) -> Result<Valu
         total_tokens: usage("totalTokens")?,
         range_start: (now - chrono::Duration::hours(24)).to_rfc3339(),
         range_end: now.to_rfc3339(),
+        sources: vec![],
     };
     let plugins = state.plugins.clone();
     run_sync(move || plugins.publish_report(&before, report)).await

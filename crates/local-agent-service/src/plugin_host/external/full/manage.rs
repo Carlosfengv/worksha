@@ -158,12 +158,23 @@ impl Manager {
                 .is_some_and(|l| Some(l.publisher_revision) == revision);
         let current_stamp = grant.as_ref().and_then(|g| super::runtime::stamp(g).ok());
         let source_authorized = runtime_active && current_stamp.is_some();
+        let max_age = p.manifest.source.as_ref().and_then(|s| s.max_age_seconds);
+        let expired = max_age.is_some_and(|seconds| {
+            current_stamp
+                .as_ref()
+                .is_some_and(|stamp| stamp.expired(seconds))
+                || projection
+                    .as_ref()
+                    .is_some_and(|p| p.source_stamp.expired(seconds))
+        });
         let freshness = if failure.is_some() {
             d::Freshness::Failed
-        } else if (!source_authorized
-            || projection
-                .as_ref()
-                .is_some_and(|p| Some(&p.source_stamp) != current_stamp.as_ref()))
+        } else if (expired
+            || !source_authorized
+            || (max_age.is_none()
+                && projection
+                    .as_ref()
+                    .is_some_and(|p| Some(&p.source_stamp) != current_stamp.as_ref())))
             && freshness == d::Freshness::Current
         {
             d::Freshness::Stale
@@ -196,6 +207,8 @@ impl Manager {
                 Some(code.into())
             } else if selected && s.enabled && !runtime_active {
                 Some("plugin_disabled".into())
+            } else if expired {
+                Some("source_stalled".into())
             } else {
                 None
             },

@@ -44,6 +44,7 @@ function label(record: FactRecord) {
       return fact.value.model ?? "模型未知";
     case "activity":
       return {
+        running: "来源报告运行中",
         thinking: "思考",
         generating: "生成",
         tool: "工具",
@@ -105,16 +106,18 @@ export function FactWorkspace({
   names,
   onClose,
   returnLabel = "返回会话列表",
+  initialKind = "project",
 }: {
   scope: QueryScope;
   sessionId?: string | null;
   names: Record<string, string>;
   onClose: () => void;
   returnLabel?: string;
+  initialKind?: FactKind;
 }) {
   const [history, setHistory] = useState<FactView[]>([
     initialView({
-      kind: "project",
+      kind: initialKind,
       sessionId,
       projectId: null,
       responseId: null,

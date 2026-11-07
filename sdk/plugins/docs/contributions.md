@@ -1,6 +1,6 @@
-# 可选依赖与通用详情插槽
+# 导航、能力调用与详情贡献
 
-此功能使用签名文件 `contributions.json` 和两个显式宿主特性，遵循统一插件清单与 API。
+贡献使用签名文件 `contributions.json` 和显式宿主特性，遵循统一插件清单与 API。
 
 在 manifest 的 `requires` 中按需声明：
 
@@ -82,4 +82,12 @@
 
 同数据降回 0.1.2 时，新特性包保持安装记录但明确不可用，原有功能与旧包可继续使用。回到 0.1.3 后，需要明确重新启用这些失败版本并按原规则重新授权；不会悄悄恢复旧授权。核心 schema 2 和两个插件元数据 schema 1 均不迁移。
 
-DSH、Developer ID / 公证继续未验证。复杂 UI、跨源统一身份 / 去重、外部 SQLite、通用增量、清理 / 兑换和完整留存清理不因本次插槽而开放。
+Developer ID / 公证仍需发布验收。复杂 UI、跨源统一身份 / 去重、外部 SQLite、清理 / 兑换和完整留存清理不因贡献而开放。
+
+## 独立导航与公开能力调用
+
+`host.ui-navigation@1` 和 `ui.contribute` 允许签名贡献声明最多 8 个 `navigation` 项。每项 `{id,title,viewId}` 指向清单中已有的宿主渲染视图；ID 与视图目标不得重复。启用时左侧注册入口，停用、卸载或声明依赖不可用时撤下入口。深链仍为 `#/extensions/<pluginId>/<viewId>`，不能声明外部 URL、任意组件或可执行脚本。
+
+`host.domain-services@1` 与 `domain.query` 的 `domain.summary` 权限可为报表声明 `dataQueries`。当前公开的只读操作是 `domain.session-source@1` 的会话数量与已知累计用量查询。每项 `{viewId,sourceId,capability}` 绑定确切来源，使用同一目录和查询契约处理系统自带或上传来源。消费者与来源各自授权。宿主按权限和来源代次核查发布及读取，撤权、停用、切换实现后不能读取旧结果。查询不自动刷新生产者，不执行命令、模型或工具，不提供数据库连接、凭据或正文。
+
+可运行的导航及跨插件调用样例见 [`source-report`](../examples/source-report/package/contributions.json)。它通过上述公开能力读取已授权的 DSH 会话来源；独立安装时可打开页面，但来源缺失明确拒绝读取。新增来源不要求修改任何消费者页面。

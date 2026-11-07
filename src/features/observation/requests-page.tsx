@@ -26,6 +26,7 @@ import { RequestsTable } from "./components/requests-table";
 import { RequestSources } from "./components/request-sources";
 import { RequestHeatmap } from "./components/request-heatmap";
 import { RequestDetail } from "./components/request-detail";
+import { PublishedSources } from "@/features/domain/published-sources";
 
 export function RequestsPage({
   selectedId,
@@ -181,6 +182,7 @@ export function RequestsPage({
     return <RequestDetail id={selectedId} returnSearch={routeSearch} />;
   return (
     <div className="min-w-0 space-y-6">
+      <PublishedSources mode="requests" productId={query.agent} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-body font-medium">

@@ -246,6 +246,7 @@ export function McpPage({
   }
   return (
     <div className="min-w-0 space-y-6">
+      <PublishedSources mode="mcp" />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           <Select value={agent} onValueChange={(v) => change({ agent: v })}>
@@ -582,3 +583,4 @@ function Metric({
     </div>
   );
 }
+import { PublishedSources } from "@/features/domain/published-sources";

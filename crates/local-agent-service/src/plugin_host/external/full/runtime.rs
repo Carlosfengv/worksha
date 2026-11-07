@@ -22,6 +22,13 @@ pub(super) struct FileStamp {
     changed: i64,
     changed_ns: i64,
 }
+impl FileStamp {
+    pub(super) fn expired(&self, seconds: u32) -> bool {
+        let now = chrono::Utc::now().timestamp();
+        self.modified > now.saturating_add(2)
+            || now.saturating_sub(self.modified) > i64::from(seconds)
+    }
+}
 pub(super) fn stamp(grant: &Grant) -> Result<FileStamp> {
     use std::os::unix::fs::MetadataExt;
     let m = std::fs::symlink_metadata(&grant.path).checked("permission_denied")?;
@@ -65,6 +72,31 @@ pub(super) fn load_source(grant: &Grant) -> Result<SourceData> {
         stamp: before,
         grant: grant.clone(),
     })
+}
+/// Complete transport and complete historical coverage are separate facts.
+pub(super) fn verify_live_frame(source: &SourceData, published_records: usize) -> Result<()> {
+    let mut lines = source.text.lines();
+    let header = lines
+        .next()
+        .filter(|v| v.len() <= 256)
+        .ok_or(fail("stale_snapshot"))?;
+    let footer = lines
+        .next_back()
+        .filter(|v| v.len() <= 128)
+        .ok_or(fail("stale_snapshot"))?;
+    let head: Value = serde_json::from_str(header).checked("stale_snapshot")?;
+    let tail: Value = serde_json::from_str(footer).checked("stale_snapshot")?;
+    if !source.text.ends_with('\n')
+        || head["snapshot"]
+            .as_str()
+            .is_none_or(|id| id.is_empty() || id.len() > 64)
+        || tail["commit"] != head["snapshot"]
+        || head["records"].as_u64() != Some(published_records as u64)
+        || lines.count() != published_records
+    {
+        return Err(fail("stale_snapshot"));
+    }
+    Ok(())
 }
 #[derive(Clone)]
 pub(super) struct Context {
@@ -195,10 +227,20 @@ impl Manager {
                 return Err(fail("grant_revoked"));
             }
         }
-        if let Some(source) = &c.source
-            && stamp(&source.grant)? != source.stamp
-        {
-            return Err(fail("stale_snapshot"));
+        if let Some(source) = &c.source {
+            let current = stamp(&source.grant)?;
+            // A live publisher may finish a new frame while its previous
+            // immutable capture is being decoded. The file identity and
+            // grant still have to match throughout the operation.
+            let live = c
+                .package
+                .manifest
+                .source
+                .as_ref()
+                .is_some_and(|s| s.max_age_seconds.is_some());
+            if !live && current != source.stamp {
+                return Err(fail("stale_snapshot"));
+            }
         }
         Ok(())
     }
@@ -533,6 +575,7 @@ impl Client {
                 return Err(fail(match value["error"]["data"]["code"].as_str() {
                     Some("resource_limit") => "resource_limit",
                     Some("permission_denied") => "permission_denied",
+                    Some("stale_snapshot") => "stale_snapshot",
                     _ => "worker_crashed",
                 }));
             }

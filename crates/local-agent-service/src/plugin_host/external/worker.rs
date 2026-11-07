@@ -298,6 +298,15 @@ fn run_package(path: &Path, digest: &str) -> Result<()> {
                     serde_json::from_str::<Value>(&value).checked("invalid_input")
                 }
                 Ok(Ok(_)) => Err(fail("resource_limit")),
+                Ok(Err(code))
+                    if code == "stale_snapshot"
+                        && matches!(
+                            request.method.as_str(),
+                            "domain.scan" | "domain.read-conversation"
+                        ) =>
+                {
+                    Err(fail("stale_snapshot"))
+                }
                 Ok(Err(_)) => Err(fail("invalid_input")),
                 Err(_) => Err(fail("resource_limit")),
             }

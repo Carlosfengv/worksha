@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 1,
+  "id": "net.worksha.source-report",
+  "publisher": "net.worksha",
+  "version": "1.0.0",
+  "displayName": "Agent 会话报表",
+  "hostApi": "^1.0.0",
+  "runtime": {"kind":"declarative"},
+  "capabilities": ["report.view@1", "ui.contribution@1"],
+  "requires": ["host.ui-navigation@1", "host.domain-services@1"],
+  "permissions": [{"kind":"ui.contribute"},{"kind":"domain.query","query":"domain.summary"}],
+  "agent": null,
+  "providers": [],
+  "settings": [],
+  "views": [{"id":"sessions","title":"Agent 会话报表","description":"通过宿主调用已授权的 DSH 会话来源，显示会话数量与已知用量；不读取正文或凭据。","kind":"report"}]
+}

@@ -242,6 +242,7 @@ impl Manager {
         path: &Path,
     ) -> Result<f::Status> {
         use std::os::unix::fs::MetadataExt;
+        let _gate = self.gate(&q.plugin_id)?.try_lock_owned().checked("busy")?;
         let (p, package_path) = self.full_verified(q)?;
         let before = self
             .full
@@ -386,6 +387,16 @@ impl Manager {
         let manager = self.clone();
         super::super::run_sync(move || {
             manager.full_check(&context)?;
+            let live_snapshot = context
+                .package
+                .manifest
+                .source
+                .as_ref()
+                .is_some_and(|source| source.max_age_seconds.is_some());
+            let source = context.source.ok_or(fail("permission_denied"))?;
+            if live_snapshot {
+                runtime::verify_live_frame(&source, facts.records.len())?;
+            }
             let encoded = super::store::encode(&facts)?;
             let size = encoded.len();
             let summary = facts
@@ -397,6 +408,7 @@ impl Manager {
             }
             if facts.coverage != d::Coverage::Complete
                 && host.projections.contains_key(&q.plugin_id)
+                && !live_snapshot
             {
                 host.failures.insert(
                     q.plugin_id.clone(),
@@ -408,13 +420,24 @@ impl Manager {
                 .projections
                 .iter()
                 .filter(|(id, _)| *id != &q.plugin_id)
-                .map(|(_, p)| p.encoded_bytes)
+                .map(|(_, p)| p.resident_bytes())
                 .sum::<usize>();
-            if bytes.saturating_add(size) > 64 * 1_048_576 {
+            let source_stamp = source.stamp.clone();
+            let captured_source = (live_snapshot && source.grant.unified).then_some(source);
+            let projection = Projection {
+                lease: context.lease,
+                facts: Arc::new(facts),
+                collected: std::time::Instant::now(),
+                encoded_bytes: size,
+                summary,
+                source_stamp,
+                captured_source,
+            };
+            if bytes.saturating_add(projection.resident_bytes()) > 64 * 1_048_576 {
                 return Err(fail("resource_limit"));
             }
             if host.selection(&q.plugin_id)?.persist_metadata {
-                let mut saved = facts.clone();
+                let mut saved = (*projection.facts).clone();
                 for record in &mut saved.records {
                     if let d::facts::FactCandidate::Project(project) = &mut record.value {
                         project.path_hint = None;
@@ -427,22 +450,7 @@ impl Manager {
                     )
                     .checked("unavailable")?;
             }
-            host.projections.insert(
-                q.plugin_id.clone(),
-                Projection {
-                    lease: context.lease,
-                    facts: Arc::new(facts),
-                    collected: std::time::Instant::now(),
-                    encoded_bytes: size,
-                    summary,
-                    source_stamp: context
-                        .source
-                        .as_ref()
-                        .ok_or(fail("permission_denied"))?
-                        .stamp
-                        .clone(),
-                },
-            );
+            host.projections.insert(q.plugin_id.clone(), projection);
             host.failures.remove(&q.plugin_id);
             drop(host);
             manager.full_status(&q)

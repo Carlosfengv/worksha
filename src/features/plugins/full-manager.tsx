@@ -180,7 +180,9 @@ export function FullPluginManager({
           </p>
           <p className="text-label text-fg-muted">
             {current.freshness === "current"
-              ? "已读取"
+              ? current.manifest.source?.refreshSeconds
+                ? `已读取 · 每 ${current.manifest.source.refreshSeconds} 秒更新`
+                : "已手动读取"
               : current.freshness === "failed"
                 ? "读取失败，保留上一完整代次"
                 : current.freshness === "stale"
@@ -190,7 +192,9 @@ export function FullPluginManager({
           </p>
           {current.problem && (
             <p role="alert" className="text-label text-fg-muted">
-              当前能力不可用，请核查授权、插件包或重新启用。
+              {current.problem === "source_stalled"
+                ? "来源暂未发布新数据，已有记录保留。"
+                : "当前能力不可用，请核查授权、插件包或重新启用。"}
             </p>
           )}
           <div className="flex flex-wrap gap-2">

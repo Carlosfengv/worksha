@@ -1,4 +1,40 @@
 {
+  "$defs": {
+    "SourceReport": {
+      "additionalProperties": false,
+      "properties": {
+        "coverage": {
+          "type": "string"
+        },
+        "lease": {
+          "description": "Frozen source authorization and implementation vector; not a credential.",
+          "type": "string"
+        },
+        "sessions": {
+          "type": "string"
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "sourceName": {
+          "type": "string"
+        },
+        "totalTokens": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "sourceId",
+        "sessions",
+        "lease",
+        "coverage"
+      ],
+      "type": "object"
+    }
+  },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
@@ -25,6 +61,12 @@
     },
     "requests": {
       "type": "string"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/SourceReport"
+      },
+      "type": "array"
     },
     "totalTokens": {
       "type": [

@@ -73,6 +73,6 @@ stdio JSON-RPC 分行、Streamable HTTP POST/GET/DELETE、JSON / SSE、CRLF、Se
 
 清理与直接兑换的原执行路径尚未完成，因此外部执行保持 unsupported。外部 SQLite 来源、任意文件 / shell 权限、前端脚本、自动工具执行和插件市场未开放。
 
-DSH 无指定实际实例、版本与授权入口，按用户要求保持 unverified。官方实现涉及生成的远程接口、认证 HTTP 和 Mux WebSocket，不能当作普通 Bearer JSON API 假接入；不读取其内部数据库，不捆绑 Node / DSH 运行时。依据：[Gateway](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/api/gateway/README.md)、[Session Controller](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/api/session-controller/README.md)、[客户端连接](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/connection/README.md)。MCP 依据：[2025-11-25 传输规范](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)。实际服务仍需版本锁定与专项验收。
+DSH Desktop 0.2.2-rc.1 使用[只读桥接插件](../examples/dsh-desktop/README.md)。DSH 自己加载适配器，以官方 Session Controller 发布本机快照；Local Agent 的来源包读取明确授权的文件。无需复制桌面认证 Cookie、读取内部数据库或给 Local Agent 捆绑 DSH / Node 运行时。依据：[Desktop](https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/desktop/README.md)、[Session Controller](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/api/session-controller/README.md)。MCP 依据：[2025-11-25 传输规范](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)。
 
 回退前停止 MCP、解除外部协议绑定、按需恢复配置，再正常退出应用；保留扩展文件及保险库。再次使用时需显式重新授权，不能通过删除仓储绕过格式检查。

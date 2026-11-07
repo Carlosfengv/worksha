@@ -241,6 +241,7 @@ export const builtinPlugins: readonly UiPlugin[] = [
         render: ({ data, navigate, route }) => (
           <SessionsPage
             initialUnified={route.scope === "unified"}
+            nativeOnly={route.scope === "local"}
             initialDomainSource={route.domainSource}
             data={data}
             navigate={navigate}

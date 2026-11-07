@@ -206,11 +206,29 @@
           "description": "Package-local stable name; the host prefixes the plugin namespace.",
           "type": "string"
         },
+        "maxAgeSeconds": {
+          "description": "For live reporters, a heartbeat older than this is stale.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "products": {
           "items": {
             "$ref": "#/$defs/Product"
           },
           "type": "array"
+        },
+        "refreshSeconds": {
+          "description": "Explicit package opt-in; selecting this resource authorizes periodic reads.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
       "required": [

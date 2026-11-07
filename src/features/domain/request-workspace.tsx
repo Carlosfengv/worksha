@@ -82,13 +82,17 @@ const columns: ColumnDef<UnifiedRequestItem>[] = [
 export function RequestWorkspace({
   scope,
   sessionId = null,
+  productId = null,
   names,
   onClose,
+  closeLabel = "返回会话列表",
 }: {
   scope: QueryScope;
   sessionId?: string | null;
+  productId?: string | null;
   names: Record<string, string>;
   onClose: () => void;
+  closeLabel?: string;
 }) {
   const [unit, setUnit] = useState<RequestUnit>("model-response");
   const [search, setSearch] = useState("");
@@ -105,7 +109,7 @@ export function RequestWorkspace({
     filter: {
       start: null,
       end: null,
-      productId: null,
+      productId,
       sessionId: session,
       projectId: null,
       providerKey: null,
@@ -118,7 +122,7 @@ export function RequestWorkspace({
     <section aria-label="统一请求" className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border p-2">
         <Button variant="tertiary" size="sm" onClick={onClose}>
-          返回会话列表
+          {closeLabel}
         </Button>
         <Select value={unit} onValueChange={(v) => setUnit(v as RequestUnit)}>
           <SelectTrigger aria-label="请求统计单位" />

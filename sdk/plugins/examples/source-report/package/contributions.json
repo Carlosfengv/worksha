@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "navigation": [{"id":"sessions","title":"Agent 会话报表","viewId":"sessions"}],
+  "dataQueries": [{"viewId":"sessions","sourceId":"net.worksha.dsh-desktop:desktop","capability":"domain.session-source@1"}]
+}

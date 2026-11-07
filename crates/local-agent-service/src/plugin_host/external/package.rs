@@ -97,6 +97,8 @@ pub(crate) fn validate(manifest: &Manifest) -> Result<()> {
                     || r == local_agent_core::domain::provider_access::BROKER
                     || r == local_agent_core::plugin::contributions::OPTIONAL
                     || r == local_agent_core::plugin::contributions::DETAILS
+                    || r == local_agent_core::plugin::contributions::NAVIGATION
+                    || r == local_agent_core::plugin::contributions::SERVICES
                     || r == local_agent_core::plugin::object_contributions::FEATURE
                     || r.strip_prefix("plugin:").is_some_and(valid_id))
         })
@@ -156,6 +158,11 @@ pub(crate) fn validate(manifest: &Manifest) -> Result<()> {
             Permission::DomainQuery { query } => {
                 domain += 1;
                 if query != "gateway.summary"
+                    && !(query == "domain.summary"
+                        && manifest
+                            .requires
+                            .iter()
+                            .any(|r| r == local_agent_core::plugin::contributions::SERVICES))
                     && !(objects
                         && query
                             == local_agent_core::plugin::object_contributions::QUERY_PERMISSION)

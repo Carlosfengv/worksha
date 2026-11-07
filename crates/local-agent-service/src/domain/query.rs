@@ -38,6 +38,9 @@ pub(super) fn directory(state: &AppState) -> Result<d::UnifiedCatalog> {
     let (sources, problem) = external_sources(state);
     let mut consents = vec![];
     for view in sources {
+        if !view.source().status.enabled {
+            continue;
+        }
         consents.push(d::SourceConsentStatus {
             plugin_id: view.plugin_id().into(),
             digest: view.digest().into(),

@@ -225,7 +225,9 @@ fn query_with(
     for view in &before.views {
         let mut status = view.state();
         let snapshot = match view {
-            SourceView::Full(v) if input.include_historical => v.snapshot(),
+            SourceView::Full(v) if input.include_historical || v.live_report_window().is_some() => {
+                v.snapshot()
+            }
             _ => None,
         };
         if let Some(snapshot) = snapshot.filter(|s| s.available_kinds.contains(&FactKind::Activity))
@@ -252,6 +254,38 @@ fn query_with(
                     continue;
                 };
                 let session = sessions.get(value.session_ref.as_str());
+                let reported_window = match view {
+                    SourceView::Full(v) => v.live_report_window(),
+                    _ => None,
+                };
+                let activity_state = if value.phase == d::facts::ActivityPhase::Running {
+                    reported_window.map_or(a::ActivityState::Historical, |seconds| {
+                        let recent = value
+                            .occurred_at
+                            .as_deref()
+                            .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+                            .is_some_and(|at| {
+                                (0..=i64::from(seconds) * 1000)
+                                    .contains(&now_ms.saturating_sub(at.timestamp_millis()))
+                            });
+                        if recent
+                            && matches!(
+                                status.freshness,
+                                d::Freshness::Current | d::Freshness::Stale
+                            )
+                            && status.problem.as_deref() != Some("source_stalled")
+                        {
+                            a::ActivityState::Current
+                        } else {
+                            a::ActivityState::Expired
+                        }
+                    })
+                } else {
+                    a::ActivityState::Historical
+                };
+                if !input.include_historical && activity_state == a::ActivityState::Historical {
+                    continue;
+                }
                 let record = a::ActivityRecord {
                     id: fact.id.clone(),
                     kind: a::ActivityKind::SourceEvent,
@@ -270,7 +304,7 @@ fn query_with(
                         .ok()
                         .and_then(|v| v.as_str().map(Into::into))
                         .unwrap_or_else(|| "unknown".into()),
-                    state: a::ActivityState::Historical,
+                    state: activity_state,
                     tool_names: vec![],
                     logical_request_id: None,
                     historical_duration_ms: value.duration_ms.clone(),

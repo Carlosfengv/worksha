@@ -162,6 +162,7 @@ impl Manager {
                     cache: Mutex::new(BTreeMap::new()),
                     gates: Mutex::new(BTreeMap::new()),
                     connectors: Mutex::new(BTreeMap::new()),
+                    source_watches: Mutex::new(BTreeMap::new()),
                     activation: Arc::new(tokio::sync::Mutex::new(())),
                     workers: Arc::new(tokio::sync::Semaphore::new(4)),
                     catalog_instance: uuid::Uuid::new_v4().to_string(),
@@ -296,6 +297,7 @@ impl Manager {
             cache: Mutex::new(BTreeMap::new()),
             gates: Mutex::new(BTreeMap::new()),
             connectors: Mutex::new(BTreeMap::new()),
+            source_watches: Mutex::new(BTreeMap::new()),
             activation: Arc::new(tokio::sync::Mutex::new(())),
             workers: Arc::new(tokio::sync::Semaphore::new(4)),
             catalog_instance: uuid::Uuid::new_v4().to_string(),
@@ -1205,7 +1207,7 @@ impl Manager {
                 .manifest
                 .permissions
                 .iter()
-                .any(|p| matches!(p,Permission::DomainQuery{query} if query=="gateway.summary"))
+                .any(|p| matches!(p,Permission::DomainQuery{query} if query=="gateway.summary" || query=="domain.summary"))
         {
             return Err(fail("permission_denied"));
         }

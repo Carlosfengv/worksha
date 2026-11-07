@@ -3,6 +3,12 @@
     "ContributionStatus": {
       "additionalProperties": false,
       "properties": {
+        "dataQueries": {
+          "items": {
+            "$ref": "#/$defs/DataQuery"
+          },
+          "type": "array"
+        },
         "dependencies": {
           "items": {
             "$ref": "#/$defs/DependencyStatus"
@@ -17,6 +23,12 @@
             "string",
             "null"
           ]
+        },
+        "navigation": {
+          "items": {
+            "$ref": "#/$defs/Navigation"
+          },
+          "type": "array"
         },
         "pluginId": {
           "type": "string"
@@ -33,6 +45,27 @@
         "digest",
         "dependencies",
         "slots"
+      ],
+      "type": "object"
+    },
+    "DataQuery": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "description": "Versioned host-mediated capability, never an implementation method name.",
+          "type": "string"
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "viewId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "viewId",
+        "sourceId",
+        "capability"
       ],
       "type": "object"
     },
@@ -125,6 +158,27 @@
         "account"
       ],
       "type": "string"
+    },
+    "Navigation": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "viewId": {
+          "description": "An existing host-rendered view, never executable frontend code or a URL.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "viewId"
+      ],
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

@@ -44,14 +44,23 @@
       "type": "object"
     },
     "ActivityPhase": {
-      "enum": [
-        "thinking",
-        "generating",
-        "tool",
-        "idle",
-        "unknown"
-      ],
-      "type": "string"
+      "oneOf": [
+        {
+          "enum": [
+            "thinking",
+            "generating",
+            "tool",
+            "idle",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "running",
+          "description": "An explicit source status; no host timing or token rate is implied.",
+          "type": "string"
+        }
+      ]
     },
     "Checkpoint": {
       "additionalProperties": false,

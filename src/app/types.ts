@@ -20,6 +20,7 @@ export interface Snapshot {
     nativeActivityActive?: boolean;
   };
   agents: AgentDiscovery[];
+  agentDirectoryError?: string | null;
   providers: Provider[];
   providerWriteProtocol?: import("@/features/providers/operation-receipt").ProviderWriteProtocol;
   settings: Settings;

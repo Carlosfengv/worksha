@@ -64,6 +64,8 @@ struct SourcePath {
     path: String,
 }
 async fn source(State(state): State<AppState>, Json(input): Json<SourcePath>) -> ApiResult {
+    let manager = state.plugins.clone();
+    let package = input.package.clone();
     response(
         run_sync(move || {
             serde_json::to_value(
@@ -73,7 +75,11 @@ async fn source(State(state): State<AppState>, Json(input): Json<SourcePath>) ->
             )
             .checked("invalid_record")
         })
-        .await,
+        .await
+        .and_then(|value| {
+            manager.watch_source(package)?;
+            Ok(value)
+        }),
     )
 }
 async fn refresh(State(state): State<AppState>, Json(input): Json<f::PackageQuery>) -> ApiResult {

@@ -23,6 +23,9 @@ pub(crate) struct SourceView {
     problem: Option<String>,
 }
 impl SourceView {
+    pub fn live_report_window(&self) -> Option<u32> {
+        self.manifest.source.as_ref()?.max_age_seconds
+    }
     pub fn vector(&self) -> String {
         serde_json::json!([
             self.digest,
@@ -335,6 +338,10 @@ impl Manager {
             .ok_or(fail("not_found"))?;
         let expected = view.lease.clone().ok_or(fail("grant_revoked"))?;
         let source_revision = snapshot.source_revision.clone();
+        let captured = view
+            .projection
+            .as_ref()
+            .and_then(|p| p.captured_source.clone());
         let gate = self.gate(&view.plugin_id)?;
         let _gate = gate.try_lock_owned().checked("busy")?;
         let manager = self.clone();
@@ -372,7 +379,11 @@ impl Manager {
                 source: None,
             };
             manager.full_check(&c)?;
-            c.source = Some(runtime::load_source(&grant)?);
+            c.source = Some(match captured {
+                Some(source) if source.grant == grant => source,
+                Some(_) => return Err(fail("grant_revoked")),
+                None => runtime::load_source(&grant)?,
+            });
             manager.full_check(&c)?;
             Ok(c)
         })

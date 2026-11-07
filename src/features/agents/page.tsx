@@ -2,7 +2,7 @@ import type { Snapshot } from "@/app/types";
 import { AgentList } from "@/features/agents/components/agent-list";
 import { ConnectionEmpty } from "@/shared/ui/connection-empty";
 import { AgentDetail } from "./components/agent-detail";
-import { PluginEntries } from "@/features/plugins/entries";
+import { SourceAgentDetail } from "./components/source-agent-detail";
 
 export function AgentsPage({
   data,
@@ -38,6 +38,10 @@ export function AgentsPage({
         }}
       />
     );
+  if (selected?.readonly || selected?.sourceId)
+    return (
+      <SourceAgentDetail key={selected.id} agent={selected} tab={selectedTab} />
+    );
   if (selected)
     return (
       <AgentDetail
@@ -49,10 +53,5 @@ export function AgentsPage({
         data={data}
       />
     );
-  return (
-    <div className="space-y-6">
-      <AgentList data={data} />
-      <PluginEntries kind="agents" />
-    </div>
-  );
+  return <AgentList data={data} />;
 }

@@ -180,12 +180,29 @@ pub(crate) async fn authorize_domain_source(
     if !active {
         return Err("请先启用对应的只读来源插件".into());
     }
+    let source_packages = backend
+        .request(reqwest::Method::GET, "/api/plugin-sources", None)
+        .await
+        .ok();
+    let seconds = source_packages
+        .as_ref()
+        .and_then(|packages| packages["items"].as_array())
+        .and_then(|items| {
+            items.iter().find(|item| {
+                item["manifest"]["id"] == query.plugin_id && item["digest"] == query.digest
+            })
+        })
+        .and_then(|item| item["manifest"]["source"]["refreshSeconds"].as_u64());
+    let title = seconds.map_or_else(
+        || "授权此来源读取所选 JSONL（包含全部正文）".to_owned(),
+        |seconds| format!("授权此来源每 {seconds} 秒读取所选 JSONL（包含正文；停用后停止）"),
+    );
     let window = app.get_webview_window("main").ok_or("应用窗口不可用")?;
     let selected = tokio::task::spawn_blocking(move || {
         app.dialog()
             .file()
             .set_parent(&window)
-            .set_title("授权此来源读取所选 JSONL（包含全部正文）")
+            .set_title(title)
             .add_filter("JSONL 会话文件", &["jsonl"])
             .blocking_pick_file()
     })

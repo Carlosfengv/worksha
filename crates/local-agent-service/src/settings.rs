@@ -40,6 +40,11 @@ pub(crate) async fn snapshot(State(state): State<AppState>) -> ApiResult {
         let mut value = serde_json::to_value(store.snapshot().map_err(error)?)
             .map_err(|_| error("读取失败".into()))?;
         drop(store);
+        let (plugin_agents, directory_problem) = crate::domain::plugin_agents(&state);
+        if let Some(agents) = value["agents"].as_array_mut() {
+            agents.extend(plugin_agents);
+        }
+        value["agentDirectoryError"] = serde_json::json!(directory_problem);
         // Source consent and runtime flags must describe the same composition,
         // including while a configuration worker retires the old generation.
         let composition = state.readonly.configuration().map_err(|_|error("内置组合暂不可用".into()))?;

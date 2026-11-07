@@ -33,6 +33,8 @@ import { ProviderCatalogControls } from "./provider-catalog-controls";
 import type { Manifest, PluginStatus, StateAction } from "./types";
 import { DomainConsentControls } from "@/features/domain/consent-controls";
 import { domainDirectoryResource } from "@/features/domain/queries";
+import { useSharedRead } from "@/shared/hooks/use-shared-read";
+import { pluginDirectoryResource } from "./queries";
 
 export function PermissionSummary({ manifest }: { manifest: Manifest }) {
   if (isExtension(manifest))
@@ -56,7 +58,9 @@ export function PermissionSummary({ manifest }: { manifest: Manifest }) {
               : permission.kind === "domain.query"
                 ? permission.query === "object.summary@1"
                   ? "在对象详情中读取单独授权的元数据摘要；具体字段、用途与版本须逐项确认。"
-                  : "读取当前数据目录最近 24 小时的网关汇总；不读取原生会话、正文或凭据。"
+                  : permission.query === "domain.summary"
+                    ? "通过宿主调用签名数据绑定所指定的会话来源，读取已授权的会话数量和用量；不读取正文或凭据。来源停用或撤权后立即失效。"
+                    : "读取当前数据目录最近 24 小时的网关汇总；不读取原生会话、正文或凭据。"
                 : "在宿主提供的扩展视图中显示内容。"}
         </li>
       ))}
@@ -89,6 +93,12 @@ export function PluginControls({
   const [providerId, setProviderId] = useState<string | null>(null);
   const [allowPrivate, setAllowPrivate] = useState(false);
   const [settings, setSettings] = useState(status.settings);
+  const directory = useSharedRead(pluginDirectoryResource);
+  const dataQueries =
+    directory.data?.contributions?.items.find(
+      (item) =>
+        item.pluginId === status.manifest.id && item.digest === status.digest,
+    )?.dataQueries ?? [];
   const run = async (operation: () => Promise<unknown>, success: string) => {
     if (busy) return;
     setBusy(true);
@@ -155,14 +165,22 @@ export function PluginControls({
       <div className="flex flex-wrap gap-2">
         {status.enabled &&
           status.manifest.permissions?.some(
-            (p) => p.kind === "domain.query" && p.query === "gateway.summary",
+            (p) =>
+              p.kind === "domain.query" &&
+              (p.query === "gateway.summary" || p.query === "domain.summary"),
           ) && (
             <Button
               variant="tertiary"
               disabled={busy}
               onClick={() => setConfirm("authorize-report")}
             >
-              {status.reportAuthorized ? "重新授权报表汇总" : "授权报表汇总"}
+              {status.manifest.requires?.includes("host.domain-services@1")
+                ? status.reportAuthorized
+                  ? "重新授权来源数据调用"
+                  : "授权来源数据调用"
+                : status.reportAuthorized
+                  ? "重新授权报表汇总"
+                  : "授权报表汇总"}
             </Button>
           )}
         <Button
@@ -351,7 +369,13 @@ export function PluginControls({
               {confirm === "enable"
                 ? "启用将运行此包的受限初始化检查。安装和启用不会自动授权来源、请求额度或调用模型。"
                 : confirm === "authorize-report"
-                  ? "允许此声明式报表读取当前数据目录最近 24 小时的网关汇总。不会读取原生会话、正文、请求 ID 或凭据；授权后仍需手动刷新。"
+                  ? status.manifest.permissions?.some(
+                      (p) =>
+                        p.kind === "domain.query" &&
+                        p.query === "domain.summary",
+                    )
+                    ? "允许插件通过宿主调用其签名数据绑定中的会话来源，读取会话数量和用量。各来源仍须独立授权；不读取正文、请求内容或凭据。来源停用或撤权后旧结果不可继续读取。"
+                    : "允许此声明式报表读取当前数据目录最近 24 小时的网关汇总。不会读取原生会话、正文、请求 ID 或凭据；授权后仍需手动刷新。"
                   : confirm === "revoke-publisher"
                     ? "同一发布者的插件将停用并撤销资源授权；以后安装或启用需要重新核对公钥。"
                     : confirm === "rollback"
@@ -360,6 +384,15 @@ export function PluginControls({
             </DialogDescription>
           </DialogHeader>
           <PermissionSummary manifest={status.manifest} />
+          {dataQueries.length > 0 && (
+            <ul className="space-y-2 text-label text-fg-muted">
+              {dataQueries.map((query) => (
+                <li key={query.viewId}>
+                  调用来源：{query.sourceId} · {query.capability}
+                </li>
+              ))}
+            </ul>
+          )}
           <DialogFooter>
             <Button
               variant="tertiary"

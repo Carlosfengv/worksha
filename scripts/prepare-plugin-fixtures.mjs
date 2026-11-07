@@ -10,6 +10,7 @@ for (const [crate, target] of [
   ["envelope_protocol_plugin", "sdk/plugins/examples/envelope-protocol/package/plugin.wasm"],
   ["json_config_plugin", "sdk/plugins/examples/json-config/package/plugin.wasm"],
   ["full_history_plugin", "sdk/plugins/examples/full-history/package/plugin.wasm"],
+  ["full_history_plugin", "sdk/plugins/examples/dsh-desktop/package/plugin.wasm"],
   ["model_catalog_plugin", "sdk/plugins/examples/model-catalog/package/plugin.wasm"],
   ["pure_policy_plugin", "sdk/plugins/examples/pure-policy/package/plugin.wasm"],
   ["plugin_hostile_fixture", ".work/plugin-m4-hostile.wasm"],

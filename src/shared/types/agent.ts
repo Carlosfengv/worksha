@@ -1,4 +1,5 @@
 import catalog from "../../../resources/agent-catalog.json" with { type: "json" };
+import type { ProviderStatus as SourceProviderStatus } from "../../../contracts/domain/types";
 
 export type AgentId = string;
 export type AgentProductId = string;
@@ -8,6 +9,10 @@ export interface AgentProduct {
   name: string;
   family: AgentId;
   configId: ConfigAgentId;
+  readonly?: boolean;
+  sourceId?: string;
+  pluginId?: string;
+  capabilities?: readonly string[];
 }
 // The compiled fallback and Rust use the same composition metadata. Connected UI
 // consumes Snapshot.agents through AgentDirectoryProvider, including new products.
@@ -108,6 +113,7 @@ export interface AgentDiscovery extends AgentProduct {
   found: boolean;
   location: string | null;
   connected: boolean;
+  sourceState?: SourceProviderStatus;
 }
 
 export interface AgentConnection {

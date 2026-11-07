@@ -321,6 +321,20 @@ pub struct GatewayReport {
     pub total_tokens: Option<String>,
     pub range_start: String,
     pub range_end: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<SourceReport>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourceReport {
+    pub source_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source_name: String,
+    pub sessions: String,
+    pub total_tokens: Option<String>,
+    /// Frozen source authorization and implementation vector; not a credential.
+    pub lease: String,
+    pub coverage: String,
 }
 
 /// Generation and runtime deserialization share one Rust authority. The SDK checker

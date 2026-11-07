@@ -1,4 +1,5 @@
 import { useAgentDirectory } from "@/shared/hooks/use-agent-directory";
+import { PublishedSources } from "@/features/domain/published-sources";
 import type { Page, Snapshot } from "@/app/types";
 import {
   Accordion,
@@ -192,6 +193,10 @@ export function OverviewPage({
           </Alert>
         )}
       </section>
+      <PublishedSources
+        mode="activity"
+        productId={agent === "all" ? undefined : agent}
+      />
       <Accordion className="w-full" type="multiple">
         <AccordionItem value="agents">
           <AccordionTrigger>Agent 连接与历史指标</AccordionTrigger>

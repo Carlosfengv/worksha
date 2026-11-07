@@ -3,7 +3,9 @@ use local_agent_core::plugin::{contributions::*, external::*};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn opted_in(m: &Manifest) -> bool {
-    m.requires.iter().any(|r| r == OPTIONAL || r == DETAILS)
+    m.requires
+        .iter()
+        .any(|r| r == OPTIONAL || r == DETAILS || r == NAVIGATION || r == SERVICES)
 }
 pub(super) fn parse(
     m: &Manifest,
@@ -19,7 +21,12 @@ pub(super) fn parse(
         return Err(fail("resource_limit"));
     }
     let c: Contributions = serde_json::from_slice(bytes).checked("invalid_input")?;
-    if c.schema_version != 1 || c.optional_dependencies.len() > 16 || c.detail_slots.len() > 16 {
+    if c.schema_version != 1
+        || c.optional_dependencies.len() > 16
+        || c.detail_slots.len() > 16
+        || c.navigation.len() > 8
+        || c.data_queries.len() > 8
+    {
         return Err(fail("invalid_input"));
     }
     if (!c.optional_dependencies.is_empty() && !m.requires.iter().any(|r| r == OPTIONAL))
@@ -29,7 +36,52 @@ pub(super) fn parse(
     {
         return Err(fail("permission_denied"));
     }
+    if !c.navigation.is_empty()
+        && (!m.requires.iter().any(|r| r == NAVIGATION)
+            || !m.permissions.contains(&Permission::UiContribute))
+    {
+        return Err(fail("permission_denied"));
+    }
     let views: BTreeSet<_> = m.views.iter().map(|v| v.id.as_str()).collect();
+    let mut navigation_ids = BTreeSet::new();
+    let mut navigation_views = BTreeSet::new();
+    let mut query_views = BTreeSet::new();
+    for query in &c.data_queries {
+        if !m.requires.iter().any(|r| r == SERVICES)
+            || !m.permissions.iter().any(
+                |p| matches!(p, Permission::DomainQuery { query } if query == "domain.summary"),
+            )
+        {
+            return Err(fail("permission_denied"));
+        }
+        if !query_views.insert(&query.view_id)
+            || !m
+                .views
+                .iter()
+                .any(|v| v.id == query.view_id && v.kind == ViewKind::Report)
+            || query.source_id.is_empty()
+            || query.source_id.len() > 160
+            || !query
+                .source_id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-_.:".contains(&b))
+            || query.capability != "domain.session-source@1"
+        {
+            return Err(fail("invalid_input"));
+        }
+    }
+    for item in &c.navigation {
+        if !package::local_id(&item.id)
+            || !navigation_ids.insert(&item.id)
+            || !navigation_views.insert(&item.view_id)
+            || !views.contains(item.view_id.as_str())
+            || item.title.is_empty()
+            || item.title.len() > 100
+            || item.title.chars().any(char::is_control)
+        {
+            return Err(fail("invalid_input"));
+        }
+    }
     let mut ids = BTreeSet::new();
     for d in &c.optional_dependencies {
         let mut used = BTreeSet::new();
@@ -79,6 +131,17 @@ pub(super) fn parse(
 }
 
 impl Manager {
+    pub(crate) fn report_queries(&self, id: &str, digest: &str) -> Result<Vec<DataQuery>> {
+        let p = self.verified(id, digest)?;
+        let status = self.status(id, digest)?;
+        if !status.enabled || !status.report_authorized {
+            return Err(fail("permission_denied"));
+        }
+        Ok(self
+            .contributions_for(&p)?
+            .ok_or(fail("invalid_input"))?
+            .data_queries)
+    }
     pub(super) fn contributions_for(&self, p: &Installed) -> Result<Option<Contributions>> {
         if !opted_in(&p.manifest) {
             return Ok(None);
@@ -141,6 +204,8 @@ impl Manager {
                         digest: s.digest.clone(),
                         dependencies: self.dependency_statuses(&c, items),
                         slots: c.detail_slots,
+                        navigation: c.navigation,
+                        data_queries: c.data_queries,
                         error_code: None,
                     },
                     Ok(None) => ContributionStatus {
@@ -148,6 +213,8 @@ impl Manager {
                         digest: s.digest.clone(),
                         dependencies: vec![],
                         slots: vec![],
+                        navigation: vec![],
+                        data_queries: vec![],
                         error_code: Some("unsupported".into()),
                     },
                     Err(e) => ContributionStatus {
@@ -155,6 +222,8 @@ impl Manager {
                         digest: s.digest.clone(),
                         dependencies: vec![],
                         slots: vec![],
+                        navigation: vec![],
+                        data_queries: vec![],
                         error_code: Some(e.code.into()),
                     },
                 }

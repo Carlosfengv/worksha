@@ -28,7 +28,17 @@ pub(crate) fn validate(m: &Manifest) -> Result<()> {
             != [Permission::SourceContentRead {
                 resource: "history".into(),
             }]
-        || m.requires.len() != 2
+        || m.requires.len() != 2 + usize::from(source.refresh_seconds.is_some())
+        || source
+            .refresh_seconds
+            .is_some_and(|seconds| !(5..=300).contains(&seconds))
+        || source.max_age_seconds.is_some_and(|age| {
+            source
+                .refresh_seconds
+                .is_none_or(|seconds| age < seconds.saturating_mul(2) || age > 900)
+        })
+        || (source.refresh_seconds.is_some()
+            && !m.requires.iter().any(|r| r == "host.source-watch@1"))
         || !m.requires.iter().any(|r| r == SOURCE_BROKER)
         || !m.requires.iter().any(|r| r == FACT_FEATURE)
     {

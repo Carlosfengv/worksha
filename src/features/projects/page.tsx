@@ -187,6 +187,7 @@ export function ProjectsPage({
     options.set(current.project.id, current.project);
   return (
     <div className="space-y-6">
+      {!selectedId && <PublishedSources mode="projects" />}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-3">
           {selectedId && (
@@ -684,3 +685,4 @@ export function ProjectsPage({
     </div>
   );
 }
+import { PublishedSources } from "@/features/domain/published-sources";

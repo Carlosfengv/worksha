@@ -21,6 +21,7 @@ import type { CompositionCatalog } from "../../contracts/plugins/builtin/types";
 import raw from "../../sdk/plugins/examples/aurora-agent/package/manifest.json";
 import rawSource from "../../sdk/plugins/examples/full-history/package/manifest.json";
 import rawPolicy from "../../sdk/plugins/examples/pure-policy/package/manifest.json";
+import dshSource from "../../sdk/plugins/examples/dsh-desktop/package/manifest.json";
 import type { Manifest, PluginStatus } from "@/features/plugins/types";
 import type { Status as SourceStatus } from "../../contracts/plugins/sources/types";
 import type {
@@ -55,7 +56,7 @@ let plugin: PluginStatus = {
   settings: {},
 };
 let source: SourceStatus = {
-  manifest: rawSource as Manifest,
+  manifest: (mode === "agent-peers" ? dshSource : rawSource) as Manifest,
   digest: "c".repeat(64),
   signingKey: "b".repeat(64),
   enabled: false,

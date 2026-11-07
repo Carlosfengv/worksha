@@ -67,16 +67,26 @@ const columnsFor = (
 ];
 export function UnifiedWorkspace({
   initialSource,
+  initialProduct,
+  defaultAll = false,
 }: {
   initialSource?: string;
+  initialProduct?: string;
+  defaultAll?: boolean;
 }) {
   const directory = useSharedRead(domainDirectoryResource);
   const epoch = useBackendReadEpoch();
   const [identity, setIdentity] = useState({ epoch, revision: 0 });
   if (identity.epoch !== epoch)
     setIdentity({ epoch, revision: identity.revision + 1 });
-  const [sources, setSources] = useState<string[]>(
-    initialSource ? [initialSource] : [],
+  const [selection, setSelection] = useState<string[] | null>(
+    initialSource ? [initialSource] : defaultAll ? null : [],
+  );
+  const sources = useMemo(
+    () =>
+      selection ??
+      (directory.data?.catalog.sources ?? []).slice(0, 16).map((s) => s.id),
+    [selection, directory.data],
   );
   const [search, setSearch] = useState("");
   const [choosing, setChoosing] = useState(!initialSource);
@@ -124,48 +134,57 @@ export function UnifiedWorkspace({
   return (
     <section aria-label="统一来源会话" className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 space-y-2 border-b border-border p-2">
-        <details
-          open={choosing}
-          onToggle={(event) => setChoosing(event.currentTarget.open)}
-        >
-          <summary className="cursor-pointer text-label font-medium">
-            选择来源 · 已选 {ids.length} 个
-          </summary>
-          <div
-            className="flex max-h-24 flex-wrap gap-3 overflow-y-auto py-2"
-            aria-label="统一会话来源选择"
+        {!initialProduct && (
+          <details
+            open={choosing}
+            onToggle={(event) => setChoosing(event.currentTarget.open)}
           >
-            {directory.data?.catalog.sources.map((source) => (
-              <label
-                key={source.id}
-                className="flex min-w-0 items-center gap-2 text-label"
-              >
-                <Checkbox
-                  checked={sources.includes(source.id)}
-                  disabled={
-                    !sources.includes(source.id) && sources.length >= 16
-                  }
-                  onCheckedChange={(checked) =>
-                    setSources((old) =>
-                      checked === true
-                        ? [...new Set([...old, source.id])]
-                        : old.filter((id) => id !== source.id),
-                    )
-                  }
-                />
-                <span className="break-words">
-                  {names[source.id]} · {stateNames[source.status.authorization]}
-                </span>
-              </label>
-            ))}
-            <Button asChild variant="tertiary" size="sm">
-              <a href="#/agents">管理原生来源</a>
-            </Button>
-          </div>
-          <p className="text-label text-fg-subtle">
-            普通查询不会刷新来源；会话累计用量不计作模型调用次数。
-          </p>
-        </details>
+            <summary className="cursor-pointer text-label font-medium">
+              选择来源 · 已选 {ids.length} 个
+            </summary>
+            <div
+              className="flex max-h-24 flex-wrap gap-3 overflow-y-auto py-2"
+              aria-label="统一会话来源选择"
+            >
+              {directory.data?.catalog.sources.map((source) => (
+                <label
+                  key={source.id}
+                  className="flex min-w-0 items-center gap-2 text-label"
+                >
+                  <Checkbox
+                    checked={sources.includes(source.id)}
+                    disabled={
+                      !sources.includes(source.id) && sources.length >= 16
+                    }
+                    onCheckedChange={(checked) =>
+                      setSelection((old) => {
+                        const current = old ?? sources;
+                        return checked === true
+                          ? [...new Set([...current, source.id])]
+                          : current.filter((id) => id !== source.id);
+                      })
+                    }
+                  />
+                  <span className="break-words">
+                    {names[source.id]} ·{" "}
+                    {stateNames[source.status.authorization]}
+                  </span>
+                </label>
+              ))}
+              <Button asChild variant="tertiary" size="sm">
+                <a href="#/agents">管理原生来源</a>
+              </Button>
+            </div>
+            <p className="text-label text-fg-subtle">
+              普通查询不会刷新来源；会话累计用量不计作模型调用次数。
+            </p>
+            {defaultAll && (
+              <Button asChild variant="tertiary" size="sm">
+                <a href="#/sessions?scope=local">管理本机客户端会话</a>
+              </Button>
+            )}
+          </details>
+        )}
         <div className="flex min-w-0 items-center gap-2">
           <Input
             aria-label="搜索统一会话"
@@ -201,6 +220,7 @@ export function UnifiedWorkspace({
           scope={scope}
           search={query}
           names={names}
+          productId={initialProduct ?? null}
         />
       ) : (
         <p className="p-4 text-body text-fg-muted">
@@ -214,10 +234,12 @@ function UnifiedPane({
   scope,
   search,
   names,
+  productId,
 }: {
   scope: QueryScope;
   search: string;
   names: Record<string, string>;
+  productId: string | null;
 }) {
   const [trail, setTrail] = useState<
     { snapshotToken: string | null; cursor: string | null }[]
@@ -233,7 +255,7 @@ function UnifiedPane({
   const current = trail[trail.length - 1];
   const resource = useSharedQuery(unifiedSessionsResource, {
     scope,
-    filter: { query: search || null, productId: null, days: null },
+    filter: { query: search || null, productId, days: null },
     ...current,
   });
   const page = resource.error || resource.loading ? null : resource.data;
@@ -260,6 +282,7 @@ function UnifiedPane({
     return (
       <RequestWorkspace
         scope={scope}
+        productId={productId}
         sessionId={requests.sessionId}
         names={names}
         onClose={() => setRequests(null)}
@@ -269,6 +292,7 @@ function UnifiedPane({
     return (
       <ActivityWorkspace
         scope={scope}
+        productId={productId}
         sessionId={activity.sessionId}
         names={names}
         onClose={() => setActivity(null)}

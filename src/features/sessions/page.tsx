@@ -45,6 +45,7 @@ import { UnifiedWorkspace } from "@/features/domain/session-workspace";
 interface SessionProps {
   initialUnified?: boolean;
   initialDomainSource?: string;
+  nativeOnly?: boolean;
   data: Snapshot | null;
   navigate: (page: Page) => void;
   selectedId?: string;
@@ -60,11 +61,18 @@ export function SessionsPage(props: SessionProps) {
     props.data?.sessionSources
       .map((s) => `${s.agentId}:${s.enabled}`)
       .join(",") ?? "offline";
-  if (props.initialUnified && props.initialDomainSource)
+  if (
+    (props.initialUnified && props.initialDomainSource) ||
+    (!props.nativeOnly &&
+      !props.selectedId &&
+      !props.initialAgent &&
+      props.data?.agents.some((agent) => agent.sourceId && agent.connected))
+  )
     return (
       <UnifiedWorkspace
         key={props.initialDomainSource}
         initialSource={props.initialDomainSource}
+        defaultAll={!props.initialDomainSource}
       />
     );
   return (
@@ -364,6 +372,11 @@ function SessionWorkspace({
           />
         </div>
         <div className="flex flex-wrap gap-2">
+          {data?.agents.some((agent) => agent.sourceId && agent.connected) && (
+            <Button asChild variant="tertiary" size="sm">
+              <a href="#/sessions">查看全部来源</a>
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"

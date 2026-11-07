@@ -1,0 +1,3 @@
+- insert:
+    - id: worksha-readonly-bridge
+      name: worksha-dsh-readonly-bridge

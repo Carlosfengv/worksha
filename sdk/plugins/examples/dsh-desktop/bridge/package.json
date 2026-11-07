@@ -1,0 +1,10 @@
+{
+  "name": "worksha-dsh-readonly-bridge",
+  "version": "1.0.0",
+  "description": "Read-only DSH session metadata bridge for Local Agent",
+  "type": "module",
+  "main": "index.js",
+  "files": ["index.js", "normalize.js", "cordis.patch.yml", "README.md"],
+  "engines": { "dsh": "0.2.2-rc.1" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}

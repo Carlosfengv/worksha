@@ -16,6 +16,7 @@ import { useSharedRead } from "@/shared/hooks/use-shared-read";
 import { providerStatusResource } from "@/features/providers/queries";
 import { modelServicesResource } from "@/features/model-services/queries";
 import type { AgentDiscovery } from "@/shared/types/agent";
+import { sourceStatus } from "../source-status";
 
 const agentLogos: Record<string, string> = {
   claude: "/agent-logos/claude.png",
@@ -83,8 +84,14 @@ const columns: ColumnDef<AgentRow>[] = [
                 .filter(Boolean)
                 .join(" · ")}
             >
-              {connection.label} · {connection.title} ·{" "}
-              <span>{sourceLabel(source)}</span>
+              {agent.readonly ? (
+                sourceStatus(agent)
+              ) : (
+                <>
+                  {connection.label} · {connection.title} ·{" "}
+                  {sourceLabel(source)}
+                </>
+              )}
             </p>
             {activation && (
               <Badge size="sm" status="warning">
@@ -100,29 +107,34 @@ const columns: ColumnDef<AgentRow>[] = [
     id: "provider",
     size: 264,
     header: () => <span className="block text-right">模型连接</span>,
-    cell: ({ row: { original: item } }) => (
-      <div
-        className="flex justify-end"
-        onClick={(event) => event.stopPropagation()}
-        onKeyDown={(event) => event.stopPropagation()}
-      >
-        <AgentServiceControl
-          compact
-          agentId={item.agent.configId}
-          name={item.agent.name}
-          providers={item.data.providers}
-          status={item.status}
-          catalog={item.services}
-          checking={item.checking}
-          unavailable={item.unavailable}
-          servicesUnavailable={item.servicesUnavailable}
-          onProviderSelect={(config, providerId) =>
-            item.onSelect(item.agent, config, providerId)
-          }
-          reload={item.reloadServices}
-        />
-      </div>
-    ),
+    cell: ({ row: { original: item } }) =>
+      item.agent.readonly ? (
+        <span className="block text-right text-label text-fg-muted">
+          仅观测
+        </span>
+      ) : (
+        <div
+          className="flex justify-end"
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <AgentServiceControl
+            compact
+            agentId={item.agent.configId}
+            name={item.agent.name}
+            providers={item.data.providers}
+            status={item.status}
+            catalog={item.services}
+            checking={item.checking}
+            unavailable={item.unavailable}
+            servicesUnavailable={item.servicesUnavailable}
+            onProviderSelect={(config, providerId) =>
+              item.onSelect(item.agent, config, providerId)
+            }
+            reload={item.reloadServices}
+          />
+        </div>
+      ),
   },
   {
     id: "actions",
@@ -230,7 +242,7 @@ export function AgentList({ data }: { data: Snapshot }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-body text-fg-muted">
-          {data.agents.length} 个 Agent · 选择 Provider 或模型服务
+          {data.agents.length} 个 Agent · 查看连接与观测
         </p>
         <Button
           variant="tertiary"

@@ -48,8 +48,43 @@ pub(crate) async fn project_visibility(
         .await,
     )
 }
+mod plugin_services;
 mod query;
 mod sources;
+pub(crate) use plugin_services::{refresh_plugin_report, validate_plugin_report};
+
+/// Snapshot consumers use the same external product directory as domain queries.
+/// An optional source failure must not hide the built-in Codex observations.
+pub(crate) fn plugin_agents(state: &AppState) -> (Vec<serde_json::Value>, Option<String>) {
+    let (sources, problem) = sources::external_sources(state);
+    let mut agents = vec![];
+    for source in sources {
+        if !source.source().status.enabled {
+            continue;
+        }
+        let capabilities: Vec<_> = source
+            .capabilities()
+            .into_iter()
+            .map(|entry| {
+                format!(
+                    "{}@{}",
+                    entry.provider.capability.name, entry.provider.capability.major
+                )
+            })
+            .collect();
+        for product in source.products() {
+            agents.push(serde_json::json!({
+                "id":product.id,"name":product.display_name,
+                "family":source.plugin_id(),"configId":product.id,
+                "found":true,"location":null,
+                "connected":source.source().status.authorization == d::Authorization::Authorized,
+                "readonly":true,"sourceId":source.source().id,
+                "pluginId":source.plugin_id(),"sourceState":source.source().status,"capabilities":capabilities
+            }));
+        }
+    }
+    (agents, problem)
+}
 
 pub(crate) async fn fact_conversation(
     State(state): State<AppState>,
@@ -79,6 +114,11 @@ pub(crate) async fn authorize_source(
     State(state): State<AppState>,
     Json(input): Json<external::api::SourcePath>,
 ) -> ApiResult {
+    let manager = state.plugins.clone();
+    let package = local_agent_core::plugin::full::PackageQuery {
+        plugin_id: input.plugin_id.clone(),
+        digest: input.digest.clone(),
+    };
     external::api::response(
         external::run_sync(move || {
             state.plugins.domain_grant_source(
@@ -90,7 +130,11 @@ pub(crate) async fn authorize_source(
             )?;
             Ok(serde_json::json!({"updated":true}))
         })
-        .await,
+        .await
+        .and_then(|value| {
+            manager.watch_source(package)?;
+            Ok(value)
+        }),
     )
 }
 pub(crate) async fn refresh_source(
@@ -147,12 +191,21 @@ pub(crate) async fn consent(
     State(state): State<AppState>,
     Json(input): Json<d::SourceConsent>,
 ) -> ApiResult {
+    let manager = state.plugins.clone();
+    let package = local_agent_core::plugin::full::PackageQuery {
+        plugin_id: input.plugin_id.clone(),
+        digest: input.digest.clone(),
+    };
     external::api::response(
         external::run_sync(move || {
             state.plugins.domain_consent(&input)?;
             Ok(serde_json::json!({"updated":true}))
         })
-        .await,
+        .await
+        .and_then(|value| {
+            manager.watch_source(package)?;
+            Ok(value)
+        }),
     )
 }
 pub(crate) async fn conversation(

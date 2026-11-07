@@ -9,6 +9,7 @@ pub(super) mod package;
 mod recovery;
 mod runtime;
 pub(in crate::plugin_host::external) mod store;
+mod watch;
 pub(super) use store::Host;
 #[cfg(test)]
 mod manage_tests;

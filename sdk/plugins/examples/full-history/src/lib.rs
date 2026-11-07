@@ -16,12 +16,27 @@ fn history(request: &Value) -> Result<&'static (Vec<Value>, String), String> {
     if !text.is_empty() && !text.ends_with('\n') {
         return Err("stale_snapshot".into());
     }
-    let rows: Vec<Value> = text
+    let mut rows: Vec<Value> = text
         .lines()
         .filter(|l| !l.trim().is_empty())
         .map(serde_json::from_str)
         .collect::<Result<_, _>>()
         .map_err(|_| "invalid_input")?;
+    // Optional framed snapshots keep a producer's selected inode stable while
+    // rejecting a torn write, including a valid JSON prefix with an old tail.
+    if rows
+        .first()
+        .is_some_and(|row| row.get("snapshot").is_some())
+    {
+        let header = rows.remove(0);
+        let footer = rows.pop().ok_or("stale_snapshot")?;
+        if header["snapshot"].as_str().is_none()
+            || footer["commit"] != header["snapshot"]
+            || header["records"].as_u64() != Some(rows.len() as u64)
+        {
+            return Err("stale_snapshot".into());
+        }
+    }
     if rows.len() > 4096 {
         return Err("resource_limit".into());
     }
@@ -54,7 +69,7 @@ impl Guest for FullHistory {
                 let batches = rows.len().div_ceil(256);
                 Ok(json!({
                     "batch":if records.is_empty(){Value::Null}else{json!({"sourceRevision":revision,"batchId":(start/256).to_string(),"records":records})},
-                    "checkpoint":if complete{json!({"sourceRevision":revision,"batches":batches.to_string(),"records":rows.len().to_string(),"complete":true,"coverage":"complete"})}else{Value::Null},
+                    "checkpoint":if complete{json!({"sourceRevision":revision,"batches":batches.to_string(),"records":rows.len().to_string(),"complete":true,"coverage":if rows.iter().any(|r| r["fact"]["kind"] == "session" && r["fact"]["value"]["partial"] == true) { "partial" } else { "complete" }})}else{Value::Null},
                     "nextCursor":if complete{None}else{Some(end.to_string())}
                 }).to_string())
             }

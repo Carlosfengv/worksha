@@ -80,6 +80,12 @@ pub struct Source {
     /// Package-local stable name; the host prefixes the plugin namespace.
     pub id: String,
     pub products: Vec<Product>,
+    /// Explicit package opt-in; selecting this resource authorizes periodic reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refresh_seconds: Option<u32>,
+    /// For live reporters, a heartbeat older than this is stale.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_age_seconds: Option<u32>,
 }
 impl Manifest {
     pub fn source_id(&self) -> Option<String> {

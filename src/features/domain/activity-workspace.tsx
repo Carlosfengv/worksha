@@ -79,13 +79,17 @@ const columns: ColumnDef<DisplayRecord>[] = [
 export function ActivityWorkspace({
   scope,
   sessionId = null,
+  productId = null,
   names,
   onClose,
+  closeLabel = "返回会话列表",
 }: {
   scope: QueryScope;
   sessionId?: string | null;
+  productId?: string | null;
   names: Record<string, string>;
   onClose: () => void;
+  closeLabel?: string;
 }) {
   const [range, setRange] = useState(10800);
   const [gateway, setGateway] = useState(false);
@@ -101,7 +105,7 @@ export function ActivityWorkspace({
   const input: UnifiedActivityQuery = {
     scope,
     rangeSeconds: range,
-    productId: null,
+    productId,
     sessionId: session,
     includeGateway: scope.kind !== "external" && gateway,
     includeHistorical: historical,
@@ -116,7 +120,9 @@ export function ActivityWorkspace({
     () =>
       (page?.items ?? []).map((row) => {
         const staleSample =
-          row.state === "current" && Date.parse(row.observedAt) < now - 15000;
+          row.kind !== "source-event" &&
+          row.state === "current" &&
+          Date.parse(row.observedAt) < now - 15000;
         const rate = staleSample ? null : liveRate(row, now);
         return {
           ...row,
@@ -126,7 +132,9 @@ export function ActivityWorkspace({
               ? "历史记录"
               : row.state === "expired" || staleSample
                 ? "观测已过期"
-                : "当前观测",
+                : row.kind === "source-event"
+                  ? "来源报告运行中"
+                  : "当前观测",
           rateLabel:
             row.kind === "source-event"
               ? "不提供实时采样"
@@ -162,7 +170,7 @@ export function ActivityWorkspace({
     <section aria-label="统一活动快照" className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border p-2">
         <Button variant="tertiary" size="sm" onClick={onClose}>
-          返回会话列表
+          {closeLabel}
         </Button>
         <Select
           value={String(range)}

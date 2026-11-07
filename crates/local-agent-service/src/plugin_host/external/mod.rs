@@ -147,10 +147,19 @@ pub(crate) struct Manager {
     stopping: AtomicBool,
     advanced: Mutex<advanced::Store>,
     connectors: Mutex<BTreeMap<String, advanced::Live>>,
+    source_watches: Mutex<BTreeMap<String, tokio::task::JoinHandle<()>>>,
 }
 impl Manager {
     pub(crate) fn stop(&self) {
         self.stopping.store(true, Ordering::Release);
+        for (_, task) in std::mem::take(
+            &mut *self
+                .source_watches
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()),
+        ) {
+            task.abort();
+        }
         self.connectors
             .lock()
             .unwrap_or_else(|e| e.into_inner())

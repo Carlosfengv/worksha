@@ -1,0 +1,42 @@
+{
+  "manifestVersion": 1,
+  "id": "net.worksha.dsh-desktop",
+  "publisher": "net.worksha",
+  "displayName": "DSH 桌面端",
+  "version": "1.0.0",
+  "hostApi": "^1.0.0",
+  "capabilities": [
+    "domain.agent-directory@1",
+    "domain.session-source@1",
+    "domain.call-source@1",
+    "domain.project-source@1",
+    "domain.activity-source@1"
+  ],
+  "requires": [
+    "host.source-broker@1",
+    "host.domain-facts@1",
+    "host.source-watch@1"
+  ],
+  "permissions": [
+    {
+      "kind": "source.content.read",
+      "resource": "history"
+    }
+  ],
+  "runtime": {
+    "kind": "wasm-component",
+    "entry": "plugin.wasm",
+    "abi": "local-agent:plugin@1.0.0"
+  },
+  "source": {
+    "id": "desktop",
+    "products": [
+      {
+        "id": "desktop",
+        "displayName": "DeepSeek Harness 桌面端"
+      }
+    ],
+    "refreshSeconds": 5,
+    "maxAgeSeconds": 20
+  }
+}

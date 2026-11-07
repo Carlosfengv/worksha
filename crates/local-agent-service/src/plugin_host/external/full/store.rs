@@ -92,6 +92,16 @@ pub(super) struct Projection {
     pub encoded_bytes: usize,
     pub summary: d::facts::FactSummary,
     pub source_stamp: super::runtime::FileStamp,
+    pub captured_source: Option<super::runtime::SourceData>,
+}
+impl Projection {
+    pub(super) fn resident_bytes(&self) -> usize {
+        self.encoded_bytes.saturating_add(
+            self.captured_source
+                .as_ref()
+                .map_or(0, |source| source.text.len()),
+        )
+    }
 }
 pub(crate) struct Host {
     pub(super) root: PathBuf,

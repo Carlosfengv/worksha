@@ -44,6 +44,41 @@ export function parseContributions(
         throw new Error("插件详情插槽声明无效。");
       slots.add(slot.id);
     }
+    const navigationIds = new Set<string>();
+    const navigationViews = new Set<string>();
+    if ((item.navigation?.length ?? 0) > 8)
+      throw new Error("插件导航数量超出范围。");
+    for (const nav of item.navigation ?? []) {
+      if (
+        !status.manifest.requires?.includes("host.ui-navigation@1") ||
+        !/^[a-z0-9_-]{1,64}$/.test(nav.id) ||
+        navigationIds.has(nav.id) ||
+        !nav.title ||
+        nav.title.length > 100 ||
+        /[\u0000-\u001f\u007f]/.test(nav.title) ||
+        navigationViews.has(nav.viewId) ||
+        !status.manifest.views?.some((view) => view.id === nav.viewId)
+      )
+        throw new Error("插件导航声明无效。");
+      navigationIds.add(nav.id);
+      navigationViews.add(nav.viewId);
+    }
+    if ((item.dataQueries?.length ?? 0) > 8)
+      throw new Error("插件数据绑定数量超出范围。");
+    const queryViews = new Set<string>();
+    for (const query of item.dataQueries ?? []) {
+      if (
+        !status.manifest.requires?.includes("host.domain-services@1") ||
+        queryViews.has(query.viewId) ||
+        query.capability !== "domain.session-source@1" ||
+        !/^[a-zA-Z0-9_.:-]{1,160}$/.test(query.sourceId) ||
+        !status.manifest.views?.some(
+          (view) => view.id === query.viewId && view.kind === "report",
+        )
+      )
+        throw new Error("插件数据绑定无效。");
+      queryViews.add(query.viewId);
+    }
     for (const dep of item.dependencies) {
       if (
         deps.has(dep.pluginId) ||

@@ -1,6 +1,6 @@
 // Generated from contracts/plugins/sources/*.schema.json. Do not edit.
 export type ActivityCandidate = { "durationMs"?: (Decimal | null); "nativeId": string; "occurredAt"?: (string | null); "phase": ActivityPhase; "responseRef"?: (string | null); "sessionRef": string; };
-export type ActivityPhase = "thinking" | "generating" | "tool" | "idle" | "unknown";
+export type ActivityPhase = ("thinking" | "generating" | "tool" | "idle" | "unknown" | "running");
 export type Agent = { "displayName": string; "productId": string; };
 export type Budget = { "batchItems": number; "maxDocumentBytes": Decimal; "maxRecords": Decimal; };
 export type Catalog = { "apiVersion": string; "items": Array<Status>; };
@@ -33,7 +33,7 @@ export type ScanPage = { "batch"?: (FactBatch | null); "checkpoint"?: (Checkpoin
 export type ScanRequest = { "cursor"?: (string | null); "invocation": Invocation; "sourceId": string; "sourceRevision": string; };
 export type SessionCandidate = { "createdAt"?: (string | null); "nativeId": string; "partial": boolean; "productIds": Array<string>; "projectRef"?: (string | null); "title": string; "unknownClient": boolean; "updatedAt"?: (string | null); "usage": Usage; };
 export type Setting = { "default": string; "key": string; "label": string; "options": Array<string>; };
-export type Source = { "id": string; "products": Array<Product>; };
+export type Source = { "id": string; "maxAgeSeconds"?: (number | null); "products": Array<Product>; "refreshSeconds"?: (number | null); };
 export type StateAction = "enable" | "disable" | "remove" | "rollback" | "revoke-grants" | "revoke-publisher";
 export type StateChange = { "action": StateAction; "package": PackageQuery; };
 export type Status = { "activationEpoch": Decimal; "digest": string; "enabled": boolean; "factSummary"?: (FactSummary | null); "freshness": Freshness; "grantRevision": Decimal; "manifest": Manifest; "persistMetadata": boolean; "problem"?: (string | null); "publisherTrusted": boolean; "runtimeActive": boolean; "signingKey": string; "sourceAuthorized": boolean; "sourceLabel"?: (string | null); "unifiedAuthorized": boolean; };

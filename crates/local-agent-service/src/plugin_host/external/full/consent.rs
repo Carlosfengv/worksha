@@ -181,6 +181,7 @@ impl Manager {
             }
             if let Some(projection) = host.projections.get_mut(&input.plugin_id) {
                 projection.lease = lease.clone();
+                projection.captured_source = None;
             }
             if let Some(review) = review
                 && let Some(current) = host.consents.get_mut(&review.reply.review_ref)
