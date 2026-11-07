@@ -10,8 +10,8 @@ export const pluginScenarios = {
   tasks: {
     title: "任务执行",
     description: "创建任务、继续对话并处理任务执行。",
-    href: "#/tasks",
-    action: "打开任务",
+    href: null,
+    action: null,
   },
   activity: {
     title: "会话与观测",
@@ -23,8 +23,8 @@ export const pluginScenarios = {
   projects: {
     title: "项目管理",
     description: "整理项目，查看文件统计、版本库状态和关联的本地服务。",
-    href: "#/projects",
-    action: "打开项目",
+    href: null,
+    action: null,
   },
   accounts: {
     title: "账户与用量",

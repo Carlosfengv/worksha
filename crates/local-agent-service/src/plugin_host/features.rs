@@ -1,10 +1,25 @@
 //! Bundled business plugins and ownership of their existing readonly support.
 //! HTTP admissions use the same leases as background workers, never UI state.
 use local_agent_core::plugin::{
-    BuiltinPlugin, CapabilityKey, PluginDescriptor, PluginError, PluginLease, PluginResources,
+    BuiltinPlugin, CapabilityKey, PluginDescriptor, PluginError, PluginHost, PluginLease,
+    PluginResources,
     builtin::{CapabilityKind, CapabilityMetadata, ResourceScope},
 };
 use std::sync::Arc;
+
+// Legacy composition records and receipts can still contain these IDs.
+pub(super) fn deferred(id: &str) -> bool {
+    matches!(
+        id,
+        "builtin.workbench"
+            | "builtin.projects"
+            | "listeners"
+            | "project.source"
+            | "project.assets"
+            | "project.git"
+            | "project.listeners"
+    )
+}
 
 fn key(id: &'static str) -> CapabilityKey {
     CapabilityKey {
@@ -58,19 +73,9 @@ pub(crate) fn definitions() -> Vec<Arc<dyn BuiltinPlugin>> {
             requires: &["builtin.providers"],
         },
         Feature {
-            id: "builtin.workbench",
-            title: "任务",
-            requires: &["builtin.agents"],
-        },
-        Feature {
             id: "builtin.sessions",
             title: "Sessions",
             requires: &[],
-        },
-        Feature {
-            id: "builtin.projects",
-            title: "项目",
-            requires: &["builtin.sessions"],
         },
         Feature {
             id: "builtin.requests",
@@ -102,9 +107,6 @@ pub(crate) fn owner(plugin: &dyn BuiltinPlugin) -> Option<&'static str> {
     }
     if descriptor.id == "sessions" {
         return Some("builtin.sessions");
-    }
-    if descriptor.id == "listeners" || descriptor.id.starts_with("project.") {
-        return Some("builtin.projects");
     }
     if descriptor
         .provides
@@ -168,7 +170,10 @@ pub(crate) fn register(support: Vec<Arc<dyn BuiltinPlugin>>) -> Vec<Arc<dyn Buil
     factories
 }
 pub(crate) fn active(state: &crate::AppState, id: &'static str) -> bool {
-    state.readonly.host.acquire(&key(id)).is_ok()
+    mounted(&state.readonly.host, id)
+}
+pub(crate) fn mounted(host: &PluginHost, id: &'static str) -> bool {
+    host.acquire(&key(id)).is_ok()
 }
 /// These cover legacy and domain consumers, including the network gateway.
 /// Revocation/recovery endpoints remain host-owned and are never removed.
@@ -177,10 +182,7 @@ pub(crate) fn owner_of_path(path: &str) -> Option<&'static str> {
         Some("builtin.workbench")
     } else if path.starts_with("/api/model-service") {
         Some("builtin.model-services")
-    } else if path.starts_with("/api/projects")
-        || path == "/api/project-visibility"
-        || path == "/api/domain/project-visibility"
-    {
+    } else if path.starts_with("/api/projects") || path == "/api/project-visibility" {
         Some("builtin.projects")
     } else if path.starts_with("/gateway/") || path.starts_with("/capture/") {
         Some("builtin.agents")
@@ -201,6 +203,7 @@ pub(crate) fn owner_of_path(path: &str) -> Option<&'static str> {
             "/api/domain/conversation",
             "/api/domain/facts",
             "/api/domain/fact-conversation",
+            "/api/domain/project-visibility",
             "/api/domain/source-refresh",
         ]
         .contains(&path)

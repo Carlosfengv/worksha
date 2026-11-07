@@ -3,11 +3,6 @@ import { retryableLazy as lazy } from "./render-boundary";
 import type { PageContext } from "./plugin-registry";
 import { createUiRegistry, type UiPlugin } from "./plugin-registry";
 
-const WorkbenchPage = lazy(() =>
-  import("@/features/workbench/page").then((module) => ({
-    default: module.WorkbenchPage,
-  })),
-);
 const OverviewPage = lazy(() =>
   import("@/features/observation/overview-page").then((module) => ({
     default: module.OverviewPage,
@@ -59,11 +54,6 @@ const RequestsPage = lazy(() =>
     default: module.RequestsPage,
   })),
 );
-const ProjectsPage = lazy(() =>
-  import("@/features/projects/page").then((module) => ({
-    default: module.ProjectsPage,
-  })),
-);
 const SessionsPage = lazy(() =>
   import("@/features/sessions/page").then((module) => ({
     default: module.SessionsPage,
@@ -110,52 +100,6 @@ export const builtinPlugins: readonly UiPlugin[] = [
             selectedId={route.objectId}
             selectedTab={route.tab}
             refresh={refresh}
-          />
-        ),
-      },
-    ],
-  },
-  {
-    id: "builtin.workbench",
-    version: 1,
-    pages: [
-      {
-        id: "tasks",
-        label: "任务",
-        icon: "message-circle",
-        ownsBody: true,
-        render: ({ route }) => (
-          <WorkbenchPage
-            selectedId={route.objectId}
-            projectId={route.project}
-            newTask={route.tab === "new" || Boolean(route.project)}
-            liveMode={route.tab === "live"}
-          />
-        ),
-      },
-    ],
-  },
-  {
-    id: "builtin.projects",
-    version: 1,
-    pages: [
-      {
-        id: "projects",
-        label: "项目",
-        icon: "folder",
-        footer: false,
-        ownsBody: false,
-        refreshInHeader: false,
-        resetScrollOnObject: false,
-        render: ({ data, refresh, route }) => (
-          <ProjectsPage
-            data={data}
-            refresh={refresh}
-            initialScope={route.scope}
-            initialAgent={route.agent}
-            selectedId={route.objectId}
-            selectedTab={route.tab}
-            anchor={route.anchor}
           />
         ),
       },
@@ -287,11 +231,13 @@ export const builtinPlugins: readonly UiPlugin[] = [
         ownsBody: false,
         refreshInHeader: false,
         resetScrollOnObject: false,
-        render: ({ data, routeSearch, refresh }) => (
+        render: ({ data, route, routeSearch, refresh }) => (
           <PluginManager
-            key={routeSearch}
+            key={route.deferredPlugin ?? routeSearch}
             initialScene={
-              new URLSearchParams(routeSearch).get("scene") ?? undefined
+              route.deferredPlugin ??
+              new URLSearchParams(routeSearch).get("scene") ??
+              undefined
             }
             systemFeatures={systemFeatureCatalog(
               builtinPlugins.flatMap((plugin) =>

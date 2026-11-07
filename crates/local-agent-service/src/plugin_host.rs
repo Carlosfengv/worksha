@@ -36,7 +36,6 @@ impl ReadonlyRuntime {
         let sources = NativeSourcePlugins::definitions();
         let collectors = crate::tasks::CollectorScheduler::definitions();
         let mut factories = sources.registrations();
-        factories.extend(ProjectReaders::registrations());
         factories.extend(crate::billing::sources::AccountSources::registrations());
         factories.extend(
             collectors

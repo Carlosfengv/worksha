@@ -10,8 +10,6 @@ test("registered pages retain all detail and return parameters", async ({
   expect(contexts.map((row: { page: string }) => row.page)).toEqual([
     "overview",
     "agents",
-    "tasks",
-    "projects",
     "providers",
     "model-services",
     "mcp",
@@ -46,19 +44,6 @@ test("registered pages retain all detail and return parameters", async ({
     selectedTab: "memory",
   });
   expect(props.providers).toMatchObject({ selectedId: "你/id" });
-  expect(props.tasks).toMatchObject({
-    selectedId: "你/id",
-    projectId: "p",
-    newTask: true,
-    liveMode: false,
-  });
-  expect(props.projects).toMatchObject({
-    initialScope: "all",
-    initialAgent: "codex-desktop",
-    selectedId: "你/id",
-    selectedTab: "memory",
-    anchor: "tool-1",
-  });
   expect(props.sessions).toMatchObject({
     selectedId: "你/id",
     initialAgent: "codex-desktop",
@@ -96,6 +81,8 @@ test("registry rejects conflicts and keeps navigation and scroll ownership", asy
       extensionPlugin: "dev.aurora",
       extensionView: "history",
     },
+    deferredTask: { page: "plugins", deferredPlugin: "tasks" },
+    deferredProject: { page: "plugins", deferredPlugin: "projects" },
   });
   const navigation = JSON.parse(
     (await page.getByTestId("navigation").textContent()) ?? "[]",
@@ -109,7 +96,7 @@ test("registry rejects conflicts and keeps navigation and scroll ownership", asy
     navigation
       .filter((item: { ownsBody: boolean }) => item.ownsBody)
       .map((item: { id: string }) => item.id),
-  ).toEqual(["tasks", "sessions"]);
+  ).toEqual(["sessions"]);
   expect(
     navigation
       .filter(

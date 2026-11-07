@@ -111,31 +111,6 @@ const builtinCatalog: CompositionCatalog = {
             resources: [],
           }))
         : []),
-      {
-        id: "listeners",
-        displayName: "监听采集",
-        version: "1.0.0",
-        executionKind: "builtin",
-        desiredEnabled: true,
-        runtimeActive: true,
-        activationEpoch: "1",
-        capabilities: [
-          {
-            address: { name: "collector", version: 1, instance: "listeners" },
-            metadata: { kind: "stream", resourceScope: "application" },
-          },
-        ],
-        requires: [
-          {
-            name: "business.feature",
-            version: 1,
-            instance: "builtin.projects",
-          },
-        ],
-        optionalRequires: [],
-        resources: [],
-        problem: null,
-      },
     ],
   },
 };
@@ -269,8 +244,6 @@ createRoot(document.getElementById("root")!).render(
               page: "model-services",
               name: "模型服务",
             },
-            { id: "builtin.workbench", page: "tasks", name: "任务" },
-            { id: "builtin.projects", page: "projects", name: "项目" },
             ...(mode === "dependencies" || mode === "active-task"
               ? [
                   {

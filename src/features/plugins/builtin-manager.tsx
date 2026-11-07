@@ -394,7 +394,7 @@ export function BuiltinPluginManager({
         <div className="space-y-1">
           <h3 className="text-body font-medium">官方只读插件</h3>
           <p className="text-label text-fg-muted">
-            管理会话来源、项目读取、账户来源与后台采集。启停仅影响下列只读能力；任务工作台由应用单独管理。
+            管理会话来源、账户来源与后台采集。启停会影响对应的只读能力。
           </p>
         </div>
       )}

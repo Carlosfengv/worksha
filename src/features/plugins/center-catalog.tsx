@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   pluginScenarios,
   isPluginScenario,
@@ -374,6 +375,21 @@ export function PluginCenterCatalog({
             </Button>
           ))}
       </div>
+      {(scene === "all" || scene === "tasks" || scene === "projects") && (
+        <Alert>
+          <AlertTitle>
+            {scene === "all"
+              ? "任务与项目"
+              : scene === "tasks"
+                ? "任务"
+                : "项目"}
+            普通插件待接入
+          </AlertTitle>
+          <AlertDescription>
+            核心插件系统完善后开放安装。现有任务和项目数据保留。
+          </AlertDescription>
+        </Alert>
+      )}
       {scene !== "all" && (
         <div className="flex flex-wrap items-center gap-3">
           <p className="text-label text-fg-muted">

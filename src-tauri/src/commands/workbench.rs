@@ -65,6 +65,8 @@ async fn select_task_directory(
         "claude" => "Claude Code",
         _ => return Err("未知任务 Agent".into()),
     };
+    let routes = query_path("/api/workbench/routes", json!({"agent":agent}))?;
+    context.request(Method::GET, &routes, None).await?;
     let expected = if let Some(id) = parent_task_id.as_ref() {
         uuid::Uuid::parse_str(id).map_err(|_| "交接任务编号无效")?;
         let query = query_path("/api/workbench/tasks", json!({"taskId":id}))?;
@@ -197,6 +199,7 @@ pub(crate) async fn control_workbench_turn(
 
 #[tauri::command]
 pub(crate) async fn open_workbench_desktop(
+    backend: tauri::State<'_, Backend>,
     agent: String,
     handoff: String,
 ) -> Result<Value, String> {
@@ -210,6 +213,10 @@ pub(crate) async fn open_workbench_desktop(
     if handoff.trim().is_empty() || handoff.len() > 24 * 1024 {
         return Err("交接内容为空或超过 24 KB".into());
     }
+    let routes = query_path("/api/workbench/routes", json!({"agent":agent}))?;
+    let context = backend.context()?;
+    context.request(Method::GET, &routes, None).await?;
+    context.ensure_current()?;
     let path = PathBuf::from("/Applications").join(name);
     if !path.join("Contents/Info.plist").is_file() {
         return Err(format!("未在「应用程序」中找到 {name}"));
@@ -260,6 +267,8 @@ pub(crate) async fn export_workbench_opencode(
 ) -> Result<bool, String> {
     uuid::Uuid::parse_str(&task_id).map_err(|_| "任务编号无效")?;
     let context = backend.context()?;
+    let query = query_path("/api/workbench/tasks", json!({"taskId":task_id}))?;
+    context.request(Method::GET, &query, None).await?;
     let window = app.get_webview_window("main").ok_or("应用窗口不可用")?;
     let _ = window.set_focus();
     let selected = tokio::task::spawn_blocking(move || {

@@ -11,7 +11,6 @@ pub(super) fn capabilities(state: &AppState) -> Result<d::CapabilityCatalog> {
         .sessions
         .domain_capabilities()
         .map_err(|_| fail("unavailable"))?;
-    entries.extend(state.readonly.projects.domain_capabilities());
     entries.extend(state.readonly.accounts.domain_capabilities());
     entries.push(state.observation.domain_activity_capability());
     entries.extend(local_agent_core::requests::domain_read::builtin_capabilities());

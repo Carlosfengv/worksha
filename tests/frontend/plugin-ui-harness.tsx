@@ -2,22 +2,9 @@ import { createRoot } from "react-dom/client";
 import { isValidElement } from "react";
 import { builtinPlugins, pageRegistry } from "@/app/builtin-plugins";
 import { createUiRegistry } from "@/app/plugin-registry";
-import type { Page } from "@/app/types";
 
 // Inspect the actual registered React elements; never install a browser desktop bridge.
-const pages: Page[] = [
-  "overview",
-  "agents",
-  "tasks",
-  "projects",
-  "providers",
-  "model-services",
-  "mcp",
-  "sessions",
-  "requests",
-  "plugins",
-  "settings",
-];
+const pages = pageRegistry.navigation.map(({ id }) => id);
 const contexts = pages.map((page) => {
   const hash = `#/${page}/%E4%BD%A0%2Fid?agent=codex-desktop&anchor=tool-1&from=claude-code-cli&tab=memory&days=7&model=a%2Fb&project=p&returnTo=%2Fprojects%2Fp&scope=all&view=context`;
   const route = pageRegistry.readRoute(hash);
@@ -62,6 +49,8 @@ const checks = {
   unknown: pageRegistry.readRoute("#/future/bad").page,
   malformedId: pageRegistry.readRoute("#/sessions/%E0%A4%A").objectId ?? null,
   extension: pageRegistry.readRoute("#/extensions/dev.aurora/history"),
+  deferredTask: pageRegistry.readRoute("#/tasks/example?tab=live"),
+  deferredProject: pageRegistry.readRoute("#/projects/example"),
 };
 createRoot(document.getElementById("root")!).render(
   <>

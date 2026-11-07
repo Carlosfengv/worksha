@@ -13,21 +13,17 @@ export type SystemFeature = {
 };
 export const businessDisableEffects: Record<string, string> = {
   "builtin.providers":
-    "模型 API 连接、账户用量刷新与本机模型网关不可用；依赖它的模型服务、Agent 连接和任务同时停用。",
+    "模型 API 连接、账户用量刷新与本机模型网关不可用；依赖它的模型服务和 Agent 连接同时停用。",
   "builtin.model-services":
     "服务创建、发布与已绑定服务的模型目录和调用不可用；已有 Agent 配置保留，其服务入口会报不可用。",
   "builtin.agents":
-    "Agent 连接管理及经过本机 Agent 入口的模型调用不可用，任务同时停用；外部 Agent 自身继续运行。",
-  "builtin.workbench":
-    "本应用中的任务新建、续聊、审批与停止操作不可用；历史任务保留，不会终止外部 Agent。",
-  "builtin.projects":
-    "项目、修改、端口服务与磁盘/Git 查询不可用；任务页无法选择已有项目，但仍可选择本机目录。",
+    "Agent 连接管理及经过本机 Agent 入口的模型调用不可用；外部 Agent 自身继续运行。",
   "builtin.sessions":
-    "会话读取与后台扫描停止，原生来源读取授权撤销；依赖它的项目、MCP 和总览同时停用。",
+    "会话读取与后台扫描停止，原生来源读取授权撤销；依赖它的 MCP 和总览同时停用。",
   "builtin.requests":
     "请求筛选、详情与导出不可用，总览同时停用；停用查看功能不会删除网关审计历史。",
   "builtin.overview":
-    "活动与统计汇总不可用，实时活动采集停止，项目中的实时活动更新受影响；会话历史仍保留。",
+    "活动与统计汇总不可用，实时活动采集停止；会话历史仍保留。",
   "builtin.mcp":
     "MCP 配置与调用观测不可用；外部 MCP 服务和工具进程不会被本应用终止。",
 };
@@ -41,28 +37,6 @@ const definitions: Record<
     operations: ["创建模型服务", "编辑服务成员与路由策略", "删除服务"],
     conditions: "需要先配置 Provider 和可用模型；发布与切换以实际结果为准。",
     supportScenes: [],
-  },
-  tasks: {
-    purpose: "创建和管理任务，在任务中继续对话并处理执行交互",
-    scenes: ["tasks"],
-    operations: ["新建任务", "连接设置", "发送", "停止本轮"],
-    conditions:
-      "需要可用的 Agent 连接和用户确认的项目目录。具体执行、审批及停止能力以所选 Agent 支持范围为准；读取 Codex 会话不等于已接入任务控制。",
-    supportScenes: [],
-  },
-  projects: {
-    purpose: "按会话整理项目，查看项目会话、修改、服务与磁盘信息",
-    scenes: ["projects"],
-    operations: [
-      "查看项目",
-      "Sessions",
-      "修改记录",
-      "端口与服务",
-      "磁盘与 Git",
-    ],
-    conditions:
-      "项目来自已授权会话目录。Git、文件与端口信息还取决于本机目录和读取权限；缺失信息保持未知。",
-    supportScenes: ["projects"],
   },
   agents: {
     purpose: "管理 Agent 的模型连接和已有会话观测",

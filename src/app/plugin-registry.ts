@@ -5,6 +5,7 @@ import type { IconName } from "@/lib/icon-context";
 export interface AppRoute {
   extensionPlugin?: string;
   extensionView?: string;
+  deferredPlugin?: "tasks" | "projects";
   domainSource?: string;
   page: Page;
   objectId?: string;
@@ -45,8 +46,6 @@ export interface UiPlugin {
 const coreRoutes: readonly Page[] = [
   "overview",
   "agents",
-  "projects",
-  "tasks",
   "providers",
   "model-services",
   "mcp",
@@ -96,6 +95,9 @@ export function createUiRegistry(plugins: readonly UiPlugin[]) {
         }
       }
       const [page, rawId] = path.split("/");
+      if (page === "tasks" || page === "projects") {
+        return { page: "plugins", deferredPlugin: page };
+      }
       const params = new URLSearchParams(search);
       let objectId: string | undefined;
       try {

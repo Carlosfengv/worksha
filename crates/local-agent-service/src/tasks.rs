@@ -1,4 +1,4 @@
-//! Own the three existing polling loops. No collector is automatically added by registration.
+//! Own the existing polling loops. Registration alone starts no collector.
 use crate::AppState;
 use local_agent_core::plugin::{
     BuiltinPlugin, CapabilityKey, PluginDescriptor, PluginError, PluginHost, PluginLease,
@@ -145,7 +145,6 @@ impl CollectorScheduler {
     }
     pub(crate) fn definitions() -> Vec<Arc<Collector>> {
         Self::definitions_for(vec![
-            ("listeners", Duration::from_secs(10)),
             ("activity", Duration::from_secs(1)),
             ("sessions", Duration::from_secs(30)),
         ])
@@ -417,7 +416,7 @@ mod tests {
         assert_eq!(cleanup.load(Ordering::SeqCst), 2);
     }
     #[test]
-    fn registration_keeps_the_original_intervals_without_starting_tasks() {
+    fn registration_excludes_project_listeners_and_starts_no_tasks() {
         let scheduler = CollectorScheduler::builtin().unwrap();
         assert_eq!(
             scheduler
@@ -425,7 +424,7 @@ mod tests {
                 .iter()
                 .map(|c| (c.id, c.interval.as_secs()))
                 .collect::<Vec<_>>(),
-            [("listeners", 10), ("activity", 1), ("sessions", 30)]
+            [("activity", 1), ("sessions", 30)]
         );
         assert!(scheduler.handles.lock().unwrap().is_empty());
         assert!(!scheduler.started.load(Ordering::Acquire));

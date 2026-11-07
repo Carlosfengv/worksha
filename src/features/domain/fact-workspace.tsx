@@ -499,7 +499,7 @@ function FactDetail({
           {fact.value.pathHint ?? "未知"}
           {record.identity.evidence === "source-reported"
             ? "。此路径不用于本机文件、Git 或监听读取。"
-            : "。此视图读取已有索引；项目文件与 Git 详情仍可在项目页查看。"}
+            : "。此视图读取已有索引。"}
         </p>
       )}
       {fact.kind === "project" &&

@@ -200,7 +200,9 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
         &directory,
         readonly.accounts.clone(),
     )));
-    let workbench = if options.persistent {
+    let workbench = if options.persistent
+        || !plugin_host::features::mounted(&readonly.host, "builtin.workbench")
+    {
         None
     } else {
         match workbench::Workbench::open(&directory, source_home.clone()) {

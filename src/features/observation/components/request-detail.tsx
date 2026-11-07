@@ -24,7 +24,6 @@ import {
   costReason,
 } from "@/features/providers/usage-display";
 import { observationApi } from "../api";
-import { workbenchApi } from "@/features/workbench/api";
 import {
   durationLabel,
   requestStates,
@@ -41,7 +40,6 @@ export function RequestDetail({
 }) {
   const { agentNames } = useAgentDirectory();
   const epoch = useBackendReadEpoch();
-  const [openingSession, setOpeningSession] = useState(false);
   const [state, setState] = useState<{
     id: string;
     data: RequestDetailResponse | null;
@@ -181,25 +179,12 @@ export function RequestDetail({
               {r.sessionId && !r.client && (
                 <Button
                   variant="tertiary"
-                  loading={openingSession}
-                  onClick={async () => {
-                    const origin = window.location.hash;
-                    const fallback = sessionLink(r.sessionId!, {
+                  onClick={() => {
+                    window.location.hash = sessionLink(r.sessionId!, {
                       anchor: r.native?.eventId,
                       returnTo: `/requests/${encodeURIComponent(id)}?${returnSearch}`,
                       view: r.native ? undefined : "requests",
                     });
-                    setOpeningSession(true);
-                    let task: string | null = null;
-                    try {
-                      task = await workbenchApi.openLinkedSession(r.sessionId!);
-                    } catch {
-                      // The same session's gateway history remains readable when Desktop is unavailable.
-                    } finally {
-                      setOpeningSession(false);
-                    }
-                    if (window.location.hash === origin)
-                      window.location.hash = task ?? fallback;
                   }}
                 >
                   打开关联会话

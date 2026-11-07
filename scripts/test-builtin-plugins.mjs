@@ -161,10 +161,10 @@ try {
   passed("新目录与操作沿用令牌、Host、Origin 保护");
   let current = await catalog();
   assert.equal(current.schemaVersion, 1);
-  assert.equal(current.host.plugins.length, 25);
-  assert.equal(current.host.plugins.filter(plugin=>plugin.id.startsWith("builtin.")).length,9);
-  assert.equal(current.host.plugins.reduce((count,plugin)=>count+plugin.capabilities.length,0),37);
-  assert.equal(active(current).length, 25);
+  assert.equal(current.host.plugins.length, 18);
+  assert.equal(current.host.plugins.filter(plugin=>plugin.id.startsWith("builtin.")).length,7);
+  assert.equal(current.host.plugins.reduce((count,plugin)=>count+plugin.capabilities.length,0),30);
+  assert.equal(active(current).length, 18);
   assert(
     current.host.plugins.every(
       (plugin) =>
@@ -178,12 +178,12 @@ try {
       (source) => !source.enabled && source.runtimeActive,
     ),
   );
-  passed("生产共享目录公开 9 个业务插件与 16 个支撑，注册不代表来源授权");
+  passed("生产共享目录公开 7 个业务插件与 11 个支撑，注册不代表来源授权");
   const before = await catalog();
   for (const input of [
     await request({
       profile: "desktop",
-      disabledPluginIds: ["project.source"],
+      disabledPluginIds: ["builtin.providers"],
     }),
     await request({ profile: "desktop", disabledPluginIds: ["unknown"] }),
   ]) {
@@ -250,7 +250,7 @@ try {
   passed("独立进程重启后保存配置、来源撤销与原回执一致");
   const restore = await request({ profile: "desktop", disabledPluginIds: [] });
   const restored = await change(restore);
-  assert.equal(active(restored.catalog).length, 25);
+  assert.equal(active(restored.catalog).length, 18);
   assert((await snapshot()).sessionSources.every((source) => !source.enabled));
   assert.equal(
     (await change(disable)).catalog.revision,
@@ -283,7 +283,7 @@ try {
   const background = await change(
     await request({ profile: "background", disabledPluginIds: [] }),
   );
-  assert.equal(active(background.catalog).length, 22);
+  assert.equal(active(background.catalog).length, 16);
   assert.equal(
     (await snapshot()).builtinComposition.nativeActivityActive,
     false,
@@ -297,8 +297,8 @@ try {
         (plugin) => !plugin.runtimeActive && plugin.resources.length === 0,
       ),
   );
-  await api("/api/projects");
-  passed("后台组合保留只读查询，三个采集器停止并释放资源");
+  await api("/api/domain/directory");
+  passed("后台组合保留只读目录，两个采集器停止并释放资源");
   const recovery = await change(
     await request({ profile: "recovery", disabledPluginIds: [] }),
   );
@@ -310,7 +310,7 @@ try {
   );
   assert.equal((await snapshot()).gatewayStatus, "paused");
   assert.equal(
-    (await api("/api/projects", undefined, 409)).code,
+    (await api("/api/domain/directory", undefined, 409)).code,
     "plugin_disabled",
   );
   await api("/api/builtin-plugins", undefined, 401, "GET", {
@@ -354,7 +354,7 @@ try {
   await stop();
   await start(true, path.join(root, "headless-data"));
   assert.equal((await catalog()).effectiveProfile, "background");
-  assert.equal(active(await catalog()).length, 22);
+  assert.equal(active(await catalog()).length, 16);
   assert.equal(
     (await snapshot()).builtinComposition.nativeActivityActive,
     false,

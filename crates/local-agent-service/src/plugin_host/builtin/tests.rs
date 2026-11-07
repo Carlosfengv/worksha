@@ -181,7 +181,6 @@ async fn disabled_business_routes_are_rejected_but_receipts_and_cancellation_rem
     for path in [
         "/api/projects",
         "/api/projects/example",
-        "/api/domain/project-visibility",
         "/api/providers",
         "/api/provider-models",
         "/api/model-services",
@@ -200,6 +199,7 @@ async fn disabled_business_routes_are_rejected_but_receipts_and_cancellation_rem
     for path in [
         "/api/builtin-plugins",
         "/api/sessions",
+        "/api/domain/project-visibility",
         "/api/provider-operations/fixture",
         "/api/model-service-operations/fixture",
     ] {
@@ -406,7 +406,7 @@ async fn rejected_dependency_and_stale_or_foreign_operations_preserve_generation
     let before = read(&f.state).unwrap();
     let invalid = f.change(Composition {
         profile: Profile::Desktop,
-        disabled_plugin_ids: vec!["project.source".into()],
+        disabled_plugin_ids: vec!["builtin.sessions".into()],
         removed_plugin_ids: vec![],
     });
     assert_eq!(

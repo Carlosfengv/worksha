@@ -26,7 +26,9 @@ pub(super) fn selected(
     .any(|list| {
         list.len() > 256
             || list.windows(2).any(|pair| pair[0] >= pair[1])
-            || list.iter().any(|id| !ids.contains(id))
+            || list
+                .iter()
+                .any(|id| !ids.contains(id) && !super::features::deferred(id))
     }) {
         return Err(PluginError::new(
             "invalid_input",
@@ -284,15 +286,23 @@ pub(crate) async fn guard(
         ))
         .into_response();
     };
-    if !super::features::recovery_path(path, request.method())
-        && let Some(owner) = super::features::owner_of_path(path)
-        && !super::features::active(&state, owner)
-    {
-        return error(PluginError::new(
-            "plugin_disabled",
-            "此功能的插件已停用或卸载，请在插件中心恢复；历史数据和配置仍保留",
-        ))
-        .into_response();
+    if let Some(owner) = super::features::owner_of_path(path) {
+        if super::features::deferred(owner) {
+            return error(PluginError::new(
+                "plugin_disabled",
+                "此功能待接入普通插件，当前不可用。历史数据和配置仍保留",
+            ))
+            .into_response();
+        }
+        if !super::features::recovery_path(path, request.method())
+            && !super::features::active(&state, owner)
+        {
+            return error(PluginError::new(
+                "plugin_disabled",
+                "此功能的插件已停用或卸载，请在插件中心恢复；历史数据和配置仍保留",
+            ))
+            .into_response();
+        }
     }
     let response = next.run(request).await;
     let (parts, body) = response.into_parts();

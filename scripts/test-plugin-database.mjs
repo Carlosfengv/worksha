@@ -200,10 +200,7 @@ try {
   const active = (await api(current, "/api/builtin-plugins")).body;
   assert.equal(active.storeId, catalog.storeId);
   assert.deepEqual(active.composition, request.composition);
-  assert.equal(
-    active.host.plugins.find((p) => p.id === "builtin.projects").runtimeActive,
-    false,
-  );
+  assert(!active.host.plugins.some((p) => p.id === "builtin.projects"));
   const queried = await api(current, "/api/builtin-plugins/operations", {
     storeId: request.storeId,
     operationId: request.operationId,

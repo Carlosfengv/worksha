@@ -7,7 +7,7 @@ test("一个列表按安装来源展示，搜索和来源筛选不暴露内部�
   const table = page
     .getByLabel("插件中心列表", { exact: true })
     .getByRole("table");
-  await expect(table.getByRole("row")).toHaveCount(7);
+  await expect(table.getByRole("row")).toHaveCount(5);
   await expect(page.getByRole("tablist")).toHaveCount(0);
   await expect(table).toContainText("系统自带");
   await expect(table).toContainText("用户上传");
@@ -93,7 +93,7 @@ test("部分目录读取失败保留其余插件，不把缺口显示为全部�
   ).toBeVisible();
   await expect(
     page.getByLabel("插件中心列表", { exact: true }).getByRole("table"),
-  ).toContainText("项目");
+  ).toContainText("模型服务");
   await expect(
     page.getByRole("button", { name: "上传插件", exact: true }),
   ).toBeEnabled();
@@ -126,30 +126,27 @@ test("安装与启用之间后台变化时停止后续写入，保留安装事�
   ]);
 });
 
-test("业务插件以模型服务、任务和项目为粒度，描述与入口操作对应", async ({
+test("可用业务插件展示真实入口，待接入功能没有安装和启用入口", async ({
   page,
 }) => {
   await page.goto("/tests/frontend/plugin-center.html");
-  for (const route of ["model-services", "tasks", "projects"]) {
-    const row = page
-      .getByRole("row")
-      .filter({ has: page.locator(`a[href="#/${route}"]`) });
-    await expect(row).toContainText("运行中");
-    await expect(row.getByRole("switch")).toBeChecked();
-    await expect(
-      row.getByRole("link", { name: "打开功能", exact: true }),
-    ).toHaveAttribute("href", `#/${route}`);
-  }
-  const project = page
+  const models = page
     .getByRole("row")
-    .filter({ has: page.locator('a[href="#/projects"]') });
-  await project.click();
+    .filter({ has: page.locator('a[href="#/model-services"]') });
+  await expect(models).toContainText("运行中");
+  await expect(models.getByRole("switch")).toBeChecked();
+  await models.click();
   const detail = page.getByRole("article", { name: "功能详情", exact: true });
-  await expect(detail).toContainText("端口与服务");
-  await expect(detail).toContainText("磁盘与 Git");
+  await expect(detail).toContainText("创建模型服务");
   await expect(
-    detail.getByRole("link", { name: "打开项目", exact: true }),
-  ).toHaveAttribute("href", "#/projects");
+    detail.getByRole("link", { name: "打开模型服务", exact: true }),
+  ).toHaveAttribute("href", "#/model-services");
+  await expect(page.getByText("任务与项目普通插件待接入")).toBeVisible();
+  await expect(
+    page.locator('a[href="#/tasks"], a[href="#/projects"]'),
+  ).toHaveCount(0);
+  await expect(page.getByRole("switch", { name: "启用 任务" })).toHaveCount(0);
+  await expect(page.getByRole("switch", { name: "启用 项目" })).toHaveCount(0);
   await expect(page.getByText("运行组合", { exact: true })).toHaveCount(0);
 });
 test("按功能场景筛选业务插件与上传扩展，同一数据插件可服务多个场景", async ({
@@ -165,15 +162,15 @@ test("按功能场景筛选业务插件与上传扩展，同一数据插件可�
     .getByRole("table");
   await expect(table).toContainText("完整只读历史");
   await expect(
-    table.getByRole("link", { name: "打开功能", exact: true }),
-  ).toHaveAttribute("href", "#/projects");
+    page.getByText("项目普通插件待接入", { exact: true }),
+  ).toBeVisible();
   await page
     .getByRole("group", { name: "功能场景", exact: true })
     .getByRole("button", { name: "任务执行", exact: true })
     .click();
   await expect(
-    table.getByRole("link", { name: "打开功能", exact: true }),
-  ).toHaveAttribute("href", "#/tasks");
+    page.getByText("任务普通插件待接入", { exact: true }),
+  ).toBeVisible();
   await expect(table).not.toContainText("完整只读历史");
 });
 
@@ -187,7 +184,6 @@ test("系统插件停用前展示连带功能和真实服务，取消不变更",
     "Providers",
     "Agents",
     "模型服务",
-    "任务",
     "开发服务",
     "团队服务",
   ])
@@ -204,16 +200,16 @@ test("依赖停用需明确确认，重新启用消费者只恢复必需依赖",
     .getByRole("switch", { name: "启用 Providers", exact: true })
     .click();
   await page.getByRole("button", { name: "确认变更", exact: true }).click();
-  for (const name of ["Providers", "Agents", "模型服务", "任务"])
+  for (const name of ["Providers", "Agents", "模型服务"])
     await expect(
       page.getByRole("switch", { name: `启用 ${name}`, exact: true }),
     ).not.toBeChecked();
-  await page.getByRole("switch", { name: "启用 任务", exact: true }).click();
+  await page.getByRole("switch", { name: "启用 Agents", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  for (const name of ["Providers", "Agents", "任务"])
+  for (const name of ["Providers", "Agents"])
     await expect(dialog).toContainText(name);
   await dialog.getByRole("button", { name: "确认变更", exact: true }).click();
-  for (const name of ["Providers", "Agents", "任务"])
+  for (const name of ["Providers", "Agents"])
     await expect(
       page.getByRole("switch", { name: `启用 ${name}`, exact: true }),
     ).toBeChecked();
@@ -229,7 +225,9 @@ test("系统插件可卸载和重新安装，卸载后没有可用入口或假�
   page,
 }) => {
   await page.goto("/tests/frontend/plugin-center.html");
-  const row = page.getByRole("row").filter({ hasText: "按会话整理项目" });
+  const row = page
+    .getByRole("row")
+    .filter({ hasText: "把不同 Provider 的模型组织" });
   await row.click();
   await page
     .getByRole("article", { name: "功能详情", exact: true })
@@ -249,7 +247,7 @@ test("系统插件可卸载和重新安装，卸载后没有可用入口或假�
   await expect(row.getByRole("switch")).toBeChecked();
   await expect(
     row.getByRole("link", { name: "打开功能", exact: true }),
-  ).toHaveAttribute("href", "#/projects");
+  ).toHaveAttribute("href", "#/model-services");
 });
 test("运行中任务阻止提交系统插件变更，不自动终止任务", async ({ page }) => {
   await page.goto("/tests/frontend/plugin-center.html?mode=active-task");
