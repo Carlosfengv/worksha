@@ -1,6 +1,8 @@
 //! Additive source package and fact host. Legacy package and database formats stay separate.
 pub(super) mod api;
+mod connection;
 mod consent;
+pub(crate) use connection::ConnectionAccess;
 mod view;
 pub(crate) use view::SourceView;
 mod lifecycle;

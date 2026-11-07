@@ -75,6 +75,7 @@ pub(super) struct Grant {
     pub device: u64,
     pub inode: u64,
     pub unified: bool,
+    pub connection: Option<String>,
 }
 #[derive(Clone)]
 pub(super) struct ConsentReview {

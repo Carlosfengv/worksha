@@ -118,6 +118,7 @@ export function systemPluginPresentation(plugin: PluginInfo) {
   };
 }
 const purposes: Record<string, string> = {
+  "agent.connection@1": "预览、切换和恢复 Agent 的默认模型连接",
   "session.source@1": "读取会话记录",
   "account.quota-source@1": "查看账户额度",
   "provider.catalog@1": "添加模型连接预设",
@@ -159,6 +160,7 @@ export function uploadedPluginPresentation(manifest: Manifest) {
         "config.plan-provider@1",
         "integration.connector@1",
         "domain.routing-policy@1",
+        "agent.connection@1",
       ].includes(c),
     )
   )

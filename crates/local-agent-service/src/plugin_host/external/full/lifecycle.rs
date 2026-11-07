@@ -294,6 +294,7 @@ impl Manager {
             device: metadata.dev(),
             inode: metadata.ino(),
             unified: false,
+            connection: None,
         };
         runtime::stamp(&grant)?;
         self.full_check(&check)?;

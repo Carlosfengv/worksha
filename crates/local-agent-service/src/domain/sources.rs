@@ -10,6 +10,9 @@ pub(super) enum SourceView {
     Full(Box<external::full::SourceView>),
 }
 impl SourceView {
+    pub fn has_agent_connection(&self) -> bool {
+        matches!(self, Self::Full(view) if view.has_agent_connection())
+    }
     pub fn source(&self) -> &d::Source {
         match self {
             Self::Legacy(v) => &v.source,

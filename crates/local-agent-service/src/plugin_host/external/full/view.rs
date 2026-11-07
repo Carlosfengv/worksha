@@ -26,6 +26,9 @@ impl SourceView {
     pub fn live_report_window(&self) -> Option<u32> {
         self.manifest.source.as_ref()?.max_age_seconds
     }
+    pub fn has_agent_connection(&self) -> bool {
+        self.manifest.has_agent_connection()
+    }
     pub fn vector(&self) -> String {
         serde_json::json!([
             self.digest,

@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 pub use super::external::{API_VERSION, Manifest, Permission, Runtime, SIGNING_DOMAIN};
 pub const SOURCE_BROKER: &str = "host.source-broker@1";
 pub const FACT_FEATURE: &str = "host.domain-facts@1";
+pub const AGENT_CONNECTION: &str = "agent.connection@1";
+pub const AGENT_CONNECTION_FEATURE: &str = "host.agent-connection@1";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum Capability {
@@ -88,6 +90,9 @@ pub struct Source {
     pub max_age_seconds: Option<u32>,
 }
 impl Manifest {
+    pub fn has_agent_connection(&self) -> bool {
+        self.source.is_some() && self.capabilities.iter().any(|c| c == AGENT_CONNECTION)
+    }
     pub fn source_id(&self) -> Option<String> {
         self.source
             .as_ref()

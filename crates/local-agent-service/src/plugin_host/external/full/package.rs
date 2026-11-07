@@ -3,7 +3,7 @@ use super::super::{Result, fail, package};
 use ed25519_dalek::SigningKey;
 use local_agent_core::plugin::{
     external::*,
-    full::{Capability, FACT_FEATURE, SOURCE_BROKER},
+    full::{AGENT_CONNECTION, AGENT_CONNECTION_FEATURE, Capability, FACT_FEATURE, SOURCE_BROKER},
 };
 use std::collections::BTreeSet;
 #[cfg(test)]
@@ -15,6 +15,15 @@ pub(crate) fn validate(m: &Manifest) -> Result<()> {
     let Runtime::WasmComponent { entry, abi } = &m.runtime else {
         return Err(fail("permission_denied"));
     };
+    let connection = m.has_agent_connection();
+    let mut permissions = vec![Permission::SourceContentRead {
+        resource: "history".into(),
+    }];
+    if connection {
+        permissions.push(Permission::ConnectionRequest {
+            path: "agent-connection".into(),
+        });
+    }
     if m.kind.is_some()
         || m.agent.is_some()
         || !m.providers.is_empty()
@@ -24,11 +33,12 @@ pub(crate) fn validate(m: &Manifest) -> Result<()> {
         || m.publisher.starts_with("io.localagent.")
         || entry != "plugin.wasm"
         || abi != "local-agent:plugin@1.0.0"
-        || m.permissions
-            != [Permission::SourceContentRead {
-                resource: "history".into(),
-            }]
-        || m.requires.len() != 2 + usize::from(source.refresh_seconds.is_some())
+        || m.permissions != permissions
+        || m.requires.len()
+            != 2 + usize::from(source.refresh_seconds.is_some()) + usize::from(connection)
+        || (connection
+            && (!m.requires.iter().any(|r| r == AGENT_CONNECTION_FEATURE)
+                || source.products.len() != 1))
         || source
             .refresh_seconds
             .is_some_and(|seconds| !(5..=300).contains(&seconds))
@@ -55,8 +65,8 @@ pub(crate) fn validate(m: &Manifest) -> Result<()> {
             .any(|c| c == Capability::SessionSource.as_str())
         || m.capabilities
             .iter()
-            .any(|c| Capability::parse(c).is_none())
-        || m.capabilities.len() > 6
+            .any(|c| Capability::parse(c).is_none() && c != AGENT_CONNECTION)
+        || m.capabilities.len() > 6 + usize::from(connection)
         || m.capabilities.iter().collect::<BTreeSet<_>>().len() != m.capabilities.len()
         || !package::local_id(&source.id)
         || source.products.is_empty()

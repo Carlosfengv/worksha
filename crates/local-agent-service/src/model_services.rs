@@ -144,7 +144,14 @@ fn active_bindings(
         .dynamic_bindings()?
         .into_iter()
         .filter(|b| {
-            configs.iter().any(|c| {
+            local_agent_core::routing::agent_connection_digest(&b.agent_id, &b.scope).is_some_and(
+                |digest| {
+                    state
+                        .plugins
+                        .agent_connection_access(&b.agent_id, None)
+                        .is_ok_and(|access| access.digest == digest && access.grant.is_some())
+                },
+            ) || configs.iter().any(|c| {
                 c.agent_id == b.agent_id
                     && c.path == b.scope
                     && (c.error.is_some()

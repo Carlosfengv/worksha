@@ -370,6 +370,7 @@ pub async fn action(
 }
 pub async fn capture(state: AppState, id: String, request: Request) -> Response {
     let store = state.store.clone();
+    let plugins = state.plugins.clone();
     let credentials = state.credentials.clone();
     let result = crate::blocking::run(move || {
         let b = store
@@ -377,7 +378,13 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
             .map_err(|_| unavailable())?
             .dynamic_binding(&id)?
             .ok_or_else(unavailable)?;
-        if !CONNECTION_AGENTS.contains(&b.agent_id.as_str()) {
+        let external = routing::agent_connection_digest(&b.agent_id, &b.scope);
+        let plugin_active = external.is_some_and(|digest| {
+            plugins
+                .agent_connection_access(&b.agent_id, None)
+                .is_ok_and(|access| access.digest == digest && access.grant.is_some())
+        });
+        if !CONNECTION_AGENTS.contains(&b.agent_id.as_str()) && !plugin_active {
             return Err(unavailable());
         }
         let path = request.uri().path();
@@ -443,7 +450,10 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
             .lock()
             .map_err(|_| unavailable())?
             .model_service_attachment(&b.id)?;
-        if service.is_none() && !["claude", "opencode"].contains(&b.agent_id.as_str()) {
+        if service.is_none()
+            && !plugin_active
+            && !["claude", "opencode"].contains(&b.agent_id.as_str())
+        {
             return Err(unavailable());
         }
         Ok::<_, ConfigError>((request, b, query, codex_catalog, service))
@@ -524,6 +534,14 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
         "claude-desktop" => ("claude".into(), Some("claude-code-desktop".into())),
         "claude" => (b.agent_id, Some("claude-code-cli".into())),
         "opencode" => (b.agent_id, Some("opencode".into())),
+        _ if routing::agent_connection_digest(&b.agent_id, &b.scope).is_some() => (
+            b.agent_id
+                .split_once(':')
+                .expect("validated plugin product")
+                .0
+                .into(),
+            Some(b.agent_id),
+        ),
         _ => (b.agent_id, None),
     };
     crate::observation::proxy::forward(

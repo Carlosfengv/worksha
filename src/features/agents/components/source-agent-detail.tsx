@@ -7,6 +7,8 @@ import {
 } from "@/features/domain/published-sources";
 import type { AgentDiscovery } from "@/shared/types/agent";
 import { sourceStatus } from "../source-status";
+import { PluginAgentConnection } from "./plugin-agent-connection";
+import type { Provider } from "@/features/providers/types";
 
 const views: { mode: SourceView; label: string }[] = [
   { mode: "sessions", label: "Sessions" },
@@ -19,9 +21,11 @@ const views: { mode: SourceView; label: string }[] = [
 export function SourceAgentDetail({
   agent,
   tab,
+  providers,
 }: {
   agent: AgentDiscovery;
   tab?: string;
+  providers: Provider[];
 }) {
   const available = views.filter(({ mode }) => sourceProvides(agent, mode));
   const value =
@@ -67,9 +71,13 @@ export function SourceAgentDetail({
           </TabPanel>
         ))}
         <TabPanel value="connection" className="space-y-3 pt-4">
-          <p className="text-body text-fg-muted">
-            此接入提供只读观测。读取权限和可用数据由对应插件管理。
-          </p>
+          {value === "connection" && agent.connectionAdapter ? (
+            <PluginAgentConnection agent={agent} providers={providers} />
+          ) : !agent.connectionAdapter ? (
+            <p className="text-body text-fg-muted">
+              此接入提供只读观测。读取权限和可用数据由对应插件管理。
+            </p>
+          ) : null}
           <Button asChild variant="neutral" size="sm">
             <a href="#/plugins?scene=agents">管理 Agent 接入</a>
           </Button>

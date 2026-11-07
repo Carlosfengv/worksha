@@ -1,3 +1,4 @@
+mod agent_connections;
 mod api;
 mod associated_costs;
 mod billing;

@@ -40,7 +40,12 @@ export function AgentsPage({
     );
   if (selected?.readonly || selected?.sourceId)
     return (
-      <SourceAgentDetail key={selected.id} agent={selected} tab={selectedTab} />
+      <SourceAgentDetail
+        key={selected.id}
+        agent={selected}
+        tab={selectedTab}
+        providers={data.providers}
+      />
     );
   if (selected)
     return (

@@ -1,4 +1,5 @@
 {
+  "perform_agent_model_connection": ["input"],
   "get_fact_conversation": ["query"],
   "set_domain_project_visibility": ["input"],
   "query_unified_facts": ["query"],

@@ -79,6 +79,7 @@ pub(crate) fn plugin_agents(state: &AppState) -> (Vec<serde_json::Value>, Option
                 "found":true,"location":null,
                 "connected":source.source().status.authorization == d::Authorization::Authorized,
                 "readonly":true,"sourceId":source.source().id,
+                "connectionAdapter": source.has_agent_connection().then_some("agent.connection@1"),
                 "pluginId":source.plugin_id(),"sourceState":source.source().status,"capabilities":capabilities
             }));
         }

@@ -13,6 +13,7 @@ export interface AgentProduct {
   sourceId?: string;
   pluginId?: string;
   capabilities?: readonly string[];
+  connectionAdapter?: "agent.connection@1" | null;
 }
 // The compiled fallback and Rust use the same composition metadata. Connected UI
 // consumes Snapshot.agents through AgentDirectoryProvider, including new products.

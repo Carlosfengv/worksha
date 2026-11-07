@@ -17,6 +17,7 @@ import { providerStatusResource } from "@/features/providers/queries";
 import { modelServicesResource } from "@/features/model-services/queries";
 import type { AgentDiscovery } from "@/shared/types/agent";
 import { sourceStatus } from "../source-status";
+import { PluginAgentConnection } from "./plugin-agent-connection";
 
 const agentLogos: Record<string, string> = {
   claude: "/agent-logos/claude.png",
@@ -108,7 +109,7 @@ const columns: ColumnDef<AgentRow>[] = [
     size: 264,
     header: () => <span className="block text-right">模型连接</span>,
     cell: ({ row: { original: item } }) =>
-      item.agent.readonly ? (
+      item.agent.readonly && !item.agent.connectionAdapter ? (
         <span className="block text-right text-label text-fg-muted">
           仅观测
         </span>
@@ -118,21 +119,29 @@ const columns: ColumnDef<AgentRow>[] = [
           onClick={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
         >
-          <AgentServiceControl
-            compact
-            agentId={item.agent.configId}
-            name={item.agent.name}
-            providers={item.data.providers}
-            status={item.status}
-            catalog={item.services}
-            checking={item.checking}
-            unavailable={item.unavailable}
-            servicesUnavailable={item.servicesUnavailable}
-            onProviderSelect={(config, providerId) =>
-              item.onSelect(item.agent, config, providerId)
-            }
-            reload={item.reloadServices}
-          />
+          {item.agent.connectionAdapter ? (
+            <PluginAgentConnection
+              compact
+              agent={item.agent}
+              providers={item.data.providers}
+            />
+          ) : (
+            <AgentServiceControl
+              compact
+              agentId={item.agent.configId}
+              name={item.agent.name}
+              providers={item.data.providers}
+              status={item.status}
+              catalog={item.services}
+              checking={item.checking}
+              unavailable={item.unavailable}
+              servicesUnavailable={item.servicesUnavailable}
+              onProviderSelect={(config, providerId) =>
+                item.onSelect(item.agent, config, providerId)
+              }
+              reload={item.reloadServices}
+            />
+          )}
         </div>
       ),
   },

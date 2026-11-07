@@ -8,6 +8,21 @@ use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, 
 use serde::{Deserialize, Serialize};
 
 pub const ALIAS: &str = "local-agent-default";
+pub const AGENT_CONNECTION_SCOPE: &str = "agent-connection@1:";
+
+pub fn agent_connection_digest<'a>(agent: &str, scope: &'a str) -> Option<&'a str> {
+    let digest = scope.strip_prefix(AGENT_CONNECTION_SCOPE)?;
+    let (plugin, product) = agent.split_once(':')?;
+    (!plugin.is_empty()
+        && !product.is_empty()
+        && agent.len() <= 200
+        && agent
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b".-_:".contains(&b))
+        && digest.len() == 64
+        && digest.bytes().all(|b| b.is_ascii_hexdigit()))
+    .then_some(digest)
+}
 const MAX_LEASES: i64 = 4096;
 const MAX_VERSIONS: i64 = 4096;
 
@@ -182,7 +197,9 @@ fn create_binding(
     provider: &Provider,
 ) -> Result<Binding, ConfigError> {
     uuid::Uuid::parse_str(id).map_err(self::db)?;
-    if !crate::model_services::CONNECTION_AGENTS.contains(&agent) {
+    if !crate::model_services::CONNECTION_AGENTS.contains(&agent)
+        && agent_connection_digest(agent, scope).is_none()
+    {
         return fail("unsupported", "此 Agent 尚未支持模型服务接入");
     }
     uuid::Uuid::parse_str(credential).map_err(self::db)?;
@@ -217,6 +234,95 @@ fn create_binding(
     Ok(expected)
 }
 impl Store {
+    /// Only used after the host authorizes a signed Agent connection adapter.
+    pub fn create_agent_connection(
+        &self,
+        id: &str,
+        agent: &str,
+        scope: &str,
+        provider: &Provider,
+        service: Option<&crate::model_services::ModelService>,
+    ) -> Result<Binding, ConfigError> {
+        if agent_connection_digest(agent, scope).is_none() {
+            return fail("unsupported", "缺少有效的 Agent 连接能力");
+        }
+        let tx = Transaction::new_unchecked(&self.connection, TransactionBehavior::Immediate)
+            .map_err(db_error)?;
+        let binding = create_binding(&tx, id, agent, scope, id, provider)?;
+        if let Some(service) = service {
+            crate::model_services::attach_binding(&tx, id, service)?;
+        }
+        verify_binding(&tx, &binding)?;
+        tx.commit().map_err(db_error)?;
+        Ok(binding)
+    }
+
+    /// Remove only an unattached attempt owned by the confirmed operation.
+    pub fn discard_agent_connection(&self, binding: &Binding) -> Result<(), ConfigError> {
+        if agent_connection_digest(&binding.agent_id, &binding.scope).is_none() {
+            return fail("unsupported", "此连接不能通过 Agent 适配器清除");
+        }
+        let tx = Transaction::new_unchecked(&self.connection, TransactionBehavior::Immediate)
+            .map_err(db_error)?;
+        verify_binding(&tx, binding)?;
+        // Foreign keys reject deletion if any request or route change used it.
+        tx.execute(
+            "DELETE FROM model_service_bindings WHERE binding=?1",
+            [&binding.id],
+        )
+        .map_err(db_error)?;
+        tx.execute("DELETE FROM gateway_bindings WHERE id=?1", [&binding.id])
+            .map_err(db_error)?;
+        tx.execute(
+            "DELETE FROM gateway_route_versions WHERE id=?1 AND binding=?2",
+            params![binding.target.id, binding.id],
+        )
+        .map_err(db_error)?;
+        tx.commit().map_err(db_error)
+    }
+
+    pub fn revoke_agent_connection(&self, binding: &Binding) -> Result<(), ConfigError> {
+        if agent_connection_digest(&binding.agent_id, &binding.scope).is_none() {
+            return fail("unsupported", "此连接不能通过 Agent 适配器撤销");
+        }
+        let changed = self
+            .connection
+            .execute(
+                "UPDATE gateway_bindings SET scope=?1 WHERE id=?2 AND scope=?3 AND generation=?4",
+                params![
+                    format!("revoked:{}", binding.scope),
+                    binding.id,
+                    binding.scope,
+                    binding.generation
+                ],
+            )
+            .map_err(db_error)?;
+        if changed != 1 {
+            return fail("conflict", "连接已变化，请重新核对");
+        }
+        Ok(())
+    }
+
+    pub fn revoke_agent_connections(&self, agent: &str) -> Result<Vec<String>, ConfigError> {
+        let tx = Transaction::new_unchecked(&self.connection, TransactionBehavior::Immediate)
+            .map_err(db_error)?;
+        let scope = format!("{AGENT_CONNECTION_SCOPE}%");
+        let credentials = {
+            let mut statement = tx
+                .prepare(
+                    "UPDATE gateway_bindings SET scope='revoked:' || scope
+                 WHERE agent=?1 AND scope LIKE ?2 RETURNING credential",
+                )
+                .map_err(db_error)?;
+            statement
+                .query_map(params![agent, scope], |row| row.get::<_, String>(0))
+                .map_err(db_error)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(db_error)?
+        };
+        tx.commit().map_err(db_error)?;
+        Ok(credentials)
+    }
     pub fn dynamic_bindings(&self) -> Result<Vec<Binding>, ConfigError> {
         let mut stmt = self
             .connection

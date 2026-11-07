@@ -51,6 +51,7 @@ pub fn run() {
             commands::requests::export_unified_request_csv,
             commands::domain::get_fact_conversation,
             commands::domain::set_domain_project_visibility,
+            commands::domain::perform_agent_model_connection,
             commands::domain::list_full_plugins,
             commands::domain::inspect_full_plugin_package,
             commands::domain::install_full_plugin_package,

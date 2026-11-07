@@ -10,17 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectSeparator,
-  SelectTrigger,
-} from "@/components/ui/select";
 import { providersApi } from "@/features/providers/api";
-import { availableProviderModelIds } from "@/features/providers/catalog";
 import { LocalTokenRecovery } from "@/features/providers/components/local-token-recovery";
 import { NativeProviderImport } from "@/features/providers/components/native-provider-import";
 import { ProviderConfigControl } from "@/features/providers/components/provider-config-control";
@@ -50,6 +40,7 @@ import {
   type ModelServiceCatalog,
 } from "../types";
 import { verifyServiceModels } from "../verification";
+import { AgentConnectionPicker } from "./agent-connection-picker";
 
 export function AgentServiceControl({
   agentId,
@@ -111,7 +102,6 @@ export function AgentServiceControl({
     catalog?.connectionAgents ?? ["claude", "opencode"]
   ).includes(agentId);
   const native = ["claude", "codex"].includes(agentId);
-  const configured = providers.filter((provider) => provider.configured);
   const activeRoute =
     config?.endpoint &&
     status?.transactions.find(
@@ -304,77 +294,41 @@ export function AgentServiceControl({
       >
         {currentLabel}
       </p>
-      <Select
-        value=""
-        size="sm"
-        onValueChange={(value) => {
-          if (!config || !value) return;
-          if (value.startsWith("service:")) {
+      <AgentConnectionPicker
+        name={name}
+        providers={providers}
+        services={
+          serviceSupported && !servicesUnavailable
+            ? catalog?.services
+            : undefined
+        }
+        emptyServices={
+          servicesUnavailable
+            ? "模型服务读取未完成"
+            : !catalog
+              ? "正在读取模型服务…"
+              : !serviceSupported
+                ? "当前后台尚未适配"
+                : "暂无已发布模型服务"
+        }
+        native={native}
+        disabled={!config || checking || unavailable || busy || !!pending}
+        onSelect={(selection) => {
+          if (!config) return;
+          if (selection.kind === "service") {
             const service = catalog?.services.find(
-              (s) => s.id === value.slice(8),
+              (s) => s.id === selection.id,
             );
             if (service && serviceSupported && !servicesUnavailable)
               open(service);
-          } else if (value === "native") {
-            onProviderSelect(config, "native");
-          } else if (value.startsWith("provider:")) {
-            onProviderSelect(config, value.slice(9));
+          } else {
+            onProviderSelect(
+              config,
+              selection.kind === "native" ? "native" : selection.id,
+            );
           }
         }}
-        disabled={!config || checking || unavailable || busy || !!pending}
-      >
-        <SelectTrigger aria-label={`${name} 模型连接`} placeholder="切换" />
-        <SelectContent>
-          <SelectGroup aria-label="Provider">
-            <SelectLabel>Provider</SelectLabel>
-            {!configured.length && (
-              <SelectItem value="empty-providers" disabled>
-                暂无已配置 Provider
-              </SelectItem>
-            )}
-            {configured.map((provider) => (
-              <SelectItem
-                key={provider.id}
-                value={`provider:${provider.id}`}
-                disabled={!availableProviderModelIds(provider).length}
-              >
-                {provider.name}
-                {!availableProviderModelIds(provider).length && " · 无可用模型"}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-          <SelectSeparator />
-          <SelectGroup aria-label="模型服务">
-            <SelectLabel>模型服务</SelectLabel>
-            {servicesUnavailable ||
-            !catalog ||
-            !serviceSupported ||
-            !catalog.services.length ? (
-              <SelectItem value="empty-services" disabled>
-                {servicesUnavailable
-                  ? "模型服务读取未完成"
-                  : !catalog
-                    ? "正在读取模型服务…"
-                    : !serviceSupported
-                      ? "当前后台尚未适配"
-                      : "暂无已发布模型服务"}
-              </SelectItem>
-            ) : (
-              catalog.services.map((service) => (
-                <SelectItem key={service.id} value={`service:${service.id}`}>
-                  {service.name}
-                </SelectItem>
-              ))
-            )}
-          </SelectGroup>
-          {native && (
-            <>
-              <SelectSeparator />
-              <SelectItem value="native">官方原生登录</SelectItem>
-            </>
-          )}
-        </SelectContent>
-      </Select>
+      />
       {current ? (
         <p className="text-label text-fg-muted">
           默认：

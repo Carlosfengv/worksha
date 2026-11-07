@@ -261,6 +261,12 @@ export function FullPluginManager({
               onChanged={() => void resource.invalidate()}
             />
           )}
+          {current.manifest.capabilities.includes("agent.connection@1") && (
+            <p className="text-label text-fg-muted">
+              模型连接需要另行授权。可在 Agents
+              的「连接与观测」中预览和确认变更。
+            </p>
+          )}
         </article>
       )}
       <Dialog
@@ -290,6 +296,12 @@ export function FullPluginManager({
                 授权后读取所选单个 JSONL，包括全部正文。项目、会话、响应、活动和
                 MCP 事实按声明能力接受核查；不访问其他目录或网络。
               </p>
+              {review.manifest.capabilities.includes("agent.connection@1") && (
+                <p className="text-label">
+                  此包还声明了模型连接能力。启用连接桥接并单独授权后，可在 Agent
+                  详情中确认默认模型变更。
+                </p>
+              )}
               {!review.trustedPublisher && (
                 <label className="flex items-start gap-2 text-label">
                   <Checkbox

@@ -6,6 +6,20 @@ use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
 #[tauri::command]
+pub(crate) async fn perform_agent_model_connection(
+    backend: tauri::State<'_, Backend>,
+    input: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    backend
+        .request(
+            reqwest::Method::POST,
+            "/api/agents/model-connection",
+            Some(input),
+        )
+        .await
+}
+
+#[tauri::command]
 pub(crate) async fn query_unified_requests(
     backend: tauri::State<'_, Backend>,
     query: local_agent_core::domain::requests::query::UnifiedRequestQuery,

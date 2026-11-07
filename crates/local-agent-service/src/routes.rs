@@ -19,6 +19,10 @@ pub(crate) fn management(state: AppState) -> Router {
             axum::routing::post(crate::plugin_host::builtin::operation),
         )
         .merge(crate::workbench::routes())
+        .route(
+            "/api/agents/model-connection",
+            axum::routing::post(crate::agent_connections::handle),
+        )
         .route("/api/domain/catalog", get(crate::domain::catalog))
         .route("/api/domain/directory", get(crate::domain::directory))
         .route(
