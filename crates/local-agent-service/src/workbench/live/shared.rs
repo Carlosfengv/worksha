@@ -10,6 +10,10 @@ use serde_json::{Value, json};
 use std::{collections::BTreeMap, os::unix::fs::MetadataExt, path::PathBuf, sync::Arc};
 
 use super::super::{MAX_TASKS, Workbench, identifier, store_error};
+use super::super::{
+    RuntimeBinding,
+    operations::{Kind, Operation, Scope},
+};
 
 #[derive(Serialize, Deserialize)]
 struct Binding {
@@ -19,6 +23,10 @@ struct Binding {
     text: String,
     dev: u64,
     ino: u64,
+    #[serde(default)]
+    prompt_attempted: bool,
+    #[serde(default)]
+    runtime_binding: Option<RuntimeBinding>,
 }
 
 async fn server(bench: &Workbench, host: &str) -> Result<(String, Arc<Server>), super::Error> {
@@ -58,7 +66,7 @@ fn model_id(model: &Value) -> Option<String> {
 pub(in super::super) async fn routes(State(state): State<AppState>) -> api::ApiResult {
     let bench = workbench(&state)?;
     let result = async {
-        let (_, server) = server(bench, &state.host).await?;
+        let (connection_id, server) = server(bench, &state.host).await?;
         let models = server.session_data("/model").await?;
         let providers = server.session_data("/provider").await?;
         let default = server.session_data("/model/default").await?;
@@ -89,11 +97,14 @@ pub(in super::super) async fn routes(State(state): State<AppState>) -> api::ApiR
                 }))
             })
             .collect::<Vec<_>>();
-        Ok::<_, super::Error>(routes)
+        Ok::<_, super::Error>((routes, connection_id))
     }
     .await;
     match result {
-        Ok(routes) => api::json_value(json!({"installed":true,"routes":routes,"error":null})),
+        Ok((routes, connection_id)) => api::json_value(json!({
+            "installed":true,"routes":routes,"error":null,"connectionId":connection_id,
+            "operationScope":Scope::current(bench, &state)?
+        })),
         Err(error) => {
             api::json_value(json!({"installed":true,"routes":null,"error":error.1.0["message"]}))
         }
@@ -107,24 +118,36 @@ pub(in super::super) struct Create {
     directory: PathBuf,
     route: String,
     text: String,
+    scope: Option<Scope>,
+    connection_id: Option<String>,
 }
 
-fn save(bench: &Workbench, scope: &str, binding: &Binding) -> Result<(), super::Error> {
-    bench
-        .lock()?
+fn save(
+    bench: &Workbench,
+    scope: &str,
+    binding: &Binding,
+    op: &Operation<'_>,
+    accepted: bool,
+) -> Result<(), super::Error> {
+    let mut storage = bench.lock()?;
+    let tx = storage
         .db
-        .execute(
-            "INSERT INTO workbench_shared_sessions(id,scope,updated,value) VALUES(?1,?2,?3,?4)
-         ON CONFLICT(id) DO UPDATE SET updated=excluded.updated,value=excluded.value",
-            params![
-                binding.task_id,
-                scope,
-                binding.session.updated,
-                serde_json::to_string(binding).map_err(store_error)?
-            ],
-        )
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(store_error)?;
-    Ok(())
+    tx.execute(
+        "INSERT INTO workbench_shared_sessions(id,scope,updated,value) VALUES(?1,?2,?3,?4)
+         ON CONFLICT(id) DO UPDATE SET updated=excluded.updated,value=excluded.value",
+        params![
+            binding.task_id,
+            scope,
+            binding.session.updated,
+            serde_json::to_string(binding).map_err(store_error)?
+        ],
+    )
+    .map_err(store_error)?;
+    let session = (binding.session.created != 0).then_some(binding.session.id.as_str());
+    op.save(&tx, accepted, None, session)?;
+    tx.commit().map_err(store_error)
 }
 
 fn owned(binding: &Binding, native: &Value) -> bool {
@@ -145,6 +168,14 @@ pub(in super::super) async fn create(
     if text.is_empty() || text.len() > 24 * 1024 {
         return Err(conflict("请输入任务内容，单条最多 24 KB"));
     }
+    let bench = workbench(&state)?;
+    Scope::check(bench, &state, input.scope.as_ref())?;
+    let op = Operation::new(
+        Kind::SharedCreate,
+        &input.task_id,
+        &input.task_id,
+        json!([input.directory, input.route, text]),
+    );
     let directory = input
         .directory
         .canonicalize()
@@ -156,11 +187,18 @@ pub(in super::super) async fn create(
         return Err(conflict("请选择一个具体的项目目录"));
     }
     let metadata = directory.metadata().map_err(store_error)?;
-    let bench = workbench(&state)?;
     let (connection_id, server) = server(bench, &state.host).await?;
+    if input
+        .connection_id
+        .as_ref()
+        .is_some_and(|expected| expected != &connection_id)
+    {
+        return Err(conflict("原 OpenCode 连接已变化，请核查原会话后重新读取"));
+    }
     let scope = server.v2.as_ref().ok_or_else(unavailable)?.scope();
     let mut guard = bench.live.0.lock().await;
     let _ = current(&mut guard, &connection_id)?;
+    let prior = op.prior(&bench.lock()?.db)?;
     let mut binding = {
         let storage = bench.lock()?;
         if storage.closing {
@@ -217,9 +255,29 @@ pub(in super::super) async fn create(
                 text: text.into(),
                 dev: metadata.dev(),
                 ino: metadata.ino(),
+                prompt_attempted: false,
+                runtime_binding: None,
             }
         }
     };
+    if binding.runtime_binding.is_none() {
+        binding.runtime_binding = Some(RuntimeBinding {
+            product_id: "opencode".into(),
+            source_id: Some("opencode".into()),
+            connection_id: format!(
+                "opencode-shared:{}",
+                local_agent_core::providers::files::hash(scope.as_bytes())
+            ),
+            implementation_version: 1,
+        });
+    }
+    if prior.as_ref().is_some_and(|receipt| receipt.accepted) {
+        current(&mut guard, &connection_id)?.remember(&[binding.session.clone()]);
+        return api::json_value(json!({
+            "sessionId":binding.session.id,"connectionId":connection_id,"delivered":true,
+            "error":null,"runtimeBinding":binding.runtime_binding
+        }));
+    }
     server.confirm_record()?;
     let lookup = server
         .request(
@@ -250,7 +308,10 @@ pub(in super::super) async fn create(
             .route
             .split_once('/')
             .ok_or_else(|| conflict("模型路由无效"))?;
-        save(bench, &scope, &binding)?;
+        if prior.is_some() {
+            return Err(super::super::operations::unknown());
+        }
+        save(bench, &scope, &binding, &op, false)?;
         let response = server
             .post(
                 "/api/session",
@@ -267,7 +328,8 @@ pub(in super::super) async fn create(
                     ],
                 }),
             )
-            .await?;
+            .await
+            .map_err(|_| super::super::operations::unknown())?;
         read_json(response, 256 * 1024).await?["data"].take()
     } else {
         let response = Server::accepted(lookup)?;
@@ -277,7 +339,7 @@ pub(in super::super) async fn create(
         return Err(conflict("原共享会话的身份或模型已变化，未发送任务"));
     }
     binding.session = Session::read(&native).ok_or_else(unavailable)?;
-    save(bench, &scope, &binding)?;
+    save(bench, &scope, &binding, &op, false)?;
     current(&mut guard, &connection_id)?.remember(&[binding.session.clone()]);
     let message_id = format!(
         "msg_{}",
@@ -299,8 +361,12 @@ pub(in super::super) async fn create(
         });
     let result = if admitted {
         Ok(())
+    } else if binding.prompt_attempted {
+        Err(super::super::operations::unknown())
     } else {
         super::gateway::require_current(&state, &server, &binding.route).await?;
+        binding.prompt_attempted = true;
+        save(bench, &scope, &binding, &op, false)?;
         server
             .post(
                 &format!("/api/session/{}/prompt", binding.session.id),
@@ -308,9 +374,14 @@ pub(in super::super) async fn create(
             )
             .await
             .map(|_| ())
+            .map_err(|_| super::super::operations::unknown())
     };
+    if result.is_ok() {
+        save(bench, &scope, &binding, &op, true)
+            .map_err(|_| super::super::operations::unknown())?;
+    }
     api::json_value(
-        json!({"sessionId":binding.session.id,"connectionId":connection_id,"delivered":result.is_ok(),"error":result.err().map(|error|error.1.0["message"].clone())}),
+        json!({"sessionId":binding.session.id,"connectionId":connection_id,"delivered":result.is_ok(),"error":result.err().map(|error|error.1.0["message"].clone()),"runtimeBinding":binding.runtime_binding}),
     )
 }
 

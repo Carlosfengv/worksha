@@ -9,13 +9,28 @@
     "parentTaskId",
     "projectId",
     "route",
+    "scope",
     "taskId"
   ],
   "export_workbench_opencode": ["taskId"],
   "get_workbench_routes": ["agent"],
   "open_workbench_desktop": ["agent", "handoff"],
   "read_workbench_tasks": ["revision", "taskId"],
-  "send_workbench_message": ["taskId", "text", "turnId"],
+  "read_workbench_operation": ["kind", "operationId", "storeId"],
+  "send_workbench_message": [
+    "expectedRevision",
+    "scope",
+    "taskId",
+    "text",
+    "turnId"
+  ],
   "get_workbench_shared_routes": [],
-  "create_workbench_shared": ["projectId", "route", "taskId", "text"]
+  "create_workbench_shared": [
+    "connectionId",
+    "projectId",
+    "route",
+    "scope",
+    "taskId",
+    "text"
+  ]
 }

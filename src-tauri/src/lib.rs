@@ -163,6 +163,7 @@ pub fn run() {
             commands::workbench::get_workbench_shared_routes,
             commands::workbench::create_workbench_shared,
             commands::workbench::read_workbench_tasks,
+            commands::workbench::read_workbench_operation,
             commands::workbench::find_workbench_session,
             commands::workbench::create_workbench_task,
             commands::workbench::send_workbench_message,

@@ -12,11 +12,19 @@ import { projectName, TaskStatus } from "./task-board";
 import { agentLabels } from "./types";
 import type {
   ClaudeConnection,
+  OperationScope,
   Task,
   TaskDraft,
   TaskSummary,
   TurnAction,
 } from "./types";
+
+type Sending = {
+  id: string;
+  text: string;
+  scope?: OperationScope;
+  revision?: number;
+};
 
 function Issue({ title, text }: { title: string; text: string }) {
   return (
@@ -55,9 +63,14 @@ export function TaskConversation({
   );
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
-  const [unknown, setUnknown] = useState<{ id: string; text: string } | null>(
+  const [unknown, setUnknown] = useState<Sending | null>(
     initialDraft?.uncertainTurn
-      ? { id: initialDraft.uncertainTurn, text: initialDraft.text }
+      ? {
+          id: initialDraft.uncertainTurn,
+          text: initialDraft.text.trim(),
+          scope: initialDraft.operationScope,
+          revision: initialDraft.operationRevision,
+        }
       : null,
   );
   const seen = unknown && task.parts.some((part) => part.id === unknown.id);
@@ -75,10 +88,7 @@ export function TaskConversation({
     Boolean(draft.trim());
   const Send = useIcon("arrow-up");
 
-  async function perform(
-    operation: () => Promise<Task>,
-    sending?: { id: string; text: string },
-  ) {
+  async function perform(operation: () => Promise<Task>, sending?: Sending) {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
@@ -107,12 +117,37 @@ export function TaskConversation({
       setError("单条消息最多 24 KB，请缩短后再发送。");
       return;
     }
-    const id =
-      !seen && unknown?.text === message ? unknown.id : crypto.randomUUID();
-    void perform(() => workbenchApi.send(task.id, id, message), {
-      id,
+    const retry = !seen && unknown?.text === message ? unknown : null;
+    const sending = retry ?? {
+      id: crypto.randomUUID(),
       text: message,
-    });
+      scope: task.operationScope,
+      revision: task.operationScope ? task.revision : undefined,
+    };
+    void perform(async () => {
+      if (retry) {
+        const recovered = await recover(retry);
+        if (recovered) return recovered;
+      }
+      return workbenchApi.send(
+        task.id,
+        sending.id,
+        message,
+        sending.scope,
+        sending.revision,
+      );
+    }, sending);
+  }
+
+  async function recover(sending: Sending) {
+    if (!sending.scope) return null;
+    const { storeId } = sending.scope;
+    const receipt = await workbenchApi.operation("send", sending.id, storeId);
+    if (!receipt?.accepted || receipt.targetId !== task.id) return null;
+    const result = (await workbenchApi.read(task.id, null)).task;
+    if (!result || result.operationScope?.storeId !== storeId)
+      throw new Error("当前后台与原操作不同，请回到原后台核查。");
+    return result;
   }
 
   function control(
@@ -278,9 +313,26 @@ export function TaskConversation({
             )}
             {error && !seen && <Issue title="操作未确认" text={error} />}
             {unknown && !seen && (
-              <p className="text-label text-fg-muted">
-                正在核对原发送结果。原内容再次发送会沿用同一操作编号。
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-label text-fg-muted">
+                  原发送结果待核查。再次发送同一内容会沿用原操作编号。
+                </p>
+                {unknown.scope && (
+                  <Button
+                    variant="secondary"
+                    disabled={busy || unavailable}
+                    onClick={() =>
+                      void perform(async () => {
+                        const result = await recover(unknown);
+                        if (!result) throw new Error("暂未查到原发送回执。");
+                        return result;
+                      }, unknown)
+                    }
+                  >
+                    查询原发送结果
+                  </Button>
+                )}
+              </div>
             )}
             <form
               className="space-y-2"

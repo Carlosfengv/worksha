@@ -5,6 +5,7 @@ mod desktop;
 mod gateway;
 mod live;
 mod opencode;
+mod operations;
 
 use crate::{AppState, api};
 use axum::{
@@ -14,6 +15,7 @@ use axum::{
     routing::{get, post},
 };
 use local_agent_core::providers::files;
+use operations::{Kind, Operation, Scope};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -175,6 +177,15 @@ struct Approval {
     targets: Vec<String>,
 }
 
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeBinding {
+    product_id: String,
+    source_id: Option<String>,
+    connection_id: String,
+    implementation_version: u32,
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Task {
@@ -186,6 +197,8 @@ struct Task {
     parts: Vec<Part>,
     approval: Option<Approval>,
     error: Option<String>,
+    #[serde(default)]
+    runtime_binding: Option<RuntimeBinding>,
     #[serde(default)]
     native_cursor: u64,
     #[serde(default)]
@@ -200,6 +213,21 @@ struct Task {
     directory_ino: i64,
 }
 impl Task {
+    fn binding(&self) -> RuntimeBinding {
+        let (product, source, connection) = match self.summary.agent {
+            Agent::Claude if self.summary.native_history => {
+                ("claude-code-cli", Some("claude"), "claude-native")
+            }
+            Agent::Claude => ("claude-code-cli", None, "claude-isolated"),
+            Agent::Opencode => ("opencode", None, "opencode-isolated"),
+        };
+        RuntimeBinding {
+            product_id: product.into(),
+            source_id: source.map(str::to_owned),
+            connection_id: format!("{connection}:{}", self.summary.id),
+            implementation_version: 1,
+        }
+    }
     fn part(&mut self, id: &str, kind: &str, text: &str, append: bool) {
         let index = self.parts.iter().position(|part| part.id == id);
         if index.is_none() && self.parts.len() >= MAX_PARTS {
@@ -270,9 +298,15 @@ impl Storage {
         Ok(task)
     }
     fn save(&self, task: &mut Task) -> Result<(), Error> {
+        Self::save_task(&self.db, task)
+    }
+    fn save_task(db: &Connection, task: &mut Task) -> Result<(), Error> {
+        if task.runtime_binding.is_none() {
+            task.runtime_binding = Some(task.binding());
+        }
         task.revision += 1;
         task.summary.updated = chrono::Utc::now().timestamp_millis();
-        self.db.execute(
+        db.execute(
             "INSERT INTO workbench_tasks(id,updated,phase,value,dev,ino) VALUES(?1,?2,?3,?4,?5,?6)
              ON CONFLICT(id) DO UPDATE SET updated=excluded.updated,phase=excluded.phase,value=excluded.value",
             params![
@@ -314,6 +348,7 @@ impl Storage {
 
 pub(crate) struct Workbench {
     storage: Mutex<Storage>,
+    store_id: String,
     root: PathBuf,
     source_home: PathBuf,
     drained: Notify,
@@ -327,19 +362,7 @@ impl Workbench {
     pub(crate) fn open(data: &Path, source_home: PathBuf) -> Result<Arc<Self>, String> {
         let root = data.join("workbench");
         files::private_dir(&root).map_err(|error| error.message)?;
-        let db = Connection::open(root.join("tasks.sqlite3")).map_err(|error| error.to_string())?;
-        db.execute_batch(
-            "PRAGMA journal_mode=WAL;
-             CREATE TABLE IF NOT EXISTS workbench_tasks (
-                 id TEXT PRIMARY KEY,updated INTEGER NOT NULL,phase INTEGER NOT NULL,
-                 value TEXT NOT NULL,dev INTEGER NOT NULL,ino INTEGER NOT NULL
-             );
-             CREATE TABLE IF NOT EXISTS workbench_shared_sessions (
-                 id TEXT PRIMARY KEY, scope TEXT NOT NULL, updated INTEGER NOT NULL,
-                 value TEXT NOT NULL
-             );",
-        )
-        .map_err(|error| error.to_string())?;
+        let (db, store_id) = operations::open(&root)?;
         let storage = Storage {
             db,
             active: None,
@@ -369,6 +392,7 @@ impl Workbench {
         restore().map_err(|_| "任务恢复失败".to_string())?;
         Ok(Arc::new(Self {
             storage: Mutex::new(storage),
+            store_id,
             root,
             source_home,
             drained: Notify::new(),
@@ -436,6 +460,7 @@ pub(crate) fn routes() -> Router<AppState> {
         .route("/api/workbench/tasks", get(read).post(create))
         .route("/api/workbench/session", get(find_session))
         .route("/api/workbench/send", post(send))
+        .route("/api/workbench/operation", get(operations::read))
         .route("/api/workbench/control", post(control))
         .route("/api/workbench/live", get(live::read).post(live::act))
         .route("/api/workbench/live-board", get(live::board))
@@ -479,7 +504,8 @@ async fn read_routes(
     api::json_value(json!({
         "installed":crate::providers::binary(query.agent.binary()).is_some(),
         "routes":items,
-        "error":routes.err()
+        "error":routes.err(),
+        "operationScope":Scope::current(bench, &state)?,
     }))
 }
 
@@ -491,6 +517,7 @@ struct Read {
 }
 async fn read(State(state): State<AppState>, Query(query): Query<Read>) -> api::ApiResult {
     let bench = workbench(&state)?;
+    let scope = Scope::current(bench, &state)?;
     let storage = bench.lock()?;
     for summary in storage
         .list()?
@@ -509,9 +536,18 @@ async fn read(State(state): State<AppState>, Query(query): Query<Read>) -> api::
         .transpose()?
         .filter(|task| Some(task.revision) != query.revision);
     api::json_value(json!({
-        "tasks":storage.list()?, "task":task.as_ref().map(|task| desktop::task_value(bench, task)).transpose()?, "activeTaskId":storage.active.as_ref().map(|run| &run.task_id),
+        "tasks":storage.list()?, "task":task.as_ref().map(|task| task_value(bench, task, &scope)).transpose()?, "activeTaskId":storage.active.as_ref().map(|run| &run.task_id),
         "claudeConnection":desktop::connection(bench, &state.gateway.host),
     }))
+}
+
+fn task_value(bench: &Workbench, task: &Task, scope: &Scope) -> Result<serde_json::Value, Error> {
+    let mut value = desktop::task_value(bench, task)?;
+    value["operationScope"] = json!(scope);
+    if task.runtime_binding.is_none() {
+        value["runtimeBinding"] = json!(task.binding());
+    }
+    Ok(value)
 }
 
 #[derive(Deserialize)]
@@ -542,10 +578,28 @@ struct Create {
     parent_task_id: Option<String>,
     directory: PathBuf,
     route: String,
+    scope: Option<Scope>,
 }
 async fn create(State(state): State<AppState>, Json(input): Json<Create>) -> api::ApiResult {
     identifier(&input.task_id)?;
     let bench = workbench(&state)?;
+    Scope::check(bench, &state, input.scope.as_ref())?;
+    let scope = Scope::current(bench, &state)?;
+    let op = Operation::new(
+        Kind::Create,
+        &input.task_id,
+        &input.task_id,
+        json!([
+            input.agent,
+            input.parent_task_id,
+            input.directory,
+            input.route
+        ]),
+    );
+    let mut storage = bench.lock()?;
+    if op.prior(&storage.db)?.is_some() {
+        return api::json_value(task_value(bench, &storage.read(&input.task_id)?, &scope)?);
+    }
     let directory = input
         .directory
         .canonicalize()
@@ -557,12 +611,6 @@ async fn create(State(state): State<AppState>, Json(input): Json<Create>) -> api
         return Err(conflict("请选择一个具体的项目目录"));
     }
     let metadata = directory.metadata().map_err(store_error)?;
-    input
-        .agent
-        .configuration(&bench.source_home, &input.route)
-        .map_err(route_error)?
-        .require_current(&state.gateway.host)?;
-    let storage = bench.lock()?;
     if storage.closing {
         return Err(conflict("应用正在退出"));
     }
@@ -573,12 +621,23 @@ async fn create(State(state): State<AppState>, Json(input): Json<Create>) -> api
                 && task.summary.agent == input.agent
                 && task.summary.parent_task_id == input.parent_task_id =>
         {
-            return api::json_value(task);
+            op.save(
+                &storage.db,
+                true,
+                Some(task.revision),
+                task.session_id.as_deref(),
+            )?;
+            return api::json_value(task_value(bench, &task, &scope)?);
         }
         Ok(_) => return Err(conflict("任务编号已经用于另一项任务")),
         Err(error) if error.0 == StatusCode::NOT_FOUND => {}
         Err(error) => return Err(error),
     }
+    input
+        .agent
+        .configuration(&bench.source_home, &input.route)
+        .map_err(route_error)?
+        .require_current(&state.gateway.host)?;
     if let Some(parent_id) = &input.parent_task_id {
         identifier(parent_id)?;
         let parent = storage.read(parent_id)?;
@@ -601,7 +660,7 @@ async fn create(State(state): State<AppState>, Json(input): Json<Create>) -> api
     }
     let mut task = Task {
         summary: Summary {
-            id: input.task_id,
+            id: input.task_id.clone(),
             agent: input.agent,
             native_history: input.agent == Agent::Claude,
             native_busy: false,
@@ -618,6 +677,7 @@ async fn create(State(state): State<AppState>, Json(input): Json<Create>) -> api
         parts: vec![],
         approval: None,
         error: None,
+        runtime_binding: None,
         native_cursor: 0,
         native_events: 0,
         native_fingerprint: String::new(),
@@ -625,8 +685,8 @@ async fn create(State(state): State<AppState>, Json(input): Json<Create>) -> api
         directory_dev: metadata.dev() as i64,
         directory_ino: metadata.ino() as i64,
     };
-    storage.save(&mut task)?;
-    api::json_value(task)
+    storage.accept(&op, &mut task)?;
+    api::json_value(task_value(bench, &task, &scope)?)
 }
 
 fn route_error(message: &str) -> Error {
@@ -643,6 +703,8 @@ struct Send {
     task_id: String,
     turn_id: String,
     text: String,
+    scope: Option<Scope>,
+    expected_revision: Option<u64>,
 }
 async fn send(State(state): State<AppState>, Json(input): Json<Send>) -> api::ApiResult {
     identifier(&input.task_id)?;
@@ -652,13 +714,43 @@ async fn send(State(state): State<AppState>, Json(input): Json<Send>) -> api::Ap
         return Err(conflict("请输入任务内容，单条消息最多 24 KB"));
     }
     let bench = workbench(&state)?.clone();
+    Scope::check(&bench, &state, input.scope.as_ref())?;
+    let scope = Scope::current(&bench, &state)?;
     let mut storage = bench.lock()?;
     let mut task = storage.read(&input.task_id)?;
+    let op = Operation::new(
+        Kind::Send,
+        &input.turn_id,
+        &input.task_id,
+        json!([input.task_id, text]),
+    );
+    if op.prior(&storage.db)?.is_some() {
+        return api::json_value(task_value(&bench, &task, &scope)?);
+    }
     if let Some(prior) = task.parts.iter().find(|part| part.id == input.turn_id) {
-        if prior.text != text {
+        if prior.kind != "user" || prior.text != text {
             return Err(conflict("该发送编号已用于另一条消息"));
         }
-        return api::json_value(task);
+        op.save(
+            &storage.db,
+            true,
+            Some(task.revision),
+            task.session_id.as_deref(),
+        )?;
+        return api::json_value(task_value(&bench, &task, &scope)?);
+    }
+    if input
+        .expected_revision
+        .is_some_and(|revision| task.revision != revision)
+    {
+        return Err(conflict("任务状态已更新，请核对原消息后再发送"));
+    }
+    if task
+        .runtime_binding
+        .as_ref()
+        .is_some_and(|binding| binding != &task.binding())
+    {
+        return Err(conflict("任务原执行实现不可用，请核对后恢复"));
     }
     if task.summary.native_history && claude::native_busy(&bench, &task)? {
         return Err(conflict(
@@ -699,7 +791,7 @@ async fn send(State(state): State<AppState>, Json(input): Json<Send>) -> api::Ap
     task.summary.phase = Phase::Starting;
     task.error = None;
     task.approval = None;
-    storage.save(&mut task)?;
+    storage.accept(&op, &mut task)?;
     let (stop, stopping) = watch::channel(false);
     let (decisions, replies) = mpsc::channel(1);
     storage.active = Some(Active {
@@ -709,7 +801,7 @@ async fn send(State(state): State<AppState>, Json(input): Json<Send>) -> api::Ap
         decisions,
     });
     drop(storage);
-    let response = api::json_value(&task);
+    let response = task_value(&bench, &task, &scope).and_then(api::json_value);
     let vault = state.credentials.clone();
     let text = text.to_owned();
     tokio::spawn(async move {
@@ -757,7 +849,9 @@ enum Action {
 }
 
 async fn control(State(state): State<AppState>, Json(input): Json<Control>) -> api::ApiResult {
-    let storage = workbench(&state)?.lock()?;
+    let bench = workbench(&state)?;
+    let scope = Scope::current(bench, &state)?;
+    let storage = bench.lock()?;
     let active = storage
         .active
         .as_ref()
@@ -798,7 +892,7 @@ async fn control(State(state): State<AppState>, Json(input): Json<Control>) -> a
                 .map_err(|_| conflict("审批连接已结束，请核对任务状态"))?;
         }
     }
-    api::json_value(task)
+    api::json_value(task_value(bench, &task, &scope)?)
 }
 
 #[cfg(test)]
@@ -862,6 +956,7 @@ mod tests {
                     targets: vec!["./fixture".into()],
                 }),
                 error: None,
+                runtime_binding: None,
                 native_cursor: 0,
                 native_events: 0,
                 native_fingerprint: String::new(),

@@ -35,6 +35,20 @@ pub(crate) async fn read_workbench_tasks(
     backend.request(Method::GET, &query, None).await
 }
 
+#[tauri::command]
+pub(crate) async fn read_workbench_operation(
+    backend: tauri::State<'_, Backend>,
+    kind: String,
+    operation_id: String,
+    store_id: String,
+) -> Result<Value, String> {
+    let query = query_path(
+        "/api/workbench/operation",
+        json!({"kind":kind,"operationId":operation_id,"storeId":store_id}),
+    )?;
+    backend.context()?.request(Method::GET, &query, None).await
+}
+
 async fn select_task_directory(
     app: tauri::AppHandle,
     context: &ConnectionContext,
@@ -117,14 +131,14 @@ async fn select_task_directory(
 #[tauri::command]
 pub(crate) async fn create_workbench_task(
     app: tauri::AppHandle,
-    backend: tauri::State<'_, Backend>,
     task_id: String,
     project_id: Option<String>,
     route: String,
     agent: Option<String>,
     parent_task_id: Option<String>,
+    scope: Option<Value>,
 ) -> Result<Value, String> {
-    let context = backend.context()?;
+    let context = app.state::<Backend>().context()?;
     let Some(directory) = select_task_directory(
         app,
         &context,
@@ -142,7 +156,8 @@ pub(crate) async fn create_workbench_task(
             Method::POST,
             "/api/workbench/tasks",
             Some(json!({
-                "taskId":task_id, "directory":directory, "route":route, "agent":agent, "parentTaskId":parent_task_id
+                "taskId":task_id, "directory":directory, "route":route, "agent":agent,
+                "parentTaskId":parent_task_id, "scope":scope
             })),
         )
         .await
@@ -154,13 +169,17 @@ pub(crate) async fn send_workbench_message(
     task_id: String,
     turn_id: String,
     text: String,
+    scope: Option<Value>,
+    expected_revision: Option<u64>,
 ) -> Result<Value, String> {
     backend
+        .context()?
         .request(
             Method::POST,
             "/api/workbench/send",
             Some(json!({
-                "taskId":task_id, "turnId":turn_id, "text":text
+                "taskId":task_id, "turnId":turn_id, "text":text,
+                "scope":scope,"expectedRevision":expected_revision
             })),
         )
         .await
@@ -315,14 +334,15 @@ pub(crate) async fn get_workbench_shared_routes(
 #[tauri::command]
 pub(crate) async fn create_workbench_shared(
     app: tauri::AppHandle,
-    backend: tauri::State<'_, Backend>,
     task_id: String,
     project_id: Option<String>,
     route: String,
     text: String,
+    scope: Option<Value>,
+    connection_id: Option<String>,
 ) -> Result<Value, String> {
     uuid::Uuid::parse_str(&task_id).map_err(|_| "任务编号无效")?;
-    let context = backend.context()?;
+    let context = app.state::<Backend>().context()?;
     let Some(directory) =
         select_task_directory(app, &context, project_id, Some("opencode".into()), None).await?
     else {
@@ -332,7 +352,10 @@ pub(crate) async fn create_workbench_shared(
         .request(
             Method::POST,
             "/api/workbench/shared",
-            Some(json!({"taskId":task_id,"directory":directory,"route":route,"text":text})),
+            Some(json!({
+                "taskId":task_id,"directory":directory,"route":route,"text":text,
+                "scope":scope,"connectionId":connection_id
+            })),
         )
         .await
 }

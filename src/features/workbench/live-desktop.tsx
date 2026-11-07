@@ -10,7 +10,7 @@ import { useIcon } from "@/lib/icon-context";
 import { workbenchApi } from "./api";
 import { projectName } from "./task-board";
 import { SessionThread } from "./session-thread";
-import type { LiveAction, LiveConnection } from "./types";
+import type { LiveAction, LiveConnection, OperationScope } from "./types";
 
 export function LiveDesktop({ sessionId }: { sessionId?: string }) {
   const [view, setView] = useState<LiveConnection | null>(null);
@@ -27,7 +27,13 @@ export function LiveDesktop({ sessionId }: { sessionId?: string }) {
   const [password, setPassword] = useState("");
   const [directory, setDirectory] = useState("");
   const [draft, setDraft] = useState("");
-  const sending = useRef<{ id: string; text: string } | null>(null);
+  const sending = useRef<{
+    id: string;
+    text: string;
+    connectionId: string;
+    sessionId: string;
+    scope?: OperationScope;
+  } | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -58,7 +64,7 @@ export function LiveDesktop({ sessionId }: { sessionId?: string }) {
     };
   }, [refresh]);
 
-  async function act(action: LiveAction) {
+  async function act(action: LiveAction, retry = false) {
     if (operation.current) return;
     operation.current = true;
     epoch.current++;
@@ -66,6 +72,19 @@ export function LiveDesktop({ sessionId }: { sessionId?: string }) {
     setActionError(null);
     setNotice(null);
     try {
+      if (retry && action.kind === "send" && action.scope && action.messageId) {
+        const prior = await workbenchApi.operation(
+          "liveSend",
+          action.messageId,
+          action.scope.storeId,
+        );
+        if (prior?.accepted && prior.targetId === action.sessionId) {
+          setDraft("");
+          sending.current = null;
+          setNotice("已查到原消息回执。");
+          return;
+        }
+      }
       await workbenchApi.controlLive(action);
       if (action.kind === "connect") setPassword("");
       if (action.kind === "disconnect") {
@@ -119,15 +138,27 @@ export function LiveDesktop({ sessionId }: { sessionId?: string }) {
     Boolean(selected.model && draft.trim());
   function send() {
     if (canSend && id && selected) {
-      if (!sending.current || sending.current.text !== draft)
-        sending.current = { id: crypto.randomUUID(), text: draft };
-      void act({
-        kind: "send",
-        connectionId: id,
-        sessionId: selected.session.id,
-        text: draft,
-        messageId: sending.current.id,
-      });
+      const retry = sending.current?.text === draft;
+      if (!sending.current || sending.current.text !== draft) {
+        sending.current = {
+          id: crypto.randomUUID(),
+          text: draft,
+          connectionId: id,
+          sessionId: selected.session.id,
+          scope: view?.operationScope,
+        };
+      }
+      void act(
+        {
+          kind: "send",
+          connectionId: sending.current.connectionId,
+          sessionId: sending.current.sessionId,
+          text: draft,
+          messageId: sending.current.id,
+          scope: sending.current.scope,
+        },
+        retry,
+      );
     }
   }
   return (

@@ -5,6 +5,9 @@ import type {
   LiveBoard,
   LiveConnection,
   ModelRoutes,
+  OperationKind,
+  OperationReceipt,
+  OperationScope,
   Task,
   TurnAction,
   WorkspaceSnapshot,
@@ -17,13 +20,22 @@ export const workbenchApi = {
     projectId: string | null,
     route: string,
     text: string,
+    scope?: OperationScope,
+    connectionId?: string,
   ) =>
     command<{
       sessionId: string;
       connectionId: string;
       delivered: boolean;
       error: string | null;
-    } | null>("create_workbench_shared", { taskId, projectId, route, text }),
+    } | null>("create_workbench_shared", {
+      taskId,
+      projectId,
+      route,
+      text,
+      scope,
+      connectionId,
+    }),
   readLive: () => command<LiveConnection | null>("read_workbench_live"),
   readLiveBoard: () => command<LiveBoard>("read_workbench_live_board"),
   controlLive: (action: LiveAction) =>
@@ -56,12 +68,33 @@ export const workbenchApi = {
     command<ModelRoutes>("get_workbench_routes", { agent }),
   read: (taskId: string | null, revision: number | null) =>
     command<WorkspaceSnapshot>("read_workbench_tasks", { taskId, revision }),
+  operation: async (
+    kind: OperationKind,
+    operationId: string,
+    storeId: string,
+  ) => {
+    const result = await command<{
+      storeId: string;
+      operationId: string;
+      kind: OperationKind;
+      receipt: OperationReceipt | null;
+    }>("read_workbench_operation", { kind, operationId, storeId });
+    if (
+      result.storeId !== storeId ||
+      result.operationId !== operationId ||
+      result.kind !== kind
+    ) {
+      throw new Error("原操作的编号或后台不匹配");
+    }
+    return result.receipt;
+  },
   create: (
     taskId: string,
     projectId: string | null,
     route: string,
     agent: Agent,
     parentTaskId: string | null,
+    scope?: OperationScope,
   ) =>
     command<Task | null>("create_workbench_task", {
       taskId,
@@ -69,13 +102,26 @@ export const workbenchApi = {
       route,
       agent,
       parentTaskId,
+      scope,
     }),
   openDesktop: (agent: Agent, handoff: string) =>
     command<{ opened: boolean }>("open_workbench_desktop", { agent, handoff }),
   exportOpenCode: (taskId: string) =>
     command<boolean>("export_workbench_opencode", { taskId }),
-  send: (taskId: string, turnId: string, text: string) =>
-    command<Task>("send_workbench_message", { taskId, turnId, text }),
+  send: (
+    taskId: string,
+    turnId: string,
+    text: string,
+    scope?: OperationScope,
+    expectedRevision?: number,
+  ) =>
+    command<Task>("send_workbench_message", {
+      taskId,
+      turnId,
+      text,
+      scope,
+      expectedRevision,
+    }),
   control: (action: TurnAction) =>
     command<Task>("control_workbench_turn", { action }),
 };

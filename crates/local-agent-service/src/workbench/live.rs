@@ -603,7 +603,10 @@ pub(super) async fn read(State(state): State<AppState>) -> api::ApiResult {
         }
         (sessions, None)
     };
-    api::json_value(json!({"id":id,"version":version,"sessions":sessions,"selected":view}))
+    api::json_value(json!({
+        "id":id,"version":version,"sessions":sessions,"selected":view,
+        "operationScope":super::operations::Scope::current(bench, &state)?,
+    }))
 }
 
 pub(super) async fn board(State(state): State<AppState>) -> api::ApiResult {
@@ -715,6 +718,7 @@ pub(super) enum Action {
         session_id: String,
         text: String,
         message_id: Option<String>,
+        scope: Option<super::operations::Scope>,
     },
 }
 
@@ -879,48 +883,99 @@ pub(super) async fn act(
             session_id,
             text,
             message_id,
+            scope,
         } => {
+            use super::operations::{Kind, Operation, Scope, unknown};
+            Scope::check(bench, &state, scope.as_ref())?;
             let text = text.trim();
             if text.is_empty() || text.len() > 24 * 1024 {
                 return Err(conflict("请输入消息，单条最多 24 KB"));
             }
             let (server, session) = target(&mut guard, &connection_id, &session_id)?;
             let native = session.confirm(server).await?;
+            let mut native_id = None;
+            let op = if let Some(id) = &message_id {
+                super::identifier(id)?;
+                let connection = server.v2.as_ref().map_or(connection_id, |v2| v2.scope());
+                native_id = Some(format!("msg_{}", id.replace('-', "")));
+                Some(Operation::new(
+                    Kind::LiveSend,
+                    id,
+                    &session_id,
+                    json!([
+                        connection,
+                        session_id,
+                        session.directory,
+                        session.created,
+                        text
+                    ]),
+                ))
+            } else {
+                None
+            };
+            if let Some(op) = &op {
+                let prior = op.prior(&bench.lock()?.db)?;
+                if let Some(prior) = prior {
+                    if !prior.accepted {
+                        let Some(native_id) = native_id.as_deref().filter(|_| server.v2.is_some())
+                        else {
+                            return Err(unknown());
+                        };
+                        let history = server
+                            .session_data(&format!("/session/{session_id}/message"))
+                            .await
+                            .map_err(|_| unknown())?;
+                        if !history.as_array().is_some_and(|items| {
+                            items.iter().any(|message| {
+                                message["id"] == native_id
+                                    && message["type"] == "user"
+                                    && message["text"] == text
+                            })
+                        }) {
+                            return Err(unknown());
+                        }
+                        op.save(&bench.lock()?.db, true, None, Some(&session_id))
+                            .map_err(|_| unknown())?;
+                    }
+                    return api::json_value(json!({"accepted":true}));
+                }
+            }
             let statuses = server.statuses().await?;
             let statuses = statuses.as_object().ok_or_else(unavailable)?;
             if server.phase(statuses.get(&session_id)) != "idle" {
                 return Err(conflict("原会话仍在运行，请等待本轮结束或先停止"));
             }
-            if server.v2.is_some() {
-                if let Some(id) = &message_id {
-                    super::identifier(id)?;
-                }
+            let (path, prompt) = if server.v2.is_some() {
                 let route =
                     v2::route(&native).ok_or_else(|| conflict("无法确认原会话模型，未发送消息"))?;
                 gateway::require_current(&state, server, &route).await?;
-                server
-                    .post(
-                        &format!("/api/session/{session_id}/prompt"),
-                        json!({"text":text,"id":message_id.map(|id|format!("msg_{}",id.replace('-',"")))}),
-                    )
+                (
+                    format!("/api/session/{session_id}/prompt"),
+                    json!({"text":text,"id":native_id}),
+                )
+            } else {
+                let history = server
+                    .get(&format!("/session/{session_id}/message?limit=24"))
                     .await?;
-                return api::json_value(json!({"accepted":true}));
+                let (provider, model, agent, variant) = model(&history)
+                    .ok_or_else(|| conflict("无法确认原会话模型与 Agent，未发送消息"))?;
+                let mut prompt = json!({
+                    "agent":agent,"model":{"providerID":provider,"modelID":model},
+                    "parts":[{"type":"text","text":text}],
+                });
+                if let Some(variant) = variant {
+                    prompt["variant"] = json!(variant);
+                }
+                (format!("/session/{session_id}/prompt_async"), prompt)
+            };
+            if let Some(op) = &op {
+                op.save(&bench.lock()?.db, false, None, Some(&session_id))?;
+                server.post(&path, prompt).await.map_err(|_| unknown())?;
+                op.save(&bench.lock()?.db, true, None, Some(&session_id))
+                    .map_err(|_| unknown())?;
+            } else {
+                server.post(&path, prompt).await?;
             }
-            let history = server
-                .get(&format!("/session/{session_id}/message?limit=24"))
-                .await?;
-            let (provider, model, agent, variant) = model(&history)
-                .ok_or_else(|| conflict("无法确认原会话模型与 Agent，未发送消息"))?;
-            let mut prompt = json!({
-                "agent":agent,"model":{"providerID":provider,"modelID":model},
-                "parts":[{"type":"text","text":text}],
-            });
-            if let Some(variant) = variant {
-                prompt["variant"] = json!(variant);
-            }
-            server
-                .post(&format!("/session/{session_id}/prompt_async"), prompt)
-                .await?;
             api::json_value(json!({"accepted":true}))
         }
     }

@@ -203,7 +203,13 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
     let workbench = if options.persistent {
         None
     } else {
-        workbench::Workbench::open(&directory, source_home.clone()).ok()
+        match workbench::Workbench::open(&directory, source_home.clone()) {
+            Ok(bench) => Some(bench),
+            Err(problem) => {
+                eprintln!("工作台无法打开: {problem}");
+                None
+            }
+        }
     };
     let sessions = Arc::new(
         local_agent_core::sessions::NativeSessions::with_source_plugins(

@@ -3,6 +3,9 @@ import { createRoot } from "react-dom/client";
 import { WorkbenchPage } from "@/features/workbench/page";
 import { workbenchApi } from "@/features/workbench/api";
 import type {
+  OperationKind,
+  OperationReceipt,
+  OperationScope,
   Task,
   TurnAction,
   WorkspaceSnapshot,
@@ -12,7 +15,15 @@ import { DesktopError } from "@/shared/lib/desktop-command";
 import "@/styles/globals.css";
 
 type Operation =
-  { kind: "send"; taskId: string; turnId: string; text: string } | TurnAction;
+  | {
+      kind: "send";
+      taskId: string;
+      turnId: string;
+      text: string;
+      scope?: OperationScope;
+      revision?: number;
+    }
+  | TurnAction;
 const reads: {
   taskId: string | null;
   revision: number | null;
@@ -56,6 +67,8 @@ function task(id: string, patch: Partial<Task> = {}): Task {
 const harness = {
   reads,
   operations,
+  checks: [] as { kind: OperationKind; id: string; storeId: string }[],
+  receipt: null as OperationReceipt | null,
   completeRead(
     index: number,
     patch: Partial<Task> | null,
@@ -94,14 +107,24 @@ declare global {
 window.workbenchHarness = harness;
 workbenchApi.read = (taskId, revision) =>
   new Promise((resolve) => reads.push({ taskId, revision, resolve }));
-workbenchApi.send = (taskId, turnId, text) =>
+workbenchApi.send = (taskId, turnId, text, scope, revision) =>
   new Promise((resolve, reject) =>
     operations.push({
-      action: { kind: "send", taskId, turnId, text },
+      action: {
+        kind: "send",
+        taskId,
+        turnId,
+        text,
+        ...(scope && { scope, revision }),
+      },
       resolve,
       reject,
     }),
   );
+workbenchApi.operation = async (kind, id, storeId) => {
+  harness.checks.push({ kind, id, storeId });
+  return harness.receipt;
+};
 workbenchApi.control = (action) =>
   new Promise((resolve, reject) =>
     operations.push({ action, resolve, reject }),

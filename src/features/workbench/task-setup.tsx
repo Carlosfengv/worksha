@@ -23,7 +23,13 @@ import { DesktopError } from "@/shared/lib/desktop-command";
 import { workbenchApi } from "./api";
 import { handoffText } from "./desktop-handoff";
 import { agentLabels } from "./types";
-import type { Agent, ModelRoutes, Task, TaskDraft } from "./types";
+import type {
+  Agent,
+  ModelRoutes,
+  OperationScope,
+  Task,
+  TaskDraft,
+} from "./types";
 
 type SetupProps = {
   projectId?: string;
@@ -140,11 +146,17 @@ function SetupRoute({
   const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const request = useRef<string | null>(null);
-  const sharedCreation = useRef<{
+  const creation = useRef<{
     id: string;
+    turnId: string;
     model: string;
     text: string;
     projectId: string | null;
+    agent: Agent;
+    parentTaskId: string | null;
+    scope?: OperationScope;
+    connectionId?: string;
+    uncertain: boolean;
   } | null>(null);
   const shared = agent === "opencode" && !source;
   const Folder = useIcon("folder");
@@ -178,37 +190,68 @@ function SetupRoute({
 
   async function create() {
     if (!model || !messageValid || request.current) return;
-    const id = crypto.randomUUID();
+    if (
+      !creation.current ||
+      creation.current.model !== model ||
+      creation.current.text !== text ||
+      creation.current.projectId !== (projectId ?? null) ||
+      creation.current.agent !== agent ||
+      creation.current.parentTaskId !== (source?.id ?? null)
+    ) {
+      creation.current = {
+        id: crypto.randomUUID(),
+        turnId: crypto.randomUUID(),
+        model,
+        text,
+        projectId: projectId ?? null,
+        agent,
+        parentTaskId: source?.id ?? null,
+        scope: config?.operationScope,
+        connectionId: config?.connectionId,
+        uncertain: false,
+      };
+    }
+    const attempt = creation.current;
+    const { id, scope } = attempt;
     const currentHash = window.location.hash;
     request.current = id;
     setBusy(true);
     setError(null);
     if (shared) {
-      if (
-        !sharedCreation.current ||
-        sharedCreation.current.model !== model ||
-        sharedCreation.current.text !== text ||
-        sharedCreation.current.projectId !== (projectId ?? null)
-      )
-        sharedCreation.current = {
-          id,
-          model,
-          text,
-          projectId: projectId ?? null,
-        };
       try {
-        const created = await workbenchApi.createShared(
-          sharedCreation.current.id,
-          projectId ?? null,
-          model,
-          text,
-        );
+        const prior =
+          attempt.uncertain && scope
+            ? await workbenchApi.operation("sharedCreate", id, scope.storeId)
+            : null;
+        const connectionId = config?.connectionId;
+        const created =
+          prior?.accepted &&
+          prior.targetId === id &&
+          prior.sessionId &&
+          connectionId
+            ? {
+                sessionId: prior.sessionId,
+                connectionId,
+                delivered: true,
+                error: null,
+              }
+            : await workbenchApi.createShared(
+                id,
+                projectId ?? null,
+                model,
+                text,
+                scope,
+                attempt.connectionId,
+              );
         if (!created) return;
-        if (!created.delivered)
+        if (!created.delivered) {
+          attempt.uncertain = true;
           throw new Error(
             created.error ??
               "共享会话已创建，首条消息结果待核对。可以从看板打开原会话检查。",
           );
+        }
+        attempt.uncertain = true;
         await workbenchApi.controlLive({
           kind: "select",
           connectionId: created.connectionId,
@@ -217,6 +260,8 @@ function SetupRoute({
         if (window.location.hash === currentHash)
           window.location.hash = `/tasks/${encodeURIComponent(created.sessionId)}?tab=live`;
       } catch (reason) {
+        if (reason instanceof DesktopError && reason.outcomeUnknown)
+          attempt.uncertain = true;
         setError(reason instanceof Error ? reason.message : String(reason));
       } finally {
         request.current = null;
@@ -225,18 +270,36 @@ function SetupRoute({
       return;
     }
     let task: Task | null = null;
+    async function recover() {
+      if (scope) {
+        const receipt = await workbenchApi.operation(
+          "create",
+          id,
+          scope.storeId,
+        );
+        if (!receipt?.accepted || receipt.targetId !== id) return null;
+      }
+      const found = (await workbenchApi.read(id, null)).task;
+      return found &&
+        (!scope || found.operationScope?.storeId === scope.storeId)
+        ? found
+        : null;
+    }
     try {
-      task = await workbenchApi.create(
+      if (attempt.uncertain) task = await recover();
+      task ??= await workbenchApi.create(
         id,
         projectId ?? null,
         model,
         agent,
         source?.id ?? null,
+        scope,
       );
     } catch (reason) {
       if (reason instanceof DesktopError && reason.outcomeUnknown) {
+        attempt.uncertain = true;
         try {
-          task = (await workbenchApi.read(id, null)).task;
+          task = await recover();
         } catch {
           // A recovered record remains visible from the board.
         }
@@ -247,19 +310,32 @@ function SetupRoute({
 
     try {
       if (!task || currentHash !== window.location.hash) return;
-      if (source) {
+      if (
+        source ||
+        (scope &&
+          task.operationScope?.authorizationRevision !==
+            scope.authorizationRevision)
+      ) {
         onCreated(task.id, { text });
         return;
       }
-      const turnId = crypto.randomUUID();
+      const turnId = attempt.turnId;
       try {
-        await workbenchApi.send(task.id, turnId, text);
+        await workbenchApi.send(
+          task.id,
+          turnId,
+          text,
+          task.operationScope,
+          task.revision,
+        );
         if (window.location.hash === currentHash) onCreated(task.id);
       } catch (reason) {
         if (window.location.hash !== currentHash) return;
         onCreated(task.id, {
           text,
           error: reason instanceof Error ? reason.message : String(reason),
+          operationScope: task.operationScope,
+          operationRevision: task.revision,
           uncertainTurn:
             reason instanceof DesktopError && reason.outcomeUnknown
               ? turnId

@@ -1,10 +1,23 @@
 export type Agent = "opencode" | "claude";
 export type RequestScope = "current" | "other" | "external" | "unknown";
+export type OperationScope = {
+  storeId: string;
+  authorizationRevision: string;
+};
+export type OperationKind = "create" | "send" | "sharedCreate" | "liveSend";
+export type OperationReceipt = {
+  targetId: string;
+  accepted: boolean;
+  committedRevision: number | null;
+  sessionId: string | null;
+};
 
 export type TaskDraft = {
   text: string;
   error?: string;
   uncertainTurn?: string;
+  operationScope?: OperationScope;
+  operationRevision?: number;
 };
 
 export const agentLabels: Record<Agent, string> = {
@@ -54,6 +67,7 @@ export interface Task extends TaskSummary {
   approval: { id: string; tool: "bash" | "edit"; targets: string[] } | null;
   error: string | null;
   cliResumeCommand?: string;
+  operationScope?: OperationScope;
 }
 
 export interface ClaudeConnection {
@@ -80,6 +94,8 @@ export interface ModelRoutes {
       }[]
     | null;
   error: string | null;
+  operationScope?: OperationScope;
+  connectionId?: string;
 }
 
 export type TurnAction = {
@@ -103,6 +119,7 @@ export interface LiveBoard {
 
 export interface LiveConnection {
   id: string;
+  operationScope?: OperationScope;
   version: string;
   sessions: LiveSession[];
   selected: {
@@ -131,6 +148,11 @@ export type LiveAction =
   | ({ connectionId: string; sessionId: string } & (
       | { kind: "select" }
       | { kind: "stop" }
-      | { kind: "send"; text: string; messageId?: string }
+      | {
+          kind: "send";
+          text: string;
+          messageId?: string;
+          scope?: OperationScope;
+        }
       | { kind: "decide"; approvalId: string; allow: boolean }
     ));

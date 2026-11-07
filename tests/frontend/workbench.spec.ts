@@ -163,3 +163,70 @@ test("发送结果不确定时保留草稿，重试沿用原操作编号", async
   expect(actions).toHaveLength(2);
   expect(actions[1]).toEqual(actions[0]);
 });
+
+test("核查原发送回执只读取原数据库，不重复发送", async ({ page }) => {
+  const scope = {
+    storeId: "original-store",
+    authorizationRevision: "original-generation",
+  };
+  await page.goto("/tests/frontend/workbench.html#a");
+  await expect
+    .poll(() => page.evaluate(() => window.workbenchHarness.reads.length))
+    .toBeGreaterThan(0);
+  await page.evaluate(
+    (operationScope) =>
+      window.workbenchHarness.completeRead(0, { operationScope }),
+    scope,
+  );
+  await page.getByRole("textbox", { name: "继续对话" }).fill("核查这一条");
+  await page.getByRole("button", { name: "发送", exact: true }).click();
+  const action = await page.evaluate(
+    () => window.workbenchHarness.operations[0].action,
+  );
+  expect(action).toMatchObject({ scope, revision: 1, text: "核查这一条" });
+  await page.evaluate(() => {
+    window.workbenchHarness.receipt = {
+      targetId: "a",
+      accepted: true,
+      committedRevision: 2,
+      sessionId: "native-a",
+    };
+    window.workbenchHarness.failOperation(0, true);
+  });
+  await page.getByRole("button", { name: "查询原发送结果" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.workbenchHarness.reads
+          .slice(1)
+          .some((read) => read.revision === null),
+      ),
+    )
+    .toBe(true);
+  await page.evaluate(
+    ({ operationScope, turnId }) => {
+      const h = window.workbenchHarness;
+      const index = h.reads.findIndex(
+        (read, index) => index > 0 && read.revision === null,
+      );
+      h.completeRead(index, {
+        operationScope,
+        revision: 2,
+        parts: [
+          { id: turnId, kind: "user", text: "核查这一条", truncated: false },
+        ],
+      });
+    },
+    { operationScope: scope, turnId: action.turnId },
+  );
+  await expect(page.getByRole("textbox", { name: "继续对话" })).toHaveValue("");
+  expect(
+    await page.evaluate(() => ({
+      checks: window.workbenchHarness.checks,
+      sends: window.workbenchHarness.operations.length,
+    })),
+  ).toEqual({
+    checks: [{ kind: "send", id: action.turnId, storeId: scope.storeId }],
+    sends: 1,
+  });
+});
