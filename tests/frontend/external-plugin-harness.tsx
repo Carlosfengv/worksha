@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { IconProvider } from "@/lib/icon-context";
 import { PluginManager } from "@/features/plugins/manager";
 import { ExtensionsPage } from "@/features/plugins/page";
+import { pluginDirectoryResource } from "@/features/plugins/queries";
+import { useSharedRead } from "@/shared/hooks/use-shared-read";
 import { pluginsApi, pluginUploadsApi } from "@/features/plugins/api";
 import type {
   Manifest,
@@ -185,22 +187,26 @@ pluginsApi.action = async (input) => {
   }
   return {};
 };
+function ExtensionFixture() {
+  const directory = useSharedRead(pluginDirectoryResource);
+  return (
+    <ExtensionsPage
+      pluginId={manifest.id}
+      viewId="history"
+      providers={[]}
+      refreshSnapshot={async () => {}}
+      directory={directory}
+      reloadDirectory={directory.invalidate}
+    />
+  );
+}
 createRoot(document.getElementById("root")!).render(
   <IconProvider>
     <main className="p-6">
       <output id="calls" className="sr-only">
         []
       </output>
-      {managerMode ? (
-        <PluginManager providers={[]} />
-      ) : (
-        <ExtensionsPage
-          pluginId={manifest.id}
-          viewId="history"
-          providers={[]}
-          refreshSnapshot={async () => {}}
-        />
-      )}
+      {managerMode ? <PluginManager providers={[]} /> : <ExtensionFixture />}
     </main>
   </IconProvider>,
 );

@@ -51,6 +51,10 @@ export function parseContributions(
     for (const nav of item.navigation ?? []) {
       if (
         !status.manifest.requires?.includes("host.ui-navigation@1") ||
+        !status.manifest.capabilities.includes("ui.contribution@1") ||
+        !status.manifest.permissions?.some(
+          (permission) => permission.kind === "ui.contribute",
+        ) ||
         !/^[a-z0-9_-]{1,64}$/.test(nav.id) ||
         navigationIds.has(nav.id) ||
         !nav.title ||
@@ -69,6 +73,12 @@ export function parseContributions(
     for (const query of item.dataQueries ?? []) {
       if (
         !status.manifest.requires?.includes("host.domain-services@1") ||
+        !status.manifest.capabilities.includes("report.view@1") ||
+        !status.manifest.permissions?.some(
+          (permission) =>
+            permission.kind === "domain.query" &&
+            permission.query === "domain.summary",
+        ) ||
         queryViews.has(query.viewId) ||
         query.capability !== "domain.session-source@1" ||
         !/^[a-zA-Z0-9_.:-]{1,160}$/.test(query.sourceId) ||

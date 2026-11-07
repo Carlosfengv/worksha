@@ -38,6 +38,7 @@ pub(super) fn parse(
     }
     if !c.navigation.is_empty()
         && (!m.requires.iter().any(|r| r == NAVIGATION)
+            || !m.capabilities.iter().any(|c| c == "ui.contribution@1")
             || !m.permissions.contains(&Permission::UiContribute))
     {
         return Err(fail("permission_denied"));
@@ -48,6 +49,7 @@ pub(super) fn parse(
     let mut query_views = BTreeSet::new();
     for query in &c.data_queries {
         if !m.requires.iter().any(|r| r == SERVICES)
+            || !m.capabilities.iter().any(|c| c == "report.view@1")
             || !m.permissions.iter().any(
                 |p| matches!(p, Permission::DomainQuery { query } if query == "domain.summary"),
             )
@@ -234,16 +236,23 @@ impl Manager {
             items: records,
         }
     }
-    pub(super) fn check_optional_view(&self, p: &Installed, view: &str) -> Result<()> {
-        if let Some(c) = self.contributions_for(p)? {
-            let statuses = self.dependency_statuses(&c, &self.list()?);
-            if statuses
+    pub(super) fn view_contributions(
+        &self,
+        bundle: &package::Package,
+        view: &str,
+    ) -> Result<Option<Contributions>> {
+        let declaration = parse(&bundle.manifest, &bundle.files)?;
+        if let Some(c) = &declaration
+            && c.optional_dependencies
+                .iter()
+                .any(|d| d.views.iter().any(|v| v == view))
+            && self
+                .dependency_statuses(c, &self.list()?)
                 .iter()
                 .any(|d| !d.available && d.views.iter().any(|v| v == view))
-            {
-                return Err(fail("dependency_missing"));
-            }
+        {
+            return Err(fail("dependency_missing"));
         }
-        Ok(())
+        Ok(declaration)
     }
 }

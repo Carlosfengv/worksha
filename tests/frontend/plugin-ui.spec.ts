@@ -71,7 +71,8 @@ test("registry rejects conflicts and keeps navigation and scroll ownership", asy
     JSON.parse((await page.getByTestId("checks").textContent()) ?? "{}"),
   ).toEqual({
     duplicate: true,
-    missing: true,
+    missingHostEntry: true,
+    optionalDefault: "plugins",
     conflictingPage: true,
     badVersion: true,
     unknown: "overview",

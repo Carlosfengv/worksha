@@ -1,6 +1,5 @@
 import { systemFeatureCatalog } from "@/features/plugins/system-features";
 import { retryableLazy as lazy } from "./render-boundary";
-import type { PageContext } from "./plugin-registry";
 import { createUiRegistry, type UiPlugin } from "./plugin-registry";
 
 const OverviewPage = lazy(() =>
@@ -8,22 +7,6 @@ const OverviewPage = lazy(() =>
     default: module.OverviewPage,
   })),
 );
-const ExtensionsPage = lazy(() =>
-  import("@/features/plugins/page").then((module) => ({
-    default: module.ExtensionsPage,
-  })),
-);
-export function renderExtension({ route, data, refresh }: PageContext) {
-  return (
-    <ExtensionsPage
-      key={`${route.extensionPlugin}:${route.extensionView}`}
-      pluginId={route.extensionPlugin!}
-      viewId={route.extensionView!}
-      providers={data?.providers ?? []}
-      refreshSnapshot={refresh}
-    />
-  );
-}
 const AgentsPage = lazy(() =>
   import("@/features/agents/page").then((module) => ({
     default: module.AgentsPage,

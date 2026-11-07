@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { useSharedRead } from "@/shared/hooks/use-shared-read";
 import { pluginDirectoryResource } from "./queries";
 import { domainDirectoryResource } from "@/features/domain/queries";
+import { pluginViewHref } from "./navigation";
 
 export function PluginEntries({ kind }: { kind: "agents" | "providers" }) {
   const resource = useSharedRead(pluginDirectoryResource);
@@ -84,9 +85,7 @@ export function PluginEntries({ kind }: { kind: "agents" | "providers" }) {
                 )}
               {view && (
                 <Button variant="tertiary" asChild>
-                  <a
-                    href={`#/extensions/${encodeURIComponent(status.manifest.id)}/${encodeURIComponent(view.id)}`}
-                  >
+                  <a href={pluginViewHref(status.manifest.id, view.id)}>
                     查看扩展
                   </a>
                 </Button>

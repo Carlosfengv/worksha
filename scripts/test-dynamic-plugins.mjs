@@ -41,7 +41,12 @@ try {
   exited = once(child, "exit"); let error = ""; child.stderr.on("data", (v) => error += v);
   const [line] = await Promise.race([once(createInterface({ input: child.stdout }), "line", { signal: AbortSignal.timeout(15000) }), exited.then(() => { throw Error(error); })]); base = "http://127.0.0.1:" + JSON.parse(line).port;
   const initial = await api("/api/snapshot");
-  const reportFile = pack("source-report");
+  const reportFile = pack("source-report", "source-report", (folder) => {
+    const file = path.join(folder, "manifest.json");
+    const manifest = JSON.parse(fs.readFileSync(file));
+    manifest.views.push({ ...manifest.views[0], id: "unbound", title: "No source binding" });
+    fs.writeFileSync(file, JSON.stringify(manifest));
+  });
   const inspect = await api("/api/plugins/inspect", { path: reportFile });
   const installed = await api("/api/plugins/install", { packageRef: inspect.packageRef, digest: inspect.digest, approvePublisher: true });
   const consumer = { pluginId: installed.manifest.id, digest: installed.digest };
@@ -74,6 +79,11 @@ try {
   const consent = await api("/api/domain/consent-review", source);
   await api("/api/domain/consent", { ...source, enabled: true, persistMetadata: false, reviewRef: consent.reviewRef });
   await refresh(); let reportView = await view(); assert.equal(reportView.report.sources[0].sessions, "1"); assert.equal(reportView.report.sources[0].totalTokens, "19");
+  const unbound = await api("/api/plugins/view", { pluginId: consumer.pluginId, viewId: "unbound", cursor: null });
+  assert.equal(unbound.report, null);
+  assert.equal(unbound.confirmedEmpty, false);
+  assert.equal(unbound.needsRefresh, true);
+  pass("声明的其他页面不能读取仅绑定到报表页面的来源汇总");
   pass("消费者授权与来源授权独立；报表真实调用另一插件的会话能力并得到精确计数");
   const snapshot = await api("/api/snapshot"); assert.equal(snapshot.agents.length, initial.agents.length + 1); assert(snapshot.agents.some((p) => p.id === productId && p.readonly && p.sourceId === sourceId && p.capabilities.includes("domain.activity-source@1")));
   assert.deepEqual(snapshot.agents.filter((p) => !p.readonly), initial.agents);

@@ -42,6 +42,7 @@ import { systemPluginPresentation } from "./scenarios";
 import { systemAgentPlugins, type SystemFeature } from "./system-features";
 import type { StateAction } from "./types";
 import { backendReadEpoch } from "@/shared/lib/backend-recovery";
+import { pluginViewHref } from "./navigation";
 
 type ConfirmationInput = CenterUserState & { action?: StateAction };
 type Confirmation = ConfirmationInput & { epoch: symbol; storeId?: string };
@@ -362,9 +363,7 @@ export function PluginManager({
           <div className="flex flex-wrap gap-3">
             {current.manifest.views?.map((view) => (
               <Button key={view.id} variant="link" asChild>
-                <a
-                  href={`#/extensions/${encodeURIComponent(current.manifest.id)}/${encodeURIComponent(view.id)}`}
-                >
+                <a href={pluginViewHref(current.manifest.id, view.id)}>
                   打开{view.title}
                 </a>
               </Button>

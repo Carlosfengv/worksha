@@ -1,5 +1,6 @@
 import { pluginsApi } from "@/features/plugins/api";
 import { pluginDirectoryResource } from "@/features/plugins/queries";
+import { invalidateCapabilityAccess } from "@/shared/lib/capability-access";
 import type { Manifest, PluginStatus } from "@/features/plugins/types";
 import raw from "../../../../sdk/plugins/examples/source-report/package/manifest.json";
 import contribution from "../../../../sdk/plugins/examples/source-report/package/contributions.json";
@@ -7,12 +8,20 @@ import contribution from "../../../../sdk/plugins/examples/source-report/package
 declare global {
   interface Window {
     setNavigationFixtureEnabled: (enabled: boolean) => Promise<void>;
+    setNavigationFixtureAccess: (enabled: boolean) => void;
+    holdNavigationFixtureRead: () => void;
+    releaseNavigationFixtureRead: () => void;
+    navigationFixtureReads: number;
   }
 }
 export function installPluginNavigation() {
   const manifest = raw as Manifest;
   const digest = "d".repeat(64);
   let enabled = true;
+  let access = true;
+  let held: Promise<void> | undefined;
+  let releaseHeld: (() => void) | undefined;
+  window.navigationFixtureReads = 0;
   const status = (): PluginStatus => ({
     manifest,
     digest,
@@ -46,7 +55,7 @@ export function installPluginNavigation() {
       ],
     },
   });
-  pluginsApi.query = async () => ({
+  const report = () => ({
     view: manifest.views![0],
     status: status(),
     confirmedEmpty: false,
@@ -70,6 +79,25 @@ export function installPluginNavigation() {
       ],
     },
   });
+  pluginsApi.query = async () => {
+    window.navigationFixtureReads++;
+    const granted = access;
+    const pending = held;
+    held = undefined;
+    if (pending) await pending;
+    if (!granted) throw new Error("报表来源授权已撤销");
+    return report();
+  };
+  window.holdNavigationFixtureRead = () => {
+    held = new Promise<void>((resolve) => {
+      releaseHeld = resolve;
+    });
+  };
+  window.releaseNavigationFixtureRead = () => releaseHeld?.();
+  window.setNavigationFixtureAccess = (next) => {
+    access = next;
+    invalidateCapabilityAccess();
+  };
   window.setNavigationFixtureEnabled = async (next) => {
     enabled = next;
     await pluginDirectoryResource.invalidate();

@@ -16,6 +16,14 @@
 
 当前说明和操作定义见 [system-features.ts](../src/features/plugins/system-features.ts)，入口从应用已注册页面生成；[功能对照](plugin-functions.md)列出入口、操作与使用条件。未实现或未验证的操作不能标为可用。
 
+## 页面贡献
+
+插件中心和设置是宿主入口。其余系统业务页可以独立注册和停用。总览可用时为默认页面，否则打开插件中心。已知业务深链保留可用性提示。
+
+上传包通过签名的 `contributions.json` 声明导航。清单同时声明 `host.ui-navigation@1`、`ui.contribution@1` 和 `ui.contribute`。导航 ID 在包内唯一，只能指向清单中的页面。宿主以插件 ID 和视图 ID 生成独立地址，侧栏和深链共用页面准入。停用、卸载或页面依赖不可用时，旧链接显示原因和返回入口。
+
+来源报表另需 `host.domain-services@1`、`report.view@1` 和 `domain.summary` 查询权限。用户分别授权报表和数据来源。宿主仅向声明了对应来源的页面交付汇总，每次读取已保存的报表时复核来源授权。打开页面只读现有快照，手动刷新才请求新汇总。
+
 ## 插件身份和清单
 
 用户上传 `.laplug` 包，使用现有统一 `manifestVersion: 1` 清单、宿主 API `1.0.0` 与 Wasm ABI `local-agent:plugin@1.0.0`。清单声明唯一 ID、发布者、语义版本、宿主兼容范围、运行方式、能力、依赖和权限。完整类型与 JSON Schema 由 Rust 生成，见 [清单契约](../contracts/plugins/manifest.schema.json) 和 [SDK](../sdk/plugins/README.md)。

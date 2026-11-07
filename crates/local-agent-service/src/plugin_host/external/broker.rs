@@ -729,8 +729,8 @@ impl Manager {
         if !selected.enabled {
             return Err(fail("plugin_disabled"));
         }
-        let installed = self.verified(&query.plugin_id, &selected.digest)?;
-        if installed
+        let (_, bundle) = self.verified_package(&query.plugin_id, &selected.digest)?;
+        if bundle
             .manifest
             .requires
             .iter()
@@ -738,13 +738,26 @@ impl Manager {
         {
             return Err(fail("object_context_required"));
         }
-        self.check_optional_view(&installed, &query.view_id)?;
-        let view = installed
+        let contributions = self.view_contributions(&bundle, &query.view_id)?;
+        let view = bundle
             .manifest
             .views
             .iter()
             .find(|v| v.id == query.view_id)
             .ok_or(fail("not_found"))?;
+        let bound_report = bundle
+            .manifest
+            .requires
+            .iter()
+            .any(|r| r == local_agent_core::plugin::contributions::SERVICES);
+        let report_source = contributions
+            .as_ref()
+            .and_then(|c| {
+                c.data_queries
+                    .iter()
+                    .find(|binding| binding.view_id == view.id)
+            })
+            .map(|binding| binding.source_id.as_str());
         let status = self.status(&query.plugin_id, &selected.digest)?;
         if view.kind == ViewKind::Settings {
             return Ok(
@@ -753,7 +766,7 @@ impl Manager {
         }
         if view.kind == ViewKind::Providers {
             return Ok(
-                json!({"view":view,"status":status,"providers":installed.manifest.providers,"confirmedEmpty":installed.manifest.providers.is_empty()}),
+                json!({"view":view,"status":status,"providers":bundle.manifest.providers,"confirmedEmpty":bundle.manifest.providers.is_empty()}),
             );
         }
         let cache = self.cache.lock().checked("unavailable")?;
@@ -812,9 +825,37 @@ impl Manager {
         }
         let total_tokens = input.checked_add(output).ok_or(fail("resource_limit"))?;
         let stale = saved.expired();
-        Ok(
-            json!({"view":view,"status":status,"snapshot":saved.snapshot,"items":items,"quota":saved.quota,"report":saved.report,"quotaExpired":stale,"reportExpired":stale,"total":total,"nextCursor":next,"confirmedEmpty":total==0&&saved.quota.is_none()&&saved.report.is_none(),"summary":{"knownUsageRecords":known.to_string(),"inputTokens":input.to_string(),"outputTokens":output.to_string(),"totalTokens":total_tokens.to_string()},"needsRefresh":false}),
-        )
+        let report = if bound_report {
+            report_source
+                .zip(saved.report.as_ref())
+                .and_then(|(source, report)| {
+                    let mut report = report.clone();
+                    report.sources.retain(|item| item.source_id == source);
+                    (!report.sources.is_empty()).then_some(report)
+                })
+        } else {
+            saved.report.clone()
+        };
+        Ok(json!({
+            "view": view,
+            "status": status,
+            "snapshot": saved.snapshot,
+            "items": items,
+            "quota": saved.quota,
+            "report": report,
+            "quotaExpired": stale,
+            "reportExpired": stale,
+            "total": total,
+            "nextCursor": next,
+            "confirmedEmpty": !bound_report && total == 0 && saved.quota.is_none() && report.is_none(),
+            "summary": {
+                "knownUsageRecords": known.to_string(),
+                "inputTokens": input.to_string(),
+                "outputTokens": output.to_string(),
+                "totalTokens": total_tokens.to_string()
+            },
+            "needsRefresh": bound_report && report.is_none()
+        }))
     }
     pub(crate) async fn read_session(
         self: &std::sync::Arc<Self>,

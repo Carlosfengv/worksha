@@ -1,17 +1,14 @@
-import {
-  builtinPlugins,
-  pageRegistry,
-  renderExtension,
-} from "./builtin-plugins";
+import { pageRegistry } from "./builtin-plugins";
 import { useSharedRead } from "@/shared/hooks/use-shared-read";
 import {
   builtinPluginResource,
   pluginDirectoryResource,
 } from "@/features/plugins/queries";
 import { pluginNavigation } from "@/features/plugins/navigation";
+import { useBackendReadEpoch } from "@/shared/hooks/use-backend-read-epoch";
 import type { IconName } from "@/lib/icon-context";
 import type { PageContext, PageContribution } from "./plugin-registry";
-import { RenderBoundary } from "./render-boundary";
+import { RenderBoundary, retryableLazy } from "./render-boundary";
 import { AgentDirectoryProvider } from "@/shared/hooks/use-agent-directory";
 import { BuiltinCompositionNotice } from "@/features/plugins/builtin-composition-notice";
 import type { Page } from "@/app/types";
@@ -55,11 +52,23 @@ import {
 } from "@/components/ui/sidebar";
 import { IconProvider, useIcon } from "@/lib/icon-context";
 import "@/styles/app.css";
-import { Suspense, useEffect, useRef, useState, type RefObject } from "react";
+import {
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 
 const navigation = pageRegistry.navigation;
 const sidebarWidth = "13.5rem";
 const readRoute = () => pageRegistry.readRoute(window.location.hash);
+const ExtensionsPage = retryableLazy(() =>
+  import("@/features/plugins/page").then(({ ExtensionsPage }) => ({
+    default: ExtensionsPage,
+  })),
+);
 
 function WorkspacePage({
   render,
@@ -143,31 +152,40 @@ function NavigationLink({
 
 function Workspace() {
   const pageBodyRef = useRef<HTMLDivElement>(null);
-  const [route, setRoute] = useState(readRoute);
+  const [requestedRoute, setRoute] = useState(readRoute);
   const [pageRefresh, setPageRefresh] = useState(0);
   const { data, error, loading, refresh } = useSnapshot();
   const builtin = useSharedRead(builtinPluginResource);
   const uploaded = useSharedRead(pluginDirectoryResource);
-  const extensionNavigation = pluginNavigation(
-    uploaded.error ? undefined : (uploaded.data ?? undefined),
+  const readEpoch = useBackendReadEpoch();
+  const directory =
+    !uploaded.error && uploaded.data?.readEpoch === readEpoch
+      ? uploaded.data
+      : undefined;
+  const featureAvailable = (page: Page) => {
+    if (page === "plugins" || page === "settings") return true;
+    return (
+      !builtin.error &&
+      !!builtin.data?.host.plugins.find(
+        (plugin) => plugin.id === pageRegistry.owner(page),
+      )?.runtimeActive
+    );
+  };
+  const route =
+    requestedRoute.defaultEntry &&
+    (builtin.data || builtin.error) &&
+    !featureAvailable(requestedRoute.page)
+      ? { ...requestedRoute, page: "plugins" as const }
+      : requestedRoute;
+  const extensionNavigation = useMemo(
+    () => pluginNavigation(directory),
+    [directory],
   );
   const extension = extensionNavigation.find(
     (item) =>
       item.pluginId === route.extensionPlugin &&
       item.viewId === route.extensionView,
   );
-  const featureOwner = (page: string) =>
-    builtinPlugins.find((plugin) => plugin.pages.some((p) => p.id === page))
-      ?.id;
-  const featureAvailable = (page: string) => {
-    if (page === "plugins" || page === "settings") return true;
-    return (
-      !builtin.error &&
-      !!builtin.data?.host.plugins.find(
-        (plugin) => plugin.id === featureOwner(page),
-      )?.runtimeActive
-    );
-  };
   const RefreshIcon = useIcon("rotate-ccw");
   useEffect(() => {
     const handle = () => setRoute(readRoute());
@@ -177,14 +195,38 @@ function Workspace() {
   useEffect(() => {
     if (
       route.extensionPlugin ||
-      pageRegistry.resolve(route.page).resetScrollOnObject
+      pageRegistry.resolve(route.page)?.resetScrollOnObject
     )
       pageBodyRef.current?.scrollTo({ top: 0 });
   }, [route.page, route.objectId, route.extensionPlugin, route.extensionView]);
-  const registered = navigation.find((item) => item.id === route.page)!;
-  const current = extension
-    ? { ...registered, label: extension.label }
-    : registered;
+  const current = pageRegistry.resolve(route.page);
+  const { extensionPlugin, extensionView } = route;
+  const renderPage: PageContribution["render"] | undefined =
+    extensionPlugin && extensionView
+      ? ({ data, refresh }) => (
+          <ExtensionsPage
+            key={`${extensionPlugin}:${extensionView}`}
+            pluginId={extensionPlugin}
+            viewId={extensionView}
+            providers={data?.providers ?? []}
+            refreshSnapshot={refresh}
+            directory={{
+              data: directory ?? null,
+              error: uploaded.error,
+              loading:
+                !directory &&
+                !uploaded.error &&
+                (uploaded.loading || !!uploaded.data),
+            }}
+            reloadDirectory={uploaded.invalidate}
+          />
+        )
+      : featureAvailable(route.page)
+        ? current?.render
+        : undefined;
+  const title =
+    extension?.label ??
+    (route.extensionPlugin ? "插件页面" : (current?.label ?? "功能不可用"));
   const navigate = (page: Page) => {
     window.location.hash = `/${page}`;
   };
@@ -212,7 +254,7 @@ function Workspace() {
         keyboardShortcut="mod+b"
       >
         <div className="flex h-dvh flex-col overflow-hidden bg-surface-base">
-          <WindowTitlebar title={current.label} status={status} />
+          <WindowTitlebar title={title} status={status} />
           <AppShell className="min-h-0 flex-1 overflow-hidden">
             <AppShellSidebar>
               <Sidebar
@@ -298,7 +340,7 @@ function Workspace() {
                   </div>
                 )}
                 <PageContent>
-                  {(!data || error || current.refreshInHeader) && (
+                  {(!data || error || current?.refreshInHeader) && (
                     <PageContentHeader>
                       <PageActions>
                         <Button
@@ -327,15 +369,11 @@ function Workspace() {
                         </div>
                       }
                     >
-                      {featureAvailable(route.page) || route.extensionPlugin ? (
+                      {renderPage ? (
                         <WorkspacePage
-                          render={
-                            route.extensionPlugin
-                              ? renderExtension
-                              : current.render
-                          }
+                          render={renderPage}
                           context={context}
-                          ownsBody={current.ownsBody}
+                          ownsBody={!extensionPlugin && current?.ownsBody}
                           bodyRef={pageBodyRef}
                         />
                       ) : (

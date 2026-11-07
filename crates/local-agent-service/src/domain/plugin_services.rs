@@ -23,6 +23,9 @@ fn input(state: &AppState, source: &str) -> Result<d::UnifiedSessionQuery> {
     if entry.status.authorization != d::Authorization::Authorized {
         return Err(fail("permission_denied"));
     }
+    if !entry.status.runtime_active {
+        return Err(fail("dependency_missing"));
+    }
     let provider = directory
         .catalog
         .providers

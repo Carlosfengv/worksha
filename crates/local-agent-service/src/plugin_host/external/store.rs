@@ -599,6 +599,14 @@ impl Manager {
         })
     }
     pub(crate) fn verified(&self, id: &str, digest: &str) -> Result<Installed> {
+        self.verified_package(id, digest)
+            .map(|(installed, _)| installed)
+    }
+    pub(super) fn verified_package(
+        &self,
+        id: &str,
+        digest: &str,
+    ) -> Result<(Installed, package::Package)> {
         if super::full::legacy_conflict(&self.root, id)? {
             return Err(fail("capability_conflict"));
         }
@@ -624,7 +632,7 @@ impl Manager {
                 return Err(fail("publisher_untrusted"));
             }
         }
-        Ok(installed)
+        Ok((installed, package))
     }
     pub(crate) fn selection(&self, id: &str) -> Result<Selection> {
         self.db.lock().checked("unavailable")?.query_row("SELECT digest,previous,enabled,status,error,epoch,revision,source,connection,report FROM selections WHERE plugin_id=?1",[id],|r|{

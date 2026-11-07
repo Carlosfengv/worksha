@@ -1,16 +1,29 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { DataTable, useDataTable } from "@/components/ui/data-table";
 import type { Provider } from "@/features/providers/types";
 import { usePollingResource } from "@/shared/hooks/use-polling-resource";
+import { useBackendReadEpoch } from "@/shared/hooks/use-backend-read-epoch";
+import { backendReadEpoch } from "@/shared/lib/backend-recovery";
+import {
+  capabilityAccessEpoch,
+  subscribeCapabilityAccess,
+} from "@/shared/lib/capability-access";
 import { ConnectionEmpty } from "@/shared/ui/connection-empty";
 import { pluginsApi } from "./api";
 import { PluginControls } from "./controls";
 import { PluginDiagnosticsPanel } from "./diagnostics-panel";
 import type { PluginDiagnostics } from "./diagnostics";
 import { object, parseContract } from "./contract";
+import { pluginViewHref } from "./navigation";
 import type {
   Conversation,
   PluginStatus,
@@ -136,10 +149,31 @@ function LegacyPluginViewContent({
   const sourceReport = status.manifest.requires?.includes(
     "host.domain-services@1",
   );
-  const [cursor, setCursor] = useState<string | null>(null);
+  const access = useSyncExternalStore(
+    subscribeCapabilityAccess,
+    capabilityAccessEpoch,
+  );
+  const backend = useBackendReadEpoch();
+  const [page, setPage] = useState<{
+    cursor: string;
+    access: symbol;
+    backend: symbol;
+  } | null>(null);
+  const cursor =
+    page?.access === access && page.backend === backend ? page.cursor : null;
+  const setCursor = (next: string | null) =>
+    setPage(next === null ? null : { cursor: next, access, backend });
   const loader = useCallback(
-    () => pluginsApi.query({ pluginId: status.manifest.id, viewId, cursor }),
-    [status.manifest.id, viewId, cursor],
+    async () => ({
+      value: await pluginsApi.query({
+        pluginId: status.manifest.id,
+        viewId,
+        cursor,
+      }),
+      access,
+      backend,
+    }),
+    [status.manifest.id, viewId, cursor, access, backend],
   );
   const resource = usePollingResource(
     `plugin-view:${status.manifest.id}:${viewId}:${cursor}:${status.grantRevision}:${status.activationEpoch}`,
@@ -152,13 +186,18 @@ function LegacyPluginViewContent({
     conversation: Conversation;
     revision: string;
     epoch: string;
+    access: symbol;
+    backend: symbol;
   } | null>(null);
+  const sameAuthority =
+    resource.data?.access === access && resource.data.backend === backend;
+  const snapshot = sameAuthority ? resource.data?.value : undefined;
   const snapshotChanged =
-    !!resource.data &&
-    (resource.data.status.digest !== status.digest ||
-      resource.data.status.activationEpoch !== status.activationEpoch ||
-      resource.data.status.grantRevision !== status.grantRevision);
-  const data = snapshotChanged ? null : resource.data;
+    !!snapshot &&
+    (snapshot.status.digest !== status.digest ||
+      snapshot.status.activationEpoch !== status.activationEpoch ||
+      snapshot.status.grantRevision !== status.grantRevision);
+  const data = snapshotChanged ? null : snapshot;
   const changed = () => {
     bodyGeneration.current++;
     setBody(null);
@@ -197,11 +236,18 @@ function LegacyPluginViewContent({
         digest: status.digest,
         action: { kind: "read-session", sessionId, snapshot: data.snapshot },
       });
-      if (generation !== bodyGeneration.current) return;
+      if (
+        generation !== bodyGeneration.current ||
+        access !== capabilityAccessEpoch() ||
+        backend !== backendReadEpoch()
+      )
+        return;
       setBody({
         conversation: parseContract<Conversation>("conversation", value),
         revision: status.grantRevision,
         epoch: status.activationEpoch,
+        access,
+        backend,
       });
     });
   const view = status.manifest.views?.find((view) => view.id === viewId);
@@ -220,7 +266,9 @@ function LegacyPluginViewContent({
     !snapshotChanged &&
     !resource.error &&
     body?.revision === status.grantRevision &&
-    body.epoch === status.activationEpoch
+    body.epoch === status.activationEpoch &&
+    body.access === access &&
+    body.backend === backend
       ? body.conversation
       : null;
   return (
@@ -241,7 +289,7 @@ function LegacyPluginViewContent({
           <a
             href={
               embedded
-                ? `#/extensions/${encodeURIComponent(status.manifest.id)}/${encodeURIComponent(viewId)}`
+                ? pluginViewHref(status.manifest.id, viewId)
                 : "#/plugins"
             }
           >
@@ -305,11 +353,13 @@ function LegacyPluginViewContent({
                 : "报表"}
           </Button>
         )}
-      {resource.loading && !data && (
-        <p role="status" className="text-body text-fg-muted">
-          正在读取扩展视图…
-        </p>
-      )}
+      {(resource.loading ||
+        (!!resource.data && !sameAuthority && !resource.error)) &&
+        !data && (
+          <p role="status" className="text-body text-fg-muted">
+            正在读取扩展视图…
+          </p>
+        )}
       {data && !resource.error && view.kind === "report" && (
         <section
           className="space-y-3"

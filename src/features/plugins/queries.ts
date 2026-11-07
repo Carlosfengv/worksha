@@ -1,4 +1,5 @@
 import { createReadResource } from "@/shared/lib/read-resource";
+import { backendReadEpoch } from "@/shared/lib/backend-recovery";
 import {
   pluginsApi,
   fullPluginsApi,
@@ -25,6 +26,7 @@ export const pluginBackupResource = createReadResource(
   { interval: false },
 );
 
-export const pluginDirectoryResource = createReadResource(() =>
-  pluginsApi.list(),
-);
+export const pluginDirectoryResource = createReadResource(async () => {
+  const readEpoch = backendReadEpoch();
+  return { ...(await pluginsApi.list()), readEpoch };
+});

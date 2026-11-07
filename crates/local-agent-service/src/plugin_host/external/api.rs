@@ -46,7 +46,7 @@ async fn list(State(state): State<AppState>) -> ApiResult {
         let diagnostics = state.plugins.diagnostics(&items);
         let contributions = state.plugins.contribution_catalog(&items);
         Ok(
-            json!({"items":items,"diagnostics":diagnostics,"contributions":contributions,"hostFeatures":[local_agent_core::plugin::contributions::OPTIONAL,local_agent_core::plugin::contributions::DETAILS],"developmentMode":state.plugins.development(),"apiVersion":API_VERSION,"runtime":"wasmtime-36.0.19","externalSqlite":"unsupported","externalProtocol":"explicit-binding","externalConfiguration":"finite-json-plan","mcp":"partial","dsh":"unverified","cleanup":"unsupported","redemption":"unsupported"}),
+            json!({"items":items,"diagnostics":diagnostics,"contributions":contributions,"hostFeatures":[local_agent_core::plugin::contributions::OPTIONAL,local_agent_core::plugin::contributions::DETAILS,local_agent_core::plugin::contributions::NAVIGATION,local_agent_core::plugin::contributions::SERVICES],"developmentMode":state.plugins.development(),"apiVersion":API_VERSION,"runtime":"wasmtime-36.0.19","externalSqlite":"unsupported","externalProtocol":"explicit-binding","externalConfiguration":"finite-json-plan","mcp":"partial","dsh":"unverified","cleanup":"unsupported","redemption":"unsupported"}),
         )
     }).await)
 }

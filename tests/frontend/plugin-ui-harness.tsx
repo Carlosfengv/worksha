@@ -8,7 +8,7 @@ const pages = pageRegistry.navigation.map(({ id }) => id);
 const contexts = pages.map((page) => {
   const hash = `#/${page}/%E4%BD%A0%2Fid?agent=codex-desktop&anchor=tool-1&from=claude-code-cli&tab=memory&days=7&model=a%2Fb&project=p&returnTo=%2Fprojects%2Fp&scope=all&view=context`;
   const route = pageRegistry.readRoute(hash);
-  const element = pageRegistry.resolve(page).render({
+  const element = pageRegistry.resolve(page)!.render({
     route,
     routeSearch: hash.split("?")[1],
     data: null,
@@ -31,7 +31,12 @@ const checks = {
   duplicate: rejects(() =>
     createUiRegistry([...builtinPlugins, builtinPlugins[0]]),
   ),
-  missing: rejects(() => createUiRegistry(builtinPlugins.slice(1))),
+  missingHostEntry: rejects(() =>
+    createUiRegistry(
+      builtinPlugins.filter(({ id }) => id !== "builtin.settings"),
+    ),
+  ),
+  optionalDefault: createUiRegistry(builtinPlugins.slice(1)).readRoute("").page,
   conflictingPage: rejects(() =>
     createUiRegistry([
       ...builtinPlugins,

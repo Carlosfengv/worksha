@@ -6,6 +6,7 @@ export interface AppRoute {
   extensionPlugin?: string;
   extensionView?: string;
   deferredPlugin?: "tasks" | "projects";
+  defaultEntry?: true;
   domainSource?: string;
   page: Page;
   objectId?: string;
@@ -43,7 +44,7 @@ export interface UiPlugin {
   version: 1;
   pages: readonly PageContribution[];
 }
-const coreRoutes: readonly Page[] = [
+const builtinRoutes: readonly Page[] = [
   "overview",
   "agents",
   "providers",
@@ -54,26 +55,33 @@ const coreRoutes: readonly Page[] = [
   "plugins",
   "settings",
 ];
+const hostRoutes = ["plugins", "settings"] as const;
 
 export function createUiRegistry(plugins: readonly UiPlugin[]) {
   const ids = new Set<string>();
   const pages = new Map<Page, Readonly<PageContribution>>();
+  const owners = new Map<Page, string>();
   for (const plugin of plugins) {
     if (!plugin.id || ids.has(plugin.id) || plugin.version !== 1)
       throw new Error("页面插件描述无效或重复");
     ids.add(plugin.id);
     for (const page of plugin.pages) {
-      if (!coreRoutes.includes(page.id) || pages.has(page.id) || !page.label)
+      if (
+        !builtinRoutes.includes(page.id) ||
+        pages.has(page.id) ||
+        !page.label.trim()
+      )
         throw new Error("页面贡献无效或冲突");
       pages.set(page.id, Object.freeze({ ...page }));
+      owners.set(page.id, plugin.id);
     }
   }
-  if (coreRoutes.some((id) => !pages.has(id)))
-    throw new Error("现有页面贡献缺失");
+  if (hostRoutes.some((id) => !pages.has(id))) throw new Error("宿主入口缺失");
   const navigation = Object.freeze([...pages.values()]);
   return Object.freeze({
     navigation,
-    resolve: (id: Page) => pages.get(id)!,
+    resolve: (id: Page) => pages.get(id),
+    owner: (id: Page) => owners.get(id),
     readRoute(hash: string): AppRoute {
       const [path, search] = hash.replace(/^#\/?/, "").split("?");
       const extension = path.split("/");
@@ -98,6 +106,12 @@ export function createUiRegistry(plugins: readonly UiPlugin[]) {
       if (page === "tasks" || page === "projects") {
         return { page: "plugins", deferredPlugin: page };
       }
+      if (!builtinRoutes.includes(page as Page)) {
+        return {
+          page: pages.has("overview") ? "overview" : "plugins",
+          defaultEntry: true,
+        };
+      }
       const params = new URLSearchParams(search);
       let objectId: string | undefined;
       try {
@@ -106,7 +120,7 @@ export function createUiRegistry(plugins: readonly UiPlugin[]) {
         objectId = undefined;
       }
       return {
-        page: pages.has(page as Page) ? (page as Page) : "overview",
+        page: page as Page,
         objectId,
         agent: params.get("agent") ?? undefined,
         anchor: params.get("anchor") ?? undefined,
