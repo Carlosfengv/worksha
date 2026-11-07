@@ -11,15 +11,13 @@ test("Agent source state distinguishes partial transcripts from read failure wit
     await page.goto(
       `/tests/frontend/tables.html?mode=agents&sourceState=${state}#/agents`,
     );
-    await expect(page.getByText(label, { exact: true })).toHaveCount(1);
+    const sourceRow = page.getByRole("row").filter({
+      has: page.getByRole("heading", { name: "OpenCode", exact: true }),
+    });
+    await expect(sourceRow).toContainText(label);
     if (state === "partial")
-      await expect(page.getByText("会话读取异常", { exact: true })).toHaveCount(
-        0,
-      );
-    await page
-      .getByRole("link", { name: /^详情 / })
-      .nth(4)
-      .click();
+      await expect(sourceRow).not.toContainText("会话读取异常");
+    await sourceRow.getByRole("link", { name: "详情 OpenCode" }).click();
     await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
   }
 });

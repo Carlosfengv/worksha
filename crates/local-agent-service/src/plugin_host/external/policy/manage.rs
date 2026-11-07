@@ -139,7 +139,10 @@ impl Manager {
                 .unwrap_or_else(|| "0".into()),
         })
     }
-    pub(super) fn policy_inspect(&self, path: &Path) -> Result<p::Review> {
+    pub(in crate::plugin_host::external) fn policy_inspect(
+        &self,
+        path: &Path,
+    ) -> Result<p::Review> {
         self.ensure_running()?;
         let bytes = legacy::read_file(path, legacy::MAX_ARCHIVE)?;
         let pkg = super::package::inspect(&bytes)?;

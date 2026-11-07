@@ -201,7 +201,7 @@ impl Manager {
             },
         })
     }
-    pub(super) fn full_list(&self) -> Result<Vec<f::Status>> {
+    pub(in crate::plugin_host::external) fn full_list(&self) -> Result<Vec<f::Status>> {
         let packages = self.full.lock().checked("unavailable")?.packages()?;
         packages
             .into_iter()
@@ -213,7 +213,7 @@ impl Manager {
             })
             .collect()
     }
-    pub(super) fn full_inspect(&self, path: &Path) -> Result<f::Review> {
+    pub(in crate::plugin_host::external) fn full_inspect(&self, path: &Path) -> Result<f::Review> {
         self.ensure_running()?;
         let bytes = legacy::read_file(path, legacy::MAX_ARCHIVE)?;
         let p = package::inspect(&bytes)?;

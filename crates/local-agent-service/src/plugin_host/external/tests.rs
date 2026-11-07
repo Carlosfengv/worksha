@@ -138,6 +138,77 @@ fn create_package(root: &Path, manifest: &Manifest) -> Vec<u8> {
     sdk::pack(root, Some(&SigningKey::from_bytes(&[7; 32]))).unwrap()
 }
 #[test]
+fn unified_upload_dispatches_signed_capabilities_without_installing_or_running() {
+    let root = tempfile::tempdir().unwrap();
+    let host = new_host(root.path());
+    let source: Manifest = serde_json::from_str(include_str!(
+        "../../../../../sdk/plugins/examples/full-history/package/manifest.json"
+    ))
+    .unwrap();
+    let policy: Manifest = serde_json::from_str(include_str!(
+        "../../../../../sdk/plugins/examples/pure-policy/package/manifest.json"
+    ))
+    .unwrap();
+    for (kind, manifest) in [
+        ("plugin", manifest()),
+        ("source", source),
+        ("policy", policy),
+    ] {
+        let author = root.path().join(kind);
+        std::fs::create_dir(&author).unwrap();
+        if matches!(manifest.runtime, Runtime::WasmComponent { .. }) {
+            std::fs::write(author.join("plugin.wasm"), b"\0asm\x0d\0\x01\0").unwrap();
+        }
+        let archive = create_package(&author, &manifest);
+        let path = root.path().join(format!("{kind}.laplug"));
+        std::fs::write(&path, &archive).unwrap();
+        let result = host.inspect_upload(&path).unwrap();
+        assert_eq!(result["kind"], kind);
+        assert_eq!(result["review"]["digest"], package::hash(&archive));
+        assert_eq!(result["review"]["manifest"]["id"], manifest.id);
+        match kind {
+            "plugin" => {
+                serde_json::from_value::<PackageReview>(result["review"].clone()).unwrap();
+            }
+            "source" => {
+                serde_json::from_value::<local_agent_core::plugin::full::Review>(
+                    result["review"].clone(),
+                )
+                .unwrap();
+            }
+            _ => {
+                serde_json::from_value::<local_agent_core::plugin::policy::Review>(
+                    result["review"].clone(),
+                )
+                .unwrap();
+            }
+        }
+    }
+    assert!(host.list().unwrap().is_empty());
+    assert!(host.full_list().unwrap().is_empty());
+    assert!(host.policy_inventory().unwrap().is_empty());
+}
+
+#[test]
+fn unified_upload_keeps_signature_and_package_admission_fail_closed() {
+    let root = tempfile::tempdir().unwrap();
+    let host = new_host(root.path());
+    let author = root.path().join("author");
+    let archive = create_package(&author, &manifest());
+    let mut corrupted = archive;
+    corrupted[0] ^= 1;
+    let path = root.path().join("bad.laplug");
+    std::fs::write(&path, corrupted).unwrap();
+    assert!(host.inspect_upload(&path).is_err());
+    let unsigned = sdk::pack(&author, None).unwrap();
+    std::fs::write(&path, unsigned).unwrap();
+    assert_eq!(
+        host.inspect_upload(&path).unwrap_err().code,
+        "publisher_untrusted"
+    );
+    assert!(host.list().unwrap().is_empty());
+}
+#[test]
 fn diagnostics_are_read_only_exact_version_scoped_and_reset_on_restart() {
     use super::diagnostics::Operation;
     let root = tempfile::tempdir().unwrap();

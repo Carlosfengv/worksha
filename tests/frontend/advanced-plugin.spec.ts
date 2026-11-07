@@ -86,7 +86,7 @@ test("MCP 授权不启动、启动不伪造握手或调用，窄窗口能操作"
     ),
   ).toBe(true);
 });
-test("插件移除后独立宿主恢复入口可用，未验证能力明确保留", async ({ page }) => {
+test("插件移除后仍可恢复备份并看到更新后的状态", async ({ page }) => {
   await page.goto("/tests/frontend/advanced-plugin.html?mode=history");
   await page.getByRole("button", { name: "配置备份与恢复" }).click();
   await page.getByRole("cell", { name: "离线连接", exact: true }).click();
@@ -97,7 +97,9 @@ test("插件移除后独立宿主恢复入口可用，未验证能力明确保�
     .getByRole("button", { name: "确认恢复配置备份", exact: true })
     .click();
   await expect(page.locator("#calls")).toHaveText('["restore-config"]');
-  await expect(page.getByText(/DSH 尚未验证/)).toBeVisible();
+  await expect(
+    page.getByRole("row").filter({ hasText: "离线连接" }),
+  ).toContainText("已恢复");
 });
 
 test("放弃未执行预览须明确操作，完成后重新读取名额，已应用记录不提供放弃", async ({

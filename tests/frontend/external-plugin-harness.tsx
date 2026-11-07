@@ -1,8 +1,9 @@
+import { setupPluginCenterPeers } from "./plugin-center-peers";
 import { createRoot } from "react-dom/client";
 import { IconProvider } from "@/lib/icon-context";
 import { PluginManager } from "@/features/plugins/manager";
 import { ExtensionsPage } from "@/features/plugins/page";
-import { pluginsApi } from "@/features/plugins/api";
+import { pluginsApi, pluginUploadsApi } from "@/features/plugins/api";
 import type {
   Manifest,
   PluginStatus,
@@ -11,6 +12,7 @@ import type {
 import rawManifest from "../../sdk/plugins/examples/aurora-agent/package/manifest.json";
 import { parseContract } from "@/features/plugins/contract";
 import "@/styles/globals.css";
+setupPluginCenterPeers();
 
 // Business API stubs only: this harness never provides a browser-to-native bridge.
 const mode = new URLSearchParams(location.search).get("mode") ?? "manager";
@@ -71,6 +73,10 @@ pluginsApi.inspect = async () => {
     expandedBytes: 2000,
   };
 };
+pluginUploadsApi.inspect = async () => {
+  const review = await pluginsApi.inspect();
+  return review ? { kind: "plugin", review } : null;
+};
 pluginsApi.install = async (input) => {
   if (!input.approvePublisher) throw Error("未信任");
   record("install");
@@ -87,6 +93,12 @@ pluginsApi.change = async (input) => {
         : input.action === "disable"
           ? false
           : current.enabled,
+    runtimeStatus:
+      input.action === "enable"
+        ? "active"
+        : input.action === "disable"
+          ? "disabled"
+          : current.runtimeStatus,
     sourceAuthorized: false,
     grantRevision: String(Number(current.grantRevision) + 1),
   };

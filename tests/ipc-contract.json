@@ -1,4 +1,5 @@
 {
+  "inspect_plugin_upload": [],
   "cancel_local_token_operation": ["input"],
   "continue_local_token_operation": ["input"],
   "get_local_token_operation": ["input"],
@@ -93,5 +94,8 @@
   "set_project_hidden": ["hidden", "projectId"],
   "set_session_source": ["agentId", "enabled"],
   "verify_model_service_member": ["input"],
-  "verify_provider": ["expectedRevision", "model", "providerId"]
+  "verify_provider": ["expectedRevision", "model", "providerId"],
+  "get_builtin_plugins": [],
+  "configure_builtin_plugins": ["input"],
+  "get_builtin_plugin_operation": ["query"]
 }

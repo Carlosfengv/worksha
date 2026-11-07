@@ -1,3 +1,4 @@
+import { systemFeatureCatalog } from "@/features/plugins/system-features";
 import { retryableLazy as lazy } from "./render-boundary";
 import type { PageContext } from "./plugin-registry";
 import { createUiRegistry, type UiPlugin } from "./plugin-registry";
@@ -279,14 +280,31 @@ export const builtinPlugins: readonly UiPlugin[] = [
     pages: [
       {
         id: "plugins",
-        label: "插件",
+        label: "插件中心",
         icon: "square-library",
         footer: false,
         ownsBody: false,
         refreshInHeader: false,
         resetScrollOnObject: false,
-        render: ({ data }) => (
-          <PluginManager providers={data?.providers ?? []} />
+        render: ({ data, routeSearch, refresh }) => (
+          <PluginManager
+            key={routeSearch}
+            initialScene={
+              new URLSearchParams(routeSearch).get("scene") ?? undefined
+            }
+            systemFeatures={systemFeatureCatalog(
+              builtinPlugins.flatMap((plugin) =>
+                plugin.pages.map((page) => ({
+                  id: plugin.id,
+                  page: page.id,
+                  name: page.label,
+                })),
+              ),
+              data?.version,
+            )}
+            providers={data?.providers ?? []}
+            refreshSnapshot={refresh}
+          />
         ),
       },
     ],

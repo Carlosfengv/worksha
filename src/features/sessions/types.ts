@@ -3,6 +3,7 @@ import type { AgentId } from "@/shared/types/agent";
 import type { Usage } from "@/shared/types/usage";
 
 export interface SessionSource {
+  runtimeActive?: boolean;
   clientAttribution?: {
     status: string;
     scannedLogFiles: number;

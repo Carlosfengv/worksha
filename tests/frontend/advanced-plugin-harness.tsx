@@ -264,6 +264,9 @@ pluginsApi.extensionAction = async (input) => {
       };
       break;
     case "restore-config":
+      historyPlans = historyPlans.map((entry) =>
+        entry.planId === plan.planId ? { ...entry, state: "restored" } : entry,
+      );
       data = {
         ...data,
         plans: [

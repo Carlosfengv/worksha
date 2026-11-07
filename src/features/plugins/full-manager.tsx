@@ -64,9 +64,14 @@ const columns: ColumnDef<Status>[] = [
     ),
   },
 ];
-export function FullPluginManager() {
+export function FullPluginManager({
+  selectedDigest,
+  detailsOnly = false,
+}: { selectedDigest?: string; detailsOnly?: boolean } = {}) {
   const resource = useSharedRead(fullPluginDirectoryResource);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(
+    selectedDigest ?? null,
+  );
   const [review, setReview] = useState<Review | null>(null);
   const [approve, setApprove] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -111,51 +116,55 @@ export function FullPluginManager() {
     }
   };
   return (
-    <section className="space-y-4" aria-label="完整只读来源插件管理">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-xl text-label text-fg-muted">
-          安装后分别启用、选择来源文件、手动读取并授权统一展示。插件报告的项目路径仅作为证据展示，不获得本机项目访问权限。
-        </p>
-        <Button
-          variant="tertiary"
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              setApprove(false);
-              setReview(await fullPluginsApi.inspect());
-            })
-          }
-        >
-          选择完整来源插件包
-        </Button>
-      </div>
+    <section className="space-y-4" aria-label="插件数据管理">
+      {!detailsOnly && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="max-w-xl text-label text-fg-muted">
+            安装后分别启用、选择来源文件、手动读取并授权统一展示。插件报告的项目路径仅作为证据展示，不获得本机项目访问权限。
+          </p>
+          <Button
+            variant="tertiary"
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                setApprove(false);
+                setReview(await fullPluginsApi.inspect());
+              })
+            }
+          >
+            选择插件包
+          </Button>
+        </div>
+      )}
       {(error || resource.error) && (
         <p role="alert" className="break-words text-label text-fg-muted">
           {error ?? resource.error}
         </p>
       )}
-      <DataTable
-        table={table}
-        isLoading={resource.loading && !resource.data}
-        emptyMessage={
-          resource.error ? "完整来源目录暂不可用" : "尚未安装完整来源插件"
-        }
-        aria-label="完整来源插件"
-        onRowActivate={(row) => setSelected(row.original.digest)}
-        activeRowId={selected}
-        paginationProps={{ labels: dataTablePagination }}
-      />
-      <Button
-        variant="tertiary"
-        disabled={busy || resource.loading}
-        onClick={() => void resource.invalidate()}
-      >
-        重新读取完整来源目录
-      </Button>
+      {!detailsOnly && (
+        <DataTable
+          table={table}
+          isLoading={resource.loading && !resource.data}
+          emptyMessage={resource.error ? "插件目录暂不可用" : "尚未安装插件"}
+          aria-label="数据插件"
+          onRowActivate={(row) => setSelected(row.original.digest)}
+          activeRowId={selected}
+          paginationProps={{ labels: dataTablePagination }}
+        />
+      )}
+      {!detailsOnly && (
+        <Button
+          variant="tertiary"
+          disabled={busy || resource.loading}
+          onClick={() => void resource.invalidate()}
+        >
+          重新读取插件目录
+        </Button>
+      )}
       {current && (
         <article
           className="space-y-3 rounded-xl border border-border p-4"
-          aria-label="完整来源插件详情"
+          aria-label="插件数据详情"
         >
           <h3 className="text-title font-medium">
             {current.manifest.displayName} · {current.manifest.version}
@@ -171,7 +180,7 @@ export function FullPluginManager() {
           </p>
           <p className="text-label text-fg-muted">
             {current.freshness === "current"
-              ? "已手动读取"
+              ? "已读取"
               : current.freshness === "failed"
                 ? "读取失败，保留上一完整代次"
                 : current.freshness === "stale"
@@ -221,7 +230,7 @@ export function FullPluginManager() {
                 )
               }
             >
-              选择并授权来源 JSONL
+              选择数据文件
             </Button>
             <Button
               variant="tertiary"
@@ -235,7 +244,7 @@ export function FullPluginManager() {
                 )
               }
             >
-              手动读取完整来源
+              读取插件数据
             </Button>
           </div>
           {current.runtimeActive && current.manifest.source && (
@@ -256,7 +265,7 @@ export function FullPluginManager() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>检查完整来源插件</DialogTitle>
+            <DialogTitle>检查数据插件</DialogTitle>
             <DialogDescription>
               公钥签名证明包由对应密钥签署；本机信任不代表已核实组织身份。安装不会启用或读取资源。
             </DialogDescription>
@@ -315,7 +324,7 @@ export function FullPluginManager() {
                 })
               }
             >
-              安装完整来源插件
+              安装数据插件
             </Button>
           </DialogFooter>
         </DialogContent>

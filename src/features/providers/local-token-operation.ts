@@ -231,7 +231,7 @@ export function localTokenProtocol(value: unknown): LocalTokenProtocol {
     ]) ||
     value.version !== 2 ||
     !integer(value.schemaVersion) ||
-    value.schemaVersion !== 15 ||
+    value.schemaVersion !== 16 ||
     !providerOperationId(value.storeId) ||
     !providerOperationId(value.namespaceId) ||
     !["active", "unverified"].includes(String(value.namespaceState)) ||

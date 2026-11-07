@@ -11,10 +11,11 @@ test("能力、授权、初始化与数据成功分开，诊断计数保持大�
 }) => {
   const panel = await open(page, "ready");
   await expect(
-    page
-      .getByRole("tablist", { name: "插件管理", exact: true })
-      .getByRole("tab"),
-  ).toHaveText(["已安装", "完整只读来源"]);
+    page.getByRole("tablist", { name: "插件管理", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByLabel("插件中心列表", { exact: true }).getByRole("table"),
+  ).toContainText("用户上传");
   await expect(panel).toContainText("初始化通过");
   await expect(panel).toContainText("最多 8 MiB、10240 条记录");
   await expect(panel).toContainText("历史来源：已授权");

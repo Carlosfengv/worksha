@@ -11,6 +11,8 @@ import {
 } from "@/shared/types/agent";
 
 export function sourceLabel(source?: SessionSource) {
+  if (source?.runtimeActive === false)
+    return source.enabled ? "已授权 · 插件未运行" : "来源插件已停用";
   if (!source?.enabled) return "未读取会话";
   if (source.error && !(source.status === "partial" && source.skippedFiles > 0))
     return "会话读取异常";

@@ -5,21 +5,15 @@ test("complete source installation pins the reviewed key and keeps lifecycle gra
 }) => {
   await page.setViewportSize({ width: 720, height: 560 });
   await page.goto("/tests/frontend/full-plugin.html");
-  await page
-    .getByRole("button", { name: "选择完整来源插件包", exact: true })
-    .click();
+  await page.getByRole("button", { name: "选择插件包", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "安装完整来源插件", exact: true }),
+    page.getByRole("button", { name: "安装数据插件", exact: true }),
   ).toBeDisabled();
   await page
     .getByRole("checkbox", { name: "我已核对并信任此发布者公钥", exact: true })
     .check();
-  await page
-    .getByRole("button", { name: "安装完整来源插件", exact: true })
-    .click();
-  await expect(
-    page.getByLabel("完整来源插件详情", { exact: true }),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "安装数据插件", exact: true }).click();
+  await expect(page.getByLabel("插件数据详情", { exact: true })).toBeVisible();
   const install = (
     await page.evaluate(() => window.fullPluginFixture.calls)
   ).find((c) => c.operation === "install");
@@ -37,19 +31,15 @@ test("complete source installation pins the reviewed key and keeps lifecycle gra
   await page.getByRole("button", { name: "启用此版本", exact: true }).click();
   await page.getByRole("button", { name: "确认操作", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "选择并授权来源 JSONL", exact: true }),
+    page.getByRole("button", { name: "选择数据文件", exact: true }),
   ).toBeEnabled();
-  await page
-    .getByRole("button", { name: "选择并授权来源 JSONL", exact: true })
-    .click();
+  await page.getByRole("button", { name: "选择数据文件", exact: true }).click();
   expect(
     (await page.evaluate(() => window.fullPluginFixture.calls)).some(
       (c) => c.operation === "refresh",
     ),
   ).toBe(false);
-  await page
-    .getByRole("button", { name: "手动读取完整来源", exact: true })
-    .click();
+  await page.getByRole("button", { name: "读取插件数据", exact: true }).click();
   await expect(
     page.getByText(/已手动读取。重开后需要重新启用并选择资源/),
   ).toBeVisible();

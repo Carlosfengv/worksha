@@ -13,7 +13,12 @@ export interface Snapshot {
   agentConnections?: AgentConnections;
   version: string;
   databasePath: string;
-  gatewayStatus: "not_configured" | "ready";
+  gatewayStatus: "not_configured" | "ready" | "paused";
+  builtinComposition?: {
+    profile: "desktop" | "background" | "recovery";
+    problem: string | null;
+    nativeActivityActive?: boolean;
+  };
   agents: AgentDiscovery[];
   providers: Provider[];
   providerWriteProtocol?: import("@/features/providers/operation-receipt").ProviderWriteProtocol;

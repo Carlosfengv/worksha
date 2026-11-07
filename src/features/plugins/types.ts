@@ -33,6 +33,19 @@ export interface PluginList {
   apiVersion: string;
   runtime: string;
 }
+export type PluginUploadReview =
+  | {
+      kind: "plugin";
+      review: import("../../../contracts/plugins/types").PackageReview;
+    }
+  | {
+      kind: "source";
+      review: import("../../../contracts/plugins/sources/types").Review;
+    }
+  | {
+      kind: "policy";
+      review: import("../../../contracts/plugins/routing/types").Review;
+    };
 export interface PluginView {
   report?: GatewayReport | null;
   reportExpired?: boolean;

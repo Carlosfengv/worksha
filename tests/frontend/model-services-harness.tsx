@@ -364,7 +364,7 @@ modelServicesApi.verifyMember = async (input) => {
 providersApi.providerStatus = async (): Promise<ProviderStatus> => ({
   localTokenProtocol: {
     version: 2,
-    schemaVersion: 15,
+    schemaVersion: 16,
     storeId:
       fixture.catalog.writeProtocol?.storeId ??
       "00000000-0000-4000-8000-000000000001",

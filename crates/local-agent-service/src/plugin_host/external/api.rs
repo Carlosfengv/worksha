@@ -18,6 +18,7 @@ pub(crate) fn routes() -> Router<AppState> {
         .merge(super::object_contributions::api::routes())
         .route("/api/plugins", get(list))
         .route("/api/plugins/inspect", post(inspect))
+        .route("/api/plugins/upload/inspect", post(inspect_upload))
         .route("/api/plugins/install", post(install))
         .route("/api/plugins/state", post(change))
         .route("/api/plugins/source", post(source))
@@ -63,6 +64,19 @@ async fn inspect(State(state): State<AppState>, Json(request): Json<InspectPath>
     })
     .await;
     response(result)
+}
+async fn inspect_upload(
+    State(state): State<AppState>,
+    Json(request): Json<InspectPath>,
+) -> ApiResult {
+    response(
+        run_sync(move || {
+            state
+                .plugins
+                .inspect_upload(std::path::Path::new(&request.path))
+        })
+        .await,
+    )
 }
 async fn install(State(state): State<AppState>, Json(request): Json<InstallRequest>) -> ApiResult {
     let result = run_sync(move || {

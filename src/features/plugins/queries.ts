@@ -1,5 +1,14 @@
 import { createReadResource } from "@/shared/lib/read-resource";
-import { pluginsApi, fullPluginsApi, objectContributionsApi } from "./api";
+import {
+  pluginsApi,
+  fullPluginsApi,
+  objectContributionsApi,
+  builtinPluginsApi,
+} from "./api";
+
+export const builtinPluginResource = createReadResource(() =>
+  builtinPluginsApi.catalog(),
+);
 
 export const objectContributionResource = createReadResource(async () => {
   const reply = await objectContributionsApi.perform({ kind: "catalog" });

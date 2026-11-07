@@ -209,11 +209,13 @@ export function ActivitySummary({
   state,
   nativeSourceEnabled,
   sourceHref,
+  nativeObservationPaused = false,
 }: {
   summary: ActivitySummaryData;
   state: MetricCardState;
   nativeSourceEnabled: boolean;
   sourceHref: string;
+  nativeObservationPaused?: boolean;
 }) {
   const [paused, setPaused] = useState(false);
   const [colors, setColors] =
@@ -238,7 +240,9 @@ export function ActivitySummary({
           : !hasActivity
             ? nativeSourceEnabled
               ? "当前没有观测到正在执行的任务。"
-              : "未开启原生会话读取，当前执行状态待确认。"
+              : nativeObservationPaused
+                ? "原生活动采集已暂停，当前执行状态待确认。"
+                : "未开启原生会话读取，当前执行状态待确认。"
             : `近 ${summary.windowMs / 1000} 秒可观测输出 Token 估算相加；包含正文与已上报的思考增量，网关另含工具参数。最近实测值保留时间，不参与当前合计；工具结果和未上报的隐藏思考不作推算。`;
   return (
     <section
@@ -361,12 +365,14 @@ export function ActivitySummary({
       </div>
       {ready && !nativeSourceEnabled && (
         <p className="text-label text-fg-muted">
-          当前仅统计经本应用的网关请求。官方登录及其他直连会话需开启原生观测。
+          {nativeObservationPaused
+            ? "原生活动采集已暂停，当前仅统计经本应用的网关请求。可在插件管理中恢复采集。"
+            : "当前仅统计经本应用的网关请求。官方登录及其他直连会话需开启原生观测。"}
           <a
             href={`#${sourceHref}`}
             className="ml-2 rounded-lg text-fg-muted outline-none hover:text-fg-default focus-visible:ring-1 focus-visible:ring-focus-ring"
           >
-            开启原生观测
+            {nativeObservationPaused ? "管理活动采集" : "开启原生观测"}
           </a>
         </p>
       )}

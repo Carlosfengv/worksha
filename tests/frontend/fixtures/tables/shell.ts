@@ -5,12 +5,28 @@ import type { SessionSource } from "@/features/sessions/types";
 import { providersApi } from "@/features/providers/api";
 import { accountsApi } from "@/features/accounts/api";
 import { settingsApi } from "@/features/settings/api";
-import { pluginsApi } from "@/features/plugins/api";
+import { builtinPluginsApi, pluginsApi } from "@/features/plugins/api";
+import {
+  builtinBusinessPlugins,
+  emptyBuiltinCatalog,
+} from "../../plugin-center-peers";
 import { backendDiagnostics } from "@/features/settings/backend-result";
 import { fixtureProvider } from "./data";
 import { checkedTableSnapshot, type TableFixtureContext } from "./context";
 export function installTableShell(context: TableFixtureContext) {
   const { sourceState } = context;
+  const composition = new URLSearchParams(location.search).get("composition");
+  builtinPluginsApi.catalog = async () => ({
+    ...structuredClone(emptyBuiltinCatalog),
+    host: {
+      ...emptyBuiltinCatalog.host,
+      plugins: builtinBusinessPlugins().map((plugin) => ({
+        ...plugin,
+        desiredEnabled: composition !== "recovery",
+        runtimeActive: composition !== "recovery",
+      })),
+    },
+  });
   const openCodeSource: SessionSource = {
     agentId: "opencode",
     enabled: true,
@@ -61,6 +77,22 @@ export function installTableShell(context: TableFixtureContext) {
       version: "fixture",
       databasePath: "/tmp/fixture",
       gatewayStatus: "not_configured",
+      ...(new URLSearchParams(location.search).get("collector") === "stopped" ||
+      composition === "recovery" ||
+      composition === "background"
+        ? {
+            builtinComposition: {
+              profile:
+                composition === "recovery"
+                  ? ("recovery" as const)
+                  : composition === "background"
+                    ? ("background" as const)
+                    : ("desktop" as const),
+              problem: null,
+              nativeActivityActive: false,
+            },
+          }
+        : {}),
       // Match the service's registered product directory in every feature mode.
       agents: agentProducts.map((p) => ({
         ...p,
@@ -79,6 +111,10 @@ export function installTableShell(context: TableFixtureContext) {
               ...openCodeSource,
               agentId,
               enabled: sourceState !== "disabled",
+              ...(new URLSearchParams(location.search).get("nativePlugin") ===
+              "stopped"
+                ? { runtimeActive: false }
+                : {}),
               status: sourceState === "disabled" ? "disabled" : "ready",
               error: null,
             }))

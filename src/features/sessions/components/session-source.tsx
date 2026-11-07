@@ -24,6 +24,7 @@ export function SessionSourceControl({
 }) {
   const { isSharedSource, sourceName } = useAgentDirectory();
   const shared = isSharedSource(source.agentId);
+  const pluginStopped = source.runtimeActive === false;
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +51,7 @@ export function SessionSourceControl({
           variant="tertiary"
           size="sm"
           loading={saving}
+          disabled={pluginStopped && !source.enabled}
           onClick={() => {
             if (source.enabled) void save(false);
             else setOpen(true);
@@ -58,6 +60,17 @@ export function SessionSourceControl({
           {source.enabled ? "停止读取" : "读取本机会话"}
         </Button>
       </div>
+      {pluginStopped && (
+        <p className="text-label text-fg-muted">
+          来源插件已停用，启用插件后仍需单独确认读取范围。
+          <a
+            href="#/plugins?scene=activity"
+            className="ml-2 rounded-lg text-fg-muted outline-none hover:text-fg-default focus-visible:ring-1 focus-visible:ring-focus-ring"
+          >
+            管理官方插件
+          </a>
+        </p>
+      )}
       {source.enabled && (
         <p className="text-label text-fg-muted">
           {["pending", "scanning"].includes(source.status)

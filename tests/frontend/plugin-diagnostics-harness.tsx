@@ -1,3 +1,4 @@
+import { setupPluginCenterPeers } from "./plugin-center-peers";
 import { createRoot } from "react-dom/client";
 import { IconProvider } from "@/lib/icon-context";
 import { PluginManager } from "@/features/plugins/manager";
@@ -6,6 +7,7 @@ import { parseContract } from "@/features/plugins/contract";
 import type { Manifest, PluginStatus } from "@/features/plugins/types";
 import raw from "../../sdk/plugins/examples/aurora-agent/package/manifest.json";
 import "@/styles/globals.css";
+setupPluginCenterPeers();
 
 const mode = new URLSearchParams(location.search).get("mode") ?? "ready";
 const current: PluginStatus = {

@@ -315,6 +315,25 @@ impl Manager {
     pub(crate) fn development(&self) -> bool {
         self.development
     }
+    pub(crate) fn inspect_upload(&self, path: &Path) -> Result<serde_json::Value> {
+        self.ensure_running()?;
+        let bytes = package::read_file(path, package::MAX_ARCHIVE)?;
+        let inspected = package::inspect(&bytes, self.development)?;
+        let (kind, review) = if inspected.manifest.source.is_some() {
+            ("source", serde_json::to_value(self.full_inspect(path)?))
+        } else if inspected.manifest.kind.is_some() {
+            ("policy", serde_json::to_value(self.policy_inspect(path)?))
+        } else {
+            ("plugin", serde_json::to_value(self.inspect(path)?))
+        };
+        let review = review.checked("invalid_input")?;
+        // Dispatch is host-owned. A file replaced during inspection cannot turn
+        // a reviewed package into a different kind, identity, or signing key.
+        if review["digest"] != inspected.digest {
+            return Err(fail("stale_snapshot"));
+        }
+        Ok(serde_json::json!({"kind":kind,"review":review}))
+    }
     pub(crate) fn inspect(&self, path: &Path) -> Result<PackageReview> {
         self.ensure_running()?;
         let full_root = self

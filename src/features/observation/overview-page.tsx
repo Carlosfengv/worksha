@@ -63,16 +63,27 @@ export function OverviewPage({
       observation.data
         ? {
             ...observation.data,
-            nativeActivities: observation.data.nativeActivities.filter(
-              (activity) =>
+            nativeActivities: observation.data.nativeActivities
+              .filter((activity) =>
                 data?.sessionSources.some(
                   (source) =>
-                    source.enabled && source.agentId === activity.agentId,
+                    source.enabled &&
+                    source.runtimeActive !== false &&
+                    source.agentId === activity.agentId,
                 ),
-            ),
+              )
+              .map((activity) =>
+                data?.builtinComposition?.nativeActivityActive === false
+                  ? { ...activity, stale: true }
+                  : activity,
+              ),
           }
         : null,
-    [observation.data, data?.sessionSources],
+    [
+      observation.data,
+      data?.sessionSources,
+      data?.builtinComposition?.nativeActivityActive,
+    ],
   );
   const stale =
     Boolean(observation.error) ||

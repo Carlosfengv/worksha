@@ -1,4 +1,4 @@
-// A confirmed reconnect invalidates active UI reads, never business actions.
+// Backend scope changes invalidate active UI reads, never business actions.
 let epoch = Symbol();
 const listeners = new Set<() => void>();
 
@@ -11,7 +11,7 @@ export function subscribeBackendRecovery(listener: () => void) {
   };
 }
 
-export function notifyBackendRecovery() {
+export function invalidateBackendReads() {
   epoch = Symbol();
   for (const listener of [...listeners]) {
     try {
@@ -22,4 +22,8 @@ export function notifyBackendRecovery() {
       console.error("local-agent: backend-read-observer");
     }
   }
+}
+
+export function notifyBackendRecovery() {
+  invalidateBackendReads();
 }

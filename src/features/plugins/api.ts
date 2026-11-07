@@ -1,4 +1,45 @@
 import { invalidateCapabilityAccess } from "@/shared/lib/capability-access";
+import { invalidateBackendReads } from "@/shared/lib/backend-recovery";
+import policyReviewSchema from "../../../contracts/plugins/routing/review.schema.json";
+import type { PluginUploadReview } from "./types";
+import type {
+  CompositionChange,
+  CompositionOperation,
+} from "../../../contracts/plugins/builtin/types";
+import {
+  builtinCatalog,
+  builtinChange,
+  builtinReply,
+} from "./builtin-contract";
+
+export const builtinPluginsApi = {
+  async catalog() {
+    return builtinCatalog(await command<unknown>("get_builtin_plugins"));
+  },
+  async change(input: CompositionChange) {
+    const request = builtinChange(input);
+    invalidateCapabilityAccess();
+    const reply = builtinReply(
+      await command<unknown>("configure_builtin_plugins", {
+        input: request,
+      }).finally(() => {
+        invalidateCapabilityAccess();
+        invalidateBackendReads();
+      }),
+      request,
+    );
+    if (!reply.receipt) throw Error("插件变更结果尚未确认，请查询原操作回执。");
+    return reply;
+  },
+  async operation(query: CompositionOperation) {
+    const reply = builtinReply(
+      await command<unknown>("get_builtin_plugin_operation", { query }),
+      query,
+    );
+    if (reply.receipt) invalidateBackendReads();
+    return reply;
+  },
+};
 import objectContributionReplySchema from "../../../contracts/plugins/objects/object-contribution-reply.schema.json";
 import type {
   ObjectContributionAction,
@@ -10,6 +51,30 @@ import providerCatalogStateSchema from "../../../contracts/domain/provider-acces
 import { parseDiagnostics } from "./diagnostics";
 import { parseContributions } from "./contributions";
 import { object, parseContract, parseSchema } from "./contract";
+export const pluginUploadsApi = {
+  async inspect(): Promise<PluginUploadReview | null> {
+    const value = await command<unknown>("inspect_plugin_upload");
+    if (value === null) return null;
+    if (
+      !object(value) ||
+      Object.keys(value).some((key) => key !== "kind" && key !== "review")
+    )
+      throw Error("插件准入检查响应无效，请重新上传。");
+    if (value.kind === "plugin")
+      return { kind: "plugin", review: parseContract("review", value.review) };
+    if (value.kind === "source")
+      return {
+        kind: "source",
+        review: parseSchema(fullReviewSchema, value.review),
+      };
+    if (value.kind === "policy")
+      return {
+        kind: "policy",
+        review: parseSchema(policyReviewSchema, value.review),
+      };
+    throw Error("当前应用不支持此插件，请检查插件标准与宿主版本。");
+  },
+};
 export function parseProviderCatalogState(value: unknown) {
   return parseSchema<ProviderCatalogState>(providerCatalogStateSchema, value);
 }
@@ -100,7 +165,10 @@ export const fullPluginsApi = {
     return parseSchema<FullStatus>(
       fullStatusSchema,
       await command<unknown>("change_full_plugin_state", { input }).finally(
-        invalidateCapabilityAccess,
+        () => {
+          invalidateCapabilityAccess();
+          invalidateBackendReads();
+        },
       ),
     );
   },
@@ -309,9 +377,10 @@ export const pluginsApi = {
   async change(input: StateRequest) {
     invalidateCapabilityAccess();
     return status(
-      await command<unknown>("change_plugin_state", { input }).finally(
-        invalidateCapabilityAccess,
-      ),
+      await command<unknown>("change_plugin_state", { input }).finally(() => {
+        invalidateCapabilityAccess();
+        invalidateBackendReads();
+      }),
     );
   },
   async authorizeSource(pluginId: string, digest: string) {

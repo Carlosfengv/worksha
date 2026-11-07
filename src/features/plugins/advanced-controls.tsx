@@ -606,8 +606,7 @@ export function PluginOperationHistory() {
         配置备份与恢复
       </Button>
       <p className="text-label text-fg-muted">
-        插件停用或卸载后，已保存的宿主备份仍可恢复；DSH 尚未验证，清理 /
-        兑换执行尚未开放。
+        插件停用或卸载后，已保存的配置备份仍可恢复。
       </p>
       {(error || resource.error) && (
         <Alert status="danger">

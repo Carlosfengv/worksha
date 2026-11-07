@@ -1,7 +1,15 @@
-import { pageRegistry, renderExtension } from "./builtin-plugins";
+import {
+  builtinPlugins,
+  pageRegistry,
+  renderExtension,
+} from "./builtin-plugins";
+import { useSharedRead } from "@/shared/hooks/use-shared-read";
+import { builtinPluginResource } from "@/features/plugins/queries";
+import type { IconName } from "@/lib/icon-context";
 import type { PageContext, PageContribution } from "./plugin-registry";
 import { RenderBoundary } from "./render-boundary";
 import { AgentDirectoryProvider } from "@/shared/hooks/use-agent-directory";
+import { BuiltinCompositionNotice } from "@/features/plugins/builtin-composition-notice";
 import type { Page } from "@/app/types";
 import { useSnapshot } from "@/app/use-snapshot";
 import {
@@ -107,7 +115,7 @@ function NavigationLink({
   item,
   active,
 }: {
-  item: (typeof navigation)[number];
+  item: { id: string; label: string; icon: IconName; href?: string };
   active: boolean;
 }) {
   const Icon = useIcon(item.icon);
@@ -115,7 +123,7 @@ function NavigationLink({
   return (
     <NavItem value={item.id} active={active}>
       <NavItemTrigger
-        href={`#/${item.id}`}
+        href={item.href ?? `#/${item.id}`}
         onClick={() => sidebar.closeMobile()}
       >
         <NavItemLeading>
@@ -134,6 +142,19 @@ function Workspace() {
   const [route, setRoute] = useState(readRoute);
   const [pageRefresh, setPageRefresh] = useState(0);
   const { data, error, loading, refresh } = useSnapshot();
+  const builtin = useSharedRead(builtinPluginResource);
+  const featureOwner = (page: string) =>
+    builtinPlugins.find((plugin) => plugin.pages.some((p) => p.id === page))
+      ?.id;
+  const featureAvailable = (page: string) => {
+    if (page === "plugins" || page === "settings") return true;
+    return (
+      !builtin.error &&
+      !!builtin.data?.host.plugins.find(
+        (plugin) => plugin.id === featureOwner(page),
+      )?.runtimeActive
+    );
+  };
   const RefreshIcon = useIcon("rotate-ccw");
   useEffect(() => {
     const handle = () => setRoute(readRoute());
@@ -187,12 +208,16 @@ function Workspace() {
                 <SidebarContent>
                   <NavMenu activeValue={route.page} aria-label="主导航">
                     {navigation
-                      .filter((item) => !item.footer)
+                      .filter(
+                        (item) => !item.footer && featureAvailable(item.id),
+                      )
                       .map((item) => (
                         <NavigationLink
                           key={item.id}
                           item={item}
-                          active={route.page === item.id}
+                          active={
+                            !route.extensionPlugin && route.page === item.id
+                          }
                         />
                       ))}
                   </NavMenu>
@@ -209,6 +234,10 @@ function Workspace() {
             </AppShellSidebar>
             <AppShellMain className="flex min-h-0 flex-col">
               <PageLayout size="full">
+                <BuiltinCompositionNotice
+                  composition={data?.builtinComposition}
+                  className="px-3 pb-3"
+                />
                 {error && (
                   <div className="px-3 pb-3">
                     <Alert status="default">
@@ -264,16 +293,38 @@ function Workspace() {
                         </div>
                       }
                     >
-                      <WorkspacePage
-                        render={
-                          route.extensionPlugin
-                            ? renderExtension
-                            : current.render
-                        }
-                        context={context}
-                        ownsBody={current.ownsBody}
-                        bodyRef={pageBodyRef}
-                      />
+                      {featureAvailable(route.page) || route.extensionPlugin ? (
+                        <WorkspacePage
+                          render={
+                            route.extensionPlugin
+                              ? renderExtension
+                              : current.render
+                          }
+                          context={context}
+                          ownsBody={current.ownsBody}
+                          bodyRef={pageBodyRef}
+                        />
+                      ) : (
+                        <PageBody className="p-4 sm:p-6">
+                          <Alert>
+                            <AlertTitle>
+                              {builtin.loading && !builtin.data
+                                ? "正在读取插件状态"
+                                : builtin.error
+                                  ? "功能状态待核查"
+                                  : "此功能已停用或卸载"}
+                            </AlertTitle>
+                            <AlertDescription>
+                              请在插件中心检查依赖并恢复。历史数据和配置仍保留，未继续调用此功能。
+                            </AlertDescription>
+                            <AlertAction>
+                              <Button asChild variant="secondary">
+                                <a href="#/plugins">打开插件中心</a>
+                              </Button>
+                            </AlertAction>
+                          </Alert>
+                        </PageBody>
+                      )}
                     </Suspense>
                   </RenderBoundary>
                 </PageContent>

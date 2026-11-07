@@ -377,17 +377,24 @@ export function CurrentActivities({
   const { agentNames, agentProducts, agentFamily, isSharedSource } =
     useAgentDirectory();
   const family = agentFamily(filter);
+  const nativeObservationPaused =
+    data.builtinComposition?.nativeActivityActive === false ||
+    data.builtinComposition?.profile === "recovery" ||
+    !!data.builtinComposition?.problem;
   const nativeSourceEnabled = data.sessionSources.some(
     (source) =>
       source.enabled &&
+      source.runtimeActive !== false &&
       (filter === "all" ||
         (filter === "unknown"
           ? isSharedSource(source.agentId)
           : source.agentId === family)),
   );
-  const sourceHref = data.agents.some((agent) => agent.id === filter)
-    ? `/agents/${encodeURIComponent(filter)}?tab=connection`
-    : "/agents";
+  const sourceHref = nativeObservationPaused
+    ? "/plugins?scene=activity"
+    : data.agents.some((agent) => agent.id === filter)
+      ? `/agents/${encodeURIComponent(filter)}?tab=connection`
+      : "/agents";
   const rows = useMemo(() => {
     const products = [
       ...data.agents.map((a) => a.id),
@@ -488,7 +495,8 @@ export function CurrentActivities({
     <div className="space-y-2">
       <ActivitySummary
         summary={summary}
-        nativeSourceEnabled={nativeSourceEnabled}
+        nativeSourceEnabled={nativeSourceEnabled && !nativeObservationPaused}
+        nativeObservationPaused={nativeObservationPaused}
         sourceHref={sourceHref}
         state={
           !overview
@@ -535,14 +543,18 @@ export function CurrentActivities({
             <Empty reason="no-results" scope="inline">
               <EmptyHeader>
                 <EmptyTitle>
-                  {nativeSourceEnabled
-                    ? "暂无活动记录"
-                    : "尚未连接原生观测来源"}
+                  {nativeObservationPaused
+                    ? "原生活动采集已暂停"
+                    : nativeSourceEnabled
+                      ? "暂无活动记录"
+                      : "尚未连接原生观测来源"}
                 </EmptyTitle>
                 <EmptyDescription>
-                  {nativeSourceEnabled
-                    ? "仅显示最近 3 小时的活动，按最后活动时间排序。"
-                    : "当前范围未开启原生会话读取，请在 Agent 的“连接与观测”中确认读取范围。网关请求经过本应用时会自动显示。"}
+                  {nativeObservationPaused
+                    ? "可在官方组合中恢复活动采集；本机来源的读取授权仍需单独确认。"
+                    : nativeSourceEnabled
+                      ? "仅显示最近 3 小时的活动，按最后活动时间排序。"
+                      : "当前范围未开启原生会话读取，请在 Agent 的“连接与观测”中确认读取范围。网关请求经过本应用时会自动显示。"}
                 </EmptyDescription>
               </EmptyHeader>
               {recentLatest && (
@@ -553,7 +565,7 @@ export function CurrentActivities({
                 </EmptyContent>
               )}
               <EmptyActions>
-                {!nativeSourceEnabled && (
+                {(!nativeSourceEnabled || nativeObservationPaused) && (
                   <Button
                     size="sm"
                     variant="tertiary"
@@ -561,7 +573,7 @@ export function CurrentActivities({
                       window.location.hash = sourceHref;
                     }}
                   >
-                    连接观测来源
+                    {nativeObservationPaused ? "管理活动采集" : "连接观测来源"}
                   </Button>
                 )}
                 {(nativeSourceEnabled || recentLatest) && (

@@ -2,11 +2,11 @@ import { test, expect } from "@playwright/test";
 
 test("取消原生插件包选择不会安装、启用或留下确认弹层", async ({ page }) => {
   await page.goto("/tests/frontend/external-plugin.html?mode=picker-cancel");
-  const choose = page.getByRole("button", { name: "选择插件包" });
+  const choose = page.getByRole("button", { name: "上传插件" });
   await choose.click();
   await expect(page.locator("#calls")).toHaveText('["package-picker-cancel"]');
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByText("尚未安装外部插件")).toBeVisible();
+  await expect(page.getByText("没有匹配的插件")).toBeVisible();
   await expect(choose).toBeEnabled();
 });
 
@@ -14,17 +14,17 @@ test("文件选择失败可重试，重新检查包必须重新确认发布者",
   await page.goto(
     "/tests/frontend/external-plugin.html?mode=picker-error-retry",
   );
-  const choose = page.getByRole("button", { name: "选择插件包" });
+  const choose = page.getByRole("button", { name: "上传插件" });
   await choose.click();
   await expect(page.getByText("原生文件选择未完成")).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await choose.click();
-  await expect(page.getByRole("button", { name: "安装此包" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "安装并启用" })).toBeDisabled();
   await page.getByRole("checkbox").check();
   await page.keyboard.press("Escape");
   await choose.click();
   await expect(page.getByRole("checkbox")).not.toBeChecked();
-  await expect(page.getByRole("button", { name: "安装此包" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "安装并启用" })).toBeDisabled();
   await expect(page.locator("#calls")).toHaveText('["package-picker-error"]');
 });
 
@@ -61,23 +61,17 @@ for (const mode of ["source-cancel", "source-error-retry"]) {
   });
 }
 
-test("外部安装、启用、来源授权彼此独立，弹层支持键盘取消", async ({ page }) => {
+test("上传确认后安装并启用，来源授权仍独立，弹层支持键盘取消", async ({
+  page,
+}) => {
   await page.goto("/tests/frontend/external-plugin.html");
-  await page.getByRole("button", { name: "选择插件包" }).click();
-  await expect(page.getByRole("button", { name: "安装此包" })).toBeDisabled();
+  await page.getByRole("button", { name: "上传插件" }).click();
+  await expect(page.getByRole("button", { name: "安装并启用" })).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.getByRole("button", { name: "选择插件包" }).click();
+  await page.getByRole("button", { name: "上传插件" }).click();
   await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "安装此包" }).click();
-  await expect(
-    page.getByRole("button", { name: "选择并授权 JSONL" }),
-  ).toHaveCount(0);
-  await page.getByRole("button", { name: "启用此版本", exact: true }).click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "确认启用此版本", exact: true })
-    .click();
+  await page.getByRole("button", { name: "安装并启用" }).click();
   await expect(
     page.getByRole("button", { name: "选择并授权 JSONL" }),
   ).toBeVisible();

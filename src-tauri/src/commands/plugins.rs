@@ -5,11 +5,74 @@ use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
 #[tauri::command]
+pub(crate) async fn get_builtin_plugins(
+    backend: tauri::State<'_, Backend>,
+) -> Result<serde_json::Value, String> {
+    backend
+        .request(reqwest::Method::GET, "/api/builtin-plugins", None)
+        .await
+}
+#[tauri::command]
+pub(crate) async fn configure_builtin_plugins(
+    backend: tauri::State<'_, Backend>,
+    input: local_agent_core::plugin::builtin::CompositionChange,
+) -> Result<serde_json::Value, String> {
+    backend
+        .request(
+            reqwest::Method::POST,
+            "/api/builtin-plugins/changes",
+            Some(serde_json::to_value(input).map_err(|_| "内置组合参数无效")?),
+        )
+        .await
+}
+#[tauri::command]
+pub(crate) async fn get_builtin_plugin_operation(
+    backend: tauri::State<'_, Backend>,
+    query: local_agent_core::plugin::builtin::CompositionOperation,
+) -> Result<serde_json::Value, String> {
+    backend
+        .request(
+            reqwest::Method::POST,
+            "/api/builtin-plugins/operations",
+            Some(serde_json::to_value(query).map_err(|_| "组合操作查询参数无效")?),
+        )
+        .await
+}
+
+#[tauri::command]
 pub(crate) async fn list_plugins(
     backend: tauri::State<'_, Backend>,
 ) -> Result<serde_json::Value, String> {
     backend
         .request(reqwest::Method::GET, "/api/plugins", None)
+        .await
+}
+#[tauri::command]
+pub(crate) async fn inspect_plugin_upload(
+    app: tauri::AppHandle,
+    backend: tauri::State<'_, Backend>,
+) -> Result<serde_json::Value, String> {
+    let window = app.get_webview_window("main").ok_or("应用窗口不可用")?;
+    let selected = tokio::task::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_parent(&window)
+            .set_title("上传插件：检查兼容性、来源与权限")
+            .add_filter("Local Agent 插件", &["laplug"])
+            .blocking_pick_file()
+    })
+    .await
+    .map_err(|_| "未完成包选择")?;
+    let Some(selected) = selected else {
+        return Ok(serde_json::Value::Null);
+    };
+    let path = selected.into_path().map_err(|_| "请选择本机文件")?;
+    backend
+        .request(
+            reqwest::Method::POST,
+            "/api/plugins/upload/inspect",
+            Some(serde_json::json!({"path":path})),
+        )
         .await
 }
 #[tauri::command]

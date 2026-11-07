@@ -2,6 +2,11 @@ import { Suspense, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import App from "@/app/App";
 import { appApi } from "@/app/api";
+import { builtinPluginsApi } from "@/features/plugins/api";
+import {
+  builtinBusinessPlugins,
+  emptyBuiltinCatalog,
+} from "./plugin-center-peers";
 import {
   RenderBoundary,
   renderErrorOptions,
@@ -30,6 +35,10 @@ window.recoveryFixture = {
 appApi.snapshot = async () => {
   throw new Error("fixture service offline");
 };
+builtinPluginsApi.catalog = async () => ({
+  ...structuredClone(emptyBuiltinCatalog),
+  host: { ...emptyBuiltinCatalog.host, plugins: builtinBusinessPlugins() },
+});
 
 function Content() {
   const [draft, setDraft] = useState("");
