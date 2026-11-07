@@ -1,0 +1,314 @@
+{
+  "$defs": {
+    "CapabilityAddress": {
+      "additionalProperties": false,
+      "properties": {
+        "instance": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "instance"
+      ],
+      "type": "object"
+    },
+    "CapabilityInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "$ref": "#/$defs/CapabilityAddress"
+        },
+        "metadata": {
+          "$ref": "#/$defs/CapabilityMetadata"
+        }
+      },
+      "required": [
+        "address",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "CapabilityKind": {
+      "enum": [
+        "query",
+        "command",
+        "stream",
+        "ui-contribution"
+      ],
+      "type": "string"
+    },
+    "CapabilityMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/CapabilityKind"
+        },
+        "resourceScope": {
+          "$ref": "#/$defs/ResourceScope"
+        }
+      },
+      "required": [
+        "kind",
+        "resourceScope"
+      ],
+      "type": "object"
+    },
+    "Composition": {
+      "additionalProperties": false,
+      "properties": {
+        "disabledPluginIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "profile": {
+          "$ref": "#/$defs/Profile"
+        },
+        "removedPluginIds": {
+          "description": "Removing a bundled plugin unregisters its functionality; the signed app\nremains the trusted reinstall source. Historical domain data is retained.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "profile",
+        "disabledPluginIds"
+      ],
+      "type": "object"
+    },
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "ExecutionKind": {
+      "enum": [
+        "builtin",
+        "wasm-component",
+        "declarative"
+      ],
+      "type": "string"
+    },
+    "HostSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "cleanupFailed": {
+          "type": "boolean"
+        },
+        "generation": {
+          "type": "string"
+        },
+        "plugins": {
+          "items": {
+            "$ref": "#/$defs/PluginInfo"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "generation",
+        "plugins",
+        "cleanupFailed"
+      ],
+      "type": "object"
+    },
+    "ImpactContext": {
+      "additionalProperties": false,
+      "properties": {
+        "activeTasks": {
+          "type": "boolean"
+        },
+        "modelServices": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "activeTasks",
+        "modelServices"
+      ],
+      "type": "object"
+    },
+    "PluginInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "activationEpoch": {
+          "$ref": "#/$defs/Decimal"
+        },
+        "capabilities": {
+          "items": {
+            "$ref": "#/$defs/CapabilityInfo"
+          },
+          "type": "array"
+        },
+        "desiredEnabled": {
+          "type": "boolean"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "executionKind": {
+          "$ref": "#/$defs/ExecutionKind"
+        },
+        "id": {
+          "type": "string"
+        },
+        "optionalRequires": {
+          "items": {
+            "$ref": "#/$defs/CapabilityAddress"
+          },
+          "type": "array"
+        },
+        "problem": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requires": {
+          "items": {
+            "$ref": "#/$defs/CapabilityAddress"
+          },
+          "type": "array"
+        },
+        "resources": {
+          "items": {
+            "$ref": "#/$defs/ResourceCount"
+          },
+          "type": "array"
+        },
+        "runtimeActive": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "version",
+        "executionKind",
+        "desiredEnabled",
+        "runtimeActive",
+        "activationEpoch",
+        "capabilities",
+        "requires",
+        "optionalRequires",
+        "resources"
+      ],
+      "type": "object"
+    },
+    "Profile": {
+      "enum": [
+        "desktop",
+        "background",
+        "recovery"
+      ],
+      "type": "string"
+    },
+    "ResourceCount": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/ResourceKind"
+        }
+      },
+      "required": [
+        "kind",
+        "count"
+      ],
+      "type": "object"
+    },
+    "ResourceKind": {
+      "enum": [
+        "registration",
+        "listener",
+        "worker",
+        "task",
+        "connection",
+        "cache"
+      ],
+      "type": "string"
+    },
+    "ResourceScope": {
+      "enum": [
+        "plugin-instance",
+        "native-source",
+        "project",
+        "provider",
+        "application"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "composition": {
+      "$ref": "#/$defs/Composition"
+    },
+    "effectiveProfile": {
+      "$ref": "#/$defs/Profile"
+    },
+    "host": {
+      "$ref": "#/$defs/HostSnapshot"
+    },
+    "impact": {
+      "$ref": "#/$defs/ImpactContext",
+      "default": {
+        "activeTasks": false,
+        "modelServices": []
+      }
+    },
+    "problem": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "revision": {
+      "$ref": "#/$defs/Decimal"
+    },
+    "schemaVersion": {
+      "format": "uint16",
+      "maximum": 65535,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "storeId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "storeId",
+    "revision",
+    "composition",
+    "effectiveProfile",
+    "host"
+  ],
+  "title": "CompositionCatalog",
+  "type": "object"
+}

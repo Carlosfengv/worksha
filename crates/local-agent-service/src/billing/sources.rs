@@ -45,6 +45,18 @@ fn key(kind: &'static str) -> CapabilityKey {
     }
 }
 impl BuiltinPlugin for NativeSource {
+    fn display_name(&self) -> String {
+        let name = match self.0 {
+            "codex" => "Codex",
+            "claude" => "Claude",
+            "deepseek" => "DeepSeek",
+            "openrouter" => "OpenRouter",
+            "kimi-cn" => "Kimi 国内",
+            "kimi-global" => "Kimi 国际",
+            _ => self.0,
+        };
+        format!("{name} 账户读取")
+    }
     fn descriptor(&self) -> PluginDescriptor {
         PluginDescriptor {
             id: self.0,
@@ -55,6 +67,18 @@ impl BuiltinPlugin for NativeSource {
     }
     fn prepare(&self) -> Result<PluginResources, PluginError> {
         Ok(PluginResources::default())
+    }
+    fn capability_metadata(
+        &self,
+        _: &CapabilityKey,
+    ) -> local_agent_core::plugin::builtin::CapabilityMetadata {
+        use local_agent_core::plugin::builtin::{
+            CapabilityKind, CapabilityMetadata, ResourceScope,
+        };
+        CapabilityMetadata {
+            kind: CapabilityKind::Query,
+            resource_scope: ResourceScope::Provider,
+        }
     }
 }
 impl AccountSource for NativeSource {
@@ -94,10 +118,44 @@ impl AccountSource for NativeSource {
 }
 pub(crate) struct AccountSources {
     client: reqwest::Client,
-    host: PluginHost,
+    host: Arc<PluginHost>,
     sources: BTreeMap<&'static str, Arc<dyn AccountSource>>,
 }
 impl AccountSources {
+    pub(crate) fn registrations() -> Vec<Arc<dyn BuiltinPlugin>> {
+        [
+            "codex",
+            "claude",
+            "deepseek",
+            "openrouter",
+            "kimi-cn",
+            "kimi-global",
+        ]
+        .into_iter()
+        .map(|kind| Arc::new(NativeSource(kind)) as Arc<dyn BuiltinPlugin>)
+        .collect()
+    }
+    pub(crate) fn with_host(host: Arc<PluginHost>) -> Result<Self, PluginError> {
+        let sources = [
+            "codex",
+            "claude",
+            "deepseek",
+            "openrouter",
+            "kimi-cn",
+            "kimi-global",
+        ]
+        .into_iter()
+        .map(|kind| Arc::new(NativeSource(kind)) as Arc<dyn AccountSource>)
+        .map(|source| (source.kind(), source))
+        .collect();
+        let client = super::api::client()
+            .map_err(|message| PluginError::new("account_http_unavailable", message))?;
+        Ok(Self {
+            client,
+            host,
+            sources,
+        })
+    }
     pub(crate) fn domain_capabilities(&self) -> Vec<local_agent_core::domain::CapabilityEntry> {
         use local_agent_core::domain as d;
         self.sources
@@ -135,6 +193,7 @@ impl AccountSources {
             })
             .collect()
     }
+    #[cfg(test)]
     pub(crate) fn builtin() -> Result<Self, PluginError> {
         Self::mount(
             [
@@ -150,6 +209,7 @@ impl AccountSources {
             .collect(),
         )
     }
+    #[cfg(test)]
     fn mount(sources: Vec<Arc<dyn AccountSource>>) -> Result<Self, PluginError> {
         let client = super::api::client().map_err(|message| PluginError {
             code: "account_http_unavailable",
@@ -162,12 +222,18 @@ impl AccountSources {
         let host = PluginHost::mount(&descriptors)?;
         Ok(Self {
             client,
-            host,
+            host: Arc::new(host),
             sources: sources.into_iter().map(|s| (s.kind(), s)).collect(),
         })
     }
     pub(crate) fn active(&self, kind: &'static str) -> bool {
         self.host.acquire(&key(kind)).is_ok()
+    }
+    pub(crate) fn lease(
+        &self,
+        kind: &'static str,
+    ) -> Result<local_agent_core::plugin::PluginLease, PluginError> {
+        self.host.acquire(&key(kind))
     }
     async fn read(
         &self,
@@ -216,12 +282,36 @@ impl AccountSources {
         lease.ensure_active().map_err(|_| "只读额度插件已停止")?;
         Ok(result)
     }
+    #[cfg(test)]
     pub(crate) fn stop_all(&self) {
-        self.host.stop_all();
+        for source in self.sources.values() {
+            let _ = self.host.stop(source.descriptor().id);
+        }
     }
     #[cfg(test)]
     pub(super) fn stop(&self, kind: &str) {
         self.host.stop(kind).unwrap();
+    }
+    #[cfg(test)]
+    pub(super) fn restart(&self) {
+        let factories: Vec<&dyn BuiltinPlugin> = self
+            .sources
+            .values()
+            .map(|source| source.as_ref() as &dyn BuiltinPlugin)
+            .collect();
+        let enabled = self
+            .sources
+            .values()
+            .map(|source| source.descriptor().id.to_owned())
+            .collect();
+        self.host
+            .reconfigure(
+                &self.host.snapshot().unwrap().generation,
+                &factories,
+                &enabled,
+                || Ok(()),
+            )
+            .unwrap();
     }
 }
 

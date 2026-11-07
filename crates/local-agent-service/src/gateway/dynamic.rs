@@ -462,6 +462,14 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
     let Ok((mut request, b, query, codex_catalog, service)) = result else {
         return (StatusCode::UNAUTHORIZED, "未授权的动态入口").into_response();
     };
+    if service.is_some() && !crate::plugin_host::features::active(&state, "builtin.model-services")
+    {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "模型服务插件已停用或卸载，请在插件中心恢复",
+        )
+            .into_response();
+    }
     if codex_catalog && let Some(service) = &service {
         return Json(super::codex_catalog::service_catalog(service)).into_response();
     }

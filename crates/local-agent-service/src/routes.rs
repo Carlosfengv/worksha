@@ -6,6 +6,18 @@ use axum::{Router, middleware, routing::get};
 
 pub(crate) fn management(state: AppState) -> Router {
     Router::new()
+        .route(
+            "/api/builtin-plugins",
+            get(crate::plugin_host::builtin::catalog),
+        )
+        .route(
+            "/api/builtin-plugins/changes",
+            axum::routing::post(crate::plugin_host::builtin::change),
+        )
+        .route(
+            "/api/builtin-plugins/operations",
+            axum::routing::post(crate::plugin_host::builtin::operation),
+        )
         .merge(crate::workbench::routes())
         .route("/api/domain/catalog", get(crate::domain::catalog))
         .route("/api/domain/directory", get(crate::domain::directory))
@@ -413,6 +425,10 @@ pub(crate) fn management(state: AppState) -> Router {
         .route("/api/projects/{id}/diff/{file}", get(projects::diff))
         .layer(middleware::from_fn_with_state(
             state.clone(),
+            crate::plugin_host::builtin::guard,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
             crate::api::authorize,
         ))
         .merge(
@@ -421,6 +437,10 @@ pub(crate) fn management(state: AppState) -> Router {
                     "/capture/{agent}/{secret}/{*path}",
                     axum::routing::post(observation::capture),
                 )
+                .layer(middleware::from_fn_with_state(
+                    state.clone(),
+                    crate::plugin_host::builtin::guard,
+                ))
                 .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)),
         )
         .with_state(state)
@@ -433,6 +453,10 @@ pub(crate) fn lan(state: AppState) -> Router {
         .route("/v1/models", get(crate::lan::capture))
         .route("/v1/codex/models.json", get(crate::lan::capture))
         .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::plugin_host::builtin::guard,
+        ))
         .with_state(state)
 }
 
@@ -443,5 +467,9 @@ pub(crate) fn gateway(state: AppState) -> Router {
             axum::routing::post(gateway::capture).get(gateway::capture),
         )
         .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::plugin_host::builtin::guard,
+        ))
         .with_state(state)
 }

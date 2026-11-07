@@ -223,7 +223,7 @@ try {
   );
   await boot();
   const originalSchema = readCoreSchema(path.join(data, "local-agent.sqlite3"));
-  assert.equal(originalSchema.version, 15);
+  assert.equal(originalSchema.version, 16);
   assert.equal((await fetch(base + "/api/domain/directory")).status, 401);
   assert.equal(
     (
@@ -582,7 +582,7 @@ try {
     originalSchema,
   );
   passed(
-    "resource revocation disables unified projection; native source bytes and schema 15 are preserved",
+    "resource revocation disables unified projection; native source bytes and schema 16 are preserved",
   );
   const oldDigest = plugin.digest;
   async function reconnect() {

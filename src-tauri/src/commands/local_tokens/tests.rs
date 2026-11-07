@@ -11,7 +11,7 @@ fn identity() -> IdentityV3 {
     }
 }
 fn capability(id: &IdentityV3) -> Value {
-    json!({"version":2,"schemaVersion":15,"storeId":id.store_id,"namespaceId":id.namespace_id,"namespaceState":"active","operationLimit":4096,"pendingLimit":4,"cancellationLimit":4096,"pending":[]})
+    json!({"version":2,"schemaVersion":local_agent_core::Store::SCHEMA_VERSION,"storeId":id.store_id,"namespaceId":id.namespace_id,"namespaceState":"active","operationLimit":4096,"pendingLimit":4,"cancellationLimit":4096,"pending":[]})
 }
 async fn submit(backend: &Backend, id: IdentityV3, kind: u8) -> Result<Value, String> {
     if kind < 2 {
@@ -47,7 +47,7 @@ async fn numbered_commands_require_the_original_current_active_capability() {
             let mut response = capability(&id);
             match invalid {
                 0 => response["schemaVersion"] = json!(14),
-                1 => response["schemaVersion"] = json!(16),
+                1 => response["schemaVersion"] = json!(local_agent_core::Store::SCHEMA_VERSION + 1),
                 2 => response["version"] = json!(1),
                 3 => response["namespaceState"] = json!("unverified"),
                 4 => response["storeId"] = json!(uuid::Uuid::new_v4().to_string()),

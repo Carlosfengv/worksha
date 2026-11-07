@@ -11,6 +11,7 @@ use std::{
 pub(crate) fn run(args: Vec<String>) -> Result<()> {
     match args.first().map(String::as_str) {
         Some("schemas")
+        | Some("schemas-builtin")
         | Some("schemas-extensions")
         | Some("schemas-contributions")
         | Some("schemas-object-summary")
@@ -35,7 +36,9 @@ pub(crate) fn run(args: Vec<String>) -> Result<()> {
         | Some("schemas-domain") => {
             let root = Path::new(args.get(1).ok_or(fail("invalid_input"))?);
             std::fs::create_dir_all(root).checked("unavailable")?;
-            let schemas = if args[0] == "schemas-routing-policy-recovery" {
+            let schemas = if args[0] == "schemas-builtin" {
+                local_agent_core::plugin::builtin::schemas()
+            } else if args[0] == "schemas-routing-policy-recovery" {
                 local_agent_core::domain::routing_policy_recovery::schemas()
             } else if args[0] == "schemas-request-export" {
                 local_agent_core::domain::requests::export::schemas()

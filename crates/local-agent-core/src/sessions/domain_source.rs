@@ -50,11 +50,32 @@ impl BuiltinSessionAdapter {
     }
 }
 impl BuiltinPlugin for BuiltinSessionAdapter {
+    fn display_name(&self) -> String {
+        let name = crate::agents::builtin_directory()
+            .source(self.agent())
+            .map(|source| source.name.as_str())
+            .unwrap_or(self.agent());
+        format!("{name} 本机来源")
+    }
     fn descriptor(&self) -> PluginDescriptor {
         self.0.descriptor()
     }
     fn prepare(&self) -> Result<PluginResources, PluginError> {
         self.0.prepare()
+    }
+    fn capability_metadata(
+        &self,
+        key: &crate::plugin::CapabilityKey,
+    ) -> crate::plugin::builtin::CapabilityMetadata {
+        use crate::plugin::builtin::{CapabilityKind, CapabilityMetadata, ResourceScope};
+        CapabilityMetadata {
+            kind: if key.name == "session.activity" {
+                CapabilityKind::Stream
+            } else {
+                CapabilityKind::Query
+            },
+            resource_scope: ResourceScope::NativeSource,
+        }
     }
 }
 

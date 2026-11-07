@@ -55,11 +55,11 @@ try {
   let c = await boot(path.join(root, "fresh"));
   const initial = await api(c, "/api/snapshot"), storeId = initial.settingsWriteProtocol.storeId;
   const p = await api(c, `/api/provider-credentials/v3/protocol?storeId=${storeId}`);
-  assert.deepEqual(await api(c, "/api/provider-credentials/legacy-policy"), { version: 2, storeId, schemaVersion: 15 });
+  assert.deepEqual(await api(c, "/api/provider-credentials/legacy-policy"), { version: 2, storeId, schemaVersion: 16 });
   assert.equal(state(c).legacy[0].allow_new, 1);
   const id = randomUUID(), empty = state(c);
   assert.equal((await api(c, get(id), undefined, 404)).code, "operation_not_found"); assert.deepEqual(state(c), empty);
-  record("fresh source advertises policy 2 and schema 15; a read-only unknown query creates no admission row");
+  record("fresh source advertises policy 2 and schema 16; a read-only unknown query creates no admission row");
   const receipts = await Promise.all(Array.from({ length: 12 }, () => create(c, id)));
   assert.equal(new Set(receipts.map(v => v.credentialRef)).size, 1);
   const original = receipts[0], raw = fs.readFileSync(file(c, id)); assert.equal(state(c).ids.length, 1);
@@ -115,7 +115,7 @@ try {
     assert.match(await boot(data, binary, false), /already|运行|lock|使用|busy/i); assert(!fs.existsSync(path.join(data, "local-agent.pre-legacy-write-v11.sqlite3"))); assert.deepEqual((await api(old, get(oldId))).receipt, oldReceipt);
     record("the actual live schema-11 service prevents new opening and upgrade before any schema-11 backup is made");
     await stop(old.child); c = await boot(data);
-    const upgraded = state(c); assert.equal(upgraded.version, 15); assert.equal(upgraded.legacy[0].allow_new, 0);
+    const upgraded = state(c); assert.equal(upgraded.version, 16); assert.equal(upgraded.legacy[0].allow_new, 0);
     assert.equal((await api(c, "/api/snapshot")).settingsWriteProtocol.storeId, oldStore);
     assert.equal((await api(c, `/api/provider-credentials/v3/protocol?storeId=${oldStore}`)).namespaceId, oldP.namespaceId);
     assert.deepEqual(sql(c, db => db.prepare("SELECT * FROM credential_recovery_values ORDER BY domain,name").all()), oldValues); assert.deepEqual(fs.readFileSync(file(c, oldId)), oldBytes);
@@ -126,9 +126,9 @@ try {
     assert.equal((await api(c, "/api/provider-credentials/v3/legacy", { storeId: oldStore, namespaceId: oldP.namespaceId, operationId: oldCancelled, sourceDigest: preview.sourceDigest, confirmed: true })).stage, "committed");
     record("actual schema-11 upgrade preserves original identity, namespace, operation bytes and private backup; missing history rejects all old writes while existing cancellation still explicitly migrates");
     const stable = state(c); assert.match(await boot(data, previous, false), /already|运行|lock|使用|busy/i); await stop(c.child);
-    assert.match(await boot(data, previous, false), /15|version|版本/i); assert.deepEqual(state(c), stable);
+    assert.match(await boot(data, previous, false), /16|version|版本/i); assert.deepEqual(state(c), stable);
     report.actualPreviousProcess = true; report.actualPreviousReaderRejected = true;
-    record("new ownership blocks the actual old process while live, then the old schema-11 reader rejects schema 15 after shutdown without resetting admission");
+    record("new ownership blocks the actual old process while live, then the old schema-11 reader rejects schema 16 after shutdown without resetting admission");
   }
   assert.equal(hash(binary), report.binarySha256); if (previous) assert.equal(hash(previous), report.previousBinarySha256);
   report.passed = true;

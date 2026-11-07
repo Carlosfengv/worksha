@@ -262,7 +262,7 @@ try {
   await boot();
   sdk("keygen", key);
   const schema = readCoreSchema(path.join(data, "local-agent.sqlite3"));
-  assert.equal(schema.version, 15);
+  assert.equal(schema.version, 16);
   const presets = await install("provider-presets", (m) =>
       m.providers.forEach((p) => {
         p.endpoint = endpoint;

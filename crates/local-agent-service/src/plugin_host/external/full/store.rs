@@ -217,21 +217,19 @@ impl Host {
             .checked("unavailable")?;
         db.pragma_update(None, "foreign_keys", true)
             .checked("unavailable")?;
-        super::super::store::validate_version(&db, "full_version")?;
-        let version_exists: bool=db.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='full_version')",[],|r|r.get(0)).checked("unavailable")?;
-        if version_exists {
-            let count: i64 = db
-                .query_row("SELECT count(*) FROM full_version", [], |r| r.get(0))
-                .checked("unavailable")?;
-            if count != 1 {
-                return Err(fail("invalid_record"));
-            }
-        } else if m.len() != 0 {
-            // Only a new empty file can be initialized. Preserve an unrecognized
-            // SQLite database instead of adding our schema to unrelated data.
-            return Err(fail("invalid_record"));
-        }
-        db.execute_batch("PRAGMA journal_mode=WAL;CREATE TABLE IF NOT EXISTS full_version(version INTEGER NOT NULL);INSERT INTO full_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM full_version);CREATE TABLE IF NOT EXISTS full_packages(digest TEXT PRIMARY KEY,plugin_id TEXT NOT NULL,record TEXT NOT NULL,removed INTEGER NOT NULL DEFAULT 0);CREATE TABLE IF NOT EXISTS full_selections(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS full_reviews(id TEXT PRIMARY KEY,record TEXT NOT NULL,expires INTEGER NOT NULL);CREATE TABLE IF NOT EXISTS full_projections(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS full_hidden_projects(id TEXT PRIMARY KEY);").checked("unavailable")?;
+        super::super::store::initialize_database(
+            &db,
+            "full_version",
+            "version",
+            &[
+                "full_packages",
+                "full_selections",
+                "full_reviews",
+                "full_projections",
+                "full_hidden_projects",
+            ],
+            "CREATE TABLE IF NOT EXISTS full_version(version INTEGER NOT NULL);INSERT INTO full_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM full_version);CREATE TABLE IF NOT EXISTS full_packages(digest TEXT PRIMARY KEY,plugin_id TEXT NOT NULL,record TEXT NOT NULL,removed INTEGER NOT NULL DEFAULT 0);CREATE TABLE IF NOT EXISTS full_selections(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS full_reviews(id TEXT PRIMARY KEY,record TEXT NOT NULL,expires INTEGER NOT NULL);CREATE TABLE IF NOT EXISTS full_projections(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS full_hidden_projects(id TEXT PRIMARY KEY);",
+        )?;
         super::recovery::reconcile(self, &db)?;
         Ok(db)
     }

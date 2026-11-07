@@ -1,0 +1,373 @@
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { randomUUID, createHash } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { tmpdir } from "node:os";
+import { once } from "node:events";
+import { createInterface } from "node:readline";
+import http from "node:http";
+
+// Owned service, synthetic source home, no model or credential calls.
+const binary = path.resolve(
+  process.env.LOCAL_AGENT_TEST_SERVICE_BINARY ??
+    "target/debug/local-agent-service",
+);
+const root = fs.realpathSync(
+  fs.mkdtempSync(path.join(tmpdir(), "builtin-composition-")),
+);
+const home = path.join(root, "home"),
+  data = path.join(root, "data");
+fs.mkdirSync(path.join(home, ".claude", "projects", "fixture"), {
+  recursive: true,
+});
+const source = path.join(
+  home,
+  ".claude",
+  "projects",
+  "fixture",
+  "fixture.jsonl",
+);
+const original =
+  JSON.stringify({
+    type: "user",
+    sessionId: "fixture",
+    uuid: "one",
+    cwd: home,
+    timestamp: new Date().toISOString(),
+    message: { role: "user", content: "offline composition fixture" },
+  }) + "\n";
+fs.writeFileSync(source, original);
+const report = {
+  complete: false,
+  binarySha256: createHash("sha256")
+    .update(fs.readFileSync(binary))
+    .digest("hex"),
+  realModelCalls: 0,
+  realCredentialCalls: 0,
+  cases: [],
+};
+let child, base, token;
+const passed = (name) => {
+  report.cases.push(name);
+  console.log("通过：" + name);
+};
+async function start(persistent = false, directory = data) {
+  token = randomUUID();
+  child = spawn(
+    binary,
+    persistent
+      ? ["gateway", "serve", "--data-dir", directory]
+      : ["--data-dir", directory],
+    {
+      env: {
+        ...process.env,
+        LOCAL_AGENT_SOURCE_HOME: home,
+        LOCAL_AGENT_SERVICE_TOKEN: token,
+        LOCAL_AGENT_TEST_MEMORY_VAULT: "1",
+        LOCAL_AGENT_TEST_IDLE_AGENTS: "1",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  child.stderr.resume();
+  const lines = createInterface({ input: child.stdout });
+  const [line] = await Promise.race([
+    once(lines, "line", { signal: AbortSignal.timeout(15000) }),
+    once(child, "exit").then(() => {
+      throw Error("service exited before readiness");
+    }),
+  ]);
+  base = "http://127.0.0.1:" + JSON.parse(line).port;
+  if (persistent)
+    token = fs.readFileSync(
+      path.join(directory, "runtime", "admin-token"),
+      "utf8",
+    );
+}
+async function stop() {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  const done = once(child, "exit");
+  child.kill("SIGINT");
+  const timer = setTimeout(() => child.kill("SIGKILL"), 5000);
+  await done.finally(() => clearTimeout(timer));
+}
+async function api(
+  route,
+  body,
+  expected = 200,
+  method = body === undefined ? "GET" : "POST",
+  extra = {},
+) {
+  const response = await fetch(base + route, {
+    method,
+    headers: {
+      authorization: "Bearer " + token,
+      "content-type": "application/json",
+      ...extra,
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal: AbortSignal.timeout(15000),
+  });
+  const value = await response.json();
+  assert.equal(response.status, expected, route + " " + JSON.stringify(value));
+  return value;
+}
+const catalog = () => api("/api/builtin-plugins");
+async function request(composition) {
+  const current = await catalog();
+  return {
+    operationId: randomUUID(),
+    storeId: current.storeId,
+    expectedRevision: current.revision,
+    expectedGeneration: current.host.generation,
+    composition,
+  };
+}
+const change = (input) => api("/api/builtin-plugins/changes", input);
+const op = (input) =>
+  api("/api/builtin-plugins/operations", {
+    storeId: input.storeId,
+    operationId: input.operationId,
+  });
+const snapshot = () => api("/api/snapshot");
+const active = (value) =>
+  value.host.plugins.filter((plugin) => plugin.runtimeActive);
+try {
+  await start();
+  await api("/api/builtin-plugins", undefined, 401, "GET", {
+    authorization: "invalid",
+  });
+  await api("/api/builtin-plugins", undefined, 401, "GET", {
+    origin: "http://127.0.0.1",
+  });
+  assert.equal(
+    await new Promise((resolve, reject) => {
+      const call = http.get(
+        base + "/api/builtin-plugins",
+        { headers: { host: "localhost", authorization: "Bearer " + token } },
+        (response) => {
+          response.resume();
+          response.on("end", () => resolve(response.statusCode));
+        },
+      );
+      call.on("error", reject);
+      call.setTimeout(5000, () =>
+        call.destroy(Error("raw Host probe timed out")),
+      );
+    }),
+    401,
+  );
+  passed("新目录与操作沿用令牌、Host、Origin 保护");
+  let current = await catalog();
+  assert.equal(current.schemaVersion, 1);
+  assert.equal(current.host.plugins.length, 25);
+  assert.equal(current.host.plugins.filter(plugin=>plugin.id.startsWith("builtin.")).length,9);
+  assert.equal(current.host.plugins.reduce((count,plugin)=>count+plugin.capabilities.length,0),37);
+  assert.equal(active(current).length, 25);
+  assert(
+    current.host.plugins.every(
+      (plugin) =>
+        plugin.executionKind === "builtin" &&
+        plugin.displayName &&
+        plugin.capabilities.length,
+    ),
+  );
+  assert(
+    (await snapshot()).sessionSources.every(
+      (source) => !source.enabled && source.runtimeActive,
+    ),
+  );
+  passed("生产共享目录公开 9 个业务插件与 16 个支撑，注册不代表来源授权");
+  const before = await catalog();
+  for (const input of [
+    await request({
+      profile: "desktop",
+      disabledPluginIds: ["project.source"],
+    }),
+    await request({ profile: "desktop", disabledPluginIds: ["unknown"] }),
+  ]) {
+    const rejected = await api("/api/builtin-plugins/changes", input, 409);
+    assert.equal(rejected.outcomeUnknown, false);
+    assert.equal((await op(input)).receipt, null);
+  }
+  assert.deepEqual(await catalog(), before);
+  passed("缺失必需依赖和未知插件拒绝提交，目录与回执保持原状");
+  await api(
+    "/api/session-sources",
+    { agentId: "claude", enabled: true },
+    200,
+    "PUT",
+  );
+  assert(
+    (await snapshot()).sessionSources.find(
+      (source) => source.agentId === "claude",
+    ).enabled,
+  );
+  const sourcePlugin = current.host.plugins.find((plugin) =>
+    plugin.capabilities.some(
+      (cap) =>
+        cap.address.name === "session.source" &&
+        cap.address.instance === "claude",
+    ),
+  ).id;
+  const disable = await request({
+    profile: "desktop",
+    disabledPluginIds: [sourcePlugin],
+  });
+  const first = await change(disable);
+  let state = (await snapshot()).sessionSources.find(
+    (source) => source.agentId === "claude",
+  );
+  assert.equal(state.enabled, false);
+  assert.equal(state.runtimeActive, false);
+  const denied = await api(
+    "/api/session-sources",
+    { agentId: "claude", enabled: true },
+    400,
+    "PUT",
+  );
+  assert.equal(denied.code, "plugin_disabled");
+  await api(
+    "/api/session-sources",
+    { agentId: "claude", enabled: false },
+    200,
+    "PUT",
+  );
+  assert.deepEqual((await op(disable)).receipt, first.receipt);
+  assert.deepEqual((await change(disable)).receipt, first.receipt);
+  assert.equal((await catalog()).revision, first.receipt.revision);
+  passed("停用同时撤销读取授权，拒绝重新授权；重复保存仅返回原回执");
+  await stop();
+  await start();
+  state = (await snapshot()).sessionSources.find(
+    (source) => source.agentId === "claude",
+  );
+  assert.equal(state.enabled, false);
+  assert.equal(state.runtimeActive, false);
+  assert.deepEqual((await op(disable)).receipt, first.receipt);
+  assert.deepEqual((await change(disable)).receipt, first.receipt);
+  passed("独立进程重启后保存配置、来源撤销与原回执一致");
+  const restore = await request({ profile: "desktop", disabledPluginIds: [] });
+  const restored = await change(restore);
+  assert.equal(active(restored.catalog).length, 25);
+  assert((await snapshot()).sessionSources.every((source) => !source.enabled));
+  assert.equal(
+    (await change(disable)).catalog.revision,
+    restored.catalog.revision,
+  );
+  assert((await snapshot()).sessionSources.every((source) => !source.enabled));
+  passed("重新启用获得新激活代；旧操作重放不会撤销新组合或恢复授权");
+  const stale = { ...restore, operationId: randomUUID() };
+  assert.equal(
+    (await api("/api/builtin-plugins/changes", stale, 409)).code,
+    "stale_snapshot",
+  );
+  const foreign = {
+    ...(await request({ profile: "desktop", disabledPluginIds: [] })),
+    storeId: randomUUID(),
+  };
+  assert.equal(
+    (await api("/api/builtin-plugins/changes", foreign, 409)).code,
+    "operation_store_changed",
+  );
+  const conflict = {
+    ...disable,
+    composition: { profile: "recovery", disabledPluginIds: [] },
+  };
+  assert.equal(
+    (await api("/api/builtin-plugins/changes", conflict, 409)).code,
+    "operation_conflict",
+  );
+  passed("旧版本、其他数据库和复用编号换参数均无写入");
+  const background = await change(
+    await request({ profile: "background", disabledPluginIds: [] }),
+  );
+  assert.equal(active(background.catalog).length, 22);
+  assert.equal(
+    (await snapshot()).builtinComposition.nativeActivityActive,
+    false,
+  );
+  assert(
+    background.catalog.host.plugins
+      .filter((plugin) =>
+        plugin.capabilities.some((cap) => cap.address.name === "collector"),
+      )
+      .every(
+        (plugin) => !plugin.runtimeActive && plugin.resources.length === 0,
+      ),
+  );
+  await api("/api/projects");
+  passed("后台组合保留只读查询，三个采集器停止并释放资源");
+  const recovery = await change(
+    await request({ profile: "recovery", disabledPluginIds: [] }),
+  );
+  assert.equal(active(recovery.catalog).length, 0);
+  assert(
+    recovery.catalog.host.plugins.every(
+      (plugin) => plugin.resources.length === 0,
+    ),
+  );
+  assert.equal((await snapshot()).gatewayStatus, "paused");
+  assert.equal(
+    (await api("/api/projects", undefined, 409)).code,
+    "plugin_disabled",
+  );
+  await api("/api/builtin-plugins", undefined, 401, "GET", {
+    authorization: "invalid",
+  });
+  assert.equal(
+    (
+      await api(
+        "/api/session-sources",
+        { agentId: "codex", enabled: true },
+        400,
+        "PUT",
+      )
+    ).code,
+    "plugin_disabled",
+  );
+  await api(
+    "/api/session-sources",
+    { agentId: "codex", enabled: false },
+    200,
+    "PUT",
+  );
+  passed("恢复组合拒绝新业务，保留受保护诊断、撤销授权与恢复入口");
+  await stop();
+  await start();
+  assert.equal((await catalog()).effectiveProfile, "recovery");
+  assert.equal(
+    (await snapshot()).builtinComposition.nativeActivityActive,
+    false,
+  );
+  await change(await request({ profile: "desktop", disabledPluginIds: [] }));
+  assert.equal(
+    (await snapshot()).builtinComposition.nativeActivityActive,
+    true,
+  );
+  await api(
+    "/api/overview?range=24&metric=calls&dimension=agent&source=native",
+  );
+  assert.equal(fs.readFileSync(source, "utf8"), original);
+  passed("恢复模式重启后可恢复桌面采集，合成来源文件保持原样");
+  await stop();
+  await start(true, path.join(root, "headless-data"));
+  assert.equal((await catalog()).effectiveProfile, "background");
+  assert.equal(active(await catalog()).length, 22);
+  assert.equal(
+    (await snapshot()).builtinComposition.nativeActivityActive,
+    false,
+  );
+  passed("全新常驻服务默认后台组合，直接运行 Rust 二进制且无需界面进程");
+  report.complete = true;
+} finally {
+  await stop();
+  fs.rmSync(root, { recursive: true, force: true });
+  if (process.env.BUILTIN_PLUGIN_TEST_REPORT)
+    fs.writeFileSync(
+      process.env.BUILTIN_PLUGIN_TEST_REPORT,
+      JSON.stringify(report, null, 2) + "\n",
+    );
+  console.log(JSON.stringify(report, null, 2));
+}

@@ -15,6 +15,7 @@ mod cancellations;
 mod storage;
 #[cfg(test)]
 mod tests;
+pub(crate) use storage::validate_scope;
 pub(crate) use storage::{crypto_metadata, initialize, save_binding_owner, upgrade_previous};
 
 pub const LIMIT: usize = 4096;

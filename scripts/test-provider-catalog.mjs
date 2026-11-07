@@ -262,7 +262,7 @@ try {
   await boot();
   sdk("keygen", key);
   const schema = readCoreSchema(path.join(data, "local-agent.sqlite3"));
-  assert.equal(schema.version, 15);
+  assert.equal(schema.version, 16);
   assert.equal(
     (
       await fetch(base + "/api/provider-catalog/status", {

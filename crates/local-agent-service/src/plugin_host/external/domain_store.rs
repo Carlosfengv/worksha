@@ -101,24 +101,13 @@ impl Host {
             db.busy_timeout(Duration::from_millis(200))
                 .checked("unavailable")?;
             let exists:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='domain_version')",[],|r|r.get(0)).checked("invalid_record")?;
-            if exists {
-                super::store::validate_version(&db, "domain_version")?;
-                let count: i64 = db
-                    .query_row("SELECT count(*) FROM domain_version", [], |r| r.get(0))
-                    .checked("invalid_record")?;
-                if count != 1 {
-                    return Err(fail("invalid_record"));
-                }
-            } else if metadata.len() != 0 || !create {
+            if !exists && !create {
                 return Err(fail("invalid_record"));
             }
-            if create {
-                db.execute_batch("PRAGMA journal_mode=WAL;
-                    CREATE TABLE IF NOT EXISTS domain_version(version INTEGER NOT NULL);
+            super::store::initialize_database(&db, "domain_version", "version", &["source_consents", "source_projections"], "CREATE TABLE IF NOT EXISTS domain_version(version INTEGER NOT NULL);
                     INSERT INTO domain_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM domain_version);
                     CREATE TABLE IF NOT EXISTS source_consents(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);
-                    CREATE TABLE IF NOT EXISTS source_projections(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);").checked("unavailable")?;
-            }
+                    CREATE TABLE IF NOT EXISTS source_projections(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);")?;
             self.db = Some(db);
         }
         Ok(self.db.as_mut())

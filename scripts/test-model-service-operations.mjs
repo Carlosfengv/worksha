@@ -377,7 +377,7 @@ try {
   );
   fs.writeFileSync(verificationFile, originalVerification);
   db = new DatabaseSync(path.join(data, "local-agent.sqlite3"));
-  assert.equal(db.prepare("PRAGMA user_version").get().user_version, 15);
+  assert.equal(db.prepare("PRAGMA user_version").get().user_version, 16);
   db.exec(
     "CREATE TRIGGER reject_operation_receipt BEFORE INSERT ON model_service_operations BEGIN SELECT RAISE(ABORT,'fixture'); END;",
   );
@@ -510,7 +510,7 @@ try {
   assert.deepEqual(await api(query(deletion)), receipt);
   assert.equal(fakeCalls, 1);
   passed(
-    "schema 15 身份丢失时真实服务启动失败且不替换身份或回执；只修复临时夹具后原结果仍可核查",
+    "schema 16 身份丢失时真实服务启动失败且不替换身份或回执；只修复临时夹具后原结果仍可核查",
   );
   report.fakeModelCalls = fakeCalls;
   report.droppedCommittedReplies = dropped;

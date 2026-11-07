@@ -176,7 +176,7 @@ pub(super) struct FileGrant {
     pub target: Option<String>,
 }
 pub(crate) struct Store {
-    db: std::sync::OnceLock<Result<Db>>,
+    db: std::sync::OnceLock<Db>,
     data: PathBuf,
     bindings_path: PathBuf,
 }
@@ -200,10 +200,14 @@ impl Store {
         self.db().map(|_| ())
     }
     fn db(&self) -> Result<&Db> {
-        self.db
-            .get_or_init(|| Self::open_db(&self.data))
-            .as_ref()
-            .map_err(|e| fail(e.code))
+        if let Some(db) = self.db.get() {
+            return Ok(db);
+        }
+        // Manager's extension mutex serializes initialization. Transient disk
+        // and lock failures remain retryable; corrupt records stay untouched.
+        let db = Self::open_db(&self.data)?;
+        let _ = self.db.set(db);
+        self.db.get().ok_or(fail("unavailable"))
     }
     fn bindings(&self) -> Result<BTreeMap<String, protocol::Binding>> {
         let snapshot =
@@ -239,8 +243,15 @@ impl Store {
             return Err(fail("permission_denied"));
         }
         let db = Db::open(path).checked("unavailable")?;
-        super::store::validate_version(&db, "extension_version")?;
-        db.execute_batch("PRAGMA journal_mode=WAL;CREATE TABLE IF NOT EXISTS extension_version(version INTEGER NOT NULL);INSERT INTO extension_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM extension_version);CREATE TABLE IF NOT EXISTS resources(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS protocols(provider_id TEXT PRIMARY KEY,plugin_id TEXT NOT NULL,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS plans(id TEXT PRIMARY KEY,plugin_id TEXT NOT NULL,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS connector_calls(id INTEGER PRIMARY KEY,plugin_id TEXT NOT NULL,identity TEXT NOT NULL,record TEXT NOT NULL,UNIQUE(plugin_id,identity));CREATE TRIGGER IF NOT EXISTS call_retention AFTER INSERT ON connector_calls BEGIN DELETE FROM connector_calls WHERE id<=NEW.id-10000;END;").checked("unavailable")?;
+        db.busy_timeout(std::time::Duration::from_millis(250))
+            .checked("unavailable")?;
+        super::store::initialize_database(
+            &db,
+            "extension_version",
+            "version",
+            &["resources", "protocols", "plans", "connector_calls"],
+            "CREATE TABLE IF NOT EXISTS extension_version(version INTEGER NOT NULL);INSERT INTO extension_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM extension_version);CREATE TABLE IF NOT EXISTS resources(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS protocols(provider_id TEXT PRIMARY KEY,plugin_id TEXT NOT NULL,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS plans(id TEXT PRIMARY KEY,plugin_id TEXT NOT NULL,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS connector_calls(id INTEGER PRIMARY KEY,plugin_id TEXT NOT NULL,identity TEXT NOT NULL,record TEXT NOT NULL,UNIQUE(plugin_id,identity));CREATE TRIGGER IF NOT EXISTS call_retention AFTER INSERT ON connector_calls BEGIN DELETE FROM connector_calls WHERE id<=NEW.id-10000;END;",
+        )?;
         let version: u32 = db
             .query_row("SELECT version FROM extension_version", [], |r| r.get(0))
             .checked("unavailable")?;

@@ -33,6 +33,7 @@ struct Reading {
     home: PathBuf,
     sources: Arc<sources::AccountSources>,
     flight: Flight,
+    lease: Option<local_agent_core::plugin::PluginLease>,
 }
 
 fn worker_error(error: crate::blocking::Error) -> (StatusCode, Json<Value>) {
@@ -91,6 +92,11 @@ fn prepare(
             json!({"accounts":catalog(state)?,"asOf":chrono::Utc::now().to_rfc3339()}),
         )?));
     }
+    let lease = account
+        .source_kind
+        .map(|kind| billing.sources.lease(kind))
+        .transpose()
+        .map_err(|_| err("额度来源插件已停止"))?;
     let active = Arc::new(AtomicBool::new(true));
     let flight = Flight {
         active: active.clone(),
@@ -104,6 +110,7 @@ fn prepare(
         home: billing.home.clone(),
         sources: billing.sources.clone(),
         flight,
+        lease,
     })))
 }
 
@@ -113,6 +120,7 @@ fn publish(
     sources: Arc<sources::AccountSources>,
     flight: Flight,
     outcome: Result<AccountSnapshot, &'static str>,
+    lease: Option<local_agent_core::plugin::PluginLease>,
 ) -> ApiResult {
     if !catalog(state)?
         .iter()
@@ -120,7 +128,7 @@ fn publish(
     {
         return Err(err("读取期间配置已改变，已丢弃旧账户结果"));
     }
-    {
+    let commit = || {
         let mut billing = state.billing.lock().map_err(|_| err("账户缓存暂不可用"))?;
         if !flight.active.load(Ordering::Acquire)
             || !billing
@@ -166,6 +174,14 @@ fn publish(
         // A completed refresh must not return its own stale "refreshing" flag.
         // Ownership stays with this worker if its HTTP waiter was cancelled.
         flight.finish();
+        Ok(())
+    };
+    if let Some(lease) = lease {
+        lease
+            .publish(commit)
+            .map_err(|_| err("读取期间额度插件激活已变化，已丢弃旧结果"))??;
+    } else {
+        commit()?;
     }
     // Resolve again: the catalog only attaches cache entries with the current
     // source revision, including a configuration edited during publication.
@@ -183,7 +199,7 @@ pub(crate) async fn refresh(
     })
     .await
     .map_err(worker_error)??;
-    let (account, home, sources, flight) = match prepared {
+    let (account, home, sources, flight, lease) = match prepared {
         Prepared::Cached(value) => return Ok(value),
         Prepared::Read(reading) => {
             let Reading {
@@ -191,8 +207,9 @@ pub(crate) async fn refresh(
                 home,
                 sources,
                 flight,
+                lease,
             } = *reading;
-            (account, home, sources, flight)
+            (account, home, sources, flight, lease)
         }
     };
     let outcome = if account.id == "native-codex" {
@@ -206,7 +223,7 @@ pub(crate) async fn refresh(
     };
     let capacity = state.query_capacity.clone();
     crate::blocking::run_with(capacity, move || {
-        publish(&state, account, sources, flight, outcome)
+        publish(&state, account, sources, flight, outcome, lease)
     })
     .await
     .map_err(worker_error)?

@@ -137,6 +137,22 @@ try {
     const r = await fetch(route, { method: "POST", headers: { Authorization: `Bearer ${local.apiKey}`, "Content-Type": "application/json", "x-opencode-session": session }, body: JSON.stringify({ model, max_tokens: 30, messages: history, ...extra }), signal: AbortSignal.timeout(20000) });
     const text = await r.text(); assert.equal(r.status, expected, text); return JSON.parse(text);
   };
+  const changeBuiltin = async (disabledPluginIds, expected = 200) => {
+    const view = await api("/api/builtin-plugins");
+    return api("/api/builtin-plugins/changes", {operationId:randomUUID(),storeId:view.storeId,expectedRevision:view.revision,expectedGeneration:view.host.generation,expectedImpact:view.impact,composition:{...view.composition,disabledPluginIds}}, expected);
+  };
+  const callsBeforeStop = seen.length;
+  await changeBuiltin(["builtin.model-services"]);
+  await api("/api/model-services", undefined, 409);
+  const stoppedCatalog = await fetch(local.baseURL + "/models", {headers:{"x-api-key":local.apiKey}});
+  assert.equal(stoppedCatalog.status,503); await stoppedCatalog.text();
+  const stoppedRequest = await fetch(route,{method:"POST",headers:{Authorization:`Bearer ${local.apiKey}`,"Content-Type":"application/json"},body:JSON.stringify({model:"local-agent-default",max_tokens:30,messages:[{role:"user",content:"must not send"}]})});
+  assert.equal(stoppedRequest.status,503); await stoppedRequest.text();
+  assert.equal(seen.length,callsBeforeStop,"A stopped model service must not send to an upstream");
+  const blockedConnections=(await api("/api/snapshot")).agentConnections.items.filter(c=>c.endpoint===local.baseURL);
+  assert(blockedConnections.length>0 && blockedConnections.every(c=>c.mode==="unknown" && c.reason.includes("插件")));
+  assert(Object.entries(files).every(([agent,file])=>hash(file)===installedHashes[agent]),"Stopping a plugin must preserve Agent configuration files");
+  await changeBuiltin([]);
   const catalog = await fetch(local.baseURL + "/models?limit=1000", { headers: { "x-api-key": local.apiKey } }); assert.equal(catalog.status, 200); assert.equal((await catalog.json()).data.length, 3);
   const page = await fetch(local.baseURL + "/models?limit=1", { headers: { "x-api-key": local.apiKey } }); const firstPage = await page.json(); assert(firstPage.has_more); assert.equal(firstPage.data.length, 1);
   const next = await fetch(local.baseURL + `/models?limit=1000&after_id=${firstPage.last_id}`, { headers: { "x-api-key": local.apiKey } }); assert.equal((await next.json()).data.length, 2);
@@ -158,6 +174,7 @@ try {
   await api(`/api/model-services/${service.id}/delete`, { expectedRevision: service.revision }, 409);
   const first = [{ role: "user", content: "one" }];
   hold = true; const arrived = new Promise(resolve => { arrive = resolve; }); const running = request(first, "ses_same"); await arrived;
+  assert.equal((await changeBuiltin(["builtin.model-services"],503)).code,"busy","An in-flight response must prevent plugin shutdown");
   service = await api("/api/model-services", { ...draft, revision: 1, defaultModelId: models[1].id }, 200, "PUT"); release(); assert.equal((await running).model, "a");
   assert.equal(seen.at(-1).thinking, "disabled", "Native Messages service requests must explicitly disable upstream thinking defaults");
   const continuation = [...first, { role: "assistant", content: [{ type: "tool_use", id: "call-1", name: "read", input: {} }] }, { role: "user", content: [{ type: "tool_result", tool_use_id: "call-1", content: "fixture" }] }];
@@ -261,7 +278,7 @@ try {
     await api(`/api/model-services/${chat.id}/delete`, { expectedRevision: chat.revision });
   }
   assert.equal((await api("/api/model-services")).services.length, 0);
-  console.log(JSON.stringify({ passed: true, crossProviderCrud: true, staleEditorRejected: true, twoClientCatalogs: true, perModelCapabilities: true, authenticatedCatalogPagination: true, concurrentDefaultPublish: true, specifiedModelPreserved: true, toolTurnPinned: true, oldRequestReplay: true, unknownModelsAndInvalidCapabilitiesRejected: true, configHashesStableAcrossDefaultChange: true, directorySyncAndEncryptedByteRestore: true, serviceObservationRecorded: true, activeServiceDeletionRejected: true, textOnlyOptionalTools: true, forcedUnknownAndHistoricalToolsRejected: true, unexpectedUpstreamToolsBlocked: true, calls: seen.length }));
+  console.log(JSON.stringify({ passed: true, pluginStopAndRestore: true, pluginBusyResponseProtected: true, stoppedConnectionsUnknown: true, crossProviderCrud: true, staleEditorRejected: true, twoClientCatalogs: true, perModelCapabilities: true, authenticatedCatalogPagination: true, concurrentDefaultPublish: true, specifiedModelPreserved: true, toolTurnPinned: true, oldRequestReplay: true, unknownModelsAndInvalidCapabilitiesRejected: true, configHashesStableAcrossDefaultChange: true, directorySyncAndEncryptedByteRestore: true, serviceObservationRecorded: true, activeServiceDeletionRejected: true, textOnlyOptionalTools: true, forcedUnknownAndHistoricalToolsRejected: true, unexpectedUpstreamToolsBlocked: true, calls: seen.length }));
 } finally {
   release?.();
   if (child && child.exitCode === null) { child.kill("SIGTERM"); await once(child, "exit"); }

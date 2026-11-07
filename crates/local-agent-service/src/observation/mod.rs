@@ -157,6 +157,9 @@ impl Observation {
     pub(crate) fn release_native_snapshots(&self) {
         self.hub.release_native_snapshots();
     }
+    pub(crate) fn release_request_views(&self) -> Result<(), String> {
+        self.hub.release_request_views()
+    }
     pub(crate) fn forget_native_inputs(&self, agent: &str) {
         if let Ok(mut watch) = self.native_watch.lock() {
             watch.forget_inputs(agent);
@@ -409,6 +412,10 @@ impl Observation {
         if let Ok(mut observer) = self.codex_desktop.lock() {
             observer.stop();
         }
+    }
+    pub(crate) fn resume_native(&self) {
+        self.native_collecting
+            .store(true, std::sync::atomic::Ordering::Release);
     }
     pub(crate) fn poll_native_guarded(
         &self,

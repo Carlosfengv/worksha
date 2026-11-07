@@ -321,6 +321,9 @@ pub(crate) struct Workbench {
 }
 
 impl Workbench {
+    pub(crate) fn has_active_task(&self) -> bool {
+        self.lock().map_or(true, |storage| storage.active.is_some())
+    }
     pub(crate) fn open(data: &Path, source_home: PathBuf) -> Result<Arc<Self>, String> {
         let root = data.join("workbench");
         files::private_dir(&root).map_err(|error| error.message)?;

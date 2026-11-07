@@ -58,12 +58,12 @@ try {
   let a = await boot("a");
   const storeId = (await api(a, "/api/snapshot")).settingsWriteProtocol.storeId;
   const p = await protocol(a, storeId); assert.equal(p.version, 3); assert.equal(p.namespaceState, "active"); assert.equal(p.legacyState, "fresh");
-  assert.equal(sql(a, db => db.prepare("PRAGMA user_version").get().user_version),15);
+  assert.equal(sql(a, db => db.prepare("PRAGMA user_version").get().user_version),16);
   const id = identity(p), results = await Promise.all(Array.from({ length: 12 }, () => create(a, id)));
   const ready = results[0], reference = ready.operation.receipt.credentialRef;
   assert(results.every(value => value.operation.receipt.credentialRef === reference)); assert.deepEqual(await api(a, query(id)), ready);
   assert.equal((await api(a, "/api/provider-credentials/v3", { ...input(id), secret: "other-disposable-key" }, 409)).code, "operation_conflict");
-  record("fresh schema 15 advertises the original namespace; 12 concurrent requests and retry share one reference, changed input conflicts");
+  record("fresh schema 16 advertises the original namespace; 12 concurrent requests and retry share one reference, changed input conflicts");
   const before = snapshot(a), foreignStore = randomUUID(), foreignNamespace = randomUUID();
   for (const foreign of [{ ...id, storeId: foreignStore }, { ...id, namespaceId: foreignNamespace }]) {
     const code = foreign.storeId !== storeId ? "credential_store_changed" : "credential_namespace_changed";
@@ -151,7 +151,7 @@ try {
       const refused = spawn(previous, ["--data-dir", current.data], { env: { ...process.env, LOCAL_AGENT_SOURCE_HOME: home, LOCAL_AGENT_SERVICE_TOKEN: randomUUID(), LOCAL_AGENT_TEST_MEMORY_VAULT: "1", LOCAL_AGENT_TEST_IDLE_AGENTS: "1" }, stdio: ["ignore", "pipe", "pipe"] });
       children.add(refused); refused.once("exit", () => children.delete(refused)); let oldError = ""; refused.stdout.resume(); refused.stderr.on("data", b => { oldError += b; });
       const [code] = await once(refused, "exit", { signal: AbortSignal.timeout(15000) }); assert.notEqual(code, 0, oldError); assert.deepEqual(snapshot(current), beforeOldReader); assert.equal(hash(backup), backupHash);
-      record(`actual previous schema 9 process: ${variant} preserves database identity/settings/Provider bytes, private backup and original references; schema 15 rejects the old reader`);
+      record(`actual previous schema 9 process: ${variant} preserves database identity/settings/Provider bytes, private backup and original references; schema 16 rejects the old reader`);
     }
     report.actualPreviousProcess = true;
   }

@@ -176,7 +176,7 @@ try {
   sdk("keygen", key);
   storeId = (await protocol()).storeId;
   const schema = readCoreSchema(path.join(data, "local-agent.sqlite3"));
-  assert.equal(schema.version, 15);
+  assert.equal(schema.version, 16);
   const originalProviders = (await value("/api/snapshot")).providers;
   const builtin = await query({ kind: "list" });
   assert.equal(builtin.kind, "listed");
@@ -400,7 +400,7 @@ try {
   report.syntheticModelPosts = network.filter(
     (r) => r.method === "POST",
   ).length;
-  report.mainSchema = 15;
+  report.mainSchema = 16;
 } finally {
   await stop();
   upstream.closeAllConnections();

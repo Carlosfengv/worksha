@@ -426,3 +426,42 @@ async fn slow_vault_does_not_hold_provider_manager_or_block_async_cancellation()
     assert_eq!(vault.gets.load(Ordering::Acquire), 1);
     assert_eq!(fixture.source.calls.load(Ordering::Acquire), 0);
 }
+
+#[tokio::test]
+async fn a_completed_read_cannot_publish_into_a_new_activation_of_the_same_account_source() {
+    let fixture = Fixture::new().await;
+    let Prepared::Read(reading) = prepare(
+        &fixture.state,
+        fixture.account_id.clone(),
+        Refresh {
+            expected_revision: fixture.revision.clone(),
+        },
+    )
+    .unwrap() else {
+        panic!("fresh fixture must read")
+    };
+    let Reading {
+        account,
+        sources,
+        flight,
+        lease,
+        ..
+    } = *reading;
+    sources.restart();
+    assert!(sources.active("openrouter"));
+    assert!(
+        publish(
+            &fixture.state,
+            account,
+            sources,
+            flight,
+            Ok(AccountSnapshot::new("api", "old-generation")),
+            lease
+        )
+        .is_err()
+    );
+    let billing = fixture.state.billing.lock().unwrap();
+    assert!(!billing.cache.contains_key(&fixture.account_id));
+    assert!(!billing.failures.contains_key(&fixture.account_id));
+    assert!(!billing.in_flight[&fixture.account_id].load(Ordering::Acquire));
+}

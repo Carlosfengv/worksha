@@ -15,13 +15,22 @@ use std::{
 type Work = Arc<dyn Fn(PluginLease) + Send + Sync>;
 type Cleanup = Arc<dyn Fn() + Send + Sync>;
 
-struct Collector {
+pub(crate) struct Collector {
     id: &'static str,
     interval: Duration,
-    cancelled: tokio::sync::watch::Sender<bool>,
-    cleanup: Arc<Mutex<Option<Cleanup>>>,
+    jobs: Mutex<Option<(Work, Cleanup)>>,
+    handles: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>>,
 }
 impl BuiltinPlugin for Collector {
+    fn display_name(&self) -> String {
+        match self.id {
+            "listeners" => "监听采集",
+            "activity" => "实时活动采集",
+            "sessions" => "会话扫描",
+            _ => self.id,
+        }
+        .into()
+    }
     fn descriptor(&self) -> PluginDescriptor {
         PluginDescriptor {
             id: self.id,
@@ -34,105 +43,183 @@ impl BuiltinPlugin for Collector {
             }],
         }
     }
+    fn optional_requires(&self) -> Vec<CapabilityKey> {
+        match self.id {
+            "listeners" => vec![CapabilityKey {
+                name: "project.listeners",
+                version: 1,
+                instance: "native",
+            }],
+            "activity" | "sessions" => ["claude", "codex", "opencode"]
+                .into_iter()
+                .map(|instance| CapabilityKey {
+                    name: "session.source",
+                    version: 1,
+                    instance,
+                })
+                .collect(),
+            _ => vec![],
+        }
+    }
+    fn capability_metadata(
+        &self,
+        _: &CapabilityKey,
+    ) -> local_agent_core::plugin::builtin::CapabilityMetadata {
+        use local_agent_core::plugin::builtin::{
+            CapabilityKind, CapabilityMetadata, ResourceScope,
+        };
+        CapabilityMetadata {
+            kind: CapabilityKind::Stream,
+            resource_scope: ResourceScope::Application,
+        }
+    }
     fn prepare(&self) -> Result<PluginResources, PluginError> {
-        let cancelled = self.cancelled.clone();
-        let cleanup = self.cleanup.clone();
-        Ok(PluginResources::on_release(move || {
-            cancelled.send_replace(true);
-            let callback = cleanup.lock().unwrap_or_else(|e| e.into_inner()).take();
-            if let Some(callback) = callback {
-                callback();
+        Ok(PluginResources::default())
+    }
+    fn activate(
+        &self,
+        lease: &PluginLease,
+        resources: &mut PluginResources,
+    ) -> Result<(), PluginError> {
+        let Some((work, cleanup)) = self.jobs.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        else {
+            return Ok(());
+        };
+        let runtime = tokio::runtime::Handle::try_current()
+            .map_err(|_| PluginError::new("unavailable", "后台采集运行时不可用"))?;
+        let (cancelled, mut cancellation) = tokio::sync::watch::channel(false);
+        let performed = Arc::new(AtomicBool::new(false));
+        let cleanup_performed = performed.clone();
+        resources.own(local_agent_core::plugin::ResourceKind::Cache, move || {
+            // Rolling back an unpublished preparation must not clear the old
+            // generation's cache, pause its observer, or otherwise do domain I/O.
+            if cleanup_performed.load(Ordering::Acquire) {
+                cleanup();
             }
-        }))
+        });
+        resources.own(local_agent_core::plugin::ResourceKind::Task, move || {
+            cancelled.send_replace(true);
+        });
+        let lease = lease.clone();
+        let interval = self.interval;
+        let handle = runtime.spawn(async move {
+            while lease.is_preparing() && !*cancellation.borrow() {
+                tokio::select! { biased; _ = cancellation.changed() => return,
+                    _ = tokio::time::sleep(Duration::from_millis(1)) => {} }
+            }
+            if lease.ensure_active().is_err() || *cancellation.borrow() { return; }
+            let mut timer = tokio::time::interval(interval);
+            timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                tokio::select! { biased; _ = cancellation.changed() => break, _ = timer.tick() => {} }
+                if *cancellation.borrow() || lease.publish(||performed.store(true, Ordering::Release)).is_err() { break; }
+                let work = work.clone(); let active = lease.clone();
+                // A blocking read is awaited rather than detached. Cancellation
+                // revokes its lease; shared drain owns the bounded final wait.
+                let _ = tokio::task::spawn_blocking(move || work(active)).await;
+            }
+        });
+        let mut handles = self.handles.lock().unwrap_or_else(|e| e.into_inner());
+        handles.retain(|handle| !handle.is_finished());
+        handles.push(handle);
+        Ok(())
     }
 }
 pub(crate) struct CollectorScheduler {
-    host: PluginHost,
-    collectors: Vec<Collector>,
+    host: Arc<PluginHost>,
+    collectors: Vec<Arc<Collector>>,
     started: AtomicBool,
-    handles: Mutex<Vec<tokio::task::JoinHandle<()>>>,
+    handles: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>>,
 }
 impl CollectorScheduler {
-    pub(crate) fn builtin() -> Result<Self, PluginError> {
-        Self::new(vec![
+    pub(crate) fn activity_active(&self) -> bool {
+        self.started.load(Ordering::Acquire)
+            && self
+                .host
+                .acquire(&CapabilityKey {
+                    name: "collector",
+                    version: 1,
+                    instance: "activity",
+                })
+                .is_ok()
+    }
+    pub(crate) fn definitions() -> Vec<Arc<Collector>> {
+        Self::definitions_for(vec![
             ("listeners", Duration::from_secs(10)),
             ("activity", Duration::from_secs(1)),
             ("sessions", Duration::from_secs(30)),
         ])
     }
-    fn new(specs: Vec<(&'static str, Duration)>) -> Result<Self, PluginError> {
-        let collectors: Vec<_> = specs
+    fn definitions_for(specs: Vec<(&'static str, Duration)>) -> Vec<Arc<Collector>> {
+        let handles = Arc::new(Mutex::new(vec![]));
+        specs
             .into_iter()
-            .map(|(id, interval)| Collector {
-                id,
-                interval,
-                cancelled: tokio::sync::watch::channel(false).0,
-                cleanup: Arc::new(Mutex::new(None)),
+            .map(|(id, interval)| {
+                Arc::new(Collector {
+                    id,
+                    interval,
+                    jobs: Mutex::new(None),
+                    handles: handles.clone(),
+                })
             })
-            .collect();
-        let descriptors: Vec<&dyn BuiltinPlugin> =
-            collectors.iter().map(|c| c as &dyn BuiltinPlugin).collect();
-        let host = PluginHost::mount(&descriptors)?;
-        Ok(Self {
+            .collect()
+    }
+    pub(crate) fn with_host(host: Arc<PluginHost>, collectors: Vec<Arc<Collector>>) -> Self {
+        let handles = collectors
+            .first()
+            .map(|collector| collector.handles.clone())
+            .unwrap_or_default();
+        Self {
             host,
             collectors,
             started: AtomicBool::new(false),
-            handles: Mutex::new(vec![]),
-        })
+            handles,
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn builtin() -> Result<Self, PluginError> {
+        Self::from_definitions(Self::definitions())
+    }
+    #[cfg(test)]
+    fn new(specs: Vec<(&'static str, Duration)>) -> Result<Self, PluginError> {
+        Self::from_definitions(Self::definitions_for(specs))
+    }
+    #[cfg(test)]
+    fn from_definitions(collectors: Vec<Arc<Collector>>) -> Result<Self, PluginError> {
+        let descriptors: Vec<&dyn BuiltinPlugin> = collectors
+            .iter()
+            .map(|collector| collector.as_ref() as &dyn BuiltinPlugin)
+            .collect();
+        let host = Arc::new(PluginHost::mount(&descriptors)?);
+        Ok(Self::with_host(host, collectors))
     }
     pub(crate) fn start(&self, mut jobs: BTreeMap<&'static str, (Work, Cleanup)>) -> bool {
         if self.started.swap(true, Ordering::AcqRel) {
             return false;
         }
-        let mut handles = self.handles.lock().unwrap_or_else(|e| e.into_inner());
         for collector in &self.collectors {
-            let Some((work, cleanup)) = jobs.remove(collector.id) else {
+            let Some(job) = jobs.remove(collector.id) else {
                 continue;
             };
-            let capability = CapabilityKey {
+            *collector.jobs.lock().unwrap_or_else(|e| e.into_inner()) = Some(job);
+            let key = CapabilityKey {
                 name: "collector",
                 version: 1,
                 instance: collector.id,
             };
-            let Ok(lease) = self.host.acquire(&capability) else {
-                cleanup();
-                continue;
-            };
-            *collector.cleanup.lock().unwrap_or_else(|e| e.into_inner()) = Some(cleanup);
-            if lease.ensure_active().is_err() {
-                let callback = collector
-                    .cleanup
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .take();
-                if let Some(callback) = callback {
-                    callback();
+            if let Ok(lease) = self.host.acquire(&key) {
+                let mut resources = PluginResources::default();
+                if collector.activate(&lease, &mut resources).is_ok() {
+                    let _ = self.host.own_resources(&key, lease.epoch, resources);
                 }
-                continue;
             }
-            let mut cancelled = collector.cancelled.subscribe();
-            let interval = collector.interval;
-            handles.push(tokio::spawn(async move {
-                let mut timer = tokio::time::interval(interval);
-                loop {
-                    tokio::select! { biased;
-                        _ = cancelled.changed() => break,
-                        _ = timer.tick() => {}
-                    }
-                    if lease.ensure_active().is_err() {
-                        break;
-                    }
-                    let work = work.clone();
-                    let active = lease.clone();
-                    // Await the blocking worker; never overlap executions of this collector.
-                    let _ = tokio::task::spawn_blocking(move || work(active)).await;
-                }
-            }));
         }
         true
     }
     pub(crate) fn stop_all(&self) {
-        self.host.stop_all();
+        for collector in &self.collectors {
+            let _ = self.host.stop(collector.id);
+        }
     }
     #[cfg(test)]
     fn stop(&self, id: &str) {
@@ -161,20 +248,20 @@ impl CollectorScheduler {
 pub(crate) fn start(state: &AppState) {
     let mut jobs: BTreeMap<&'static str, (Work, Cleanup)> = BTreeMap::new();
     let listeners = state.listeners.clone();
-    let readers = state.readonly.projects.clone();
+    let readers = Arc::downgrade(&state.readonly.projects);
     let cleanup_listeners = listeners.clone();
     jobs.insert(
         "listeners",
         (
             Arc::new(move |lease| {
+                let Some(readers) = readers.upgrade() else {
+                    return;
+                };
                 let mut latest = readers.collect_listeners();
                 if let Ok(mut saved) = listeners.lock() {
                     if lease.ensure_active().is_err() {
-                        *saved = local_agent_core::projects::listeners::ListenerSnapshot {
-                            state: "unavailable".into(),
-                            error: Some("监听采集器已停止".into()),
-                            ..Default::default()
-                        };
+                        // Its scope already published the paused state. An old
+                        // worker must never replace a newer generation's result.
                         return;
                     }
                     if latest.state == "unavailable"
@@ -203,28 +290,44 @@ pub(crate) fn start(state: &AppState) {
             }),
         ),
     );
-    let observation = state.observation.clone();
-    let sessions = state.sessions.clone();
+    let observation = Arc::downgrade(&state.observation);
+    let sessions = Arc::downgrade(&state.sessions);
     let cleanup_observation = observation.clone();
     jobs.insert(
         "activity",
         (
             Arc::new(move |lease| {
+                let (Some(observation), Some(sessions)) =
+                    (observation.upgrade(), sessions.upgrade())
+                else {
+                    return;
+                };
+                if lease.publish(|| observation.resume_native()).is_err() {
+                    return;
+                }
                 observation.poll_native_guarded(&sessions, &|| lease.ensure_active().is_ok())
             }),
-            Arc::new(move || cleanup_observation.pause_native()),
+            Arc::new(move || {
+                if let Some(observation) = cleanup_observation.upgrade() {
+                    observation.pause_native();
+                }
+            }),
         ),
     );
-    let sessions = state.sessions.clone();
+    let sessions = Arc::downgrade(&state.sessions);
     let cleanup_sessions = sessions.clone();
     jobs.insert(
         "sessions",
         (
             Arc::new(move |lease| {
-                let _ = sessions.refresh_guarded(&|| lease.ensure_active().is_ok());
+                if let Some(sessions) = sessions.upgrade() {
+                    let _ = sessions.refresh_guarded(&|| lease.ensure_active().is_ok());
+                }
             }),
             Arc::new(move || {
-                let _ = cleanup_sessions.pause_background_scan();
+                if let Some(sessions) = cleanup_sessions.upgrade() {
+                    let _ = sessions.pause_background_scan();
+                }
             }),
         ),
     );
@@ -235,6 +338,84 @@ pub(crate) fn start(state: &AppState) {
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
+    #[tokio::test]
+    async fn reactivation_runs_a_new_worker_and_discards_the_old_workers_final_publication() {
+        let scheduler =
+            CollectorScheduler::new(vec![("activity", Duration::from_secs(60))]).unwrap();
+        let first = Arc::new(tokio::sync::Notify::new());
+        let second = Arc::new(tokio::sync::Notify::new());
+        let (release, gate) = std::sync::mpsc::channel();
+        let gate = Arc::new(Mutex::new(gate));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let value = Arc::new(AtomicUsize::new(0));
+        let cleanup = Arc::new(AtomicUsize::new(0));
+        let mut jobs: BTreeMap<&'static str, (Work, Cleanup)> = BTreeMap::new();
+        jobs.insert(
+            "activity",
+            (
+                {
+                    let first = first.clone();
+                    let second = second.clone();
+                    let calls = calls.clone();
+                    let value = value.clone();
+                    Arc::new(move |lease| {
+                        let call = calls.fetch_add(1, Ordering::SeqCst) + 1;
+                        if call == 1 {
+                            first.notify_one();
+                            gate.lock()
+                                .unwrap()
+                                .recv_timeout(Duration::from_secs(5))
+                                .unwrap();
+                        }
+                        let _ = lease.publish(|| value.store(call, Ordering::SeqCst));
+                        if call == 2 {
+                            second.notify_one();
+                        }
+                    })
+                },
+                {
+                    let cleanup = cleanup.clone();
+                    Arc::new(move || {
+                        cleanup.fetch_add(1, Ordering::SeqCst);
+                    })
+                },
+            ),
+        );
+        scheduler.start(jobs);
+        tokio::time::timeout(Duration::from_secs(2), first.notified())
+            .await
+            .unwrap();
+        let factories: Vec<&dyn BuiltinPlugin> = scheduler
+            .collectors
+            .iter()
+            .map(|c| c.as_ref() as &dyn BuiltinPlugin)
+            .collect();
+        let enabled = std::collections::BTreeSet::from(["activity".to_owned()]);
+        let generation = scheduler.host.snapshot().unwrap().generation;
+        assert!(
+            scheduler
+                .host
+                .reconfigure(&generation, &factories, &enabled, || Err(PluginError::new(
+                    "fixture_failed",
+                    "save failed"
+                )))
+                .is_err()
+        );
+        assert_eq!(cleanup.load(Ordering::SeqCst), 0);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        scheduler
+            .host
+            .reconfigure(&generation, &factories, &enabled, || Ok(()))
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), second.notified())
+            .await
+            .unwrap();
+        assert_eq!(value.load(Ordering::SeqCst), 2);
+        release.send(()).unwrap();
+        assert!(scheduler.drain(Duration::from_secs(2)).await);
+        assert_eq!(value.load(Ordering::SeqCst), 2);
+        assert_eq!(cleanup.load(Ordering::SeqCst), 2);
+    }
     #[test]
     fn registration_keeps_the_original_intervals_without_starting_tasks() {
         let scheduler = CollectorScheduler::builtin().unwrap();

@@ -32,9 +32,13 @@ pub(crate) async fn save_source(
     Json(change): Json<SourceChange>,
 ) -> ApiResult {
     crate::blocking::management(move || {
+        let _composition = state.readonly.configuration().map_err(|_| error("插件组合暂不可用".into()))?;
         #[cfg(test)]
         state.session_work.source_started.notify_one();
         state.session_work.ensure_open()?;
+        if change.enabled && state.sessions.directory().source(&change.agent_id).is_some() && !state.sessions.source_active(&change.agent_id) {
+            return Err(native_error(local_agent_core::sessions::NativeError {code:"plugin_disabled",message:"来源插件已停用，请先在插件管理中启用".into()}));
+        }
         state.store.lock().map_err(|_| error("数据服务暂不可用".into()))?
             .save_native_source(&change.agent_id, change.enabled).map_err(error)?;
         state.sessions.set_enabled(&change.agent_id, change.enabled).map_err(native_error)?;

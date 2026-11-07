@@ -1,0 +1,20 @@
+// Generated from contracts/plugins/builtin/*.schema.json. Do not edit.
+export type CapabilityAddress = { "instance": string; "name": string; "version": number; };
+export type CapabilityInfo = { "address": CapabilityAddress; "metadata": CapabilityMetadata; };
+export type CapabilityKind = "query" | "command" | "stream" | "ui-contribution";
+export type CapabilityMetadata = { "kind": CapabilityKind; "resourceScope": ResourceScope; };
+export type Composition = { "disabledPluginIds": Array<string>; "profile": Profile; "removedPluginIds"?: Array<string>; };
+export type CompositionCatalog = { "composition": Composition; "effectiveProfile": Profile; "host": HostSnapshot; "impact"?: ImpactContext; "problem"?: (string | null); "revision": Decimal; "schemaVersion": number; "storeId": string; };
+export type CompositionChange = { "composition": Composition; "expectedGeneration": string; "expectedImpact"?: (ImpactContext | null); "expectedRevision": Decimal; "operationId": string; "storeId": string; };
+export type CompositionOperation = { "operationId": string; "storeId": string; };
+export type CompositionReceipt = { "composition": Composition; "operationId": string; "revision": Decimal; "storeId": string; };
+export type CompositionReply = { "catalog": CompositionCatalog; "receipt"?: (CompositionReceipt | null); };
+export type Decimal = string;
+export type ExecutionKind = "builtin" | "wasm-component" | "declarative";
+export type HostSnapshot = { "cleanupFailed": boolean; "generation": string; "plugins": Array<PluginInfo>; };
+export type ImpactContext = { "activeTasks": boolean; "modelServices": Array<string>; };
+export type PluginInfo = { "activationEpoch": Decimal; "capabilities": Array<CapabilityInfo>; "desiredEnabled": boolean; "displayName": string; "executionKind": ExecutionKind; "id": string; "optionalRequires": Array<CapabilityAddress>; "problem"?: (string | null); "requires": Array<CapabilityAddress>; "resources": Array<ResourceCount>; "runtimeActive": boolean; "version": string; };
+export type Profile = "desktop" | "background" | "recovery";
+export type ResourceCount = { "count": number; "kind": ResourceKind; };
+export type ResourceKind = "registration" | "listener" | "worker" | "task" | "connection" | "cache";
+export type ResourceScope = "plugin-instance" | "native-source" | "project" | "provider" | "application";

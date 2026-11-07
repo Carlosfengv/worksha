@@ -168,7 +168,7 @@ try {
   const other = (await api(b, "/api/snapshot")).settingsWriteProtocol;
   assert.notEqual(other.storeId, protocol.storeId);
   db = new DatabaseSync(path.join(a.data, "local-agent.sqlite3"));
-  assert.equal(db.prepare("PRAGMA user_version").get().user_version, 15);
+  assert.equal(db.prepare("PRAGMA user_version").get().user_version, 16);
   if (historical) {
     assert.deepEqual(
       await api(a, `/api/settings/operations/${historical.operationId}`),

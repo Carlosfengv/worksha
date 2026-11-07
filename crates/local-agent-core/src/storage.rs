@@ -9,7 +9,7 @@ pub struct Store {
 }
 
 impl Store {
-    pub const SCHEMA_VERSION: u32 = 15;
+    pub const SCHEMA_VERSION: u32 = 16;
     pub fn open(directory: &Path) -> Result<Self, String> {
         Self::open_with_directory(
             directory,
@@ -30,7 +30,7 @@ impl Store {
         if schema_version > Self::SCHEMA_VERSION {
             return Err("数据库来自更新版本，请升级应用后重试".into());
         }
-        if (2..=14).contains(&schema_version) {
+        if (2..Self::SCHEMA_VERSION).contains(&schema_version) {
             let backup = directory.join(if schema_version == 2 {
                 "local-agent.pre-dynamic-v2.sqlite3"
             } else if schema_version == 3 {
@@ -55,8 +55,10 @@ impl Store {
                 "local-agent.pre-native-import-v12.sqlite3"
             } else if schema_version == 13 {
                 "local-agent.pre-local-token-v13.sqlite3"
-            } else {
+            } else if schema_version == 14 {
                 "local-agent.pre-local-token-admission-v14.sqlite3"
+            } else {
+                "local-agent.pre-plugin-lifecycle-v15.sqlite3"
             });
             providers::files::private_dir(directory).map_err(|e| e.message)?;
             providers::files::checked_path(&backup).map_err(|e| e.message)?;

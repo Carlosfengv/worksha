@@ -64,7 +64,7 @@ async function fixture(name) {
   const modelId = randomUUID(); c.service = await api(c, "/api/model-services", {id: randomUUID(), revision: 0, name: "Owned service", defaultModelId: modelId, models: [{id: modelId, name: "Default", providerId: p.id, model: p.model, capabilities: {contextWindow: 32768, maxOutputTokens: 8192, tools: true, thinking: false, inputModalities: ["text"]}}]}, 200, "PUT");
   c.config = (await api(c, "/api/provider-status")).configs.find(v => v.agentId === "claude");
   const pcol = await protocol(c); c.identity = {storeId: pcol.storeId, namespaceId: pcol.namespaceId, operationId: randomUUID()};
-  assert.equal(pcol.schemaVersion, 15); return c;
+  assert.equal(pcol.schemaVersion, 16); return c;
 }
 function input(c, purpose) {return purpose === "model_service" ? {agentId: "claude", expectedRevision: c.config.revision, serviceId: c.service.id, expectedServiceRevision: c.service.revision, operation: c.identity} : {agentId: "claude", expectedRevision: c.config.revision, providerId: c.provider.id, expectedProviderRevision: 1, model: c.provider.model, operation: c.identity};}
 const routes = {fixed_route: "/api/provider-switches", dynamic_binding: "/api/dynamic-connections", model_service: "/api/model-service-connections"};
@@ -130,7 +130,7 @@ try {
     const backupPath = path.join(old.data, "local-agent.pre-local-token-v13.sqlite3"), backup = new DatabaseSync(backupPath, {readOnly: true});
     try {assert.equal(backup.prepare("PRAGMA user_version").get().user_version, 13); assert.equal(backup.prepare("PRAGMA quick_check").get().quick_check, "ok"); for (const [table, rows] of Object.entries(original)) assert.deepEqual(backup.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(), rows);} finally {backup.close();}
     assert.equal(fs.statSync(backupPath).mode & 0o777, 0o600); const saved = hash(backupPath); await refused(previous, old); await stop(old.child); await refused(previous, old); assert.equal(hash(backupPath), saved);
-    report.actualSchema13Upgrade = {previousBinarySha256: hash(previous), targetSchema: 15, originalMaterialUnchanged: true, privateBackupUnchanged: true, oldWriterRefused: true};
+    report.actualSchema13Upgrade = {previousBinarySha256: hash(previous), targetSchema: 16, originalMaterialUnchanged: true, privateBackupUnchanged: true, oldWriterRefused: true};
     record("actual signed schema-13 upgrade preserves API-key/native-import/provider bytes and source IDs with a private consistent backup; live ownership and old schema reader barriers are enforced");
   }
   assert.equal(hash(binary), report.binarySha256); report.passed = true;

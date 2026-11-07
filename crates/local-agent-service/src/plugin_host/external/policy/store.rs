@@ -256,29 +256,43 @@ impl Host {
         if let Some(db) = self.db.get() {
             return Ok(db);
         }
-        let exists = self.db_path.exists();
-        if let Ok(m) = std::fs::symlink_metadata(&self.db_path) {
-            use std::os::unix::fs::MetadataExt;
-            if !m.is_file() || m.file_type().is_symlink() || m.nlink() != 1 {
-                return Err(fail("permission_denied"));
-            }
+        use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&self.db_path)
+            .checked("permission_denied")?;
+        let metadata = file.metadata().checked("permission_denied")?;
+        if !metadata.is_file() || metadata.nlink() != 1 {
+            return Err(fail("permission_denied"));
         }
         let db = Connection::open(&self.db_path).checked("unavailable")?;
         db.busy_timeout(std::time::Duration::from_millis(25))
             .checked("unavailable")?;
-        if !exists {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&self.db_path, std::fs::Permissions::from_mode(0o600))
-                .checked("unavailable")?;
-            db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE policy_meta(format INTEGER NOT NULL); INSERT INTO policy_meta VALUES(1); CREATE TABLE policy_packages(digest TEXT PRIMARY KEY,id TEXT NOT NULL,record TEXT NOT NULL); CREATE TABLE policy_selections(id TEXT PRIMARY KEY,record TEXT NOT NULL); CREATE TABLE policy_reviews(id TEXT PRIMARY KEY,record TEXT NOT NULL); CREATE TABLE policy_controls(scope TEXT PRIMARY KEY,record TEXT NOT NULL); CREATE TABLE policy_bindings(scope TEXT NOT NULL,version TEXT NOT NULL,record TEXT NOT NULL,PRIMARY KEY(scope,version)); CREATE TABLE policy_intents(id TEXT PRIMARY KEY,record TEXT NOT NULL);").checked("unavailable")?;
-        }
+        super::super::store::initialize_database(
+            &db,
+            "policy_meta",
+            "format",
+            &[
+                "policy_packages",
+                "policy_selections",
+                "policy_reviews",
+                "policy_controls",
+                "policy_bindings",
+                "policy_intents",
+            ],
+            "CREATE TABLE IF NOT EXISTS policy_meta(format INTEGER NOT NULL); INSERT INTO policy_meta SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM policy_meta); CREATE TABLE IF NOT EXISTS policy_packages(digest TEXT PRIMARY KEY,id TEXT NOT NULL,record TEXT NOT NULL); CREATE TABLE IF NOT EXISTS policy_selections(id TEXT PRIMARY KEY,record TEXT NOT NULL); CREATE TABLE IF NOT EXISTS policy_reviews(id TEXT PRIMARY KEY,record TEXT NOT NULL); CREATE TABLE IF NOT EXISTS policy_controls(scope TEXT PRIMARY KEY,record TEXT NOT NULL); CREATE TABLE IF NOT EXISTS policy_bindings(scope TEXT NOT NULL,version TEXT NOT NULL,record TEXT NOT NULL,PRIMARY KEY(scope,version)); CREATE TABLE IF NOT EXISTS policy_intents(id TEXT PRIMARY KEY,record TEXT NOT NULL);",
+        )?;
         let v: i64 = db
             .query_row("SELECT format FROM policy_meta", [], |r| r.get(0))
             .checked("invalid_record")?;
         if v != 1 {
             return Err(fail("invalid_record"));
         }
-        use std::os::unix::fs::MetadataExt;
         let metadata = std::fs::symlink_metadata(&self.db_path).checked("unavailable")?;
         let _ = self.db_identity.set((metadata.dev(), metadata.ino()));
         let _ = self.db.set(db);

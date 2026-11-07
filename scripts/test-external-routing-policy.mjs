@@ -105,9 +105,11 @@ try {
   if(seen.length){assert.equal(deadlineResponse.status,504,deadlineBody);assert.deepEqual(seen.map(r=>r.i),[2]);release();await send(budgetTurn,budgetSession,"local-agent-default",409);assert.equal(seen.length,1);}else{assert.equal(JSON.parse(deadlineBody).error.code,"deadline_exceeded");holdIndex=-1;}
   const externalUnknownSendAttemptVerified=seen.length===1;
   await publish({deadlineSeconds:10});await bind(good);add("external ranking consumes the whole service deadline and never extends the send budget");
+  // The preceding deadline may put this candidate in its configured one-second cooldown.
+  await pause(1100);
   faults[2]="sse-partial";seen.length=0;
   const partial=await fetch(local.baseURL+"/messages",{method:"POST",headers:{"x-api-key":local.apiKey,"x-opencode-session":"ses_"+randomUUID().replaceAll("-",""),"Content-Type":"application/json"},body:JSON.stringify({model:"local-agent-default",max_tokens:100,stream:true,messages:[user("external policy partial stream")]})});
-  assert.equal(partial.status,200);assert((await partial.text()).includes("PARTIAL_A"));assert.deepEqual(seen.map(r=>r.i),[2]);faults[2]=0;await pause(1100);add("external policy cannot retry another candidate after partial streamed content");
+  const partialBody=await partial.text();assert.equal(partial.status,200,partialBody);assert(partialBody.includes("PARTIAL_A"));assert.deepEqual(seen.map(r=>r.i),[2]);faults[2]=0;await pause(1100);add("external policy cannot retry another candidate after partial streamed content");
   // Durable publication delegates the original operation ID; queries never replay it.
   const preparationDb=new DatabaseSync(path.join(dir,"app/routing-policy.sqlite3"));
   preparationDb.exec("CREATE TRIGGER deny_begin_publication BEFORE INSERT ON policy_intents WHEN json_extract(NEW.record,'$.status.state')='committing' BEGIN SELECT RAISE(FAIL,'owned preparation pause'); END");
@@ -184,7 +186,7 @@ try {
   const replayDisabled=await policy({kind:"publish",request:restartRequest,expectedBindingRevision:binding.revision,package:good,failureMode:"reject"});assert.equal(replayDisabled.status.state,"committed");assert.equal(replayDisabled.status.binding.authorized,false);
   await policy({kind:"state",package:good,action:"enable"});assert.equal((await policy({kind:"query-publish",operationId:restartRequest.operationId})).status.binding.authorized,false);
   service=restartReceipt.service;draft={...draft,revision:service.revision,name:service.name};binding=recoveredAfterRestart.status.binding;bindingRevision=binding.revision;await bind(good);assert.equal((await policy({kind:"list"})).bindings[0].authorized,true);assert.equal(seen.length,0);add("restart finalizes the original receipt without model replay or implicit policy authorization");
-  const schemaDb=new DatabaseSync(path.join(dir,"app/local-agent.sqlite3"));const mainSchemaVersion=schemaDb.prepare("PRAGMA user_version").get().user_version;schemaDb.close();assert.equal(mainSchemaVersion,15);console.log(JSON.stringify({complete:true,cases,realModelCalls:0,realKeychainCalls:0,mainSchemaVersion,externalUnknownSendAttemptVerified,gatewaySendAfterRestartVerified:false,restartLimit:"MemoryVault intentionally does not persist local entry credentials; policy metadata reauthorization verified, real Keychain restart unverified"}));
+  const schemaDb=new DatabaseSync(path.join(dir,"app/local-agent.sqlite3"));const mainSchemaVersion=schemaDb.prepare("PRAGMA user_version").get().user_version;schemaDb.close();assert.equal(mainSchemaVersion,16);console.log(JSON.stringify({complete:true,cases,realModelCalls:0,realKeychainCalls:0,mainSchemaVersion,externalUnknownSendAttemptVerified,gatewaySendAfterRestartVerified:false,restartLimit:"MemoryVault intentionally does not persist local entry credentials; policy metadata reauthorization verified, real Keychain restart unverified"}));
 } finally {
   release?.();if(child&&child.exitCode===null){child.kill("SIGTERM");await once(child,"exit");}
   for(const server of servers)await new Promise(r=>server.close(r));if(process.env.KEEP_POLICY_FIXTURE!=="1")rmSync(dir,{recursive:true,force:true});

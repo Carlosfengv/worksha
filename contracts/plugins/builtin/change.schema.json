@@ -1,0 +1,100 @@
+{
+  "$defs": {
+    "Composition": {
+      "additionalProperties": false,
+      "properties": {
+        "disabledPluginIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "profile": {
+          "$ref": "#/$defs/Profile"
+        },
+        "removedPluginIds": {
+          "description": "Removing a bundled plugin unregisters its functionality; the signed app\nremains the trusted reinstall source. Historical domain data is retained.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "profile",
+        "disabledPluginIds"
+      ],
+      "type": "object"
+    },
+    "Decimal": {
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "type": "string"
+    },
+    "ImpactContext": {
+      "additionalProperties": false,
+      "properties": {
+        "activeTasks": {
+          "type": "boolean"
+        },
+        "modelServices": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "activeTasks",
+        "modelServices"
+      ],
+      "type": "object"
+    },
+    "Profile": {
+      "enum": [
+        "desktop",
+        "background",
+        "recovery"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "composition": {
+      "$ref": "#/$defs/Composition"
+    },
+    "expectedGeneration": {
+      "type": "string"
+    },
+    "expectedImpact": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ImpactContext"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "expectedRevision": {
+      "$ref": "#/$defs/Decimal"
+    },
+    "operationId": {
+      "type": "string"
+    },
+    "storeId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "operationId",
+    "storeId",
+    "expectedRevision",
+    "expectedGeneration",
+    "composition"
+  ],
+  "title": "CompositionChange",
+  "type": "object"
+}

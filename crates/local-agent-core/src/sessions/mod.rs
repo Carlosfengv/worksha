@@ -73,7 +73,7 @@ pub use memory::MemorySnapshot;
 pub use opencode_mcp::{install_reader_worker, read_config_worker};
 pub use parser::{Event, SessionSummary, Usage};
 pub use parser::{Window as TranscriptWindow, parse_snapshot as read_transcript_snapshot};
-pub use source_plugins::NativeSourcePlugins;
+pub use source_plugins::{NativeSourceDefinitions, NativeSourcePlugins};
 
 pub fn now() -> String {
     Utc::now().to_rfc3339()
@@ -101,6 +101,8 @@ pub type NativeResult<T> = Result<T, NativeError>;
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceStatus {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_active: Option<bool>,
     pub authorization_revision: u64,
     pub client_attribution: Option<codex_attribution::AttributionStatus>,
     pub agent_id: String,
@@ -388,6 +390,7 @@ impl NativeSessions {
             .iter()
             .map(|descriptor| descriptor.id.as_str())
             .map(|agent| SourceStatus {
+                runtime_active: None,
                 authorization_revision: 1,
                 client_attribution: None,
                 agent_id: agent.into(),
@@ -443,9 +446,24 @@ impl NativeSessions {
             .map_err(|_| NativeError::new("unavailable", "会话索引暂不可用"))
     }
     pub fn sources(&self) -> NativeResult<Vec<SourceStatus>> {
-        Ok(self.lock()?.sources.clone())
+        Ok(self
+            .lock()?
+            .sources
+            .iter()
+            .cloned()
+            .map(|mut source| {
+                source.runtime_active = Some(self.source_active(&source.agent_id));
+                source
+            })
+            .collect())
     }
     pub fn set_enabled(&self, agent: &str, enabled: bool) -> NativeResult<()> {
+        if enabled && self.directory().source(agent).is_some() && !self.source_active(agent) {
+            return Err(NativeError::new(
+                "plugin_disabled",
+                "来源插件已停用，请先启用插件",
+            ));
+        }
         let mut state = self.lock()?;
         let source = state
             .sources

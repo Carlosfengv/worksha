@@ -233,6 +233,8 @@ try {
       stdio: "pipe",
     });
   await boot(baseline);
+  const builtinProducts = (await api("/api/domain/directory")).catalog.products;
+  assert.equal(builtinProducts.length, 5);
   const review = await api("/api/plugins/inspect", { path: archive });
   await api("/api/plugins/install", {
     packageRef: review.packageRef,
@@ -255,7 +257,7 @@ try {
   const originalSchema = readCoreSchema(
     path.join(baseline, "local-agent.sqlite3"),
   );
-  assert.equal(originalSchema.version, 15);
+  assert.equal(originalSchema.version, 16);
   for (const store of optionalFiles)
     for (const fault of faults) {
       const name = `${store.label}-${fault}`,
@@ -316,7 +318,13 @@ try {
         result.externalProblem = directory.externalProblem;
         result.capabilityProblem = catalog.externalProblem;
         result.nativeReadsAvailable = true;
-        assert(directory.catalog.products.length >= 6);
+        const builtinIds = new Set(builtinProducts.map((product) => product.id));
+        assert.deepEqual(
+          directory.catalog.products.filter((product) => builtinIds.has(product.id)),
+          builtinProducts,
+        );
+        if (store.label === "history")
+          assert.deepEqual(directory.catalog.products, normalDirectory.catalog.products);
         assert(
           directory.externalProblem,
           `${name}: optional store silently accepted`,

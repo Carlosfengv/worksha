@@ -1,0 +1,38 @@
+{
+  "$defs": {
+    "Profile": {
+      "enum": [
+        "desktop",
+        "background",
+        "recovery"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "disabledPluginIds": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "profile": {
+      "$ref": "#/$defs/Profile"
+    },
+    "removedPluginIds": {
+      "description": "Removing a bundled plugin unregisters its functionality; the signed app\nremains the trusted reinstall source. Historical domain data is retained.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "profile",
+    "disabledPluginIds"
+  ],
+  "title": "Composition",
+  "type": "object"
+}

@@ -40,6 +40,9 @@ pub(crate) async fn snapshot(State(state): State<AppState>) -> ApiResult {
         let mut value = serde_json::to_value(store.snapshot().map_err(error)?)
             .map_err(|_| error("读取失败".into()))?;
         drop(store);
+        // Source consent and runtime flags must describe the same composition,
+        // including while a configuration worker retires the old generation.
+        let composition = state.readonly.configuration().map_err(|_|error("内置组合暂不可用".into()))?;
         let bindings = state.observation.statuses();
         let gateway_ready = bindings.iter().any(|binding| binding.enabled);
         value["sessionSources"] =
@@ -47,9 +50,13 @@ pub(crate) async fn snapshot(State(state): State<AppState>) -> ApiResult {
                 .map_err(|_| error("读取失败".into()))?;
         value["observationBindings"] =
             serde_json::to_value(bindings).map_err(|_| error("读取失败".into()))?;
-        value["agentConnections"] = serde_json::to_value(connections::snapshot(&state))
-            .map_err(|_| error("读取连接状态失败".into()))?;
-        value["gatewayStatus"] = serde_json::json!(if gateway_ready {
+        let recovery = composition.effective_profile == local_agent_core::plugin::builtin::Profile::Recovery || composition.problem.is_some();
+        let connections_paused = recovery || !crate::plugin_host::features::active(&state,"builtin.agents") || !crate::plugin_host::features::active(&state,"builtin.providers");
+        value["builtinComposition"] = serde_json::json!({"profile":composition.effective_profile,"problem":composition.problem,"nativeActivityActive":state.readonly.collectors.activity_active()});
+        value["agentConnections"] = if connections_paused {
+            serde_json::json!({"checkedAt":chrono::Utc::now().to_rfc3339(),"error":"相关插件已停用或卸载，未读取业务连接","items":[]})
+        } else { serde_json::to_value(connections::snapshot(&state)).map_err(|_| error("读取连接状态失败".into()))? };
+        value["gatewayStatus"] = serde_json::json!(if connections_paused {"paused"} else if gateway_ready {
             "ready"
         } else {
             "not_configured"

@@ -107,6 +107,13 @@ pub fn snapshot(state: &AppState) -> Connections {
                                 }) {
                                     mode = "gateway";
                                     provider_name = b.target.provider.name.clone();
+                                    if !crate::plugin_host::features::active(state,"builtin.model-services") {
+                                        match state.store.lock().ok().and_then(|store|store.model_service_attachment(&b.id).ok()) {
+                                            Some(Some(_))=>{mode="unknown";reason=Some("此连接绑定的模型服务插件已停用或卸载，请在插件中心恢复".into());},
+                                            None=>{mode="unknown";reason=Some("模型服务绑定状态待核查".into());},
+                                            Some(None)=>{},
+                                        }
+                                    }
                                 }
                             }
                             None => {

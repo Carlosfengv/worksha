@@ -1,6 +1,7 @@
 // Generate TypeScript from the same schemars output used by the Rust contract test.
 import fs from "node:fs";
 import assert from "node:assert/strict";
+const builtin = process.argv.includes("--builtin");
 const contributions = process.argv.includes("--contributions");
 const objectSummary = process.argv.includes("--object-summary");
 const requestExport = process.argv.includes("--request-export");
@@ -24,7 +25,7 @@ const draftGrant = process.argv.includes("--provider-draft-grant");
 const draftCatalog = process.argv.includes("--provider-draft-catalog");
 const providerSource = process.argv.includes("--provider-source");
 const sourcePlugins = process.argv.includes("--sources");
-const root = policyRecovery
+const root = builtin ? "contracts/plugins/builtin" : policyRecovery
   ? "contracts/domain/routing-policy-recovery"
   : requestExport
     ? "contracts/domain/request-export"
@@ -76,7 +77,7 @@ const schemas = fs
   .map((n) => JSON.parse(fs.readFileSync(`${root}/${n}`, "utf8")));
 assert(
   schemas.length >=
-    (policyRecovery
+    (builtin ? 6 : policyRecovery
       ? 4
       : requestExport
         ? 6
@@ -177,6 +178,7 @@ if (process.argv.includes("--write")) fs.writeFileSync(target, text);
 else
   assert.equal(fs.readFileSync(target, "utf8"), text, "Plugin bindings drift");
 if (
+  !builtin &&
   !objectSummary &&
   !requestExport &&
   !objectContributions &&
@@ -204,7 +206,7 @@ if (
     "SDK WIT drift",
   );
 console.log(
-  pluginPolicy
+  builtin ? `${schemas.length} builtin host schemas and TypeScript bindings agree` : pluginPolicy
     ? `${schemas.length} pure policy schemas and TypeScript bindings agree`
     : policyRecovery ||
         requestExport ||

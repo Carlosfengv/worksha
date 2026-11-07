@@ -683,6 +683,15 @@ pub struct GatewayActivity {
     pub stale: bool,
 }
 impl Hub {
+    pub(crate) fn release_request_views(&self) -> Result<(), String> {
+        let mut saved = self.sql.lock().map_err(|_| "请求缓存回收失败")?;
+        if let Some(history) = saved.as_mut() {
+            history
+                .release_request_views()
+                .map_err(|_| "请求视图回收失败")?;
+        }
+        Ok(())
+    }
     pub fn release_native_snapshots(&self) {
         if let Ok(mut saved) = self.sql.lock()
             && let Some(history) = saved.as_mut()

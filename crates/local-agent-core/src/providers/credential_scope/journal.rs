@@ -56,6 +56,9 @@ fn unavailable(_: impl std::fmt::Display) -> ConfigError {
         "凭据恢复账本暂不可用，请保留原操作后核查",
     )
 }
+fn plugin_storage_error(message: String) -> ConfigError {
+    ConfigError::new("plugin_storage_unavailable", &message)
+}
 pub(crate) fn unverified() -> ConfigError {
     ConfigError::new(
         "credential_namespace_unverified",
@@ -508,7 +511,8 @@ pub(crate) fn initialize(
     fresh: bool,
 ) -> Result<(), ConfigError> {
     if original_version == crate::Store::SCHEMA_VERSION {
-        return Ok(());
+        return crate::plugin::initialize_composition(db, original_version)
+            .map_err(plugin_storage_error);
     }
     let parent = path
         .parent()
@@ -516,6 +520,20 @@ pub(crate) fn initialize(
         .ok_or_else(corrupt)?;
     let _guard = lock_at(&parent.join("credential-recovery.lock"))?;
     let tx = Transaction::new_unchecked(db, TransactionBehavior::Immediate).map_err(unavailable)?;
+    if original_version == 15 {
+        // The plugin reader barrier and its schema publish together. Preserve
+        // existing credential evidence and identities without recreating them.
+        let meta = metadata_at(&tx, original_version)?;
+        legacy_admission::validate(&tx, &meta.store_id)?;
+        crate::providers::imports::operations::validate_existing(&tx, &meta.store_id)?;
+        super::super::local_tokens::validate_scope(&tx, &meta.store_id, &meta.namespace_id)?;
+        crate::plugin::initialize_composition(&tx, original_version)
+            .map_err(plugin_storage_error)?;
+        tx.pragma_update(None, "user_version", crate::Store::SCHEMA_VERSION)
+            .map_err(unavailable)?;
+        metadata(&tx)?;
+        return tx.commit().map_err(unavailable);
+    }
     if matches!(original_version, 10..=14) {
         // The reader barrier changes; existing evidence, identities and row
         // bytes do not. A broken old registry cannot be promoted as known.
@@ -535,6 +553,8 @@ pub(crate) fn initialize(
         } else {
             super::super::local_tokens::initialize(&tx, &meta.store_id, &meta.namespace_id)?;
         }
+        crate::plugin::initialize_composition(&tx, original_version)
+            .map_err(plugin_storage_error)?;
         tx.pragma_update(None, "user_version", crate::Store::SCHEMA_VERSION)
             .map_err(unavailable)?;
         metadata(&tx)?;
@@ -589,6 +609,7 @@ pub(crate) fn initialize(
     {
         return Err(corrupt());
     }
+    crate::plugin::initialize_composition(&tx, original_version).map_err(plugin_storage_error)?;
     tx.pragma_update(None, "user_version", crate::Store::SCHEMA_VERSION)
         .map_err(unavailable)?;
     let meta = metadata(&tx)?;

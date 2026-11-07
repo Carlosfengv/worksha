@@ -44,6 +44,27 @@ fn fixture(
 }
 
 #[test]
+fn plugin_stops_release_both_export_kinds_and_preserve_gateway_history() {
+    let (_root, mut h, sessions, _query, input, now) = fixture(2);
+    h.begin_unified_csv_export(&input, "fixed", &sessions, now)
+        .unwrap();
+    let page = h
+        .request_page(&requests::Query::default(), now, Value::Null, None)
+        .unwrap();
+    let legacy = uuid::Uuid::new_v4().to_string();
+    h.begin_csv_export(&legacy, page["snapshot"].as_str().unwrap(), now)
+        .unwrap();
+    assert_eq!(h.exports.len() + h.unified_exports.len(), 2);
+    h.release_request_views().unwrap();
+    assert!(h.exports.is_empty() && h.unified_exports.is_empty());
+    assert!(h.csv_export_chunk(&legacy, -1, now).is_err());
+    assert!(
+        h.request_page(&requests::Query::default(), now, Value::Null, None)
+            .is_ok()
+    );
+}
+
+#[test]
 fn unified_csv_export_reads_full_frozen_selection_not_only_first_page() {
     let (_root, mut h, sessions, query, input, now) = fixture(300);
     let info = h

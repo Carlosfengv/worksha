@@ -198,7 +198,7 @@ try {
   const old = await capture();
   const database = path.join(data, "local-agent.sqlite3");
   const beforeSchema = readCoreSchema(database);
-  assert.equal(beforeSchema.version, 15);
+  assert.equal(beforeSchema.version, 16);
   report.coreSchema = beforeSchema;
   report.legacyResponseBaseline = old;
   report.baselineLatency = await samples("/api/sessions?agent=claude");
@@ -210,7 +210,7 @@ try {
   const check = new DatabaseSync(backup, { readOnly: true });
   assert.equal(check.prepare("PRAGMA quick_check").get().quick_check, "ok");
   check.close();
-  report.cases.push("consistent managed backup and schema-15 inventory");
+  report.cases.push("consistent managed backup and schema-16 inventory");
   await boot(binary);
   assert.equal((await fetch(base + "/api/domain/catalog")).status, 401);
   assert.equal(

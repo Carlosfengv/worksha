@@ -171,7 +171,29 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
     provider_manager
         .bind_legacy_credential_source(&credential_scope)
         .map_err(|e| e.message)?;
-    let readonly = Arc::new(plugin_host::ReadonlyRuntime::builtin()?);
+    let default_profile = if options.persistent {
+        local_agent_core::plugin::builtin::Profile::Background
+    } else {
+        local_agent_core::plugin::builtin::Profile::Desktop
+    };
+    let composition = store.builtin_composition(default_profile)?;
+    let (readonly, source_plugins) =
+        match plugin_host::ReadonlyRuntime::compose(default_profile, &composition.composition) {
+            Ok(composed) => composed,
+            Err(problem) => {
+                let composed = plugin_host::ReadonlyRuntime::compose(
+                    default_profile,
+                    &local_agent_core::plugin::builtin::Composition {
+                        profile: local_agent_core::plugin::builtin::Profile::Recovery,
+                        disabled_plugin_ids: vec![],
+                        removed_plugin_ids: vec![],
+                    },
+                )?;
+                composed.0.configuration()?.problem = Some(problem.code.into());
+                composed
+            }
+        };
+    let readonly = Arc::new(readonly);
     let billing = Arc::new(Mutex::new(billing::Billing::with_sources(
         source_home.clone(),
         &directory,
@@ -182,10 +204,13 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         workbench::Workbench::open(&directory, source_home.clone()).ok()
     };
-    let sessions = Arc::new(plugin_host::sessions(
-        source_home,
-        &store.native_sources()?,
-    )?);
+    let sessions = Arc::new(
+        local_agent_core::sessions::NativeSessions::with_source_plugins(
+            source_home,
+            &store.native_sources()?,
+            source_plugins,
+        ),
+    );
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
     let address = listener.local_addr()?;
     let state = AppState {
@@ -214,6 +239,7 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
             &address.to_string(),
         )?),
     };
+    state.readonly.bind_resources(&state)?;
     let identity = runtime_guard.publish_mode(
         address.port(),
         state.token.as_ref().clone(),
@@ -222,9 +248,9 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     let runtime = runtime::Runtime::new(identity);
     let app = routes::management(state.clone()).merge(runtime.routes(state.clone()));
-    if !options.persistent {
-        tasks::start(&state);
-    }
+    // Installing jobs does not start a disabled collector. A background/recovery
+    // combination can later activate its declared scopes without a UI runtime.
+    tasks::start(&state);
     println!(
         "{}",
         serde_json::json!({"port":address.port(), "version":env!("CARGO_PKG_VERSION")})

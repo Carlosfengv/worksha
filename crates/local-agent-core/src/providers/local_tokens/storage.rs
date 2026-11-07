@@ -92,7 +92,7 @@ fn scope(db: &Connection, store_id: &str, namespace_id: &str) -> Result<Counters
     cancellations::metadata(db, store_id, namespace_id)?;
     Ok(counters)
 }
-pub(super) fn validate_scope(
+pub(crate) fn validate_scope(
     db: &Connection,
     store_id: &str,
     namespace_id: &str,

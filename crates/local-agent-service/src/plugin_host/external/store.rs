@@ -74,30 +74,64 @@ fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
     f.write_all(bytes).checked("unavailable")?;
     f.sync_all().checked("unavailable")
 }
-pub(super) fn validate_version(db: &Connection, table: &str) -> Result<()> {
-    // Callers supply fixed internal names. Inspect before PRAGMAs, schema
-    // creation or recovery writes, so a future version is preserved verbatim.
-    let exists: bool = db
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
-            [table],
-            |r| r.get(0),
-        )
-        .checked("unavailable")?;
-    if exists {
-        let mut stmt = db
-            .prepare(&format!("SELECT version FROM {table} LIMIT 2"))
+/// Fixed host schemas only. Unknown or incomplete repositories are preserved;
+/// initial DDL and its format marker commit atomically, including on SQLITE_FULL.
+pub(super) fn initialize_database(
+    db: &Connection,
+    version_table: &str,
+    version_column: &str,
+    tables: &[&str],
+    ddl: &str,
+) -> Result<()> {
+    let validate = |db: &Connection| -> Result<()> {
+        let mut query = db
+            .prepare(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+            )
             .checked("unavailable")?;
-        let versions = stmt
-            .query_map([], |r| r.get::<_, i64>(0))
+        let names = query
+            .query_map([], |r| r.get::<_, String>(0))
             .checked("unavailable")?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .checked("unavailable")?;
-        if versions.len() > 1 || versions.iter().any(|version| *version != 1) {
+            .collect::<rusqlite::Result<std::collections::BTreeSet<_>>>()
+            .checked("invalid_record")?;
+        if !names.contains(version_table) {
+            return if names.is_empty() {
+                Ok(())
+            } else {
+                Err(fail("invalid_record"))
+            };
+        }
+        let mut query = db
+            .prepare(&format!(
+                "SELECT {version_column} FROM {version_table} LIMIT 2"
+            ))
+            .checked("invalid_record")?;
+        let versions = query
+            .query_map([], |r| r.get::<_, i64>(0))
+            .checked("invalid_record")?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .checked("invalid_record")?;
+        if versions.len() != 1 {
+            return Err(fail("invalid_record"));
+        }
+        if versions[0] != 1 {
             return Err(fail("incompatible_api"));
         }
-    }
-    Ok(())
+        if tables.iter().any(|name| !names.contains(*name)) {
+            return Err(fail("invalid_record"));
+        }
+        Ok(())
+    };
+    // Check before any PRAGMA or recovery writes, then again under the write lock.
+    validate(db)?;
+    db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;")
+        .checked("unavailable")?;
+    let tx = rusqlite::Transaction::new_unchecked(db, rusqlite::TransactionBehavior::Immediate)
+        .checked("unavailable")?;
+    validate(&tx)?;
+    tx.execute_batch(ddl).checked("unavailable")?;
+    validate(&tx)?;
+    tx.commit().checked("unavailable")
 }
 impl Manager {
     pub(crate) fn for_service(data: &Path, vault: Arc<dyn Vault>) -> Self {
@@ -163,8 +197,9 @@ impl Manager {
             return Err(fail("permission_denied"));
         }
         let db = Connection::open(&db_path).checked("unavailable")?;
-        validate_version(&db, "host_version")?;
-        db.execute_batch("PRAGMA journal_mode=WAL;PRAGMA foreign_keys=ON;
+        db.busy_timeout(std::time::Duration::from_millis(250))
+            .checked("unavailable")?;
+        initialize_database(&db, "host_version", "version", &["publishers", "packages", "selections", "private_settings", "provider_presets", "operations", "audit"], "
           CREATE TABLE IF NOT EXISTS host_version(version INTEGER NOT NULL);
           INSERT INTO host_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM host_version);
           CREATE TABLE IF NOT EXISTS publishers(id TEXT PRIMARY KEY, public_key TEXT NOT NULL);
@@ -173,7 +208,7 @@ impl Manager {
           CREATE TABLE IF NOT EXISTS private_settings(digest TEXT PRIMARY KEY,settings TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS provider_presets(plugin_id TEXT NOT NULL,digest TEXT NOT NULL,preset TEXT NOT NULL,provider_id TEXT NOT NULL,PRIMARY KEY(plugin_id,digest,preset));
           CREATE TABLE IF NOT EXISTS operations(id TEXT PRIMARY KEY,digest TEXT NOT NULL,phase TEXT NOT NULL,review TEXT NOT NULL);
-          CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,plugin_id TEXT NOT NULL,digest TEXT NOT NULL,action TEXT NOT NULL,at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);").checked("unavailable")?;
+          CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,plugin_id TEXT NOT NULL,digest TEXT NOT NULL,action TEXT NOT NULL,at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);")?;
         db.execute_batch("CREATE TRIGGER IF NOT EXISTS audit_retention AFTER INSERT ON audit BEGIN DELETE FROM audit WHERE id <= NEW.id-10000; END;
           DELETE FROM operations WHERE phase NOT IN ('inspected','publishing') AND rowid < (SELECT coalesce(max(rowid),0)-256 FROM operations);").checked("unavailable")?;
         let version: u32 = db

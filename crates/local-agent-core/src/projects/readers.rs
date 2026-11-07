@@ -17,33 +17,69 @@ fn descriptor(name: &'static str) -> PluginDescriptor {
         id: name,
         version: "1.0.0",
         provides: vec![key(name)],
-        requires: vec![],
+        requires: if name == "project.assets" {
+            vec![key("project.source")]
+        } else {
+            vec![]
+        },
     }
 }
 macro_rules! builtin {
-    ($type:ident, $name:literal) => {
+    ($type:ident, $name:literal, $label:literal) => {
         struct $type;
         impl BuiltinPlugin for $type {
+            fn display_name(&self) -> String {
+                $label.into()
+            }
             fn descriptor(&self) -> PluginDescriptor {
                 descriptor($name)
             }
             fn prepare(&self) -> Result<PluginResources, PluginError> {
                 Ok(PluginResources::default())
             }
+            fn capability_metadata(
+                &self,
+                _: &CapabilityKey,
+            ) -> crate::plugin::builtin::CapabilityMetadata {
+                crate::plugin::builtin::CapabilityMetadata {
+                    kind: crate::plugin::builtin::CapabilityKind::Query,
+                    resource_scope: crate::plugin::builtin::ResourceScope::Project,
+                }
+            }
         }
     };
 }
-builtin!(SessionProjects, "project.source");
-builtin!(NativeAssets, "project.assets");
-builtin!(NativeGit, "project.git");
-builtin!(NativeListeners, "project.listeners");
+builtin!(SessionProjects, "project.source", "项目目录");
+builtin!(NativeAssets, "project.assets", "项目统计");
+builtin!(NativeGit, "project.git", "Git 读取");
+builtin!(NativeListeners, "project.listeners", "监听观测");
 
 pub struct ProjectReaders {
-    host: PluginHost,
+    host: std::sync::Arc<PluginHost>,
     ports: ports::ProjectPorts,
     queries: std::sync::Mutex<super::query_cache::QueryCache>,
 }
 impl ProjectReaders {
+    pub fn registrations() -> Vec<std::sync::Arc<dyn BuiltinPlugin>> {
+        vec![
+            std::sync::Arc::new(SessionProjects),
+            std::sync::Arc::new(NativeAssets),
+            std::sync::Arc::new(NativeGit),
+            std::sync::Arc::new(NativeListeners),
+        ]
+    }
+    pub fn with_host(host: std::sync::Arc<PluginHost>) -> Self {
+        Self {
+            host,
+            ports: ports::ProjectPorts::default(),
+            queries: Default::default(),
+        }
+    }
+    pub fn clear_cache(&self) {
+        if let Ok(mut cache) = self.queries.lock() {
+            *cache = Default::default();
+        }
+    }
     pub fn domain_capabilities(&self) -> Vec<crate::domain::CapabilityEntry> {
         use crate::domain as d;
         use d::ReadOperation::*;
@@ -121,7 +157,7 @@ impl ProjectReaders {
             &NativeListeners,
         ])?;
         Ok(Self {
-            host,
+            host: std::sync::Arc::new(host),
             ports,
             queries: Default::default(),
         })
@@ -229,7 +265,14 @@ impl ProjectReaders {
         self.host.stop(capability)
     }
     pub fn stop_all(&self) {
-        self.host.stop_all();
+        for id in [
+            "project.source",
+            "project.assets",
+            "project.git",
+            "project.listeners",
+        ] {
+            let _ = self.host.stop(id);
+        }
     }
 }
 

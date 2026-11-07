@@ -15,6 +15,20 @@ pub(super) struct ExportLease {
 }
 
 impl History {
+    /// Release disposable request views and export leases when their consumer
+    /// plugin stops. Persisted request history and user files are retained.
+    pub fn release_request_views(&mut self) -> Result<(), ExportError> {
+        let ids: Vec<_> = self.exports.keys().cloned().collect();
+        for id in ids {
+            self.cancel_csv_export(&id)?;
+        }
+        let ids: Vec<_> = self.unified_exports.keys().cloned().collect();
+        for id in ids {
+            self.cancel_unified_csv_export(&id)?;
+        }
+        self.release_native_snapshots();
+        Ok(())
+    }
     pub fn begin_csv_export(
         &mut self,
         operation: &str,

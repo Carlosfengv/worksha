@@ -79,11 +79,11 @@ try {
   let current = await boot();
   let storeId = (await api(current, "/api/snapshot")).settingsWriteProtocol.storeId;
   let p = await api(current, `/api/provider-credentials/v3/protocol?storeId=${storeId}`);
-  assert.deepEqual(await api(current, "/api/provider-credentials/legacy-policy"), { version: 2, storeId, schemaVersion: 15 });
-  assert.equal(state().version, 15);
-  record("read-only admission policy identifies the actual main store and schema 15 without a credential operation");
+  assert.deepEqual(await api(current, "/api/provider-credentials/legacy-policy"), { version: 2, storeId, schemaVersion: 16 });
+  assert.equal(state().version, 16);
+  record("read-only admission policy identifies the actual main store and schema 16 without a credential operation");
   if (previous) {
-    assert.deepEqual(state(), { ...oldState, version: 15 });
+    assert.deepEqual(state(), { ...oldState, version: 16 });
     assert.equal(p.namespaceId, oldState.scope[0].namespace_id);
     assert.deepEqual(fs.readFileSync(source(oldId)), oldBytes);
     const backup = path.join(data, "local-agent.pre-legacy-admission-v10.sqlite3");
@@ -154,9 +154,9 @@ try {
   record("actual restart with empty MemoryVault preserves SQL admission and cannot claim a ready target or resurrect v1");
   await stop(current.child);
   if (previous) {
-    const rejected = await boot(previous, false); assert.match(rejected, /15|version|版本/i);
+    const rejected = await boot(previous, false); assert.match(rejected, /16|version|版本/i);
     assert.deepEqual(state(), stable); assert(!fs.existsSync(source(id)));
-    record("after all current processes exit, schema 15 rejects the actual schema-10 executable before it can recreate old state");
+    record("after all current processes exit, schema 16 rejects the actual schema-10 executable before it can recreate old state");
   }
   assert.equal(hash(binary), report.binarySha256); if (previous) assert.equal(hash(previous), report.previousBinarySha256);
   report.passed = true;

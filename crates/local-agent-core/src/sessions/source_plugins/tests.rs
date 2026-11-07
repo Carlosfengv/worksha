@@ -10,6 +10,7 @@ enum Phase {
     Read,
     Memory,
     Config,
+    Progress,
 }
 struct PausedSource {
     inner: Arc<dyn ReadOnlySessionSource>,
@@ -50,6 +51,11 @@ impl ReadOnlySessionSource for PausedSource {
     ) -> NativeResult<SourceScan> {
         let result = self.inner.scan(context, previous)?;
         self.pause(Phase::Scan);
+        if self.phase == Phase::Progress {
+            self.pause(Phase::Progress);
+            // Simulate a context check completing just before replacement.
+            (context.progress)(99, 99)?;
+        }
         Ok(result)
     }
     fn conversation(
@@ -119,6 +125,58 @@ fn count(sessions: &NativeSessions) -> usize {
         })
         .unwrap()
         .total
+}
+
+#[test]
+fn a_late_scan_cannot_change_progress_or_cache_after_same_source_reactivation() {
+    let fixture = Fixture::new();
+    let (sessions, entered, resume) = paused(&fixture, Phase::Progress);
+    let worker = std::thread::spawn({
+        let sessions = sessions.clone();
+        move || sessions.refresh()
+    });
+    entered.recv_timeout(Duration::from_secs(10)).unwrap();
+    let host = sessions.builtin_host();
+    let factories: Vec<&dyn BuiltinPlugin> = sessions
+        .source_plugins
+        .sources
+        .values()
+        .map(|source| source.as_ref() as &dyn BuiltinPlugin)
+        .collect();
+    let enabled = factories
+        .iter()
+        .map(|factory| factory.descriptor().id.to_owned())
+        .collect();
+    host.reconfigure(
+        &host.snapshot().unwrap().generation,
+        &factories,
+        &enabled,
+        || Ok(()),
+    )
+    .unwrap();
+    {
+        let mut state = sessions.lock().unwrap();
+        let source = state
+            .sources
+            .iter_mut()
+            .find(|s| s.agent_id == "opencode")
+            .unwrap();
+        source.status = "ready".into();
+        source.scanned_files = 7;
+    }
+    resume.send(()).unwrap();
+    worker.join().unwrap().unwrap();
+    let source = sessions
+        .sources()
+        .unwrap()
+        .into_iter()
+        .find(|s| s.agent_id == "opencode")
+        .unwrap();
+    assert_eq!(source.status, "ready");
+    assert_eq!(source.scanned_files, 7);
+    assert_eq!(count(&sessions), 0);
+    sessions.refresh().unwrap();
+    assert_eq!(count(&sessions), 1);
 }
 
 fn seed_claude(fixture: &Fixture) {

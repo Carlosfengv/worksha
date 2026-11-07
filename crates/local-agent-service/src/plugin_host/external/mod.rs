@@ -4,6 +4,8 @@ pub(crate) mod api;
 mod broker;
 pub(crate) mod catalog;
 mod contributions;
+#[cfg(test)]
+mod database_tests;
 mod diagnostics;
 pub(crate) mod domain;
 mod domain_store;

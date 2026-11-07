@@ -50,7 +50,7 @@ async function refused(executable,data) {
 try {
   let c=await boot(path.join(root,"fresh"));
   let p=await protocol(c);assert.equal(p.version,1);assert.equal(p.operationLimit,4096);assert.equal(p.pendingLimit,4);assert.equal(p.sequence,0);
-  assert.equal(sql(c,db=>db.prepare("PRAGMA user_version").get().user_version),15);
+  assert.equal(sql(c,db=>db.prepare("PRAGMA user_version").get().user_version),16);
   const first=await input(c,"concurrent-model");
   const responses=await Promise.all(Array.from({length:8},()=>submit(c,first)));
   assert.equal(new Set(responses.map(v=>v.provider.credentialRef)).size,1);assert.equal(responses[0].provider.id,"custom-"+first.operation.operationId);
@@ -111,7 +111,7 @@ try {
   const local=await input(c,"restart-local","codex");await submit(c,local,503);await stop(c.child);c=await boot(c.data);assert.equal((await result(c,local)).status,"pending");sql(c,db=>db.exec("DROP TRIGGER ignored_provider"));
   const localSaved=await submit(c,local);assert.equal(localSaved.provider.credentialRef,null);assert.equal(localSaved.provider.id,"custom-"+local.operation.operationId);
   record("an actual service restart preserves the original no-auth import intent and completes it only after explicit continuation");
-  report.mainSchema=15;await stop(c.child);
+  report.mainSchema=16;await stop(c.child);
 
   if(previous) {
     const data=path.join(root,"old-12");const old=await boot(data,previous);const oldSnapshot=await api(old,"/api/snapshot");const storeId=oldSnapshot.settingsWriteProtocol.storeId;
@@ -125,7 +125,7 @@ try {
     const after=sql(upgraded,db=>({scope:db.prepare("SELECT * FROM credential_recovery_scope").all(),values:db.prepare("SELECT domain,name,hex(value) value,value_hash,revision FROM credential_recovery_values ORDER BY domain,name").all(),legacy:db.prepare("SELECT * FROM credential_legacy_scope").all(),providers:db.prepare("SELECT id,value FROM providers ORDER BY id").all()}));assert.deepEqual(after,originalState);assert.equal(sql(upgraded,db=>db.prepare("SELECT count(*) n FROM native_import_operations").get().n),0);
     const backupPath=path.join(data,"local-agent.pre-native-import-v12.sqlite3"),backup=new DatabaseSync(backupPath,{readOnly:true});try{assert.equal(backup.prepare("PRAGMA user_version").get().user_version,12);assert.equal(backup.prepare("PRAGMA quick_check").get().quick_check,"ok")}finally{backup.close()}
     assert.equal(fs.statSync(backupPath).mode&0o777,0o600);await refused(previous,data);await stop(upgraded.child);await refused(previous,data);report.actualPreviousSchema12UpgradeAndReaderBarrier=true;
-    record("the actual signed schema-12 service owns its running lock; upgrade preserves recovery bytes and identity with a private verified backup, and the old writer refuses schema 15 both live and after shutdown");
+    record("the actual signed schema-12 service owns its running lock; upgrade preserves recovery bytes and identity with a private verified backup, and the old writer refuses schema 16 both live and after shutdown");
   }
   report.passed=true;
 } finally {

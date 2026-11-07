@@ -146,9 +146,9 @@ try{
     assert.equal(backup.prepare("PRAGMA user_version").get().user_version,8);assert.equal(backup.prepare("SELECT value FROM providers WHERE id=?").get(seed.id).value,bytes);backup.close();
     assert.equal(fs.statSync(backupPath).mode&0o777,0o600);const backupSha=sha(backupPath);await stop();
     await assert.rejects(()=>start(oldBinary,migration),/isolated service exited/);await stop();
-    assert.equal(dbRead((db)=>db.prepare("PRAGMA user_version").get().user_version),15);assert.equal(value(seed.id),bytes);assert.equal(sha(backupPath),backupSha);
-    report.migration={actualPreviousProcess:true,sourceBinarySha256:sha(oldBinary),sourceSchema:8,targetSchema:15,privateBackupUnchanged:true,downgradeRejected:true};
-    record("a fixed previous binary creates schema 8; schema 15 preserves metadata/identity/private backup and rejects the old reader on downgrade");
+    assert.equal(dbRead((db)=>db.prepare("PRAGMA user_version").get().user_version),16);assert.equal(value(seed.id),bytes);assert.equal(sha(backupPath),backupSha);
+    report.migration={actualPreviousProcess:true,sourceBinarySha256:sha(oldBinary),sourceSchema:8,targetSchema:16,privateBackupUnchanged:true,downgradeRejected:true};
+    record("a fixed previous binary creates schema 8; schema 16 preserves metadata/identity/private backup and rejects the old reader on downgrade");
   }else report.migration={actualPreviousProcess:false,note:"Core tests cover generated v8 migration; set PROVIDER_MIGRATION_SOURCE_BINARY for previous-process upgrade and downgrade evidence."};
   assert.equal(sha(binary),report.binarySha256);report.fakeUpstreamRequests=probes;report.complete=true;
 }finally{
