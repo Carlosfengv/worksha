@@ -192,16 +192,38 @@ test("linked view and export keep explicit source without presenting an additive
     .getByRole("region", { name: "来源与跨源统计", exact: true })
     .boundingBox();
   expect(sourcePanel!.width).toBeGreaterThan(sourceSection!.width * 0.9);
-  await page.getByRole("tab", { name: "已关联请求", exact: true }).click();
+  await page.getByRole("tab", { name: "跨来源精确匹配", exact: true }).click();
   await expect(page.getByText("当前筛选 1 条", { exact: false })).toBeVisible();
   await expect(
     page.getByRole("region", { name: "来源与跨源统计" }),
-  ).toContainText("未关联记录可能重叠，不相加为全部请求");
+  ).toContainText("请求能够打开所属会话时，仍可能缺少用于跨来源匹配的响应 ID");
   await page.getByRole("tab", { name: "原生响应", exact: true }).click();
   await page.getByRole("button", { name: "导出 CSV" }).click();
   await expect(
     page.getByRole("status").filter({ hasText: "已导出" }),
   ).toHaveText("已导出 45 条模型响应记录至 requests.csv");
+});
+
+test("no exact match keeps both underlying request sources accessible", async ({
+  page,
+}) => {
+  await page.goto(
+    "/tests/frontend/requests.html?noExactMatch=1#/requests?range=all&source=linked",
+  );
+  await expect(
+    page.getByText("当前范围没有按响应 ID 精确匹配的记录。", { exact: false }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "查看网关请求" }).click();
+  await expect(page.getByRole("tab", { name: "网关请求" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.getByRole("tab", { name: "跨来源精确匹配" }).click();
+  await page.getByRole("button", { name: "查看原生响应" }).click();
+  await expect(page.getByRole("tab", { name: "原生响应" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
 });
 
 test("heatmap is collapsed by default, supports keyboard day drilldown and preserves source", async ({

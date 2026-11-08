@@ -246,7 +246,7 @@ impl SourceReport {
             native_missing_time: native.iter().filter(|r| time(&r.started_at).is_none() && matches(r, &Query { start: None, end: None, ..q.clone() })).count(),
             source_as_of,
             collectors: sources.into_iter().filter(|s| q.agent.as_deref().is_none_or(|a| directory.family(a).is_none_or(|f| f==s.agent_id))).map(|s| Collector {authorization_revision:s.authorization_revision, agent_id:s.agent_id, enabled:s.enabled, status:s.status, as_of:s.last_scan, last_successful_scan:s.last_successful_scan, error:s.error, skipped_files:s.skipped_files}).collect(),
-            scope: "各来源按当前筛选分别统计，单位为网关逻辑请求 / 原生模型响应记录。明确响应 ID 一对一关联后，在已关联请求视图只使用网关的消费与计时；原生字段保留独立证据，冲突不覆盖。未关联原生可能与网关重叠，不生成两者相加的全部请求或总费用。".into(),
+            scope: "各来源按当前筛选分别统计，单位为网关逻辑请求和原生模型响应记录。跨来源精确匹配按响应 ID 一对一配对，消费与计时采用网关记录，原生字段保留为独立证据。其余原生记录可能与网关重叠，各来源独立计数和计费。".into(),
         }
     }
 }

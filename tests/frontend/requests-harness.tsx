@@ -89,6 +89,9 @@ rows[1].nativeLinks = [
   },
 ];
 function sourceDashboard(query: RequestQuery): RequestDashboard {
+  const linkedRows = new URLSearchParams(location.search).has("noExactMatch")
+    ? []
+    : [rows[1]];
   const availableNative = new URLSearchParams(location.search).has("noConsent")
     ? []
     : nativeRows;
@@ -96,15 +99,15 @@ function sourceDashboard(query: RequestQuery): RequestDashboard {
     query.source === "native"
       ? availableNative
       : query.source === "linked"
-        ? [rows[1]]
+        ? linkedRows
         : rows;
   const result = requestDashboard(query, all);
   const native = requestDashboard(query, availableNative);
   result.sourceReport = {
     gateway: requestDashboard(query, rows).summary,
     native: native.summary,
-    linked: requestDashboard(query, [rows[1]]).summary,
-    matchedNative: 1,
+    linked: requestDashboard(query, linkedRows).summary,
+    matchedNative: linkedRows.length,
     unlinkedNative: 44,
     ambiguousNative: 1,
     usageConflicts: 1,

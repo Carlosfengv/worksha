@@ -189,7 +189,7 @@ export function RequestsPage({
             {nativeView
               ? "原生模型响应"
               : query.source === "linked"
-                ? "已关联请求"
+                ? "跨来源精确匹配"
                 : "网关请求"}
           </p>
           <p className="mt-1 text-label text-fg-muted">
@@ -399,10 +399,20 @@ export function RequestsPage({
               {data.total === 0 && (
                 <div className="space-y-2">
                   <p className="text-body text-fg-muted">
-                    当前范围没有已记录的{unit}
-                    。请调整筛选，并查看来源授权与读取状态。
+                    {query.source === "linked"
+                      ? "当前范围没有按响应 ID 精确匹配的记录。仍可分别查看网关请求和原生响应。"
+                      : `当前范围没有已记录的${unit}。请调整筛选，并查看来源授权与读取状态。`}
                   </p>
                   <div className="flex flex-wrap gap-2">
+                    {query.source === "linked" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => change({ source: "gateway" })}
+                      >
+                        查看网关请求
+                      </Button>
+                    )}
                     {range !== "all" && (
                       <Button
                         size="sm"

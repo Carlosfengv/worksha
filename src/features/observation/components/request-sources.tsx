@@ -44,7 +44,7 @@ export function RequestSources({
         <TabsList aria-label="请求数据来源">
           <TabItem value="gateway" label="网关请求" />
           <TabItem value="native" label="原生响应" />
-          <TabItem value="linked" label="已关联请求" />
+          <TabItem value="linked" label="跨来源精确匹配" />
         </TabsList>
       </Tabs>
       {report && (
@@ -59,10 +59,17 @@ export function RequestSources({
             原生响应 {compactNumber(report.native.requests)}
           </span>
           <span title={number(report.linked.requests)}>
-            已关联 {compactNumber(report.linked.requests)}
+            精确匹配 {compactNumber(report.linked.requests)}
           </span>
           <span>各来源独立统计，不直接相加</span>
         </div>
+      )}
+      {source === "linked" && (
+        <p className="text-label text-fg-muted">
+          按响应 ID
+          匹配网关请求与原生响应。请求能够打开所属会话时，仍可能缺少用于跨来源匹配的响应
+          ID。
+        </p>
       )}
       {report?.collectors.length &&
       !report.collectors.some((c) => c.enabled) ? (
@@ -111,7 +118,7 @@ export function RequestSources({
                       tokens: report.native.usage.totalTokens,
                     },
                     {
-                      label: "明确关联的网关请求",
+                      label: "与原生响应精确匹配的网关请求",
                       value: report.linked.requests,
                       note: `对应 ${report.matchedNative} 条原生响应，消费只计一份`,
                       tokens: report.linked.usage.totalTokens,

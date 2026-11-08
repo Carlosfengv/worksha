@@ -187,7 +187,7 @@ export function RequestDetail({
                     });
                   }}
                 >
-                  打开关联会话
+                  打开所属会话
                 </Button>
               )}
               <Button
@@ -251,12 +251,12 @@ export function RequestDetail({
                     ? `已报告 HTTP ${r.native.failure.httpStatus}`
                     : "HTTP 状态未知"}{" "}
                   · 来源 {r.native.failure.source}
-                  。详细内容按授权在关联会话中查看。
+                  。详细内容按授权在所属会话中查看。
                 </p>
               )}
               {r.native.usageConflict && (
                 <p className="text-label">
-                  网关与原生用量字段冲突，两份证据分别保留；已关联请求采用网关用量。
+                  网关与原生用量字段冲突，两份证据分别保留。跨来源精确匹配统计采用网关用量。
                 </p>
               )}
               {r.native.gatewayRequestId && (
