@@ -2,7 +2,9 @@
 use crate::backend::Backend;
 use local_agent_core::plugin::external::{ActionRequest, InstallRequest, StateRequest, ViewQuery};
 use tauri::Manager;
+use tauri::path::BaseDirectory;
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_opener::OpenerExt;
 
 #[tauri::command]
 pub(crate) async fn get_builtin_plugins(
@@ -74,6 +76,48 @@ pub(crate) async fn inspect_plugin_upload(
             Some(serde_json::json!({"path":path})),
         )
         .await
+}
+
+#[tauri::command]
+pub(crate) async fn inspect_bundled_dsh_package(
+    app: tauri::AppHandle,
+    backend: tauri::State<'_, Backend>,
+) -> Result<serde_json::Value, String> {
+    let path = app
+        .path()
+        .resolve("dsh/dsh-desktop.laplug", BaseDirectory::Resource)
+        .map_err(|_| "无法定位随附的 DSH 来源包")?;
+    if !path.is_file() {
+        return Err("当前应用缺少随附的 DSH 来源包，请重新安装应用。".into());
+    }
+    let review = backend
+        .request(
+            reqwest::Method::POST,
+            "/api/plugins/upload/inspect",
+            Some(serde_json::json!({"path":path})),
+        )
+        .await?;
+    if review["kind"] != "source" || review["review"]["manifest"]["id"] != "net.worksha.dsh-desktop"
+    {
+        return Err("随附的 DSH 来源包与应用声明不符。".into());
+    }
+    Ok(review)
+}
+
+#[tauri::command]
+pub(crate) async fn open_bundled_dsh_bridges(app: tauri::AppHandle) -> Result<(), String> {
+    let path = app
+        .path()
+        .resolve("dsh", BaseDirectory::Resource)
+        .map_err(|_| "无法定位随附的 DSH 桥接")?;
+    if !path.join("bridge/package.json").is_file()
+        || !path.join("connection-bridge/package.json").is_file()
+    {
+        return Err("当前应用缺少随附的 DSH 桥接，请重新安装应用。".into());
+    }
+    app.opener()
+        .open_path(path.to_string_lossy(), None::<&str>)
+        .map_err(|_| "无法打开随附的 DSH 桥接文件夹".into())
 }
 #[tauri::command]
 pub(crate) async fn inspect_plugin_package(

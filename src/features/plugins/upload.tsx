@@ -50,19 +50,24 @@ export function PluginUpload({
   onUploaded,
   disabled = false,
   onBusyChange,
+  offerBundledDsh = false,
+  showDshBridge = false,
 }: {
   storeId?: string;
   onUploaded: (identity: UploadedPluginIdentity) => Promise<void>;
   disabled?: boolean;
   onBusyChange?: (busy: boolean) => void;
+  offerBundledDsh?: boolean;
+  showDshBridge?: boolean;
 }) {
   const [review, setReview] = useState<PluginUploadReview | null>(null);
+  const [bundledReview, setBundledReview] = useState(false);
   const [approve, setApprove] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const gate = useRef(false);
   const reviewEpoch = useRef<symbol | null>(null);
-  const inspect = async () => {
+  const inspect = async (bundled: boolean) => {
     if (gate.current || disabled) return;
     gate.current = true;
     setBusy(true);
@@ -71,10 +76,13 @@ export function PluginUpload({
     setApprove(false);
     try {
       const epoch = backendReadEpoch();
-      const result = await pluginUploadsApi.inspect();
+      const result = bundled
+        ? await pluginUploadsApi.inspectBundledDsh()
+        : await pluginUploadsApi.inspect();
       if (epoch !== backendReadEpoch())
-        throw Error("后台连接或功能状态已变化，请重新上传并核对。");
+        throw Error("后台连接或功能状态已变化，请重新选择插件并核对。");
       reviewEpoch.current = epoch;
+      setBundledReview(bundled);
       setReview(result);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -82,6 +90,14 @@ export function PluginUpload({
       setBusy(false);
       onBusyChange?.(false);
       gate.current = false;
+    }
+  };
+  const openDshBridges = async () => {
+    setError(null);
+    try {
+      await pluginUploadsApi.openDshBridges();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
     }
   };
   const install = async () => {
@@ -163,12 +179,34 @@ export function PluginUpload({
   };
   return (
     <>
-      <Button loading={busy} disabled={disabled} onClick={() => void inspect()}>
+      <Button
+        loading={busy}
+        disabled={disabled}
+        onClick={() => void inspect(false)}
+      >
         上传插件
       </Button>
+      {offerBundledDsh && (
+        <Button
+          variant="tertiary"
+          disabled={busy || disabled}
+          onClick={() => void inspect(true)}
+        >
+          安装随附 DSH
+        </Button>
+      )}
+      {showDshBridge && (
+        <Button
+          variant="tertiary"
+          disabled={busy || disabled}
+          onClick={() => void openDshBridges()}
+        >
+          打开 DSH 桥接文件夹
+        </Button>
+      )}
       {error && (
         <Alert>
-          <AlertTitle>插件上传未完成</AlertTitle>
+          <AlertTitle>插件操作未完成</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
@@ -203,7 +241,7 @@ export function PluginUpload({
                 </p>
               )}
               <p className="break-all text-label text-fg-muted">
-                来源：用户上传
+                来源：{bundledReview ? "随应用提供" : "用户上传"}
                 <br />
                 发布者：{review.review.manifest.publisher}
                 <br />

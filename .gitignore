@@ -29,6 +29,7 @@ prototypes/
 /docs/status.md
 sdk/plugins/examples/*/package/plugin.wasm
 *.laplug
+!src-tauri/resources/dsh-desktop.laplug
 __pycache__/
 *.py[cod]
 *.tsbuildinfo

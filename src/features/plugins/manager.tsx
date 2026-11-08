@@ -43,6 +43,7 @@ import { systemPluginPresentation } from "./scenarios";
 import { systemAgentPlugins, type SystemFeature } from "./system-features";
 import type { StateAction } from "./types";
 import { backendReadEpoch } from "@/shared/lib/backend-recovery";
+import { bundledDshManifest } from "./bundled-dsh";
 import { pluginViewHref } from "./navigation";
 
 type ConfirmationInput = CenterUserState & { action?: StateAction };
@@ -68,6 +69,9 @@ export function PluginManager({
 }) {
   const general = useSharedRead(pluginDirectoryResource);
   const source = useSharedRead(fullPluginDirectoryResource);
+  const hasDsh = source.data?.items.some(
+    (plugin) => plugin.manifest.id === bundledDshManifest.id,
+  );
   const builtinState = useSharedRead(builtinPluginResource);
   const features = [
     ...systemFeatures,
@@ -193,6 +197,8 @@ export function PluginManager({
             onUploaded={uploaded}
             disabled={busy || !!confirmation}
             onBusyChange={setBusy}
+            offerBundledDsh={!!source.data && !source.error && !hasDsh}
+            showDshBridge={initialScene === "agents" || !!hasDsh}
           />
           <Button
             variant="tertiary"
@@ -203,6 +209,12 @@ export function PluginManager({
           </Button>
         </div>
       </div>
+      {initialScene === "agents" && (
+        <p className="text-label text-fg-muted">
+          在 DSH 启用随附的只读桥接后，打开下方的 DSH
+          插件详情，选择并授权导出的会话文件。
+        </p>
+      )}
       <PluginAdmissionRules />
       {general.data?.developmentMode && (
         <p className="text-label text-warning-fg">

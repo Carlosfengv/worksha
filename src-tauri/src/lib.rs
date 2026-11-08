@@ -71,6 +71,8 @@ pub fn run() {
             commands::plugins::get_builtin_plugin_operation,
             commands::plugins::inspect_plugin_package,
             commands::plugins::inspect_plugin_upload,
+            commands::plugins::inspect_bundled_dsh_package,
+            commands::plugins::open_bundled_dsh_bridges,
             commands::plugins::install_plugin_package,
             commands::plugins::change_plugin_state,
             commands::plugins::authorize_plugin_source,

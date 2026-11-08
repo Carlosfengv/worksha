@@ -51,28 +51,40 @@ import providerCatalogStateSchema from "../../../contracts/domain/provider-acces
 import { parseDiagnostics } from "./diagnostics";
 import { parseContributions } from "./contributions";
 import { object, parseContract, parseSchema } from "./contract";
+function parsePluginUploadReview(value: unknown): PluginUploadReview | null {
+  if (value === null) return null;
+  if (
+    !object(value) ||
+    Object.keys(value).some((key) => key !== "kind" && key !== "review")
+  )
+    throw Error("插件准入检查响应无效，请重新上传。");
+  if (value.kind === "plugin")
+    return { kind: "plugin", review: parseContract("review", value.review) };
+  if (value.kind === "source")
+    return {
+      kind: "source",
+      review: parseSchema(fullReviewSchema, value.review),
+    };
+  if (value.kind === "policy")
+    return {
+      kind: "policy",
+      review: parseSchema(policyReviewSchema, value.review),
+    };
+  throw Error("当前应用不支持此插件，请检查插件标准与宿主版本。");
+}
 export const pluginUploadsApi = {
-  async inspect(): Promise<PluginUploadReview | null> {
-    const value = await command<unknown>("inspect_plugin_upload");
-    if (value === null) return null;
-    if (
-      !object(value) ||
-      Object.keys(value).some((key) => key !== "kind" && key !== "review")
-    )
-      throw Error("插件准入检查响应无效，请重新上传。");
-    if (value.kind === "plugin")
-      return { kind: "plugin", review: parseContract("review", value.review) };
-    if (value.kind === "source")
-      return {
-        kind: "source",
-        review: parseSchema(fullReviewSchema, value.review),
-      };
-    if (value.kind === "policy")
-      return {
-        kind: "policy",
-        review: parseSchema(policyReviewSchema, value.review),
-      };
-    throw Error("当前应用不支持此插件，请检查插件标准与宿主版本。");
+  async inspect() {
+    return parsePluginUploadReview(
+      await command<unknown>("inspect_plugin_upload"),
+    );
+  },
+  async inspectBundledDsh() {
+    return parsePluginUploadReview(
+      await command<unknown>("inspect_bundled_dsh_package"),
+    );
+  },
+  async openDshBridges() {
+    await command<void>("open_bundled_dsh_bridges");
   },
 };
 export function parseProviderCatalogState(value: unknown) {

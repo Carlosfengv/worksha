@@ -60,7 +60,9 @@ let plugin: PluginStatus = {
   settings: {},
 };
 let source: SourceStatus = {
-  manifest: (mode === "agent-peers" ? dshSource : rawSource) as Manifest,
+  manifest: (mode === "agent-peers" || mode === "bundled-dsh"
+    ? dshSource
+    : rawSource) as Manifest,
   digest: "c".repeat(64),
   signingKey: "b".repeat(64),
   enabled: false,
@@ -73,6 +75,7 @@ let source: SourceStatus = {
   persistMetadata: false,
   freshness: "unread",
 };
+let sourceInstalled = mode !== "bundled-dsh";
 let policy: PolicyStatus = {
   manifest: rawPolicy as Manifest,
   digest: "d".repeat(64),
@@ -223,7 +226,10 @@ pluginsApi.list = async () => ({
 });
 fullPluginsApi.list = async () => {
   if (mode === "partial") throw Error("此目录读取失败");
-  return { apiVersion: "1.0.0", items: [structuredClone(source)] };
+  return {
+    apiVersion: "1.0.0",
+    items: sourceInstalled ? [structuredClone(source)] : [],
+  };
 };
 modelServicesApi.catalog = async () => ({
   services: [],
@@ -271,6 +277,21 @@ pluginUploadsApi.inspect = async () => {
     },
   };
 };
+pluginUploadsApi.inspectBundledDsh = async () => {
+  calls.push("inspect:bundled-dsh");
+  return {
+    kind: "source",
+    review: {
+      packageRef: "fixture-bundled-dsh",
+      digest: source.digest,
+      manifest: source.manifest,
+      signingKey: source.signingKey!,
+      trustedPublisher: false,
+      compressedBytes: "100",
+      expandedBytes: "200",
+    },
+  };
+};
 pluginsApi.install = async () => {
   calls.push("plugin:install");
   if (mode === "context-changed") notifyBackendRecovery();
@@ -288,6 +309,7 @@ pluginsApi.change = async (input) => {
 };
 fullPluginsApi.install = async () => {
   calls.push("source:install");
+  sourceInstalled = true;
   return structuredClone(source);
 };
 fullPluginsApi.change = async (input) => {

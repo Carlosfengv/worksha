@@ -1,5 +1,7 @@
 {
   "inspect_plugin_upload": [],
+  "inspect_bundled_dsh_package": [],
+  "open_bundled_dsh_bridges": [],
   "cancel_local_token_operation": ["input"],
   "continue_local_token_operation": ["input"],
   "get_local_token_operation": ["input"],

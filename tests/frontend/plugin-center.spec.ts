@@ -65,6 +65,37 @@ test("校验拒绝或用户取消不能触发安装和运行", async ({ page }) 
     expect(await page.evaluate(() => window.centerCalls)).toEqual(["inspect"]);
   }
 });
+test("干净实例从随附包接入 DSH，仍需确认安装并另选会话文件", async ({
+  page,
+}) => {
+  await page.goto("/tests/frontend/plugin-center.html?mode=bundled-dsh");
+  const install = page.getByRole("button", {
+    name: "安装随附 DSH",
+    exact: true,
+  });
+  await install.click();
+  const review = page.getByRole("dialog");
+  await expect(review).toContainText("DSH 桌面端 · 1.2.0");
+  await expect(review).toContainText("来源：随应用提供");
+  await expect(
+    review.getByRole("button", { name: "安装并启用" }),
+  ).toBeDisabled();
+  expect(await page.evaluate(() => window.centerCalls)).toEqual([
+    "inspect:bundled-dsh",
+  ]);
+  await review.getByRole("checkbox").check();
+  await review.getByRole("button", { name: "安装并启用" }).click();
+  await expect(review).toHaveCount(0);
+  await expect(install).toHaveCount(0);
+  const dsh = page.getByRole("row").filter({ hasText: "DSH 桌面端" });
+  await expect(dsh.getByRole("switch")).toBeChecked();
+  await expect(dsh).toContainText("数据文件待配置");
+  expect(await page.evaluate(() => window.centerCalls)).toEqual([
+    "inspect:bundled-dsh",
+    "source:install",
+    "source:enable",
+  ]);
+});
 test("安装成功但启用失败保留事实，不自动重放，不冒充运行中", async ({
   page,
 }) => {

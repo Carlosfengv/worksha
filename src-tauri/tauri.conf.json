@@ -29,6 +29,11 @@
     "active": true,
     "targets": "all",
     "externalBin": ["binaries/local-agent-service"],
+    "resources": {
+      "resources/dsh-desktop.laplug": "dsh/dsh-desktop.laplug",
+      "../sdk/plugins/examples/dsh-desktop/bridge": "dsh/bridge",
+      "../sdk/plugins/examples/dsh-desktop/connection-bridge": "dsh/connection-bridge"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
