@@ -38,6 +38,7 @@ let authorized = params.get("unapproved") !== "1",
 let release: (() => void) | undefined;
 let resourceLabel = "/temporary/reader.jsonl";
 const calls: string[] = [];
+let sessionRevision = 0;
 const queries: UnifiedSessionQuery[] = [];
 const activityQueries: UnifiedActivityQuery[] = [];
 const requestQueries: UnifiedRequestQuery[] = [];
@@ -472,6 +473,12 @@ domainApi.requests = async (query) => {
 domainApi.sessions = async (query) => {
   calls.push("sessions");
   queries.push(structuredClone(query));
+  if (!query.snapshotToken) sessionRevision++;
+  const snapshotToken = params.has("staleBody")
+    ? `fixture-snapshot-${sessionRevision}`
+    : "fixture-snapshot";
+  if (params.get("staleBody") === "revoke" && sessionRevision > 1)
+    authorized = false;
   const externalAvailable =
     authorized && query.scope.sourceIds.includes(source);
   const rows = externalAvailable
@@ -488,7 +495,7 @@ domainApi.sessions = async (query) => {
       Number(query.cursor ?? "0"),
       Number(query.cursor ?? "0") + 40,
     ),
-    snapshotToken: "fixture-snapshot",
+    snapshotToken,
     nextCursor:
       Number(query.cursor ?? "0") + 40 < rows.length
         ? String(Number(query.cursor ?? "0") + 40)
@@ -509,7 +516,7 @@ domainApi.sessions = async (query) => {
       }),
     ),
     appliedFilter: query,
-    summaryRef: "fixture-snapshot",
+    summaryRef: snapshotToken,
     sourceSummaries: externalAvailable
       ? [
           {
@@ -546,6 +553,11 @@ domainApi.sessions = async (query) => {
 };
 domainApi.conversation = async (query) => {
   calls.push("body:" + query.sessionId);
+  if (params.has("staleBody")) {
+    calls.push(`snapshot:${query.snapshotToken}`);
+    if (query.snapshotToken === "fixture-snapshot-1")
+      throw new Error("快照已失效，请重新读取。");
+  }
   const name = query.sessionId.slice(query.sessionId.lastIndexOf(":") + 1);
   const result: UnifiedConversation = {
     sourceId: source,
@@ -578,7 +590,17 @@ domainApi.conversation = async (query) => {
     });
   return result;
 };
-domainApi.factConversation = domainApi.conversation;
+let factRevision = 1;
+domainApi.factConversation = async (query) => {
+  if (params.has("staleFactBody")) {
+    calls.push(`fact-snapshot:${query.snapshotToken}`);
+    if (query.snapshotToken === "facts-1") {
+      factRevision++;
+      throw new Error("快照已失效，请重新读取。");
+    }
+  }
+  return domainApi.conversation(query);
+};
 domainApi.consent = async (input) => {
   calls.push("attempt:" + input.reviewRef);
   if (input.reviewRef !== `review-${revision}`)
@@ -686,7 +708,7 @@ domainApi.facts = async (query: FactQuery) => {
   );
   return {
     items: rows.slice(offset, offset + 40),
-    snapshotToken: `facts-${revision}`,
+    snapshotToken: `facts-${revision + factRevision - 1}`,
     nextCursor: offset + 40 < rows.length ? String(offset + 40) : null,
     asOf: factIdentity.observedAt,
     sourceStates: [

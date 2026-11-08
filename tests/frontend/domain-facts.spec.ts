@@ -32,6 +32,42 @@ for (const [mode, label] of [
   });
 }
 
+test("fact detail retries stale body in the same session selection", async ({
+  page,
+}) => {
+  await page.goto(
+    "/tests/frontend/domain-readonly.html?unified=1&staleFactBody=1",
+  );
+  await page
+    .getByRole("button", { name: "查看项目与响应事实", exact: true })
+    .click();
+  await page.getByRole("row").filter({ hasText: "Reported workspace" }).click();
+  await page.getByRole("button", { name: "查看项目会话" }).click();
+  await page.getByRole("row").filter({ hasText: "Alpha" }).click();
+  await page.getByRole("button", { name: "按当前授权读取此会话正文" }).click();
+  await expect(page.getByText("快照已失效，请重新读取。")).toBeVisible();
+  await page.getByRole("button", { name: "重试读取正文" }).click();
+  await expect(page.getByRole("heading", { name: "Alpha" })).toBeVisible();
+  await expect(
+    page.getByText("Alpha private body", { exact: true }),
+  ).toBeVisible();
+  const evidence = await page.evaluate(() => ({
+    snapshots: window.domainFixture.calls.filter((call) =>
+      call.startsWith("fact-snapshot:"),
+    ),
+    query: window.domainFixture.factQueries.at(-1),
+  }));
+  expect(evidence.snapshots).toEqual([
+    "fact-snapshot:facts-1",
+    "fact-snapshot:facts-2",
+  ]);
+  expect(evidence.query).toMatchObject({
+    kind: "session",
+    sessionId: "org.example.reader:Alpha",
+    snapshotToken: null,
+  });
+});
+
 test("fact graph navigation, summary units and explicit body at minimum width", async ({
   page,
 }) => {

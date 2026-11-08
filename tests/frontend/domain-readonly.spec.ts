@@ -106,6 +106,50 @@ test("late body results cannot replace another selected session", async ({
     page.getByText("Alpha private body", { exact: true }),
   ).toHaveCount(0);
 });
+
+test("retry obtains a new snapshot and retains a session beyond the first page", async ({
+  page,
+}) => {
+  await page.goto(
+    "/tests/frontend/domain-readonly.html?unified=1&many=1&staleBody=1",
+  );
+  await page.getByRole("button", { name: "下一页会话" }).click();
+  await page.getByRole("row").filter({ hasText: "Paged-040" }).click();
+  await expect(page.getByText("快照已失效，请重新读取。")).toBeVisible();
+  await page.getByRole("button", { name: "重试读取正文" }).click();
+  await expect(page.getByRole("heading", { name: "Paged-040" })).toBeVisible();
+  await expect(page.getByText("Paged-040 private body")).toBeVisible();
+  const evidence = await page.evaluate(() => ({
+    calls: window.domainFixture.calls,
+    queries: window.domainFixture.queries,
+  }));
+  expect(evidence.calls.filter((call) => call.startsWith("snapshot:"))).toEqual(
+    ["snapshot:fixture-snapshot-1", "snapshot:fixture-snapshot-2"],
+  );
+  expect(evidence.queries.at(-1)).toMatchObject({
+    snapshotToken: null,
+    cursor: null,
+  });
+});
+
+test("retry does not reuse session details when the refreshed scope is revoked", async ({
+  page,
+}) => {
+  await page.goto(
+    "/tests/frontend/domain-readonly.html?unified=1&staleBody=revoke",
+  );
+  await page.getByRole("row").filter({ hasText: "Alpha" }).click();
+  await page.getByRole("button", { name: "重试读取正文" }).click();
+  await expect(
+    page.getByText("当前快照中无法读取原会话", { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Alpha" })).toHaveCount(0);
+  expect(
+    (await page.evaluate(() => window.domainFixture.calls)).filter((call) =>
+      call.startsWith("snapshot:"),
+    ),
+  ).toEqual(["snapshot:fixture-snapshot-1"]);
+});
 test("withdrawing unified authorization clears visible rows and body immediately", async ({
   page,
 }) => {

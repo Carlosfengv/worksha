@@ -411,6 +411,7 @@ function FactPane({
               key={rowIdentity(active)}
               record={active}
               scope={scope}
+              selection={selection}
               snapshotToken={page?.snapshotToken ?? ""}
               navigate={navigate}
               onChanged={reset}
@@ -428,12 +429,14 @@ function FactPane({
 function FactDetail({
   record,
   scope,
+  selection,
   snapshotToken,
   navigate,
   onChanged,
 }: {
   record: FactRecord;
   scope: QueryScope;
+  selection: Selection;
   snapshotToken: string;
   navigate: (selection: Selection) => void;
   onChanged: () => void;
@@ -564,7 +567,12 @@ function FactDetail({
         ))}
       </div>
       {fact.kind === "session" && (
-        <FactSessionBody record={record} snapshotToken={snapshotToken} />
+        <FactSessionBody
+          record={record}
+          scope={scope}
+          selection={selection}
+          snapshotToken={snapshotToken}
+        />
       )}
       {(fact.kind === "project" || fact.kind === "session") && (
         <ObjectContributionSlots
@@ -631,25 +639,56 @@ function ProjectVisibilityButton({
 }
 function FactSessionBody({
   record,
+  scope,
+  selection,
   snapshotToken,
 }: {
   record: FactRecord;
+  scope: QueryScope;
+  selection: Selection;
   snapshotToken: string;
 }) {
   const [requested, setRequested] = useState(false);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const [retry, setRetry] = useState<{
+    token?: string;
+    loading?: boolean;
+    error?: string;
+  }>({});
   const body = useSharedQuery(
     factConversationResource,
     {
       sessionId: record.id,
-      snapshotToken,
+      snapshotToken: retry.token ?? snapshotToken,
       cursor: cursors[cursors.length - 1],
       anchor: null,
     },
-    requested,
+    requested && !retry.loading && !retry.error,
   );
   const conversation =
     body.loading || body.error ? null : body.data?.conversation;
+  const error = retry.error ?? body.error;
+  const refresh = async () => {
+    setRetry({ loading: true });
+    try {
+      const page = await domainApi.facts({
+        ...selection,
+        scope,
+        kind: "session",
+        sessionId: record.id,
+        snapshotToken: null,
+        cursor: null,
+      });
+      if (!page.items.some((item) => rowIdentity(item) === rowIdentity(record)))
+        throw new Error("当前快照中无法读取原会话。");
+      setCursors([null]);
+      setRetry({ token: page.snapshotToken });
+    } catch (reason) {
+      setRetry({
+        error: reason instanceof Error ? reason.message : String(reason),
+      });
+    }
+  };
   return (
     <section className="space-y-3" aria-label="事实会话正文">
       <Button
@@ -660,10 +699,17 @@ function FactSessionBody({
       >
         按当前授权读取此会话正文
       </Button>
-      {body.loading && requested && (
+      {(retry.loading || body.loading) && requested && (
         <p role="status">正在核查会话并读取正文…</p>
       )}
-      {body.error && <p role="alert">{body.error}。请重新查询事实范围。</p>}
+      {error && (
+        <div className="space-y-2">
+          <p role="alert">{error}</p>
+          <Button variant="tertiary" size="sm" onClick={() => void refresh()}>
+            重试读取正文
+          </Button>
+        </div>
+      )}
       {conversation?.events.map((event) => (
         <div key={event.id} className="space-y-1 border-b border-border py-2">
           <p className="text-fg-muted">{event.role}</p>

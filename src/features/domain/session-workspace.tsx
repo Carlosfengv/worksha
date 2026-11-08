@@ -245,6 +245,7 @@ function UnifiedPane({
     { snapshotToken: string | null; cursor: string | null }[]
   >([{ snapshotToken: null, cursor: null }]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [retryItem, setRetryItem] = useState<SessionItem | null>(null);
   const [facts, setFacts] = useState<{ sessionId: string | null } | null>(null);
   const [activity, setActivity] = useState<{ sessionId: string | null } | null>(
     null,
@@ -253,14 +254,38 @@ function UnifiedPane({
     null,
   );
   const current = trail[trail.length - 1];
-  const resource = useSharedQuery(unifiedSessionsResource, {
+  const parameters = {
     scope,
     filter: { query: search || null, productId, days: null },
-    ...current,
+  };
+  const head = useSharedQuery(unifiedSessionsResource, {
+    ...parameters,
+    snapshotToken: null,
+    cursor: null,
   });
+  const paged = useSharedQuery(
+    unifiedSessionsResource,
+    { ...parameters, ...current },
+    current.snapshotToken !== null,
+  );
+  const resource = current.snapshotToken === null ? head : paged;
   const page = resource.error || resource.loading ? null : resource.data;
   const rows = useMemo(() => page?.items ?? [], [page]);
-  const active = rows.find((r) => r.record.id === selected);
+  const listed = rows.find((r) => r.record.id === selected);
+  // The same session can be outside the new first page. The conversation
+  // endpoint checks membership in the refreshed scope before returning text.
+  const active =
+    listed ??
+    (page?.nextCursor &&
+    retryItem?.record.id === selected &&
+    page.sourceStates.some(
+      (s) =>
+        s.sourceId === retryItem.sourceId &&
+        s.authorization === "authorized" &&
+        s.coverage !== "unavailable",
+    )
+      ? retryItem
+      : null);
   const columns = useMemo(() => columnsFor(names), [names]);
   const { table } = useDataTable({
     data: rows,
@@ -273,10 +298,11 @@ function UnifiedPane({
     enableRowSelection: false,
     enableHiding: false,
   });
-  const reset = () => {
+  const refresh = (item: SessionItem | null = null) => {
     setTrail([{ snapshotToken: null, cursor: null }]);
-    setSelected(null);
-    void resource.invalidate();
+    setSelected(item?.record.id ?? null);
+    setRetryItem(item);
+    void head.invalidate();
   };
   if (requests)
     return (
@@ -331,7 +357,7 @@ function UnifiedPane({
       {resource.error && (
         <div role="alert" className="shrink-0 space-y-2 p-3 text-label">
           <p>{resource.error}</p>
-          <Button variant="tertiary" onClick={reset}>
+          <Button variant="tertiary" onClick={() => refresh(retryItem)}>
             重新查询当前范围
           </Button>
         </div>
@@ -349,7 +375,10 @@ function UnifiedPane({
                 : "当前范围尚无可读会话"
             }
             activeRowId={active?.record.id}
-            onRowActivate={(row) => setSelected(row.original.record.id)}
+            onRowActivate={(row) => {
+              setRetryItem(null);
+              setSelected(row.original.record.id);
+            }}
             className="min-h-0 flex-1"
           />
           <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border p-2">
@@ -360,6 +389,7 @@ function UnifiedPane({
               onClick={() => {
                 setTrail((old) => old.slice(0, -1));
                 setSelected(null);
+                setRetryItem(null);
               }}
             >
               上一页会话
@@ -382,12 +412,13 @@ function UnifiedPane({
                     },
                   ]);
                   setSelected(null);
+                  setRetryItem(null);
                 }
               }}
             >
               下一页会话
             </Button>
-            <Button variant="tertiary" size="sm" onClick={reset}>
+            <Button variant="tertiary" size="sm" onClick={() => refresh()}>
               重新查询
             </Button>
             <Button
@@ -429,10 +460,18 @@ function UnifiedPane({
             scope={scope}
             snapshotToken={page.snapshotToken}
             sourceName={names[active.sourceId] ?? active.sourceId}
+            onRetry={() => refresh(active)}
           />
         ) : (
-          <p className="p-4 text-body text-fg-muted">
-            选择会话后按需读取正文。
+          <p
+            className="p-4 text-body text-fg-muted"
+            role={retryItem ? "status" : undefined}
+          >
+            {retryItem
+              ? resource.loading
+                ? "正在刷新会话快照…"
+                : "当前快照中无法读取原会话，请检查来源状态或重新选择会话。"
+              : "选择会话后按需读取正文。"}
           </p>
         )}
       </div>
@@ -468,11 +507,13 @@ function UnifiedBody({
   scope,
   snapshotToken,
   sourceName,
+  onRetry,
 }: {
   item: SessionItem;
   scope: QueryScope;
   snapshotToken: string;
   sourceName: string;
+  onRetry: () => void;
 }) {
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const resource = useSharedQuery(unifiedConversationResource, {
@@ -541,10 +582,7 @@ function UnifiedBody({
         {resource.error ? (
           <div role="alert" className="space-y-2">
             <p>{resource.error}</p>
-            <Button
-              variant="tertiary"
-              onClick={() => void resource.invalidate()}
-            >
+            <Button variant="tertiary" onClick={onRetry}>
               重试读取正文
             </Button>
           </div>
