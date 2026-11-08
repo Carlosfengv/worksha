@@ -69,10 +69,12 @@ export function UnifiedWorkspace({
   initialSource,
   initialProduct,
   defaultAll = false,
+  manageHref = "#/plugins",
 }: {
   initialSource?: string;
   initialProduct?: string;
   defaultAll?: boolean;
+  manageHref?: string;
 }) {
   const directory = useSharedRead(domainDirectoryResource);
   const epoch = useBackendReadEpoch();
@@ -200,7 +202,7 @@ export function UnifiedWorkspace({
             重读目录
           </Button>
           <Button asChild variant="tertiary" size="sm">
-            <a href="#/plugins">管理授权</a>
+            <a href={manageHref}>管理授权</a>
           </Button>
         </div>
         {directory.loading && !directory.data && (

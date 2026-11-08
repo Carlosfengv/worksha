@@ -29,10 +29,12 @@ export function PublishedSources({
   mode,
   sourceId,
   productId,
+  manageHref = "#/plugins?scene=agents",
 }: {
   mode: SourceView;
   sourceId?: string;
   productId?: string;
+  manageHref?: string;
 }) {
   const { agentProducts } = useAgentDirectory();
   const eligible = useMemo(
@@ -60,7 +62,7 @@ export function PublishedSources({
   if (directory.error)
     return (
       <Alert status="warning">
-        <AlertTitle>其他 Agent 来源暂不可读取</AlertTitle>
+        <AlertTitle>Agent 来源暂不可读取</AlertTitle>
         <AlertDescription>{directory.error}</AlertDescription>
       </Alert>
     );
@@ -88,12 +90,12 @@ export function PublishedSources({
   const title = {
     sessions: "已连接 Agent 的会话",
     requests: "已连接 Agent 的响应",
-    activity: "其他 Agent 的活动记录",
+    activity: "Agent 的活动记录",
     projects: "已连接 Agent 的项目",
     mcp: "已连接 Agent 的工具记录",
   }[mode];
   const close = () => {
-    window.location.hash = "/plugins?scene=agents";
+    window.location.hash = manageHref;
   };
   return (
     <section aria-label={title} className="space-y-3">
@@ -115,6 +117,7 @@ export function PublishedSources({
           <UnifiedWorkspace
             initialSource={sourceId}
             initialProduct={productId}
+            manageHref={manageHref}
           />
         ) : mode === "requests" ? (
           <RequestWorkspace

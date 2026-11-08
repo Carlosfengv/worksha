@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable, useDataTable } from "@/components/ui/data-table";
+import { useIcon } from "@/lib/icon-context";
 import { connectionView } from "@/features/agents/connection-display";
 import { activationLabel } from "@/features/providers/components/provider-activation-status";
 import { ProviderConfigControl } from "@/features/providers/components/provider-config-control";
@@ -15,9 +16,12 @@ import { sourceLabel } from "@/features/sessions/display";
 import { useSharedRead } from "@/shared/hooks/use-shared-read";
 import { providerStatusResource } from "@/features/providers/queries";
 import { modelServicesResource } from "@/features/model-services/queries";
+import { fullPluginDirectoryResource } from "@/features/plugins/queries";
 import type { AgentDiscovery } from "@/shared/types/agent";
+import type { Status as SourcePackage } from "../../../../contracts/plugins/sources/types";
 import { sourceStatus } from "../source-status";
 import { PluginAgentConnection } from "./plugin-agent-connection";
+import { agentDetailHref } from "./agent-detail-layout";
 
 const agentLogos: Record<string, string> = {
   claude: "/agent-logos/claude.png",
@@ -26,6 +30,7 @@ const agentLogos: Record<string, string> = {
 };
 type AgentRow = {
   agent: AgentDiscovery;
+  sourcePackage?: SourcePackage;
   data: Snapshot;
   status: ProviderStatus | null;
   checking: boolean;
@@ -44,8 +49,9 @@ const columns: ColumnDef<AgentRow>[] = [
     id: "agent",
     header: "Agent",
     size: 640,
-    cell: ({ row: { original: item } }) => {
+    cell: function AgentCell({ row: { original: item } }) {
       const { agent, data, status } = item;
+      const AgentIcon = useIcon("brain");
       const source = data.sessionSources.find(
         (s) => s.agentId === agent.family,
       );
@@ -62,7 +68,7 @@ const columns: ColumnDef<AgentRow>[] = [
       )?.version;
       return (
         <div className="flex min-w-64 items-center gap-3 py-2 whitespace-normal">
-          {agentLogos[agent.family] && (
+          {agentLogos[agent.family] ? (
             <img
               src={agentLogos[agent.family]}
               alt=""
@@ -71,6 +77,13 @@ const columns: ColumnDef<AgentRow>[] = [
               draggable={false}
               className="size-8 shrink-0 object-contain"
             />
+          ) : (
+            <span
+              aria-hidden
+              className="grid size-8 shrink-0 place-items-center text-fg-muted"
+            >
+              <AgentIcon size={20} />
+            </span>
           )}
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -81,12 +94,16 @@ const columns: ColumnDef<AgentRow>[] = [
             </div>
             <p
               className="text-label text-fg-muted"
-              title={[connection.description, source?.error]
-                .filter(Boolean)
-                .join(" · ")}
+              title={
+                !agent.sourceId
+                  ? [connection.description, source?.error]
+                      .filter(Boolean)
+                      .join(" · ")
+                  : undefined
+              }
             >
-              {agent.readonly ? (
-                sourceStatus(agent)
+              {agent.readonly || agent.sourceId ? (
+                sourceStatus(agent, item.sourcePackage)
               ) : (
                 <>
                   {connection.label} · {connection.title} ·{" "}
@@ -109,7 +126,16 @@ const columns: ColumnDef<AgentRow>[] = [
     size: 264,
     header: () => <span className="block text-right">模型连接</span>,
     cell: ({ row: { original: item } }) =>
-      item.agent.readonly && !item.agent.connectionAdapter ? (
+      item.agent.sourceId && !item.agent.found ? (
+        <div className="flex justify-end">
+          <Button asChild variant="tertiary" size="sm">
+            <a href={agentDetailHref(item.agent.id, "connection")}>
+              连接与观测<span className="sr-only"> {item.agent.name}</span>
+            </a>
+          </Button>
+        </div>
+      ) : (item.agent.readonly || item.agent.sourceId) &&
+        !item.agent.connectionAdapter ? (
         <span className="block text-right text-label text-fg-muted">
           仅观测
         </span>
@@ -155,7 +181,7 @@ const columns: ColumnDef<AgentRow>[] = [
       },
     }) => (
       <Button variant="tertiary" size="sm" asChild>
-        <a href={`#/agents/${encodeURIComponent(agent.id)}`}>
+        <a href={agentDetailHref(agent.id)}>
           详情<span className="sr-only"> {agent.name}</span>
         </a>
       </Button>
@@ -165,6 +191,8 @@ const columns: ColumnDef<AgentRow>[] = [
 
 function AgentTable({
   data,
+  agents,
+  sourcePackages,
   status,
   checking,
   unavailable,
@@ -172,11 +200,17 @@ function AgentTable({
   servicesUnavailable,
   reloadServices,
   onSelect,
-}: Omit<AgentRow, "agent">) {
+}: Omit<AgentRow, "agent" | "sourcePackage"> & {
+  agents: AgentDiscovery[];
+  sourcePackages?: SourcePackage[];
+}) {
   const rows = useMemo(
     () =>
-      data.agents.map((agent) => ({
+      agents.map((agent) => ({
         agent,
+        sourcePackage: sourcePackages?.find(
+          (item) => item.enabled && item.manifest.id === agent.pluginId,
+        ),
         data,
         status,
         checking,
@@ -187,6 +221,8 @@ function AgentTable({
         onSelect,
       })),
     [
+      agents,
+      sourcePackages,
       data,
       status,
       checking,
@@ -213,15 +249,25 @@ function AgentTable({
       aria-label="Agent 列表"
       emptyMessage="尚未发现 Agent"
       onRowActivate={(row) => {
-        window.location.hash = `/agents/${encodeURIComponent(row.original.agent.id)}`;
+        window.location.hash = agentDetailHref(row.original.agent.id);
       }}
     />
   );
 }
 
-export function AgentList({ data }: { data: Snapshot }) {
+export function AgentList({
+  data,
+  agents = data.agents,
+}: {
+  data: Snapshot;
+  agents?: AgentDiscovery[];
+}) {
   const status = useSharedRead(providerStatusResource);
   const services = useSharedRead(modelServicesResource);
+  const sources = useSharedRead(
+    fullPluginDirectoryResource,
+    agents.some((agent) => agent.found && !!agent.sourceId),
+  );
   const reloadProviderStatus = status.invalidate;
   const reloadServiceCatalog = services.invalidate;
   const reloadServices = useCallback(() => {
@@ -235,6 +281,8 @@ export function AgentList({ data }: { data: Snapshot }) {
   ) => (
     <AgentTable
       data={data}
+      agents={agents}
+      sourcePackages={sources.error ? undefined : sources.data?.items}
       status={status.data}
       checking={status.loading || busy}
       unavailable={!!status.error}
@@ -251,7 +299,7 @@ export function AgentList({ data }: { data: Snapshot }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-body text-fg-muted">
-          {data.agents.length} 个 Agent · 查看连接与观测
+          {agents.length} 个 Agent · 查看连接与观测
         </p>
         <Button
           variant="tertiary"

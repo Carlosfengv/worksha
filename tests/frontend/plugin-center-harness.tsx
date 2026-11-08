@@ -1,5 +1,14 @@
 import { createRoot } from "react-dom/client";
+import { useEffect, useState } from "react";
 import { IconProvider } from "@/lib/icon-context";
+import type { Snapshot } from "@/app/types";
+import { AgentsPage } from "@/features/agents/page";
+import { bundledDshAgent } from "@/features/agents/bundled-source";
+import { agentConnectionApi } from "@/features/agents/api";
+import { domainApi } from "@/features/domain/api";
+import { sessionsApi } from "@/features/sessions/api";
+import { AgentDirectoryProvider } from "@/shared/hooks/use-agent-directory";
+import { agentProducts, type AgentDiscovery } from "@/shared/types/agent";
 import { systemFeatureCatalog } from "@/features/plugins/system-features";
 import { PluginManager } from "@/features/plugins/manager";
 import { createProjectsPlugin } from "@/features/projects/plugin";
@@ -34,6 +43,7 @@ import type {
 import "@/styles/globals.css";
 import { notifyBackendRecovery } from "@/shared/lib/backend-recovery";
 const mode = new URLSearchParams(location.search).get("mode") ?? "plugin";
+const agentParity = mode === "agent-parity" || mode === "agent-parity-versions";
 const projectsPlugin = createProjectsPlugin(() => null);
 const storeId = emptyBuiltinCatalog.storeId;
 const calls: string[] = [];
@@ -60,7 +70,7 @@ let plugin: PluginStatus = {
   settings: {},
 };
 let source: SourceStatus = {
-  manifest: (mode === "agent-peers" || mode === "bundled-dsh"
+  manifest: (mode === "agent-peers" || mode === "bundled-dsh" || agentParity
     ? dshSource
     : rawSource) as Manifest,
   digest: "c".repeat(64),
@@ -75,7 +85,7 @@ let source: SourceStatus = {
   persistMetadata: false,
   freshness: "unread",
 };
-let sourceInstalled = mode !== "bundled-dsh";
+let sourceInstalled = mode !== "bundled-dsh" && mode !== "agent-parity";
 let policy: PolicyStatus = {
   manifest: rawPolicy as Manifest,
   digest: "d".repeat(64),
@@ -228,7 +238,20 @@ fullPluginsApi.list = async () => {
   if (mode === "partial") throw Error("此目录读取失败");
   return {
     apiVersion: "1.0.0",
-    items: sourceInstalled ? [structuredClone(source)] : [],
+    items: sourceInstalled
+      ? [
+          structuredClone(source),
+          ...(mode === "agent-parity-versions"
+            ? [
+                {
+                  ...structuredClone(source),
+                  digest: "e".repeat(64),
+                  manifest: { ...source.manifest, version: "1.1.0" },
+                },
+              ]
+            : []),
+        ]
+      : [],
   };
 };
 modelServicesApi.catalog = async () => ({
@@ -333,45 +356,128 @@ routingPolicyApi.perform = async (input): Promise<Reply> => {
   return { kind: "package", status: structuredClone(policy) };
 };
 pluginsApi.extensionHistory = async () => ({ plans: [], unknownPlanIds: [] });
+if (agentParity) {
+  providersApi.providerStatus = async () => ({
+    configs: [],
+    transactions: [],
+    backupProtection: "fixture",
+    verifications: [],
+    runtimes: [],
+  });
+  agentConnectionApi.status = async () => ({ state: "authorization-required" });
+  sessionsApi.sessions = async () => ({
+    items: [],
+    total: 0,
+    nextCursor: null,
+    summary: null,
+    asOf: "2026-11-08T00:00:00Z",
+    coverage: "not_connected",
+    missingCounts: 0,
+  });
+  domainApi.authorizeSource = async ({ pluginId, digest }) => {
+    if (
+      pluginId !== source.manifest.id ||
+      digest !== source.digest ||
+      !source.runtimeActive
+    )
+      throw Error("错误的来源授权目标");
+    calls.push("source:authorize-file");
+    source = {
+      ...source,
+      sourceAuthorized: true,
+      sourceLabel: "fixture.jsonl",
+    };
+  };
+}
+
+function AgentParity() {
+  const [hash, setHash] = useState(location.hash);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const update = () => setHash(location.hash);
+    window.addEventListener("hashchange", update);
+    return () => window.removeEventListener("hashchange", update);
+  }, []);
+  const [path, search] = hash.split("?");
+  const encodedId = path.split("/")[2];
+  const agents: AgentDiscovery[] = agentProducts.slice(-1).map((agent) => ({
+    ...agent,
+    found: true,
+    connected: false,
+    location: null,
+  }));
+  if (revision && source.runtimeActive)
+    agents.push({
+      ...bundledDshAgent,
+      found: true,
+      connected: source.unifiedAuthorized,
+      connectionAdapter: "agent.connection@1",
+    });
+  const data: Snapshot = {
+    agents,
+    providers: [],
+    sessionSources: [],
+    observationBindings: [],
+    version: "fixture",
+    databasePath: "/fixture/data",
+    gatewayStatus: "not_configured",
+    settings: { captureContent: false, retentionDays: 30 },
+  };
+  return (
+    <AgentDirectoryProvider products={agents}>
+      <AgentsPage
+        data={data}
+        selectedId={encodedId ? decodeURIComponent(encodedId) : undefined}
+        selectedTab={new URLSearchParams(search).get("tab") ?? undefined}
+        refresh={async () => setRevision((value) => value + 1)}
+      />
+    </AgentDirectoryProvider>
+  );
+}
+
 createRoot(document.getElementById("root")!).render(
   <IconProvider>
     <main className="p-4">
-      <PluginManager
-        providers={[]}
-        systemFeatures={systemFeatureCatalog(
-          [
-            ...projectsPlugin.pages.map((page) => ({
-              id: projectsPlugin.id,
-              page: page.id,
-              name: page.label,
-              details: page.systemFeature,
-            })),
-            {
-              id: "builtin.model-services",
-              page: "model-services",
-              name: "模型服务",
-            },
-            ...(mode === "dependencies" ||
-            mode === "active-task" ||
-            mode === "recovery"
-              ? [
-                  {
-                    id: "builtin.providers",
-                    page: "providers",
-                    name: "Providers",
-                  },
-                  { id: "builtin.agents", page: "agents", name: "Agents" },
-                  {
-                    id: "builtin.sessions",
-                    page: "sessions",
-                    name: "Sessions",
-                  },
-                ]
-              : []),
-          ],
-          "1.0.0",
-        )}
-      />
+      {agentParity ? (
+        <AgentParity />
+      ) : (
+        <PluginManager
+          providers={[]}
+          systemFeatures={systemFeatureCatalog(
+            [
+              ...projectsPlugin.pages.map((page) => ({
+                id: projectsPlugin.id,
+                page: page.id,
+                name: page.label,
+                details: page.systemFeature,
+              })),
+              {
+                id: "builtin.model-services",
+                page: "model-services",
+                name: "模型服务",
+              },
+              ...(mode === "dependencies" ||
+              mode === "active-task" ||
+              mode === "recovery"
+                ? [
+                    {
+                      id: "builtin.providers",
+                      page: "providers",
+                      name: "Providers",
+                    },
+                    { id: "builtin.agents", page: "agents", name: "Agents" },
+                    {
+                      id: "builtin.sessions",
+                      page: "sessions",
+                      name: "Sessions",
+                    },
+                  ]
+                : []),
+            ],
+            "1.0.0",
+          )}
+        />
+      )}
     </main>
   </IconProvider>,
 );

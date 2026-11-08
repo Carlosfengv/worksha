@@ -25,11 +25,15 @@ test("上传来源与系统 Agent 共用列表，详情只展示已声明能力"
   await expect(row).toContainText("仅观测");
   await row.getByRole("link", { name: "详情 DeepSeek Harness 桌面端" }).click();
   const tabs = page.getByRole("tablist", { name: "Agent 详情" });
-  await expect(tabs.getByRole("tab")).toHaveCount(2);
+  await expect(tabs.getByRole("tab")).toHaveCount(3);
+  await expect(tabs.getByRole("tab", { name: "概览" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(tabs.getByRole("tab", { name: "Sessions" })).toBeVisible();
   await tabs.getByRole("tab", { name: "连接与观测" }).click();
   await expect(
-    page.getByRole("link", { name: "管理 Agent 接入" }),
+    page.getByRole("link", { name: "管理来源插件" }),
   ).toHaveAttribute("href", "#/plugins?scene=agents");
 });
 

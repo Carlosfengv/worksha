@@ -1,6 +1,7 @@
 import type { Snapshot } from "@/app/types";
 import { AgentList } from "@/features/agents/components/agent-list";
 import { ConnectionEmpty } from "@/shared/ui/connection-empty";
+import { bundledDshAgent } from "./bundled-source";
 import { AgentDetail } from "./components/agent-detail";
 import { SourceAgentDetail } from "./components/source-agent-detail";
 
@@ -23,10 +24,13 @@ export function AgentsPage({
         icon="brain"
       />
     );
+  const agents = data.agents.some((agent) => agent.id === bundledDshAgent.id)
+    ? data.agents
+    : [...data.agents, bundledDshAgent];
   const selected =
-    data.agents.find((agent) => agent.id === selectedId) ??
-    data.agents.find((agent) => agent.configId === selectedId) ??
-    data.agents.find((agent) => agent.family === selectedId);
+    agents.find((agent) => agent.id === selectedId) ??
+    agents.find((agent) => agent.configId === selectedId) ??
+    agents.find((agent) => agent.family === selectedId);
   if (selectedId && !selected)
     return (
       <ConnectionEmpty
@@ -45,6 +49,7 @@ export function AgentsPage({
         agent={selected}
         tab={selectedTab}
         providers={data.providers}
+        refresh={refresh}
       />
     );
   if (selected)
@@ -58,5 +63,5 @@ export function AgentsPage({
         data={data}
       />
     );
-  return <AgentList data={data} />;
+  return <AgentList data={data} agents={agents} />;
 }

@@ -96,6 +96,91 @@ test("干净实例从随附包接入 DSH，仍需确认安装并另选会话文�
     "source:enable",
   ]);
 });
+test("DSH 和原生 Agent 共用列表和详情，安装及授权在自身连接页完成", async ({
+  page,
+}) => {
+  await page.goto("/tests/frontend/plugin-center.html?mode=agent-parity");
+  const table = page
+    .getByLabel("Agent 列表", { exact: true })
+    .getByRole("table");
+  const openCode = table.getByRole("row").filter({ hasText: "OpenCode" });
+  await expect(openCode).toHaveCount(1);
+  await openCode.getByRole("link", { name: "详情 OpenCode" }).click();
+  await expect(page.getByRole("tab", { name: "概览" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("tab", { name: "调用" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Sessions" })).toBeVisible();
+  await page.getByRole("link", { name: "返回 Agents" }).click();
+  const dsh = table
+    .getByRole("row")
+    .filter({ hasText: "DeepSeek Harness 桌面端" });
+  await expect(dsh).toContainText("待接入");
+  await dsh.getByRole("link", { name: "详情 DeepSeek Harness 桌面端" }).click();
+  const overview = page.getByRole("tab", { name: "概览" });
+  await expect(overview).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "调用" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Sessions" })).toBeVisible();
+  const connection = page.getByRole("tab", { name: "连接与观测" });
+  await connection.click();
+  await page.getByRole("button", { name: "安装随附 DSH" }).click();
+  const review = page.getByRole("dialog");
+  await expect(
+    review.getByRole("button", { name: "安装并启用" }),
+  ).toBeDisabled();
+  await review.getByRole("checkbox").check();
+  await review.getByRole("button", { name: "安装并启用" }).click();
+  await expect(page.getByText("来源文件：未授权")).toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "DeepSeek Harness 桌面端 模型连接" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "读取会话数据" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "选择数据文件" }).click();
+  await expect(page.getByText("来源文件：fixture.jsonl")).toBeVisible();
+  await expect(page.getByLabel("连接方式与采集范围")).toContainText(
+    "已授权读取 · 待授权统一展示",
+  );
+  await expect(
+    page.getByRole("button", { name: "读取会话数据" }),
+  ).toBeEnabled();
+  await expect(page).toHaveURL(
+    /#\/agents\/net\.worksha\.dsh-desktop%3Adesktop\?tab=connection$/,
+  );
+  await page.getByRole("link", { name: "返回 Agents" }).click();
+  await expect(dsh).toHaveCount(1);
+  await expect(dsh).toContainText("待授权统一展示");
+  expect(await page.evaluate(() => window.centerCalls)).toEqual([
+    "inspect:bundled-dsh",
+    "source:install",
+    "source:enable",
+    "source:authorize-file",
+  ]);
+});
+test("DSH 已安装多个停用版本时在插件中心选择要启用的版本", async ({ page }) => {
+  await page.goto(
+    "/tests/frontend/plugin-center.html?mode=agent-parity-versions",
+  );
+  await page
+    .getByRole("link", { name: "详情 DeepSeek Harness 桌面端" })
+    .click();
+  await page.getByRole("tab", { name: "连接与观测" }).click();
+  await expect(
+    page.getByText("选择要启用的版本", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "管理来源插件" }),
+  ).toHaveAttribute("href", "#/plugins?scene=agents");
+  await expect(page.getByRole("button", { name: "安装随附 DSH" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("button", { name: "启用会话来源" })).toHaveCount(
+    0,
+  );
+  expect(await page.evaluate(() => window.centerCalls)).toEqual([]);
+});
 test("安装成功但启用失败保留事实，不自动重放，不冒充运行中", async ({
   page,
 }) => {

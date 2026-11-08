@@ -2,9 +2,9 @@
 
 本例包含 DSH 侧的只读桥接包和 Local Agent 侧的签名来源包。DSH 侧锁定桌面端 `0.2.2-rc.1`，由 DSH 自己加载。它使用官方 Session Controller 的 `list` 和 `events`，不读取内部文件或凭据，不创建、恢复、驱动 Agent 或调用模型。
 
-1. 按 [DSH 桥接包说明](bridge/README.md) 安装并启用 `bridge`。DSH 开始发布 `~/.local/share/local-agent/dsh-desktop/facts.jsonl`。需要重启时，正常退出并重新打开 DSH，保留原会话。
-2. 运行 `pnpm prepare:plugins`，按 [SDK](../../README.md) 签名并打包本目录的 `package`，在 Local Agent 插件中心上传、检查发布者并启用。
-3. 在插件详情选择桥接输出的 JSONL，核对定期读取提示。初次发布后确认“统一会话展示”。随后在总览、Agents、Sessions、请求、项目和 MCP 中查看数据，无须为各页重复授权。
+1. 在 Local Agent 的 Agents 列表打开「DeepSeek Harness 桌面端」。在「连接与观测」选择「安装随附 DSH」，核对发布者与权限后确认安装。已安装的来源可在同一页启用。
+2. 选择「打开 DSH 桥接文件夹」，按随附的 [DSH 桥接包说明](bridge/README.md) 在 DSH 安装并启用 `bridge`。DSH 开始发布 `~/.local/share/local-agent/dsh-desktop/facts.jsonl`。需要重启时，正常退出并重新打开 DSH，保留原会话。
+3. 在「连接与观测」选择桥接输出的 JSONL，核对定期读取提示。初次发布后确认「统一会话展示」。随后在 Agent 概览、Sessions、调用、项目和 MCP 中查看数据，无须为各页重复授权。
 4. 可另行安装 [`source-report`](../source-report/package/contributions.json) 样例。启用后从左侧打开报表，授权调用指定会话来源，再手动读取汇总。
 
 桥接每 5 秒发布一个完整的快照，使用首尾代次和记录数校验防止半写覆盖旧数据。目录和文件限当前用户访问。会话历史只读取最近 40 条消息窗口；旧格式、缺失历史或读取失败的会话保留目录元数据，正文和未取得的用量保持未知。运行状态来自 DSH 的快照；超过 20 秒未发布后活动过期，原有历史保留。报告响应、宿主请求与实时采样保持各自口径。

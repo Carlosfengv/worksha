@@ -17,6 +17,9 @@ import {
 } from "@/features/agents/api";
 import { modelServicesApi } from "@/features/model-services/api";
 import { defaultCapabilities } from "@/features/model-services/types";
+import { fullPluginsApi } from "@/features/plugins/api";
+import { bundledDshManifest } from "@/features/plugins/bundled-dsh";
+import type { Manifest } from "../../../../contracts/plugins/sources/types";
 import { fixtureProvider } from "./data";
 
 export const applicationTableModes = new Set([
@@ -42,6 +45,25 @@ export function installTableFixtures() {
       ? { id: "org.example.agent", name: "Example Agent" }
       : { id: "net.worksha.dsh-desktop", name: "DeepSeek Harness 桌面端" };
     const id = `${plugin.id}:desktop`;
+    fullPluginsApi.list = async () => ({
+      apiVersion: "1.0.0",
+      items: [
+        {
+          manifest: { ...bundledDshManifest, id: plugin.id } as Manifest,
+          digest: "c".repeat(64),
+          signingKey: "b".repeat(64),
+          enabled: true,
+          runtimeActive: true,
+          publisherTrusted: true,
+          activationEpoch: "1",
+          grantRevision: "0",
+          sourceAuthorized: false,
+          unifiedAuthorized: false,
+          persistMetadata: false,
+          freshness: "unread",
+        },
+      ],
+    });
     const connection = context.params.has("connectionAdapter");
     if (connection) {
       const original = {

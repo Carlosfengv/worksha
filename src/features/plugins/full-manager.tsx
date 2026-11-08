@@ -14,10 +14,9 @@ import {
 import { useSharedRead } from "@/shared/hooks/use-shared-read";
 import { useTablePagination } from "@/shared/hooks/use-table-pagination";
 import { dataTablePagination } from "@/shared/ui/data-table-labels";
-import { DomainConsentControls } from "@/features/domain/consent-controls";
-import { domainApi } from "@/features/domain/api";
 import { domainDirectoryResource } from "@/features/domain/queries";
 import { fullPluginsApi } from "./api";
+import { SourceAccessControls } from "./source-access-controls";
 import {
   fullPluginDirectoryResource,
   pluginDirectoryResource,
@@ -222,45 +221,13 @@ export function FullPluginManager({
                 {actions[action]}
               </Button>
             ))}
-            <Button
-              variant="tertiary"
-              disabled={busy || !current.runtimeActive}
-              onClick={() =>
-                void run(() =>
-                  domainApi.authorizeSource({
-                    pluginId: current.manifest.id,
-                    digest: current.digest,
-                  }),
-                )
-              }
-            >
-              选择数据文件
-            </Button>
-            <Button
-              variant="tertiary"
-              disabled={busy || !current.sourceAuthorized}
-              onClick={() =>
-                void run(() =>
-                  domainApi.refreshSource({
-                    pluginId: current.manifest.id,
-                    digest: current.digest,
-                  }),
-                )
-              }
-            >
-              读取插件数据
-            </Button>
           </div>
-          {current.runtimeActive && current.manifest.source && (
-            <DomainConsentControls
-              key={`${current.digest}:${current.grantRevision}`}
-              pluginId={current.manifest.id}
-              digest={current.digest}
-              sourceId={`${current.manifest.id}:${current.manifest.source.id}`}
-              fullFacts
-              onChanged={() => void resource.invalidate()}
-            />
-          )}
+          <SourceAccessControls
+            status={current}
+            busy={busy}
+            run={run}
+            onConsentChanged={() => void resource.invalidate()}
+          />
           {current.manifest.capabilities.includes("agent.connection@1") && (
             <p className="text-label text-fg-muted">
               模型连接需要另行授权。可在 Agents

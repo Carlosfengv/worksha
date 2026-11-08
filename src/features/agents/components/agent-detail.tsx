@@ -1,5 +1,3 @@
-import { PluginDetailSlots } from "@/features/plugins/detail-slots";
-import { ObjectContributionSlots } from "@/features/plugins/object-detail-slots";
 import { AssociatedCostsView } from "@/shared/ui/associated-costs";
 import type { Snapshot } from "@/app/types";
 import { Button } from "@/components/ui/button";
@@ -9,7 +7,7 @@ import {
   DetailListLabel,
   DetailListValue,
 } from "@/components/ui/detail-list";
-import { TabItem, TabPanel, Tabs, TabsList } from "@/components/ui/tabs";
+import { TabPanel } from "@/components/ui/tabs";
 import { AccountQuota } from "@/features/accounts/components/account-quota";
 import { AgentConnectionStatus } from "@/features/agents/components/agent-connection-status";
 import { AgentModelUsage } from "@/features/agents/components/agent-model-usage";
@@ -36,6 +34,21 @@ import { ConnectionEmpty } from "@/shared/ui/connection-empty";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AgentCalls } from "./agent-calls";
 import { AgentMemory } from "./agent-memory";
+import {
+  AgentDetailLayout,
+  agentDetailHref,
+  agentDetailTabs,
+  Stat,
+} from "./agent-detail-layout";
+
+const tabs = [
+  agentDetailTabs.overview,
+  agentDetailTabs.calls,
+  agentDetailTabs.sessions,
+  { id: "memory", label: "记忆" },
+  { id: "quota", label: "用量与额度" },
+  agentDetailTabs.connection,
+];
 
 export function AgentDetail({
   agent,
@@ -91,13 +104,7 @@ export function AgentDetail({
       : recent?.key === queryKey && recent.epoch === epoch
         ? recent.items
         : [];
-  const value =
-    tab &&
-    ["overview", "calls", "sessions", "memory", "quota", "connection"].includes(
-      tab,
-    )
-      ? tab
-      : "overview";
+  const value = tabs.find(({ id }) => id === tab)?.id ?? "overview";
   const openSession = (session: NativeSession) => {
     window.location.hash = sessionLink(session.id, {
       agent: agent.id,
@@ -114,50 +121,17 @@ export function AgentDetail({
   );
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-heading font-medium">{agent.name}</h2>
-          <p className="mt-1 text-body text-fg-muted">{sourceLabel(source)}</p>
-        </div>
-        {canConfigure && <ProviderActivationStatus agentId={agent.configId} />}
-        {value !== "connection" && (
-          <Button
-            variant="neutral"
-            size="sm"
-            onClick={() => {
-              window.location.hash = `/agents/${agent.id}?tab=connection`;
-            }}
-          >
-            {canConfigure ? "模型连接" : "连接与观测"}
-          </Button>
-        )}
-        <Button
-          variant="tertiary"
-          size="sm"
-          onClick={() => {
-            window.location.hash = "/agents";
-          }}
-        >
-          返回 Agents
-        </Button>
-      </div>
-      <AgentConnectionStatus agentId={agent.id} data={data} />
-      <Tabs
+      <AgentDetailLayout
+        agent={agent}
+        description={sourceLabel(source)}
+        tabs={tabs}
         value={value}
-        onValueChange={(next) => {
-          window.location.hash = `/agents/${agent.id}?tab=${next}`;
-        }}
-        variant="underline"
-        color="default"
+        canConfigure={canConfigure}
+        activation={
+          canConfigure && <ProviderActivationStatus agentId={agent.configId} />
+        }
+        status={<AgentConnectionStatus agentId={agent.id} data={data} />}
       >
-        <TabsList aria-label="Agent 详情">
-          <TabItem value="overview" label="概览" />
-          <TabItem value="calls" label="调用" />
-          <TabItem value="sessions" label="Sessions" />
-          <TabItem value="memory" label="记忆" />
-          <TabItem value="quota" label="用量与额度" />
-          <TabItem value="connection" label="连接与观测" />
-        </TabsList>
         <TabPanel value="overview" className="pt-4">
           {source?.enabled ? (
             <div className="space-y-4">
@@ -206,7 +180,7 @@ export function AgentDetail({
               description="在连接与观测中确认只读来源，查看完整对话、工具和原生用量。"
               action="连接与观测"
               onAction={() => {
-                window.location.hash = `/agents/${agent.id}?tab=connection`;
+                window.location.hash = agentDetailHref(agent.id, "connection");
               }}
             />
           )}
@@ -386,9 +360,7 @@ export function AgentDetail({
             ))}
           </div>
         </TabPanel>
-      </Tabs>
-      <PluginDetailSlots target="agent" objectId={agent.id} />
-      <ObjectContributionSlots object={{ target: "agent", id: agent.id }} />
+      </AgentDetailLayout>
       {sessions.error && (
         <div role="alert" className="space-y-2 text-body text-fg-muted">
           <p>{sessions.error}</p>
@@ -401,15 +373,6 @@ export function AgentDetail({
           </Button>
         </div>
       )}
-    </div>
-  );
-}
-
-export function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-border p-4">
-      <dt className="text-label text-fg-muted">{label}</dt>
-      <dd className="mt-2 text-heading font-medium">{value}</dd>
     </div>
   );
 }

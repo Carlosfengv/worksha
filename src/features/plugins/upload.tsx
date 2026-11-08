@@ -52,6 +52,7 @@ export function PluginUpload({
   onBusyChange,
   offerBundledDsh = false,
   showDshBridge = false,
+  hideFileUpload = false,
 }: {
   storeId?: string;
   onUploaded: (identity: UploadedPluginIdentity) => Promise<void>;
@@ -59,6 +60,7 @@ export function PluginUpload({
   onBusyChange?: (busy: boolean) => void;
   offerBundledDsh?: boolean;
   showDshBridge?: boolean;
+  hideFileUpload?: boolean;
 }) {
   const [review, setReview] = useState<PluginUploadReview | null>(null);
   const [bundledReview, setBundledReview] = useState(false);
@@ -179,13 +181,15 @@ export function PluginUpload({
   };
   return (
     <>
-      <Button
-        loading={busy}
-        disabled={disabled}
-        onClick={() => void inspect(false)}
-      >
-        上传插件
-      </Button>
+      {!hideFileUpload && (
+        <Button
+          loading={busy}
+          disabled={disabled}
+          onClick={() => void inspect(false)}
+        >
+          上传插件
+        </Button>
+      )}
       {offerBundledDsh && (
         <Button
           variant="tertiary"

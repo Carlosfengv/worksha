@@ -22,7 +22,7 @@ test("Agent source state distinguishes partial transcripts from read failure wit
   }
 });
 
-test("five independent Agent rows navigate to their own details and shared Codex scope", async ({
+test("native Agent rows navigate to their own details alongside bundled DSH", async ({
   page,
 }) => {
   await page.goto("/tests/frontend/tables.html?mode=agents#/agents");
@@ -44,7 +44,10 @@ test("five independent Agent rows navigate to their own details and shared Codex
     await expect(
       page.getByRole("heading", { name, exact: true }),
     ).toBeVisible();
-  await expect(page.getByRole("link", { name: /^详情 / })).toHaveCount(5);
+  await expect(page.getByRole("link", { name: /^详情 / })).toHaveCount(6);
+  await expect(
+    page.getByRole("link", { name: "详情 DeepSeek Harness 桌面端" }),
+  ).toBeVisible();
   for (let i = 0; i < ids.length; i++) {
     await page
       .getByRole("link", { name: /^详情 / })
@@ -60,9 +63,7 @@ test("five independent Agent rows navigate to their own details and shared Codex
     ).toBeVisible();
     if (ids[i].startsWith("codex-"))
       await expect(page.getByText(/CLI 与桌面共用 Codex 配置/)).toBeVisible();
-    await page
-      .getByRole("button", { name: "返回 Agents", exact: true })
-      .click();
+    await page.getByRole("link", { name: "返回 Agents", exact: true }).click();
   }
 });
 import type {} from "./tables-harness";
