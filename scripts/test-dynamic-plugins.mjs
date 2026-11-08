@@ -27,9 +27,11 @@ async function api(route, body, status = 200) {
   const value = await r.json(); assert.equal(r.status, status, route + ": " + JSON.stringify(value)); return value;
 }
 const sourceId = "net.worksha.dsh-desktop:desktop", productId = sourceId;
+const secondSourceId = "org.example.full-history:history";
+const secondProductId = "org.example.full-history:terminal";
 const query = { scope: { kind: "external", sourceIds: [sourceId] }, filter: { query: null, productId: null, days: null }, snapshotToken: null, cursor: null };
 const history = path.join(root, "history.jsonl");
-const rows = (count) => Array.from({ length: count }, (_, i) => ({ fact: { kind: "session", value: { nativeId: "s" + i, productIds: [productId], unknownClient: false, title: "Owned fixture " + i, createdAt: null, updatedAt: null, projectRef: null, usage: { inputTokens: "15", outputTokens: "4", cachedInputTokens: null, cacheWriteInputTokens: null, reasoningOutputTokens: null, totalTokens: "19" }, partial: true } }, conversation: [{ id: "m0", nativeId: "m0", turnId: "t0", kind: "message", role: "user", status: "recorded", text: "Snapshot " + count, input: null, output: null, model: null, responseId: null, usage: null }] }));
+const rows = (count, product = productId) => Array.from({ length: count }, (_, i) => ({ fact: { kind: "session", value: { nativeId: "s" + i, productIds: [product], unknownClient: false, title: "Owned fixture " + i, createdAt: null, updatedAt: null, projectRef: null, usage: { inputTokens: "15", outputTokens: "4", cachedInputTokens: null, cacheWriteInputTokens: null, reasoningOutputTokens: null, totalTokens: "19" }, partial: true } }, conversation: [{ id: "m0", nativeId: "m0", turnId: "t0", kind: "message", role: "user", status: "recorded", text: "Snapshot " + count, input: null, output: null, model: null, responseId: null, usage: null }] }));
 const writeRows = (count, torn = false) => {
   const records = rows(count);
   records.push({ fact: { kind: "activity", value: { nativeId: "a1", sessionRef: "s0", responseRef: null, occurredAt: new Date().toISOString(), phase: "running", durationMs: null } } });
@@ -45,14 +47,21 @@ try {
     const file = path.join(folder, "manifest.json");
     const manifest = JSON.parse(fs.readFileSync(file));
     manifest.views.push({ ...manifest.views[0], id: "unbound", title: "No source binding" });
+    manifest.views.push({ ...manifest.views[0], id: "second", title: "Second source" });
     fs.writeFileSync(file, JSON.stringify(manifest));
+    const declaration = path.join(folder, "contributions.json");
+    const contributions = JSON.parse(fs.readFileSync(declaration));
+    contributions.dataQueries.push({ ...contributions.dataQueries[0], viewId: "second", sourceId: secondSourceId });
+    fs.writeFileSync(declaration, JSON.stringify(contributions));
   });
   const inspect = await api("/api/plugins/inspect", { path: reportFile });
   const installed = await api("/api/plugins/install", { packageRef: inspect.packageRef, digest: inspect.digest, approvePublisher: true });
   const consumer = { pluginId: installed.manifest.id, digest: installed.digest };
   await api("/api/plugins/state", { ...consumer, action: "enable" });
-  const view = () => api("/api/plugins/view", { pluginId: consumer.pluginId, viewId: "sessions", cursor: null });
-  const refresh = (status = 200) => api("/api/plugins/action", { ...consumer, action: { kind: "refresh" } }, status);
+  const view = (viewId = "sessions", status = 200) =>
+    api("/api/plugins/view", { pluginId: consumer.pluginId, viewId, cursor: null }, status);
+  const refresh = (status = 200, viewId = "sessions") =>
+    api("/api/plugins/action", { ...consumer, action: { kind: "refresh", viewId } }, status);
   const authorize = () => api("/api/plugins/action", { ...consumer, action: { kind: "authorize-report" } });
   assert.equal((await refresh(403)).code, "permission_denied");
   await authorize(); assert.equal((await refresh(400)).code, "dependency_missing");
@@ -79,7 +88,14 @@ try {
   const consent = await api("/api/domain/consent-review", source);
   await api("/api/domain/consent", { ...source, enabled: true, persistMetadata: false, reviewRef: consent.reviewRef });
   await refresh(); let reportView = await view(); assert.equal(reportView.report.sources[0].sessions, "1"); assert.equal(reportView.report.sources[0].totalTokens, "19");
-  const unbound = await api("/api/plugins/view", { pluginId: consumer.pluginId, viewId: "unbound", cursor: null });
+  assert.equal((await refresh(400, "second")).code, "dependency_missing");
+  assert.equal((await view("second")).snapshot, null);
+  assert.equal((await view()).snapshot, reportView.snapshot);
+  await api("/api/plugins/action", { ...consumer, action: { kind: "refresh" } });
+  reportView = await view();
+  assert.equal(reportView.report.sources[0].sessions, "1");
+  pass("来源缺失只影响绑定视图，旧刷新请求也能发布其他可用视图");
+  const unbound = await view("unbound");
   assert.equal(unbound.report, null);
   assert.equal(unbound.confirmedEmpty, false);
   assert.equal(unbound.needsRefresh, true);
@@ -87,6 +103,21 @@ try {
   pass("消费者授权与来源授权独立；报表真实调用另一插件的会话能力并得到精确计数");
   const snapshot = await api("/api/snapshot"); assert.equal(snapshot.agents.length, initial.agents.length + 1); assert(snapshot.agents.some((p) => p.id === productId && p.readonly && p.sourceId === sourceId && p.capabilities.includes("domain.activity-source@1")));
   assert.deepEqual(snapshot.agents.filter((p) => !p.readonly), initial.agents);
+  const secondReview = await api("/api/plugin-sources/inspect", { path: pack("full-history") });
+  await api("/api/plugin-sources/install", { packageRef: secondReview.packageRef, digest: secondReview.digest, approvePublisher: true, expectedSigningKey: secondReview.signingKey });
+  const secondSource = { pluginId: "org.example.full-history", digest: secondReview.digest };
+  const secondHistory = path.join(root, "second.jsonl");
+  fs.writeFileSync(secondHistory, rows(3, secondProductId).map((row) => JSON.stringify(row)).join("\n") + "\n");
+  await api("/api/plugin-sources/state", { package: secondSource, action: "enable" });
+  await api("/api/plugin-sources/source", { package: secondSource, path: secondHistory });
+  await api("/api/plugin-sources/refresh", secondSource);
+  const secondConsent = await api("/api/domain/consent-review", secondSource);
+  await api("/api/domain/consent", { ...secondSource, enabled: true, persistMetadata: false, reviewRef: secondConsent.reviewRef });
+  await refresh(200, "second");
+  const secondView = await view("second");
+  assert.deepEqual(secondView.report.sources.map((s) => [s.sourceId, s.sessions]), [[secondSourceId, "3"]]);
+  assert.notEqual(secondView.snapshot, reportView.snapshot);
+  assert.equal((await view()).snapshot, reportView.snapshot);
   const activity = () => api("/api/domain/activity", { scope: query.scope, rangeSeconds: 3600, productId, sessionId: null, includeGateway: false, includeHistorical: false });
   const current = (await activity()).items[0]; assert.equal(current.state, "current"); assert.equal(current.kind, "source-event"); assert.equal(current.measurements, null);
   writeRows(2);
@@ -102,10 +133,15 @@ try {
   assert.equal((await api("/api/domain/sessions", query)).items.length, 2);
   writeRows(2); await api("/api/plugin-sources/refresh", source);
   await refresh(); assert.equal((await view()).report.sources[0].sessions, "2");
+  assert.equal((await view("second")).snapshot, secondView.snapshot);
   pass("新 Agent 自动进入主目录；定期来源读取发布变化，原客户端目录保持");
   await api("/api/domain/consent", { ...source, enabled: false, persistMetadata: false, reviewRef: "" });
-  await api("/api/plugins/view", { pluginId: consumer.pluginId, viewId: "sessions", cursor: null }, 403); await refresh(403);
-  pass("来源撤权后旧报表不可继续读取，不复用消费者的旧授权");
+  await view("sessions", 403); await refresh(403);
+  assert.equal((await view("second")).snapshot, secondView.snapshot);
+  await refresh(200, "second");
+  assert.notEqual((await view("second")).snapshot, secondView.snapshot);
+  await view("sessions", 403);
+  pass("报表快照按视图独立更新，一方来源撤权后另一方仍可读取和刷新");
   const renewed = await api("/api/domain/consent-review", source);
   await api("/api/domain/consent", { ...source, enabled: true, persistMetadata: false, reviewRef: renewed.reviewRef });
   await api("/api/plugins/view", { pluginId: consumer.pluginId, viewId: "sessions", cursor: null }, 409);
@@ -113,7 +149,7 @@ try {
   pass("来源重新授权不会复活旧报表，需重新调用能力");
   fs.utimesSync(history, (Date.now() - 60000) / 1000, (Date.now() - 60000) / 1000);
   assert.equal((await activity()).items[0].state, "expired");
-  assert.equal((await api("/api/plugin-sources")).items[0].problem, "source_stalled");
+  assert.equal((await api("/api/plugin-sources")).items.find((item) => item.digest === source.digest).problem, "source_stalled");
   pass("来源停止发布后实时状态过期，保留已读数据；损坏快照不能覆盖完整结果");
   await api("/api/plugin-sources/state", { package: source, action: "disable" }); writeRows(3);
   await assertSourceVisible(false);

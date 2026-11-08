@@ -236,11 +236,11 @@ impl Manager {
             items: records,
         }
     }
-    pub(super) fn view_contributions(
+    pub(super) fn require_view_dependencies(
         &self,
         bundle: &package::Package,
         view: &str,
-    ) -> Result<Option<Contributions>> {
+    ) -> Result<()> {
         let declaration = parse(&bundle.manifest, &bundle.files)?;
         if let Some(c) = &declaration
             && c.optional_dependencies
@@ -253,6 +253,6 @@ impl Manager {
         {
             return Err(fail("dependency_missing"));
         }
-        Ok(declaration)
+        Ok(())
     }
 }

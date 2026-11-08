@@ -88,6 +88,7 @@
     "test:plugin-stability": "node scripts/test-plugin-stability.mjs",
     "test:history-consistency": "node --test scripts/lib/history-consistency.test.mjs scripts/lib/history-writer.test.mjs",
     "test:plugin-contributions": "node scripts/test-plugin-contributions.mjs",
+    "test:dynamic-plugins": "node scripts/test-dynamic-plugins.mjs",
     "test:routing-policy": "cargo build --locked -p local-agent-service && node scripts/test-routing-policy.mjs",
     "prepare:policy-fixtures": "node scripts/prepare-policy-fixtures.mjs",
     "test:external-routing-policy": "node scripts/test-external-routing-policy.mjs"

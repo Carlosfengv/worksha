@@ -168,7 +168,11 @@ pub struct ActionRequest {
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum PublicAction {
     AuthorizeReport,
-    Refresh,
+    #[serde(rename_all = "camelCase")]
+    Refresh {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        view_id: Option<String>,
+    },
     #[serde(rename_all = "camelCase")]
     ReadSession {
         session_id: String,

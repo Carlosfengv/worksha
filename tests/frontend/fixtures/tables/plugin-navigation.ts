@@ -12,6 +12,7 @@ declare global {
     holdNavigationFixtureRead: () => void;
     releaseNavigationFixtureRead: () => void;
     navigationFixtureReads: number;
+    navigationFixtureRefreshView: string | null;
   }
 }
 export function installPluginNavigation() {
@@ -22,6 +23,7 @@ export function installPluginNavigation() {
   let held: Promise<void> | undefined;
   let releaseHeld: (() => void) | undefined;
   window.navigationFixtureReads = 0;
+  window.navigationFixtureRefreshView = null;
   const status = (): PluginStatus => ({
     manifest,
     digest,
@@ -87,6 +89,11 @@ export function installPluginNavigation() {
     if (pending) await pending;
     if (!granted) throw new Error("报表来源授权已撤销");
     return report();
+  };
+  pluginsApi.action = async ({ action }) => {
+    if (action.kind !== "refresh") throw new Error("unexpected action");
+    window.navigationFixtureRefreshView = action.viewId ?? null;
+    return { refreshed: true };
   };
   window.holdNavigationFixtureRead = () => {
     held = new Promise<void>((resolve) => {

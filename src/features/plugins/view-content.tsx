@@ -223,7 +223,10 @@ function LegacyPluginViewContent({
       await pluginsApi.action({
         pluginId: status.manifest.id,
         digest: status.digest,
-        action: { kind: "refresh" },
+        action:
+          view?.kind === "report"
+            ? { kind: "refresh", viewId }
+            : { kind: "refresh" },
       });
       changed();
     });

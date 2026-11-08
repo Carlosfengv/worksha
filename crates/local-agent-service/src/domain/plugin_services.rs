@@ -7,9 +7,12 @@ use crate::{
 };
 use local_agent_core::{
     domain as d,
-    plugin::external::{GatewayReport, SourceReport, Status},
+    plugin::{
+        contributions::DataQuery,
+        external::{GatewayReport, SourceReport, Status},
+    },
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 fn input(state: &AppState, source: &str) -> Result<d::UnifiedSessionQuery> {
@@ -71,17 +74,63 @@ fn lease(state: &AppState, query: &d::UnifiedSessionQuery) -> Result<String> {
         Sha256::digest(vector.to_string().as_bytes())
     ))
 }
-pub(crate) async fn refresh_plugin_report(state: &AppState, before: Status) -> Result<Value> {
+pub(crate) async fn refresh_plugin_report(
+    state: &AppState,
+    before: Status,
+    view_id: Option<String>,
+) -> Result<Value> {
     let state = state.clone();
     external::run_sync(move || {
-        let binding = state
+        let bindings = state
             .plugins
             .report_queries(&before.manifest.id, &before.digest)?;
-        if binding.is_empty() {
-            return Err(fail("invalid_input"));
+        if let Some(view_id) = view_id {
+            let binding = bindings
+                .iter()
+                .find(|binding| binding.view_id == view_id)
+                .ok_or(fail("invalid_input"))?;
+            refresh_view(&state, &before, binding)?;
+        } else {
+            // Older callers omit the view ID. Publish each readable view independently.
+            let mut result = None;
+            for binding in &bindings {
+                let next = refresh_view(&state, &before, binding);
+                if result.is_none() || next.is_ok() {
+                    result = Some(next);
+                }
+            }
+            result.ok_or(fail("invalid_input"))??;
         }
-        let now = chrono::Utc::now().to_rfc3339();
-        let mut report = GatewayReport {
+        Ok(json!({"refreshed":true}))
+    })
+    .await
+}
+
+fn refresh_view(state: &AppState, before: &Status, binding: &DataQuery) -> Result<()> {
+    let query = input(state, &binding.source_id)?;
+    let before_lease = lease(state, &query)?;
+    let page = query::sessions(state, query.clone())?;
+    let summary = page
+        .source_summaries
+        .iter()
+        .find(|s| s.source_id == binding.source_id)
+        .ok_or(fail("unavailable"))?;
+    let source_name = query::directory(state)?
+        .catalog
+        .products
+        .iter()
+        .filter(|p| p.source_id == binding.source_id)
+        .map(|p| p.display_name.clone())
+        .collect::<Vec<_>>()
+        .join(" / ");
+    if lease(state, &query)? != before_lease {
+        return Err(fail("grant_revoked"));
+    }
+    let now = chrono::Utc::now().to_rfc3339();
+    state.plugins.publish_report(
+        before,
+        std::slice::from_ref(&binding.view_id),
+        GatewayReport {
             requests: "0".into(),
             attempts: "0".into(),
             input_tokens: None,
@@ -89,30 +138,8 @@ pub(crate) async fn refresh_plugin_report(state: &AppState, before: Status) -> R
             total_tokens: None,
             range_start: now.clone(),
             range_end: now,
-            sources: vec![],
-        };
-        for binding in binding {
-            let query = input(&state, &binding.source_id)?;
-            let before_lease = lease(&state, &query)?;
-            let page = query::sessions(&state, query.clone())?;
-            let summary = page
-                .source_summaries
-                .iter()
-                .find(|s| s.source_id == binding.source_id)
-                .ok_or(fail("unavailable"))?;
-            if lease(&state, &query)? != before_lease {
-                return Err(fail("grant_revoked"));
-            }
-            let source_name = query::directory(&state)?
-                .catalog
-                .products
-                .iter()
-                .filter(|p| p.source_id == binding.source_id)
-                .map(|p| p.display_name.clone())
-                .collect::<Vec<_>>()
-                .join(" / ");
-            report.sources.push(SourceReport {
-                source_id: binding.source_id,
+            sources: vec![SourceReport {
+                source_id: binding.source_id.clone(),
                 source_name,
                 sessions: summary.sessions.value().to_string(),
                 total_tokens: summary
@@ -126,11 +153,9 @@ pub(crate) async fn refresh_plugin_report(state: &AppState, before: Status) -> R
                     .as_str()
                     .ok_or(fail("invalid_record"))?
                     .into(),
-            });
-        }
-        state.plugins.publish_report(&before, report)
-    })
-    .await
+            }],
+        },
+    )
 }
 pub(crate) fn validate_plugin_report(state: &AppState, value: &Value) -> Result<()> {
     let Some(sources) = value["report"]["sources"].as_array() else {

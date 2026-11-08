@@ -293,7 +293,7 @@ fn diagnostics_keep_snapshot_unknown_empty_stale_and_revoked_distinct() {
     assert_eq!(read(&status)["state"], "awaiting-authorization");
     status.source_authorized = true;
     assert_eq!(read(&status)["state"], "not-read");
-    host.cache.lock().unwrap().insert(
+    host.cache.lock().unwrap().data.insert(
         status.manifest.id.clone(),
         Cached {
             observed_at: chrono::Utc::now().to_rfc3339(),
@@ -319,6 +319,7 @@ fn diagnostics_keep_snapshot_unknown_empty_stale_and_revoked_distinct() {
         host.cache
             .lock()
             .unwrap()
+            .data
             .get_mut(&status.manifest.id)
             .unwrap(),
     )

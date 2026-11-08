@@ -198,6 +198,7 @@ impl Manager {
             .cache
             .lock()
             .checked("unavailable")?
+            .data
             .entry(id.into())
             .or_insert_with(|| std::sync::Arc::new(saved))
             .clone())
@@ -389,6 +390,7 @@ impl Manager {
                 .cache
                 .lock()
                 .checked("unavailable")?
+                .data
                 .get(id)
                 .cloned()
                 .filter(|c| {
@@ -640,7 +642,13 @@ impl Manager {
         if !consent.enabled || !consent.persist {
             return Ok(());
         }
-        let cached = self.cache.lock().checked("unavailable")?.get(id).cloned();
+        let cached = self
+            .cache
+            .lock()
+            .checked("unavailable")?
+            .data
+            .get(id)
+            .cloned();
         if let Some(c) = cached.filter(|c| {
             c.digest == consent.digest
                 && c.epoch == consent.epoch.to_string()
@@ -704,13 +712,14 @@ mod tests {
             host.cache
                 .lock()
                 .unwrap()
+                .data
                 .insert(id.into(), current.clone());
             let chosen = host
                 .domain_restore_projection(id, snapshot("saved", "1"))
                 .unwrap();
             assert!(Arc::ptr_eq(&chosen, &current));
             assert!(Arc::ptr_eq(
-                host.cache.lock().unwrap().get(id).unwrap(),
+                host.cache.lock().unwrap().data.get(id).unwrap(),
                 &current
             ));
         }

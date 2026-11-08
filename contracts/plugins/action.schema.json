@@ -21,6 +21,12 @@
             "kind": {
               "const": "refresh",
               "type": "string"
+            },
+            "viewId": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [

@@ -159,7 +159,7 @@ impl Manager {
                     db: Database::Unavailable(error),
                     development: std::env::var("LOCAL_AGENT_PLUGIN_DEVELOPMENT").as_deref()
                         == Ok("1"),
-                    cache: Mutex::new(BTreeMap::new()),
+                    cache: Default::default(),
                     gates: Mutex::new(BTreeMap::new()),
                     connectors: Mutex::new(BTreeMap::new()),
                     source_watches: Mutex::new(BTreeMap::new()),
@@ -295,7 +295,7 @@ impl Manager {
             root,
             db: Database::Ready(Mutex::new(db)),
             development: std::env::var("LOCAL_AGENT_PLUGIN_DEVELOPMENT").as_deref() == Ok("1"),
-            cache: Mutex::new(BTreeMap::new()),
+            cache: Default::default(),
             gates: Mutex::new(BTreeMap::new()),
             connectors: Mutex::new(BTreeMap::new()),
             source_watches: Mutex::new(BTreeMap::new()),
@@ -635,7 +635,11 @@ impl Manager {
         Ok((installed, package))
     }
     pub(crate) fn selection(&self, id: &str) -> Result<Selection> {
-        self.db.lock().checked("unavailable")?.query_row("SELECT digest,previous,enabled,status,error,epoch,revision,source,connection,report FROM selections WHERE plugin_id=?1",[id],|r|{
+        let db = self.db.lock().checked("unavailable")?;
+        Self::read_selection(&db, id)
+    }
+    fn read_selection(db: &Connection, id: &str) -> Result<Selection> {
+        db.query_row("SELECT digest,previous,enabled,status,error,epoch,revision,source,connection,report FROM selections WHERE plugin_id=?1",[id],|r|{
             let source:Option<String>=r.get(7)?;let connection:Option<String>=r.get(8)?;
             Ok(Selection{report:r.get(9)?,digest:r.get(0)?,previous:r.get(1)?,enabled:r.get(2)?,status:r.get(3)?,error:r.get(4)?,epoch:r.get::<_,i64>(5)? as u64,revision:r.get::<_,i64>(6)? as u64,source:source.and_then(|s|serde_json::from_str(&s).ok()),connection:connection.and_then(|s|serde_json::from_str(&s).ok())})
         }).checked("not_found")
@@ -698,16 +702,15 @@ impl Manager {
             .collect()
     }
     pub(crate) fn mark_failed(&self, id: &str, code: &'static str) -> Result<()> {
-        self.db
-            .lock()
-            .checked("unavailable")?
-            .execute(
-                "UPDATE selections SET status='failed',error=?2,epoch=epoch+1 WHERE plugin_id=?1",
-                params![id, code],
-            )
-            .checked("unavailable")?;
-        self.cancel_connector(id)?;
+        let db = self.db.lock().checked("unavailable")?;
+        db.execute(
+            "UPDATE selections SET status='failed',error=?2,epoch=epoch+1 WHERE plugin_id=?1",
+            params![id, code],
+        )
+        .checked("unavailable")?;
         self.cache.lock().checked("unavailable")?.remove(id);
+        drop(db);
+        self.cancel_connector(id)?;
         Ok(())
     }
     pub(super) fn dependencies(&self, candidate: &Installed) -> Result<()> {
@@ -1074,11 +1077,14 @@ impl Manager {
         }
     }
     pub(crate) fn revoke(&self, id: &str, digest: &str, disable: bool) -> Result<()> {
-        let s = self.selection(id)?;
+        let db = self.db.lock().checked("unavailable")?;
+        let s = Self::read_selection(&db, id)?;
         if s.digest != digest {
             return Err(fail("grant_revoked"));
         }
-        self.db.lock().checked("unavailable")?.execute("UPDATE selections SET source=NULL,connection=NULL,report=0,revision=revision+1,epoch=epoch+1,enabled=CASE WHEN ?2 THEN 0 ELSE enabled END,status=CASE WHEN ?2 THEN 'disabled' ELSE status END WHERE plugin_id=?1",params![id,disable]).checked("unavailable")?;
+        db.execute("UPDATE selections SET source=NULL,connection=NULL,report=0,revision=revision+1,epoch=epoch+1,enabled=CASE WHEN ?2 THEN 0 ELSE enabled END,status=CASE WHEN ?2 THEN 'disabled' ELSE status END WHERE plugin_id=?1",params![id,disable]).checked("unavailable")?;
+        self.cache.lock().checked("unavailable")?.remove(id);
+        drop(db);
         self.cancel_connector(id)?;
         self.db
             .lock()
@@ -1096,7 +1102,6 @@ impl Manager {
                 ],
             )
             .checked("unavailable")?;
-        self.cache.lock().checked("unavailable")?.remove(id);
         Ok(())
     }
     pub(crate) fn grant_source(&self, id: &str, digest: &str, path: &Path) -> Result<Status> {
@@ -1251,7 +1256,8 @@ impl Manager {
         };
         // The clause is chosen solely from the fixed cases above. Recheck the
         // exact validated lease under the same lock as the authorization write.
-        let changed = self.db.lock().checked("unavailable")?.execute(
+        let db = self.db.lock().checked("unavailable")?;
+        let changed = db.execute(
             &format!("UPDATE selections SET {fields},revision=revision+1 WHERE plugin_id=?2 AND digest=?3 AND epoch=?4 AND revision=?5 AND enabled=1"),
             params![value, id, before.digest, i64::try_from(before.epoch).checked("resource_limit")?, i64::try_from(before.revision).checked("resource_limit")?],
         ).checked("unavailable")?;
@@ -1259,39 +1265,47 @@ impl Manager {
             return Err(fail("grant_revoked"));
         }
         self.cache.lock().checked("unavailable")?.remove(id);
+        drop(db);
         self.cancel_connector(id)?;
         Ok(())
     }
     pub(crate) fn publish_report(
         &self,
         before: &Status,
+        view_ids: &[String],
         report: GatewayReport,
-    ) -> Result<serde_json::Value> {
-        let now = self.status(&before.manifest.id, &before.digest)?;
+    ) -> Result<()> {
+        self.ensure_running()?;
+        let db = self.db.lock()?;
+        let now = Self::read_selection(&db, &before.manifest.id)?;
         if !now.enabled
-            || !now.report_authorized
-            || before.activation_epoch != now.activation_epoch
-            || before.grant_revision != now.grant_revision
+            || !now.report
+            || before.digest != now.digest
+            || before.activation_epoch != now.epoch.to_string()
+            || before.grant_revision != now.revision.to_string()
         {
             return Err(fail("grant_revoked"));
         }
-        self.cache.lock().checked("unavailable")?.insert(
-            before.manifest.id.clone(),
-            super::Cached {
-                observed_at: chrono::Utc::now().to_rfc3339(),
-                report: Some(report),
-                collected_at: std::time::Instant::now(),
-                digest: before.digest.clone(),
-                epoch: before.activation_epoch.clone(),
-                revision: before.grant_revision.clone(),
-                snapshot: uuid::Uuid::new_v4().to_string(),
-                sessions: vec![],
-                source_revision: None,
-                quota: None,
-            }
-            .into(),
-        );
-        Ok(serde_json::json!({"refreshed":true}))
+        let mut cache = self.cache.lock().checked("unavailable")?;
+        let views = cache.reports.entry(before.manifest.id.clone()).or_default();
+        for view_id in view_ids {
+            views.insert(
+                view_id.clone(),
+                super::Cached {
+                    observed_at: chrono::Utc::now().to_rfc3339(),
+                    report: Some(report.clone()),
+                    collected_at: std::time::Instant::now(),
+                    digest: before.digest.clone(),
+                    epoch: before.activation_epoch.clone(),
+                    revision: before.grant_revision.clone(),
+                    snapshot: uuid::Uuid::new_v4().to_string(),
+                    sessions: vec![],
+                    source_revision: None,
+                    quota: None,
+                },
+            );
+        }
+        Ok(())
     }
     pub(crate) fn preset_provider_id(
         &self,

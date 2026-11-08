@@ -717,6 +717,7 @@ impl Manager {
         self.cache
             .lock()
             .checked("unavailable")?
+            .data
             .insert(id.into(), cached.into());
         drop(db);
         // New opt-in persistence cannot turn a successful legacy refresh into a failure.
@@ -738,26 +739,13 @@ impl Manager {
         {
             return Err(fail("object_context_required"));
         }
-        let contributions = self.view_contributions(&bundle, &query.view_id)?;
+        self.require_view_dependencies(&bundle, &query.view_id)?;
         let view = bundle
             .manifest
             .views
             .iter()
             .find(|v| v.id == query.view_id)
             .ok_or(fail("not_found"))?;
-        let bound_report = bundle
-            .manifest
-            .requires
-            .iter()
-            .any(|r| r == local_agent_core::plugin::contributions::SERVICES);
-        let report_source = contributions
-            .as_ref()
-            .and_then(|c| {
-                c.data_queries
-                    .iter()
-                    .find(|binding| binding.view_id == view.id)
-            })
-            .map(|binding| binding.source_id.as_str());
         let status = self.status(&query.plugin_id, &selected.digest)?;
         if view.kind == ViewKind::Settings {
             return Ok(
@@ -770,17 +758,26 @@ impl Manager {
             );
         }
         let cache = self.cache.lock().checked("unavailable")?;
-        let saved = cache.get(&query.plugin_id);
+        let saved = if view.kind == ViewKind::Report {
+            cache
+                .reports
+                .get(&query.plugin_id)
+                .and_then(|views| views.get(&query.view_id))
+        } else {
+            cache.data.get(&query.plugin_id).map(AsRef::as_ref)
+        };
         let Some(saved) = saved.filter(|c| {
-            c.digest == selected.digest
-                && c.epoch == selected.epoch.to_string()
-                && c.revision == selected.revision.to_string()
+            status.enabled
+                && (view.kind != ViewKind::Report || status.report_authorized)
+                && c.digest == status.digest
+                && c.epoch == status.activation_epoch
+                && c.revision == status.grant_revision
         }) else {
             if query.cursor.is_some() {
                 return Err(fail("stale_snapshot"));
             }
             return Ok(
-                json!({"view":view,"status":status,"snapshot":null,"items":[],"quota":null,"confirmedEmpty":false,"needsRefresh":true}),
+                json!({"view":view,"status":status,"snapshot":null,"items":[],"quota":null,"report":null,"confirmedEmpty":false,"needsRefresh":true}),
             );
         };
         let offset = if let Some(cursor) = &query.cursor {
@@ -825,36 +822,25 @@ impl Manager {
         }
         let total_tokens = input.checked_add(output).ok_or(fail("resource_limit"))?;
         let stale = saved.expired();
-        let report = if bound_report {
-            report_source
-                .zip(saved.report.as_ref())
-                .and_then(|(source, report)| {
-                    let mut report = report.clone();
-                    report.sources.retain(|item| item.source_id == source);
-                    (!report.sources.is_empty()).then_some(report)
-                })
-        } else {
-            saved.report.clone()
-        };
         Ok(json!({
             "view": view,
             "status": status,
             "snapshot": saved.snapshot,
             "items": items,
             "quota": saved.quota,
-            "report": report,
+            "report": saved.report,
             "quotaExpired": stale,
             "reportExpired": stale,
             "total": total,
             "nextCursor": next,
-            "confirmedEmpty": !bound_report && total == 0 && saved.quota.is_none() && report.is_none(),
+            "confirmedEmpty": total == 0 && saved.quota.is_none() && saved.report.is_none(),
             "summary": {
                 "knownUsageRecords": known.to_string(),
                 "inputTokens": input.to_string(),
                 "outputTokens": output.to_string(),
                 "totalTokens": total_tokens.to_string()
             },
-            "needsRefresh": bound_report && report.is_none()
+            "needsRefresh": false
         }))
     }
     pub(crate) async fn read_session(
@@ -882,7 +868,7 @@ impl Manager {
             let s = manager.selection(&id)?;
             let source_revision = {
                 let cache = manager.cache.lock().checked("unavailable")?;
-                let saved = cache.get(&id).ok_or(fail("stale_snapshot"))?;
+                let saved = cache.data.get(&id).ok_or(fail("stale_snapshot"))?;
                 if saved.snapshot != snapshot
                     || saved.digest != digest
                     || saved.revision != s.revision.to_string()
@@ -1189,6 +1175,7 @@ mod isolation_tests {
             .cache
             .lock()
             .unwrap()
+            .data
             .insert(id.clone(), cached(&selected, "old").into());
         manager.db.lock().unwrap().execute_batch("CREATE TRIGGER reject_refresh BEFORE UPDATE ON selections BEGIN SELECT RAISE(ABORT,'fixture'); END;").unwrap();
         assert_eq!(
@@ -1198,7 +1185,7 @@ mod isolation_tests {
                 .code,
             "unavailable"
         );
-        assert_eq!(manager.cache.lock().unwrap()[id].snapshot, "old");
+        assert_eq!(manager.cache.lock().unwrap().data[id].snapshot, "old");
         manager
             .db
             .lock()
@@ -1208,7 +1195,7 @@ mod isolation_tests {
         manager
             .publish_refresh(id, &selected, cached(&selected, "new"))
             .unwrap();
-        assert_eq!(manager.cache.lock().unwrap()[id].snapshot, "new");
+        assert_eq!(manager.cache.lock().unwrap().data[id].snapshot, "new");
         manager.revoke(id, &status.digest, false).unwrap();
         assert_eq!(
             manager
@@ -1217,7 +1204,7 @@ mod isolation_tests {
                 .code,
             "grant_revoked"
         );
-        assert!(!manager.cache.lock().unwrap().contains_key(id));
+        assert!(!manager.cache.lock().unwrap().data.contains_key(id));
     }
 
     #[tokio::test(flavor = "current_thread")]

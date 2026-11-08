@@ -201,7 +201,10 @@ impl Manager {
             let authorized = (!s.manifest.capabilities.iter().any(|c| c == "session.source@1") || s.source_authorized)
                 && (!s.manifest.capabilities.iter().any(|c| c == "account.quota-source@1") || s.connection_authorized)
                 && (!s.manifest.capabilities.iter().any(|c| c == "report.view@1") || s.report_authorized);
-            let saved = cache.get(&s.manifest.id).filter(|c| s.enabled && authorized && c.digest == s.digest && c.epoch == s.activation_epoch && c.revision == s.grant_revision);
+            let saved = cache.data.get(&s.manifest.id).map(AsRef::as_ref).into_iter()
+                .chain(cache.reports.get(&s.manifest.id).into_iter().flat_map(|views| views.values()))
+                .filter(|c| s.enabled && authorized && c.digest == s.digest && c.epoch == s.activation_epoch && c.revision == s.grant_revision)
+                .max_by_key(|c| c.collected_at);
             let snapshot = if !applicable { "not-applicable" }
                 else if !s.enabled { "disabled" }
                 else if !authorized { "awaiting-authorization" }

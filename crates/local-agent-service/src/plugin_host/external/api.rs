@@ -143,7 +143,7 @@ async fn view(State(state): State<AppState>, Json(query): Json<ViewQuery>) -> Ap
 async fn action(State(state): State<AppState>, Json(request): Json<ActionRequest>) -> ApiResult {
     let operation = match &request.action {
         PublicAction::AuthorizeReport => Operation::AuthorizeReport,
-        PublicAction::Refresh => Operation::Refresh,
+        PublicAction::Refresh { .. } => Operation::Refresh,
         PublicAction::ReadSession { .. } => Operation::ReadSession,
         PublicAction::BindConnection { .. } => Operation::BindConnection,
         PublicAction::SaveSettings { .. } => Operation::SaveSettings,
@@ -165,12 +165,13 @@ async fn action(State(state): State<AppState>, Json(request): Json<ActionRequest
                 })
                 .await
             }
-            PublicAction::Refresh => {
+            PublicAction::Refresh { view_id } => {
                 let copy = state.clone();
                 let id = request.plugin_id.clone();
                 let digest = request.digest.clone();
+                let target = view_id.clone();
                 let (report, provider) = run_sync(move || {
-                    let p = copy.plugins.verified(&id, &digest)?;
+                    let (p, package) = copy.plugins.verified_package(&id, &digest)?;
                     if p.manifest
                         .requires
                         .iter()
@@ -179,7 +180,21 @@ async fn action(State(state): State<AppState>, Json(request): Json<ActionRequest
                         return Err(fail("object_context_required"));
                     }
                     if p.manifest.capabilities.iter().any(|c| c == "report.view@1") {
+                        if let Some(view_id) = target {
+                            if !p
+                                .manifest
+                                .views
+                                .iter()
+                                .any(|view| view.id == view_id && view.kind == ViewKind::Report)
+                            {
+                                return Err(fail("not_found"));
+                            }
+                            copy.plugins.require_view_dependencies(&package, &view_id)?;
+                        }
                         return Ok((true, None));
+                    }
+                    if target.is_some() {
+                        return Err(fail("invalid_input"));
                     }
                     let selected = copy.plugins.selection(&id)?;
                     let provider = if let Some(connection) = selected.connection {
@@ -197,7 +212,8 @@ async fn action(State(state): State<AppState>, Json(request): Json<ActionRequest
                 })
                 .await?;
                 if report {
-                    return refresh_report(&state, &request.plugin_id, &request.digest).await;
+                    return refresh_report(&state, &request.plugin_id, &request.digest, view_id)
+                        .await;
                 }
                 state
                     .plugins
@@ -310,7 +326,12 @@ async fn action(State(state): State<AppState>, Json(request): Json<ActionRequest
     observed.finish(&result);
     response(result)
 }
-async fn refresh_report(state: &AppState, id: &str, digest: &str) -> Result<Value> {
+async fn refresh_report(
+    state: &AppState,
+    id: &str,
+    digest: &str,
+    view_id: Option<String>,
+) -> Result<Value> {
     let plugins = state.plugins.clone();
     let id = id.to_owned();
     let digest = digest.to_owned();
@@ -324,8 +345,17 @@ async fn refresh_report(state: &AppState, id: &str, digest: &str) -> Result<Valu
         .iter()
         .any(|r| r == local_agent_core::plugin::contributions::SERVICES)
     {
-        return crate::domain::refresh_plugin_report(state, before).await;
+        return crate::domain::refresh_plugin_report(state, before, view_id).await;
     }
+    let view_ids: Vec<_> = before
+        .manifest
+        .views
+        .iter()
+        .filter(|view| {
+            view.kind == ViewKind::Report && view_id.as_ref().is_none_or(|id| id == &view.id)
+        })
+        .map(|view| view.id.clone())
+        .collect();
     let observation = state.observation.clone();
     let now = chrono::Utc::now();
     let value = run_sync(move || {
@@ -357,5 +387,9 @@ async fn refresh_report(state: &AppState, id: &str, digest: &str) -> Result<Valu
         sources: vec![],
     };
     let plugins = state.plugins.clone();
-    run_sync(move || plugins.publish_report(&before, report)).await
+    run_sync(move || {
+        plugins.publish_report(&before, &view_ids, report)?;
+        Ok(json!({"refreshed":true}))
+    })
+    .await
 }

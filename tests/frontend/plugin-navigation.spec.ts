@@ -1,6 +1,22 @@
 import { expect, test } from "@playwright/test";
 import type {} from "./fixtures/tables/plugin-navigation";
 
+test("手动刷新报表只提交当前视图", async ({ page }) => {
+  await page.goto(
+    "/tests/frontend/tables.html?mode=plugin-navigation#/extensions/net.worksha.source-report/sessions",
+  );
+  await expect
+    .poll(() => page.evaluate(() => window.navigationFixtureReads))
+    .toBe(1);
+  await page.getByRole("button", { name: "手动刷新报表" }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.navigationFixtureRefreshView))
+    .toBe("sessions");
+  await expect
+    .poll(() => page.evaluate(() => window.navigationFixtureReads))
+    .toBe(2);
+});
+
 test("撤权后丢弃迟到的报表响应", async ({ page }) => {
   await page.goto(
     "/tests/frontend/tables.html?mode=plugin-navigation#/settings",

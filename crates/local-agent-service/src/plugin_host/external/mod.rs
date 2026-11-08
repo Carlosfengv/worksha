@@ -130,6 +130,17 @@ pub(crate) struct Cached {
     pub source_revision: Option<String>,
     pub quota: Option<Quota>,
 }
+#[derive(Default)]
+struct PluginCache {
+    data: BTreeMap<String, Arc<Cached>>,
+    reports: BTreeMap<String, BTreeMap<String, Cached>>,
+}
+impl PluginCache {
+    fn remove(&mut self, id: &str) {
+        self.data.remove(id);
+        self.reports.remove(id);
+    }
+}
 pub(crate) struct Manager {
     installation: Mutex<()>,
     objects: Mutex<object_contributions::Host>,
@@ -142,7 +153,7 @@ pub(crate) struct Manager {
     root: PathBuf,
     db: Database,
     development: bool,
-    cache: Mutex<BTreeMap<String, Arc<Cached>>>,
+    cache: Mutex<PluginCache>,
     gates: Mutex<BTreeMap<String, Weak<tokio::sync::Mutex<()>>>>,
     activation: Arc<tokio::sync::Mutex<()>>,
     workers: Arc<tokio::sync::Semaphore>,
