@@ -128,7 +128,12 @@ try {
     assert.notEqual(hash(files[agentId]), installedHashes[agentId]);
     assert.equal((await api("/api/model-services")).attachments.some(a => a.agentId === agentId && a.attached), false);
     if (agentId === "claude") assert.equal(JSON.parse(readFileSync(files.claude)).modelPicker, undefined);
-    if (agentId === "codex") assert.doesNotMatch(readFileSync(files.codex, "utf8"), /^model_catalog_json\s*=/m);
+    if (agentId === "codex") {
+      const fixedConfig = readFileSync(files.codex, "utf8");
+      const fixedCatalogFile = JSON.parse(fixedConfig.match(/^model_catalog_json\s*=\s*(".*")$/m)[1]);
+      assert.notEqual(fixedCatalogFile, codexCatalogFile);
+      assert(JSON.parse(readFileSync(fixedCatalogFile)).models.some(model => model.slug === provider.model && model.priority === 0));
+    }
     const restore = await api(`/api/provider-switches/${direct.id}/restore`, {});
     await api(`/api/provider-switches/${restore.id}/apply`, {});
     assert.equal(hash(files[agentId]), installedHashes[agentId]);

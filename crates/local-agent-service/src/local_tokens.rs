@@ -343,7 +343,7 @@ pub(crate) fn execute(
                     codex_catalog.as_deref(),
                 )?
             }
-            None => manager.prepare_routed(draft, Some(&source), Some((&rendered, route)))?,
+            None => prepare_owned_route(manager, draft, &source, &rendered, route)?,
         };
         if !matches_operation(session.operation(), &t) {
             return Err(unknown());
@@ -352,6 +352,22 @@ pub(crate) fn execute(
         Ok(t)
     })();
     result.map_err(pending)
+}
+fn prepare_owned_route(
+    manager: &ProviderManager,
+    draft: BindingDraft,
+    source: &Provider,
+    rendered: &Provider,
+    route: Routing,
+) -> Result<Transaction, ConfigError> {
+    let catalog = (draft.agent_id == "codex" && !route.models.is_empty()).then(|| {
+        let mut selected = source.clone();
+        selected.model.clone_from(&rendered.model);
+        crate::gateway::capabilities::codex_catalog(&selected, &route.models)
+            .to_string()
+            .into_bytes()
+    });
+    manager.prepare_fixed_route(draft, source, rendered, route, catalog.as_deref())
 }
 pub(crate) fn fixed(
     state: &AppState,
@@ -372,7 +388,7 @@ pub(crate) fn fixed(
             .as_ref()
             .map(|id| manager.local_token_admission_guard(store, id))
             .transpose()?;
-        return manager.prepare_routed(draft, Some(source), Some((&rendered, route)));
+        return prepare_owned_route(manager, draft, source, &rendered, route);
     }
     let request =
         manager.new_local_token_request(store, &draft, Purpose::FixedRoute, selected, None)?;

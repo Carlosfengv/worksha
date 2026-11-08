@@ -617,7 +617,11 @@ try {
   assert.deepEqual(groupTransaction.routing.models,["group-a","group-b"]);
   await request(`/api/provider-switches/${groupTransaction.id}/apply`,{});
   if(agentId==="codex") {
-    assert(readFileSync(nativePath,"utf8").includes("model_catalog_url"));
+    const config = readFileSync(nativePath, "utf8");
+    assert(config.includes("model_catalog_url"));
+    const localCatalogPath = JSON.parse(config.match(/^model_catalog_json\s*=\s*(".*")$/m)[1]);
+    const localCatalog = JSON.parse(readFileSync(localCatalogPath, "utf8"));
+    assert.deepEqual(localCatalog.models.map(({ slug, priority }) => [slug, priority]), [["group-a", 0], ["group-b", 1]]);
     const catalog=await fetch(groupTransaction.routing.localEndpoint+"/codex/models.json?client_version=0.163.0",{headers:{Authorization:`Bearer ${requests.at(-1).auth?.slice(7)??""}`}});
     assert.equal(catalog.status,401,"upstream credentials cannot authenticate the local catalog");
   } else {

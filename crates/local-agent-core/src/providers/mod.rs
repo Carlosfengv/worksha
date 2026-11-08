@@ -626,6 +626,22 @@ impl ProviderManager {
     ) -> Result<Transaction, ConfigError> {
         self.prepare_catalog(draft, provider, routed, None, None)
     }
+    pub fn prepare_fixed_route(
+        &self,
+        draft: BindingDraft,
+        provider: &Provider,
+        rendered: &Provider,
+        route: Routing,
+        codex_catalog: Option<&[u8]>,
+    ) -> Result<Transaction, ConfigError> {
+        self.prepare_catalog(
+            draft,
+            Some(provider),
+            Some((rendered, route)),
+            None,
+            codex_catalog,
+        )
+    }
     pub fn prepare_model_service(
         &self,
         draft: BindingDraft,
@@ -831,22 +847,23 @@ impl ProviderManager {
                 &mut after,
                 catalog,
             )?;
-            if draft.agent_id == "codex" {
-                let bytes = codex_catalog
-                    .filter(|b| !b.is_empty() && b.len() as u64 <= files::LIMIT)
-                    .ok_or_else(|| ConfigError::new("invalid_config", "Codex 模型目录无法生成"))?;
-                let path = self.codex_catalog_path(bytes);
-                files::private_dir(&self.directory.join("codex-catalogs"))?;
-                let snapshot = files::read(&path)?;
-                if snapshot.bytes.as_deref() != Some(bytes) {
-                    files::replace(&path, &snapshot.stamp, Some(bytes), 0o600)?;
-                }
-                let mut doc = config::parse_toml(Some(&after))?;
-                doc["model_catalog_json"] = toml_edit::value(path.to_str().ok_or_else(|| {
+        }
+        if draft.agent_id == "codex" && (codex_catalog.is_some() || catalog.is_some()) {
+            let bytes = codex_catalog
+                .filter(|b| !b.is_empty() && b.len() as u64 <= files::LIMIT)
+                .ok_or_else(|| ConfigError::new("invalid_config", "Codex 模型目录无法生成"))?;
+            let path = self.codex_catalog_path(bytes);
+            files::private_dir(&self.directory.join("codex-catalogs"))?;
+            let snapshot = files::read(&path)?;
+            if snapshot.bytes.as_deref() != Some(bytes) {
+                files::replace(&path, &snapshot.stamp, Some(bytes), 0o600)?;
+            }
+            let mut doc = config::parse_toml(Some(&after))?;
+            doc["model_catalog_json"] =
+                toml_edit::value(path.to_str().ok_or_else(|| {
                     ConfigError::new("invalid_config", "Codex 模型目录路径无法表示")
                 })?);
-                after = doc.to_string().into_bytes();
-            }
+            after = doc.to_string().into_bytes();
         }
         if after.len() as u64 > files::LIMIT {
             return fail("invalid_config", "生成的配置超过 1 MiB，原文件未修改");
