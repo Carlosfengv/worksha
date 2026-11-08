@@ -967,12 +967,17 @@ fn claude_desktop_updates_applied_profile_and_refuses_unknown_profile_paths() {
         serde_json::json!({"appliedId":id}).to_string(),
     )
     .unwrap();
-    let original=br#"{"inferenceProvider":"gateway","inferenceGatewayBaseUrl":"http://127.0.0.1:15721/old","inferenceGatewayApiKey":"old-desktop-secret","coworkEgressAllowedHosts":["internal.example"]}"#;
+    let original=br#"{"inferenceProvider":"gateway","inferenceGatewayBaseUrl":"http://127.0.0.1:15721/old","inferenceGatewayApiKey":"old-desktop-secret","coworkEgressAllowedHosts":["internal.example"],"inferenceCredentialHelperArgs":["legacy"],"alwaysStartWithDefaultModel":true}"#;
     let path = config(&f, "claude-desktop", original);
     let mut provider = p(&f, "messages");
     provider.name = "MyDeepSeek".into();
     provider.vendor = "deepseek".into();
     provider.endpoint = "http://127.0.0.1:12345/desktop-route".into();
+    fs::write(
+        &f.manager.helper_source,
+        b"#!/bin/sh\n[ \"$1\" = --credential ] && [ \"$#\" -eq 2 ] || exit 1\nprintf '%s' \"$2\"\n",
+    )
+    .unwrap();
     let transaction = prepare(&f, "claude-desktop", Some(&provider));
     f.manager
         .apply(&transaction.id, Some(&provider), true)
@@ -990,6 +995,16 @@ fn claude_desktop_updates_applied_profile_and_refuses_unknown_profile_paths() {
             .contains(&provider.model)
     );
     assert_eq!(doc["inferenceCredentialKind"], "helper-script");
+    let helper = doc["inferenceCredentialHelper"].as_str().unwrap();
+    let output = std::process::Command::new(helper).output().unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        output.stdout,
+        provider.credential_ref.as_ref().unwrap().as_bytes()
+    );
+    assert!(doc.get("inferenceCredentialHelperArgs").is_none());
+    assert!(doc.get("alwaysStartWithDefaultModel").is_none());
+    assert!(doc["inferenceModels"][0].get("maxEffort").is_none());
     assert!(doc.get("inferenceGatewayApiKey").is_none());
     assert_eq!(
         doc["coworkEgressAllowedHosts"],
@@ -1059,7 +1074,7 @@ fn claude_desktop_group_maps_every_enabled_model_and_restores_profile_exactly() 
     for (entry, model) in published.iter().zip(["z-default", "another-model"]) {
         assert_eq!(entry["name"], claude_desktop_model_id(&source.id, model));
         assert_eq!(entry["labelOverride"], format!("MyDeepSeek · {model}"));
-        assert_eq!(entry["maxEffort"], "low");
+        assert!(entry.get("maxEffort").is_none());
     }
     assert_ne!(published[0]["name"], published[1]["name"]);
     assert_ne!(

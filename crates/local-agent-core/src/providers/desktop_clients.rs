@@ -169,19 +169,21 @@ pub fn render(
             }
         }
     } else {
+        if p.credential_ref.is_none() {
+            return fail("invalid_credential", "桌面连接需要已保存的凭据");
+        }
         d["inferenceProvider"] = json!("gateway");
         d["inferenceGatewayBaseUrl"] = json!(p.endpoint);
         d.as_object_mut().unwrap().remove("inferenceGatewayApiKey");
         d.as_object_mut().unwrap().remove("inferenceGatewayOidc");
+        d.as_object_mut()
+            .unwrap()
+            .remove("inferenceCredentialHelperArgs");
+        d.as_object_mut()
+            .unwrap()
+            .remove("alwaysStartWithDefaultModel");
         d["inferenceCredentialKind"] = json!("helper-script");
         d["inferenceCredentialHelper"] = json!(helper.to_string_lossy());
-        d["inferenceCredentialHelperArgs"] = json!([
-            "--credential",
-            p.credential_ref.as_deref().ok_or_else(|| ConfigError::new(
-                "invalid_credential",
-                "桌面连接需要已保存的凭据"
-            ))?
-        ]);
         d["inferenceCredentialHelperTimeoutSec"] = json!(6);
         d["inferenceGatewayAuthScheme"] = json!("bearer");
         d["modelDiscoveryEnabled"] = json!(false);
@@ -191,9 +193,9 @@ pub fn render(
                 "Claude 桌面通过本机兼容模型映射接入第三方模型，请先准备本机路由",
             );
         }
-        d["inferenceModels"] = json!([{"name":"claude-sonnet-5","labelOverride":format!("{} · {}",p.name,p.model),"maxEffort":"low"}]);
+        d["inferenceModels"] =
+            json!([{"name":"claude-sonnet-5","labelOverride":format!("{} · {}",p.name,p.model)}]);
         d["inferenceModelPricingEnabled"] = json!(false);
-        d["alwaysStartWithDefaultModel"] = json!(true);
     }
     let mut bytes = serde_json::to_vec_pretty(&d)
         .map_err(|_| ConfigError::new("invalid_config", "无法生成客户端配置"))?;
@@ -259,8 +261,7 @@ pub fn claude_models(
             .iter()
             .map(|model| json!({
                 "name":super::claude_desktop_model_id(&provider.id, model),
-                "labelOverride":format!("{} · {}",provider.name,model),
-                "maxEffort":"low"
+                "labelOverride":format!("{} · {}",provider.name,model)
             }))
             .collect::<Vec<_>>()
     );

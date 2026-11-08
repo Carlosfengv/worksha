@@ -554,6 +554,30 @@ impl ProviderManager {
         files::atomic_write(&target, &bytes, 0o700)?;
         Ok(target)
     }
+    fn claude_desktop_helper(&self, reference: &str) -> Result<PathBuf, ConfigError> {
+        uuid::Uuid::parse_str(reference)
+            .map_err(|_| ConfigError::new("invalid_credential", "桌面连接凭据引用无效"))?;
+        let helper = self.helper()?;
+        let path = helper
+            .to_str()
+            .ok_or_else(|| ConfigError::new("invalid_config", "凭据助手路径无法表示"))?
+            .replace('\'', "'\\''");
+        // Older Desktop releases launch the helper without configuration arguments.
+        let script = format!("#!/bin/sh\nexec '{path}' --credential '{reference}'\n");
+        let target = self.directory.join("bin").join(format!(
+            "claude-desktop-{}",
+            &files::hash(script.as_bytes())[..24]
+        ));
+        let before = files::read(&target)?;
+        match before.bytes {
+            Some(bytes) if bytes != script.as_bytes() => {
+                return fail("conflict", "已有 Claude 桌面凭据助手被修改，拒绝覆盖");
+            }
+            None => files::replace(&target, &before.stamp, Some(script.as_bytes()), 0o700)?,
+            Some(_) => {}
+        }
+        Ok(target)
+    }
     fn add(
         &self,
         j: &mut Journal,
@@ -731,10 +755,13 @@ impl ProviderManager {
         if draft.provider_id.as_deref() != provider.map(|p| p.id.as_str()) {
             return fail("conflict", "目标服务商与草稿不一致");
         }
-        let helper = if rendered.is_some_and(|p| p.credential_ref.is_some()) {
-            self.helper()?
-        } else {
-            self.helper_source.clone()
+        let credential_ref = rendered.and_then(|p| p.credential_ref.as_deref());
+        let helper = match credential_ref {
+            Some(reference) if draft.agent_id == "claude-desktop" => {
+                self.claude_desktop_helper(reference)?
+            }
+            Some(_) => self.helper()?,
+            None => self.helper_source.clone(),
         };
         let adapter = self.adapters.resolve(&draft.agent_id)?;
         let mut render_input = None;

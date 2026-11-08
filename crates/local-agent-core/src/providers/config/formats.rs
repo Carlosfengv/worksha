@@ -191,8 +191,7 @@ pub(super) fn service_models(
                 .iter()
                 .map(|(alias, label, _)| json!({
                     "name": crate::model_services::client_model_id(agent, alias),
-                    "labelOverride": label,
-                    "maxEffort": "low"
+                    "labelOverride": label
                 }))
                 .collect::<Vec<_>>()
         );

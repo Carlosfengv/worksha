@@ -631,6 +631,9 @@ try {
     assert(groupedConfig.inferenceModels.every(m=>m.name.startsWith("claude-sonnet-5-local-agent-")));
     assert.deepEqual(groupedConfig.inferenceModels.map(m=>m.labelOverride.split(" · ").at(-1)),["group-a","group-b"]);
     assert.deepEqual(groupedConfig.managedMcpServers,[{name:"keep"}]);
+    assert(!Object.hasOwn(groupedConfig, "inferenceCredentialHelperArgs"));
+    assert(!Object.hasOwn(groupedConfig, "alwaysStartWithDefaultModel"));
+    assert(groupedConfig.inferenceModels.every(model => !Object.hasOwn(model, "maxEffort")));
   }
   }
   const groupRestore=await request(`/api/provider-switches/${groupTransaction.id}/restore`,{});
