@@ -450,6 +450,9 @@ async fn http_gateway_converts_all_paths_authenticates_observes_and_restores_tem
         )
         .unwrap();
         seen.lock().unwrap().push((path.clone(), body.clone()));
+        if body["input"] == "owned-upstream-502" {
+            return axum::http::StatusCode::BAD_GATEWAY.into_response();
+        }
         if let Some(response) = recovery::upstream(&body) {
             return response;
         }
@@ -1264,7 +1267,7 @@ async fn http_gateway_converts_all_paths_authenticates_observes_and_restores_tem
             .into_iter()
             .map(|r| r.id)
             .collect();
-        let mut response=client.post(format!("{}/responses",rendered.endpoint)).bearer_auth(local).json(&json!({"model":"chosen-model","input":"request-private-sentinel","stream":true,"max_output_tokens":778})).send().await.unwrap();
+        let mut response=client.post(format!("{}/responses",rendered.endpoint)).bearer_auth(&local).json(&json!({"model":"chosen-model","input":"request-private-sentinel","stream":true,"max_output_tokens":778})).send().await.unwrap();
         assert_eq!(response.status(), 200);
         let mut received = String::new();
         while !received.contains("response.completed") {
@@ -1285,6 +1288,42 @@ async fn http_gateway_converts_all_paths_authenticates_observes_and_restores_tem
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].status, "success", "{protocol}");
         assert_eq!(state.observation.active_count("codex"), 0);
+        if protocol == "responses" {
+            let before = seen.lock().unwrap().len();
+            let thread_id = uuid::Uuid::new_v4().to_string();
+            let response = client
+                .post(format!("{}/responses", rendered.endpoint))
+                .bearer_auth(&local)
+                .header("thread-id", &thread_id)
+                .json(&json!({"model":"chosen-model","input":"owned-upstream-502","stream":true}))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), 502);
+            let error: Value = response.json().await.unwrap();
+            assert!(
+                error["error"]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("上游模型接口返回 502")
+            );
+            assert_eq!(seen.lock().unwrap().len(), before + 1);
+            state.observation.flush().unwrap();
+            let axum::Json(page) = crate::observation::request_query::dashboard(
+                State(state.clone()),
+                axum::extract::Query(local_agent_core::requests::Query {
+                    source: Some("gateway".into()),
+                    session: Some(format!("codex:{thread_id}")),
+                    result: Some("failed".into()),
+                    ..Default::default()
+                }),
+            )
+            .await
+            .unwrap();
+            assert_eq!(page["total"], 1);
+            assert_eq!(page["items"][0]["status"], "failed");
+            assert_eq!(page["items"][0]["attempts"][0]["httpStatus"], 502);
+        }
     }
     recovery::verify(&state, &client, &p).await;
     fn scan(path: &std::path::Path) {
