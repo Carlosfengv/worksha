@@ -3,6 +3,46 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use local_agent_core::projects::{self, ProjectQuery};
 use projects::visibility::{self, HiddenProject};
+use std::sync::Arc;
+
+pub(crate) const PLUGIN_ID: &str = "builtin.projects";
+pub(crate) const LISTENER_ID: &str = "listeners";
+
+pub(crate) fn plugins() -> Vec<Arc<dyn local_agent_core::plugin::BuiltinPlugin>> {
+    use crate::plugin_host::features::{Feature, owned};
+    let mut plugins: Vec<Arc<dyn local_agent_core::plugin::BuiltinPlugin>> =
+        vec![Arc::new(Feature {
+            id: PLUGIN_ID,
+            title: "项目",
+            requires: &["builtin.sessions"],
+            opt_in: true,
+        })];
+    plugins.extend(
+        projects::readers::ProjectReaders::registrations()
+            .into_iter()
+            .map(|reader| owned(reader, PLUGIN_ID)),
+    );
+    plugins
+}
+
+pub(crate) fn routes(state: AppState) -> axum::Router<AppState> {
+    use axum::{
+        middleware,
+        routing::{get, put},
+    };
+    axum::Router::new()
+        .route("/api/projects", get(query))
+        .route("/api/project-visibility", put(set_hidden))
+        .route("/api/projects/{id}", get(detail))
+        .route("/api/projects/{id}/diff/{file}", get(diff))
+        .route_layer(middleware::from_fn_with_state(
+            state,
+            |State(state): State<AppState>, request, next| async {
+                crate::plugin_host::builtin::guard_owned(state, request, next, Some(PLUGIN_ID))
+                    .await
+            },
+        ))
+}
 use serde::Deserialize;
 
 pub(crate) fn hidden(
@@ -55,6 +95,12 @@ pub(crate) async fn set_hidden(
             .store
             .lock()
             .map_err(|_| error("数据服务暂不可用".into()))?;
+        if !crate::plugin_host::features::active(&state, PLUGIN_ID) {
+            return Err(native_error(local_agent_core::sessions::NativeError {
+                code: "plugin_disabled",
+                message: "项目插件已停用，本次没有更改项目可见性".into(),
+            }));
+        }
         if let Some(project) = project {
             store.hide_project(&project.into()).map_err(error)?;
         } else {

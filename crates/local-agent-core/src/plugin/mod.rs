@@ -24,7 +24,7 @@ pub struct CapabilityKey {
     pub instance: &'static str,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PluginDescriptor {
     pub id: &'static str,
     pub version: &'static str,
@@ -54,6 +54,9 @@ impl std::error::Error for PluginError {}
 
 pub trait BuiltinPlugin: Send + Sync {
     fn descriptor(&self) -> PluginDescriptor;
+    fn opt_in(&self) -> bool {
+        false
+    }
     fn display_name(&self) -> String {
         self.descriptor().id.into()
     }

@@ -85,13 +85,22 @@ impl ReadonlyRuntime {
             .map_err(|_| PluginError::new("unavailable", "内置组合状态暂不可用"))
     }
     pub(crate) fn bind_resources(&self, state: &crate::AppState) -> Result<(), PluginError> {
+        self.bind_changed_resources(state, |_| true)
+    }
+    pub(crate) fn bind_changed_resources(
+        &self,
+        state: &crate::AppState,
+        changed: impl Fn(&str) -> bool,
+    ) -> Result<(), PluginError> {
         use local_agent_core::plugin::{CapabilityKey, PluginResources, ResourceKind};
         let key = CapabilityKey {
             name: "business.feature",
             version: 1,
             instance: "builtin.requests",
         };
-        if let Ok(lease) = self.host.acquire(&key) {
+        if changed("builtin.requests")
+            && let Ok(lease) = self.host.acquire(&key)
+        {
             let retained = self.retain_request_views.clone();
             let observation = Arc::downgrade(&state.observation);
             let mut resources = PluginResources::default();
@@ -120,6 +129,7 @@ impl ReadonlyRuntime {
         for source in sessions.directory().sources() {
             let Some(instance) = sessions
                 .source_plugin_id(&source.id)
+                .filter(|id| changed(id))
                 .and_then(|id| self.factories.iter().find(|p| p.descriptor().id == id))
                 .and_then(|plugin| {
                     plugin
@@ -168,7 +178,9 @@ impl ReadonlyRuntime {
             version: 1,
             instance: "native",
         };
-        if let Ok(lease) = self.host.acquire(&key) {
+        if changed("project.assets")
+            && let Ok(lease) = self.host.acquire(&key)
+        {
             let readers = Arc::downgrade(&self.projects);
             let mut resources = PluginResources::default();
             resources.own(ResourceKind::Cache, move || {

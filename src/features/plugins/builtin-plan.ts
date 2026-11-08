@@ -22,12 +22,14 @@ export function compositionSelection(
   composition: Composition,
 ) {
   const disabled = new Set(composition.disabledPluginIds);
+  const optedIn = new Set(composition.optedInPluginIds ?? []);
   const removed = new Set(composition.removedPluginIds ?? []);
   const selected = new Set(
     plugins
       .filter(
         (plugin) =>
           profileAllows(plugin, composition.profile) &&
+          (!plugin.optIn || optedIn.has(plugin.id)) &&
           !disabled.has(plugin.id) &&
           !removed.has(plugin.id),
       )
@@ -60,17 +62,14 @@ export function editableBuiltinSelection(
 ): Composition {
   const selected = compositionSelection(plugins, composition);
   return {
-    ...(composition.removedPluginIds?.length
-      ? { removedPluginIds: [...composition.removedPluginIds] }
-      : {}),
+    ...composition,
     profile: "desktop",
     disabledPluginIds: plugins
       .filter((plugin) => {
         const owner = plugin.requires.find(
           (key) => key.name === "business.feature",
         )?.instance;
-        return composition.profile === "desktop" &&
-          !plugin.id.startsWith("builtin.") &&
+        return !plugin.id.startsWith("builtin.") &&
           owner &&
           !selected.has(owner)
           ? composition.disabledPluginIds.includes(plugin.id)
@@ -96,6 +95,7 @@ export function toggleBuiltin(
   );
   const selected = compositionSelection(plugins, composition);
   const removed = new Set(composition.removedPluginIds ?? []);
+  const optedIn = new Set(composition.optedInPluginIds ?? []);
   if (enabled) selected.add(id);
   else selected.delete(id);
   let changed = true;
@@ -119,8 +119,12 @@ export function toggleBuiltin(
       }
     }
   }
+  if (enabled)
+    for (const plugin of plugins)
+      if (plugin.optIn && selected.has(plugin.id)) optedIn.add(plugin.id);
   return {
     ...composition,
+    ...(optedIn.size ? { optedInPluginIds: [...optedIn].sort() } : {}),
     ...(enabled && removed.size !== (composition.removedPluginIds?.length ?? 0)
       ? { removedPluginIds: [...removed].sort() }
       : {}),

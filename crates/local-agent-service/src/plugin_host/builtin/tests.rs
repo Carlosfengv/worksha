@@ -34,6 +34,7 @@ async fn request_view_leases_survive_unrelated_changes_and_release_when_requests
     let mut composition = Composition {
         profile: Profile::Desktop,
         disabled_plugin_ids: vec!["builtin.projects".into()],
+        opted_in_plugin_ids: vec![],
         removed_plugin_ids: vec![],
     };
     apply(&f.state, f.change(composition.clone())).unwrap();
@@ -73,6 +74,7 @@ async fn business_removal_persists_and_owned_support_stops_without_revoking_unre
     let mut change = f.change(Composition {
         profile: Profile::Desktop,
         disabled_plugin_ids: disabled,
+        opted_in_plugin_ids: vec![],
         removed_plugin_ids: vec!["builtin.providers".into()],
     });
     change.expected_impact = Some(read(&f.state).unwrap().impact);
@@ -138,6 +140,7 @@ async fn business_dependencies_and_changed_impact_fail_before_any_mutation() {
     let change = f.change(Composition {
         profile: Profile::Desktop,
         disabled_plugin_ids: vec!["builtin.providers".into()],
+        opted_in_plugin_ids: vec![],
         removed_plugin_ids: vec![],
     });
     assert_eq!(
@@ -158,9 +161,24 @@ async fn disabled_business_routes_are_rejected_but_receipts_and_cancellation_rem
     let f = Fixture::new().await;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
+    let reached = || async { axum::Json(serde_json::json!({"executed":true})) };
     let app = axum::Router::new()
-        .fallback(|| async { axum::Json(serde_json::json!({"executed":true})) })
-        .layer(axum::middleware::from_fn_with_state(f.state.clone(), guard));
+        .route("/api/provider-operations/{id}", axum::routing::get(reached))
+        .route(
+            "/api/model-service-operations/{id}",
+            axum::routing::get(reached),
+        )
+        .route(
+            "/api/provider-operations/cancel",
+            axum::routing::post(reached),
+        )
+        .route(
+            "/api/provider-operations/preview/cancel",
+            axum::routing::post(reached),
+        )
+        .fallback(reached)
+        .layer(axum::middleware::from_fn_with_state(f.state.clone(), guard))
+        .merge(crate::projects::routes(f.state.clone()).with_state(f.state.clone()));
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     apply(
         &f.state,
@@ -173,6 +191,7 @@ async fn disabled_business_routes_are_rejected_but_receipts_and_cancellation_rem
                 "builtin.providers".into(),
                 "builtin.workbench".into(),
             ],
+            opted_in_plugin_ids: vec![],
             removed_plugin_ids: vec!["builtin.projects".into()],
         }),
     )
@@ -216,17 +235,36 @@ async fn disabled_business_routes_are_rejected_but_receipts_and_cancellation_rem
             "{path}"
         );
     }
-    assert_eq!(
-        client
-            .post(format!("{base}/api/provider-operations/cancel"))
+    for profile in [Profile::Desktop, Profile::Recovery] {
+        if profile == Profile::Recovery {
+            apply(
+                &f.state,
+                f.change(Composition {
+                    profile,
+                    ..Composition::default()
+                }),
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            client
+                .post(format!("{base}/api/provider-operations/cancel"))
+                .send()
+                .await
+                .unwrap()
+                .json::<serde_json::Value>()
+                .await
+                .unwrap()["executed"],
+            true
+        );
+        // A business route does not inherit a recovery exemption from its suffix.
+        let response = client
+            .post(format!("{base}/api/provider-operations/preview/cancel"))
             .send()
             .await
-            .unwrap()
-            .json::<serde_json::Value>()
-            .await
-            .unwrap()["executed"],
-        true
-    );
+            .unwrap();
+        assert_eq!(response.status(), 409);
+    }
     server.abort();
 }
 impl Fixture {
@@ -289,16 +327,13 @@ impl Fixture {
 }
 #[test]
 fn profiles_select_one_shared_graph_and_registration_never_grants_source_access() {
-    for (profile, count) in [
-        (Profile::Desktop, 25),
-        (Profile::Background, 22),
-        (Profile::Recovery, 0),
-    ] {
+    for profile in [Profile::Desktop, Profile::Background, Profile::Recovery] {
         let (runtime, sources) = ReadonlyRuntime::compose(
             profile,
             &Composition {
                 profile,
                 disabled_plugin_ids: vec![],
+                opted_in_plugin_ids: vec![],
                 removed_plugin_ids: vec![],
             },
         )
@@ -307,15 +342,50 @@ fn profiles_select_one_shared_graph_and_registration_never_grants_source_access(
         let sessions = NativeSessions::with_source_plugins(root.path().into(), &[], sources);
         assert!(Arc::ptr_eq(&runtime.host, &sessions.builtin_host()));
         let catalog = runtime.host.snapshot().unwrap();
-        assert_eq!(catalog.plugins.len(), 25);
-        assert_eq!(
+        assert!(
             catalog
                 .plugins
                 .iter()
-                .filter(|plugin| plugin.runtime_active)
-                .count(),
-            count
+                .all(|plugin| !super::super::features::deferred(&plugin.id))
         );
+        assert_eq!(
+            sessions.source_active("codex"),
+            profile != Profile::Recovery
+        );
+        assert_eq!(
+            super::super::features::mounted(&runtime.host, "builtin.providers"),
+            profile != Profile::Recovery
+        );
+        match profile {
+            Profile::Desktop => {
+                let projects = crate::projects::PLUGIN_ID;
+                for plugin in &catalog.plugins {
+                    let project_scope = plugin.id == projects
+                        || plugin
+                            .requires
+                            .iter()
+                            .any(|requirement| requirement.instance == projects);
+                    assert_eq!(plugin.runtime_active, !project_scope, "{}", plugin.id);
+                }
+            }
+            Profile::Background => {
+                let collectors: Vec<_> = catalog
+                    .plugins
+                    .iter()
+                    .filter(|plugin| {
+                        plugin
+                            .capabilities
+                            .iter()
+                            .any(|capability| capability.address.name == "collector")
+                    })
+                    .collect();
+                assert!(!collectors.is_empty());
+                assert!(collectors.iter().all(|plugin| !plugin.runtime_active));
+            }
+            Profile::Recovery => {
+                assert!(catalog.plugins.iter().all(|plugin| !plugin.runtime_active))
+            }
+        }
         assert!(
             catalog
                 .plugins
@@ -334,6 +404,44 @@ fn profiles_select_one_shared_graph_and_registration_never_grants_source_access(
             profile != Profile::Recovery
         );
     }
+}
+
+#[tokio::test]
+async fn project_opt_in_does_not_drain_the_gateway_or_revoke_unrelated_leases() {
+    let f = Fixture::new().await;
+    let key = |name, instance| local_agent_core::plugin::CapabilityKey {
+        name,
+        version: 1,
+        instance,
+    };
+    let provider_key = key("business.feature", "builtin.providers");
+    let project_key = key("project.assets", "native");
+    let provider = f.state.readonly.host.acquire(&provider_key).unwrap();
+    assert!(f.state.readonly.host.acquire(&project_key).is_err());
+    let gateway = f
+        .state
+        .readonly
+        .intake
+        .acquire_for(Some("gateway"))
+        .unwrap();
+    let enabled = Composition {
+        opted_in_plugin_ids: vec![crate::projects::PLUGIN_ID.into()],
+        ..Composition::default()
+    };
+    apply(&f.state, f.change(enabled)).unwrap();
+    let old_project = f.state.readonly.host.acquire(&project_key).unwrap();
+    apply(&f.state, f.change(Composition::default())).unwrap();
+    assert!(
+        old_project
+            .publish(|| panic!("retired project published"))
+            .is_err()
+    );
+    provider.publish(|| ()).unwrap();
+    assert_eq!(
+        f.state.readonly.host.acquire(&provider_key).unwrap().epoch,
+        provider.epoch
+    );
+    drop(gateway);
 }
 #[tokio::test]
 async fn source_disable_revokes_saved_and_memory_consent_and_replay_cannot_restore_it() {
@@ -354,6 +462,7 @@ async fn source_disable_revokes_saved_and_memory_consent_and_replay_cannot_resto
     let request = f.change(Composition {
         profile: Profile::Desktop,
         disabled_plugin_ids: vec![id],
+        opted_in_plugin_ids: vec![],
         removed_plugin_ids: vec![],
     });
     let first = apply(&f.state, request.clone()).unwrap();
@@ -407,6 +516,7 @@ async fn rejected_dependency_and_stale_or_foreign_operations_preserve_generation
     let invalid = f.change(Composition {
         profile: Profile::Desktop,
         disabled_plugin_ids: vec!["builtin.sessions".into()],
+        opted_in_plugin_ids: vec![],
         removed_plugin_ids: vec![],
     });
     assert_eq!(
@@ -430,11 +540,13 @@ async fn recovery_is_reversible_without_automatic_source_authorization_or_refere
     let f = Fixture::new().await;
     let sessions = Arc::downgrade(&f.state.sessions);
     let runtime = Arc::downgrade(&f.state.readonly);
+    let desktop = read(&f.state).unwrap();
     apply(
         &f.state,
         f.change(Composition {
             profile: Profile::Recovery,
             disabled_plugin_ids: vec![],
+            opted_in_plugin_ids: vec![],
             removed_plugin_ids: vec![],
         }),
     )
@@ -442,16 +554,17 @@ async fn recovery_is_reversible_without_automatic_source_authorization_or_refere
     assert!(f.state.readonly.intake.acquire().is_none());
     assert!(f.state.sessions.set_enabled("codex", true).is_err());
     let restored = apply(&f.state, f.change(Composition::default())).unwrap();
-    assert_eq!(
-        restored
-            .catalog
+    let active_ids = |catalog: &CompositionCatalog| {
+        catalog
             .host
             .plugins
             .iter()
-            .filter(|p| p.runtime_active)
-            .count(),
-        25
-    );
+            .filter(|plugin| plugin.runtime_active)
+            .map(|plugin| plugin.id.clone())
+            .collect::<BTreeSet<_>>()
+    };
+    assert_eq!(active_ids(&restored.catalog), active_ids(&desktop));
+    assert!(f.state.sessions.source_active("codex"));
     assert!(
         f.state
             .sessions

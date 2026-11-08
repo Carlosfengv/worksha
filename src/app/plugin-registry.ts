@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
 import type { Page, Snapshot } from "./types";
 import type { IconName } from "@/lib/icon-context";
+import type { SystemFeatureDetails } from "@/features/plugins/system-features";
 
 export interface AppRoute {
   extensionPlugin?: string;
   extensionView?: string;
-  deferredPlugin?: "tasks" | "projects";
+  deferredPlugin?: "tasks";
   defaultEntry?: true;
   domainSource?: string;
   page: Page;
@@ -37,6 +38,7 @@ export interface PageContribution {
   ownsBody?: boolean;
   refreshInHeader?: boolean;
   resetScrollOnObject?: boolean;
+  systemFeature?: SystemFeatureDetails;
   render: (context: PageContext) => ReactNode;
 }
 export interface UiPlugin {
@@ -44,17 +46,6 @@ export interface UiPlugin {
   version: 1;
   pages: readonly PageContribution[];
 }
-const builtinRoutes: readonly Page[] = [
-  "overview",
-  "agents",
-  "providers",
-  "model-services",
-  "mcp",
-  "sessions",
-  "requests",
-  "plugins",
-  "settings",
-];
 const hostRoutes = ["plugins", "settings"] as const;
 
 export function createUiRegistry(plugins: readonly UiPlugin[]) {
@@ -67,7 +58,7 @@ export function createUiRegistry(plugins: readonly UiPlugin[]) {
     ids.add(plugin.id);
     for (const page of plugin.pages) {
       if (
-        !builtinRoutes.includes(page.id) ||
+        !/^[a-z][a-z-]*$/.test(page.id) ||
         pages.has(page.id) ||
         !page.label.trim()
       )
@@ -103,10 +94,10 @@ export function createUiRegistry(plugins: readonly UiPlugin[]) {
         }
       }
       const [page, rawId] = path.split("/");
-      if (page === "tasks" || page === "projects") {
+      if (page === "tasks" && !pages.has(page)) {
         return { page: "plugins", deferredPlugin: page };
       }
-      if (!builtinRoutes.includes(page as Page)) {
+      if (!pages.has(page as Page)) {
         return {
           page: pages.has("overview") ? "overview" : "plugins",
           defaultEntry: true,

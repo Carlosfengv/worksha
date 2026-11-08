@@ -9,16 +9,7 @@ use std::sync::Arc;
 
 // Legacy composition records and receipts can still contain these IDs.
 pub(super) fn deferred(id: &str) -> bool {
-    matches!(
-        id,
-        "builtin.workbench"
-            | "builtin.projects"
-            | "listeners"
-            | "project.source"
-            | "project.assets"
-            | "project.git"
-            | "project.listeners"
-    )
+    id == "builtin.workbench"
 }
 
 fn key(id: &'static str) -> CapabilityKey {
@@ -28,12 +19,16 @@ fn key(id: &'static str) -> CapabilityKey {
         instance: id,
     }
 }
-struct Feature {
-    id: &'static str,
-    title: &'static str,
-    requires: &'static [&'static str],
+pub(crate) struct Feature {
+    pub(crate) id: &'static str,
+    pub(crate) title: &'static str,
+    pub(crate) requires: &'static [&'static str],
+    pub(crate) opt_in: bool,
 }
 impl BuiltinPlugin for Feature {
+    fn opt_in(&self) -> bool {
+        self.opt_in
+    }
     fn descriptor(&self) -> PluginDescriptor {
         PluginDescriptor {
             id: self.id,
@@ -61,36 +56,43 @@ pub(crate) fn definitions() -> Vec<Arc<dyn BuiltinPlugin>> {
             id: "builtin.providers",
             title: "Providers",
             requires: &[],
+            opt_in: false,
         },
         Feature {
             id: "builtin.agents",
             title: "Agents",
             requires: &["builtin.providers"],
+            opt_in: false,
         },
         Feature {
             id: "builtin.model-services",
             title: "模型服务",
             requires: &["builtin.providers"],
+            opt_in: false,
         },
         Feature {
             id: "builtin.sessions",
             title: "Sessions",
             requires: &[],
+            opt_in: false,
         },
         Feature {
             id: "builtin.requests",
             title: "请求",
             requires: &[],
+            opt_in: false,
         },
         Feature {
             id: "builtin.overview",
             title: "总览",
             requires: &["builtin.sessions", "builtin.requests"],
+            opt_in: false,
         },
         Feature {
             id: "builtin.mcp",
             title: "MCP",
             requires: &["builtin.sessions"],
+            opt_in: false,
         },
     ]
     .into_iter()
@@ -101,6 +103,16 @@ pub(crate) fn owner(plugin: &dyn BuiltinPlugin) -> Option<&'static str> {
     let descriptor = plugin.descriptor();
     if descriptor.id.starts_with("builtin.") {
         return None;
+    }
+    if let Some(owner) = descriptor
+        .requires
+        .iter()
+        .find(|key| key.name == "business.feature")
+    {
+        return Some(owner.instance);
+    }
+    if descriptor.id == crate::projects::LISTENER_ID {
+        return Some(crate::projects::PLUGIN_ID);
     }
     if descriptor.id == "activity" {
         return Some("builtin.overview");
@@ -127,6 +139,9 @@ pub(crate) fn owner(plugin: &dyn BuiltinPlugin) -> Option<&'static str> {
 struct Support {
     inner: Arc<dyn BuiltinPlugin>,
     owner: &'static str,
+}
+pub(crate) fn owned(inner: Arc<dyn BuiltinPlugin>, owner: &'static str) -> Arc<dyn BuiltinPlugin> {
+    Arc::new(Support { inner, owner })
 }
 impl BuiltinPlugin for Support {
     fn descriptor(&self) -> PluginDescriptor {
@@ -159,11 +174,12 @@ impl BuiltinPlugin for Support {
 }
 pub(crate) fn register(support: Vec<Arc<dyn BuiltinPlugin>>) -> Vec<Arc<dyn BuiltinPlugin>> {
     let mut factories = definitions();
+    factories.extend(crate::projects::plugins());
     factories.extend(
         support
             .into_iter()
             .map(|inner| match owner(inner.as_ref()) {
-                Some(owner) => Arc::new(Support { inner, owner }) as Arc<dyn BuiltinPlugin>,
+                Some(owner) => owned(inner, owner),
                 None => inner,
             }),
     );
@@ -182,8 +198,6 @@ pub(crate) fn owner_of_path(path: &str) -> Option<&'static str> {
         Some("builtin.workbench")
     } else if path.starts_with("/api/model-service") {
         Some("builtin.model-services")
-    } else if path.starts_with("/api/projects") || path == "/api/project-visibility" {
-        Some("builtin.projects")
     } else if path.starts_with("/gateway/") || path.starts_with("/capture/") {
         Some("builtin.agents")
     } else if path.starts_with("/api/provider")

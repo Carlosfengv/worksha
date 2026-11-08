@@ -11,6 +11,7 @@ fn change(store: &Store) -> CompositionChange {
         composition: Composition {
             profile: Profile::Desktop,
             disabled_plugin_ids: vec!["builtin.projects".into()],
+            opted_in_plugin_ids: vec![],
             removed_plugin_ids: vec!["builtin.projects".into()],
         },
     }

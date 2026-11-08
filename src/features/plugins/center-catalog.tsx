@@ -375,19 +375,10 @@ export function PluginCenterCatalog({
             </Button>
           ))}
       </div>
-      {(scene === "all" || scene === "tasks" || scene === "projects") && (
+      {(scene === "all" || scene === "tasks") && (
         <Alert>
-          <AlertTitle>
-            {scene === "all"
-              ? "任务与项目"
-              : scene === "tasks"
-                ? "任务"
-                : "项目"}
-            普通插件待接入
-          </AlertTitle>
-          <AlertDescription>
-            核心插件系统完善后开放安装。现有任务和项目数据保留。
-          </AlertDescription>
+          <AlertTitle>任务普通插件待接入</AlertTitle>
+          <AlertDescription>现有任务记录和配置保留。</AlertDescription>
         </Alert>
       )}
       {scene !== "all" && (

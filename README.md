@@ -23,7 +23,7 @@ Local Agent 使用 Tauri 2 和 Rust，界面与本地服务随 macOS 应用包�
 
 插件中心按功能场景组织入口，说明与[实际页面和操作](docs/plugin-functions.md)对应。系统自带和用户上传插件均可启用、停用和卸载。变更前展示依赖、连带影响和受影响的模型服务，后台重新复核。系统插件卸载后保留历史数据与配置，可从应用随附版本重新安装。上传扩展使用一个入口，按[准入规则](docs/plugin-standard.md)检查后安装并启用。具体文件和账户另行授权。
 
-任务和项目将作为独立安装的普通插件提供，当前待接入。任务执行、项目页面和项目监听默认关闭，已有数据保留。现有任务实现见[架构说明](docs/architecture.md#agent-任务工作台)。
+项目是默认关闭的内置插件，可在插件中心启用，项目页面和监听随它启停。任务工作台待接入，已有数据保留。现有任务实现见[架构说明](docs/architecture.md#agent-任务工作台)。
 
 ## 快速开始
 
@@ -51,9 +51,10 @@ pnpm tauri dev
 
 ```sh
 pnpm tauri build --debug --bundles app
+pnpm sign:desktop --app 'target/debug/bundle/macos/Local Agent.app'
 ```
 
-该命令自动构建随包服务和前端资源，生成 macOS 开发包：
+构建命令自动准备随包服务和前端资源，签名命令为开发包和服务分别签名并执行校验。产物路径为：
 
 ```text
 target/debug/bundle/macos/Local Agent.app

@@ -15,6 +15,7 @@ test("registered pages retain all detail and return parameters", async ({
     "mcp",
     "sessions",
     "requests",
+    "projects",
     "plugins",
     "settings",
   ]);
@@ -62,6 +63,13 @@ test("registered pages retain all detail and return parameters", async ({
     refreshToken: "2:[]",
   });
   expect(props.requests.routeSearch).toContain("returnTo=%2Fprojects%2Fp");
+  expect(props.projects).toMatchObject({
+    selectedId: "你/id",
+    initialScope: "all",
+    initialAgent: "codex-desktop",
+    selectedTab: "memory",
+    anchor: "tool-1",
+  });
 });
 test("registry rejects conflicts and keeps navigation and scroll ownership", async ({
   page,
@@ -83,7 +91,7 @@ test("registry rejects conflicts and keeps navigation and scroll ownership", asy
       extensionView: "history",
     },
     deferredTask: { page: "plugins", deferredPlugin: "tasks" },
-    deferredProject: { page: "plugins", deferredPlugin: "projects" },
+    deferredProject: { page: "projects", objectId: "example" },
   });
   const navigation = JSON.parse(
     (await page.getByTestId("navigation").textContent()) ?? "[]",

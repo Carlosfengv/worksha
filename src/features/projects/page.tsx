@@ -3,7 +3,6 @@ import { useAgentDirectory } from "@/shared/hooks/use-agent-directory";
 import { CostDetails } from "@/features/costs/details";
 import { costText } from "@/shared/lib/money";
 import { compactNumber } from "@/shared/lib/format";
-import type { Snapshot } from "@/app/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,7 +44,7 @@ import { AgentTotalsView, Fact, Totals } from "./components/project-facts";
 import { ProjectSessions } from "./components/project-sessions";
 import { projectLink } from "./links";
 import { HideProject, HiddenProjects } from "./components/project-visibility";
-import type { HiddenProject } from "./types";
+import type { HiddenProject, ProjectsPageProps } from "./types";
 
 const tabs = [
   ["overview", "总览"],
@@ -69,15 +68,7 @@ export function ProjectsPage({
   initialAgent,
   initialScope,
   refresh,
-}: {
-  data: Snapshot | null;
-  selectedId?: string;
-  selectedTab?: string;
-  anchor?: string;
-  initialAgent?: string;
-  initialScope?: string;
-  refresh: () => Promise<void>;
-}) {
+}: ProjectsPageProps) {
   const { agentNames, agentProducts } = useAgentDirectory();
   const agent = initialAgent ?? "all";
   const scope = initialScope ?? "workspace";

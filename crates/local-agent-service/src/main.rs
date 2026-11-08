@@ -187,6 +187,7 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
                     &local_agent_core::plugin::builtin::Composition {
                         profile: local_agent_core::plugin::builtin::Profile::Recovery,
                         disabled_plugin_ids: vec![],
+                        opted_in_plugin_ids: vec![],
                         removed_plugin_ids: vec![],
                     },
                 )?;

@@ -28,6 +28,7 @@ fn valid_id(value: &str) -> bool {
 fn valid_composition(composition: &Composition) -> bool {
     [
         &composition.disabled_plugin_ids,
+        &composition.opted_in_plugin_ids,
         &composition.removed_plugin_ids,
     ]
     .into_iter()
@@ -42,6 +43,64 @@ fn valid_composition(composition: &Composition) -> bool {
                         .all(|b| b.is_ascii_alphanumeric() || b".-_".contains(&b))
             })
     })
+}
+fn restore_opt_ins(composition: &mut Composition, stored: Option<&str>) -> Result<(), PluginError> {
+    if let Some(stored) = stored {
+        if !composition.opted_in_plugin_ids.is_empty() {
+            return Err(invalid_record("duplicate opt-in data"));
+        }
+        composition.opted_in_plugin_ids = serde_json::from_str(stored).map_err(invalid_record)?;
+    }
+    Ok(())
+}
+
+fn initialize_opt_ins(connection: &rusqlite::Connection) -> Result<(), String> {
+    // Older schema-16 services read and update the original JSON columns. Keep
+    // new selections in nullable columns so either version can still write.
+    let verify = || "无法核查可选插件状态，原记录已保留".to_owned();
+    let state_column: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('builtin_plugin_composition') WHERE name='opted_in')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|_| verify())?;
+    let receipt_column: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('builtin_plugin_operations') WHERE name='opted_in')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|_| verify())?;
+    if !state_column {
+        connection
+            .execute_batch(
+                "ALTER TABLE builtin_plugin_composition ADD COLUMN opted_in TEXT;
+            UPDATE builtin_plugin_composition
+            SET opted_in=json_extract(value,'$.composition.optedInPluginIds'),
+                value=json_remove(value,'$.composition.optedInPluginIds')
+            WHERE json_type(value,'$.composition.optedInPluginIds')='array';",
+            )
+            .map_err(|_| verify())?;
+    }
+    if !receipt_column {
+        connection
+            .execute_batch(
+                "ALTER TABLE builtin_plugin_operations ADD COLUMN opted_in TEXT;
+            UPDATE builtin_plugin_operations
+            SET opted_in=json_extract(request,'$.composition.optedInPluginIds'),
+                request=json_remove(request,'$.composition.optedInPluginIds'),
+                receipt=json_remove(receipt,'$.composition.optedInPluginIds')
+            WHERE CASE WHEN json_valid(request) AND json_valid(receipt) THEN
+                json_type(request,'$.composition.optedInPluginIds')='array'
+                AND json_type(receipt,'$.composition.optedInPluginIds')='array'
+                AND json_extract(request,'$.composition.optedInPluginIds')=
+                    json_extract(receipt,'$.composition.optedInPluginIds')
+            ELSE 0 END;",
+            )
+            .map_err(|_| verify())?;
+    }
+    Ok(())
 }
 pub(crate) fn initialize(
     connection: &rusqlite::Connection,
@@ -81,10 +140,10 @@ pub(crate) fn initialize(
             if original_version >= 16 || changed {
                 return Err("内置插件状态缺失，原记录已保留；未恢复默认启用状态".into());
             }
-            connection.execute("INSERT INTO builtin_plugin_composition VALUES(1,?1)", [r#"{"schemaVersion":1,"revision":"0","composition":{"profile":"desktop","disabledPluginIds":[]}}"#])
+            connection.execute("INSERT INTO builtin_plugin_composition(id,value) VALUES(1,?1)", [r#"{"schemaVersion":1,"revision":"0","composition":{"profile":"desktop","disabledPluginIds":[]}}"#])
                 .map_err(|_| "内置插件初始状态保存失败")?;
         }
-        return Ok(());
+        return initialize_opt_ins(connection);
     }
     if count != 0 || original_version >= 16 {
         return Err("内置插件存储不完整，原记录已保留；未恢复默认启用状态".into());
@@ -102,17 +161,22 @@ impl Store {
         &self,
         default_profile: Profile,
     ) -> Result<SavedComposition, PluginError> {
-        let saved: Option<String> = self
+        let saved: Option<(String, Option<String>)> = self
             .connection
             .query_row(
-                "SELECT value FROM builtin_plugin_composition WHERE id=1",
+                "SELECT value,opted_in FROM builtin_plugin_composition WHERE id=1",
                 [],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
             .map_err(unavailable)?;
         let mut state: SavedComposition = match saved {
-            Some(value) => serde_json::from_str(&value).map_err(invalid_record)?,
+            Some((value, opted_in)) => {
+                let mut saved: SavedComposition =
+                    serde_json::from_str(&value).map_err(invalid_record)?;
+                restore_opt_ins(&mut saved.composition, opted_in.as_deref())?;
+                saved
+            }
             None => return Err(invalid_record("configuration missing")),
         };
         if state.schema_version != 1
@@ -148,21 +212,23 @@ impl Store {
         if !valid_id(&query.operation_id) {
             return Err(PluginError::new("invalid_input", "组合操作编号无效"));
         }
-        let record: Option<(String, String)> = self
+        let record: Option<(String, String, Option<String>)> = self
             .connection
             .query_row(
-                "SELECT request,receipt FROM builtin_plugin_operations WHERE operation_id=?1",
+                "SELECT request,receipt,opted_in FROM builtin_plugin_operations WHERE operation_id=?1",
                 [&query.operation_id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()
             .map_err(unavailable)?;
         record
-            .map(|(request, receipt)| {
-                let request: CompositionChange =
+            .map(|(request, receipt, opted_in)| {
+                let mut request: CompositionChange =
                     serde_json::from_str(&request).map_err(invalid_record)?;
-                let receipt: CompositionReceipt =
+                let mut receipt: CompositionReceipt =
                     serde_json::from_str(&receipt).map_err(invalid_record)?;
+                restore_opt_ins(&mut request.composition, opted_in.as_deref())?;
+                restore_opt_ins(&mut receipt.composition, opted_in.as_deref())?;
                 if request.store_id != query.store_id
                     || !valid_id(&request.expected_generation)
                     || receipt.revision.value() > 9_007_199_254_740_991
@@ -239,25 +305,32 @@ impl Store {
             .checked_add(1)
             .filter(|v| *v <= 9_007_199_254_740_991)
             .ok_or_else(|| PluginError::new("resource_limit", "组合版本已达上限"))?;
+        let mut compatible_request = request.clone();
+        let selected = std::mem::take(&mut compatible_request.composition.opted_in_plugin_ids);
+        let opted_in = (!selected.is_empty())
+            .then(|| serde_json::to_string(&selected))
+            .transpose()
+            .map_err(unavailable)?;
         let next = SavedComposition {
             schema_version: 1,
             revision: revision.into(),
-            composition: request.composition.clone(),
+            composition: compatible_request.composition.clone(),
         };
-        let receipt = CompositionReceipt {
+        let mut receipt = CompositionReceipt {
             operation_id: request.operation_id.clone(),
             store_id: request.store_id.clone(),
             revision: revision.into(),
-            composition: request.composition.clone(),
+            composition: next.composition.clone(),
         };
-        transaction.execute("INSERT INTO builtin_plugin_composition(id,value) VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET value=excluded.value",[serde_json::to_string(&next).map_err(unavailable)?]).map_err(unavailable)?;
+        transaction.execute("INSERT INTO builtin_plugin_composition(id,value,opted_in) VALUES(1,?1,?2) ON CONFLICT(id) DO UPDATE SET value=excluded.value,opted_in=excluded.opted_in",params![serde_json::to_string(&next).map_err(unavailable)?,opted_in]).map_err(unavailable)?;
         for source in revoked_sources {
             self.save_native_source(source, false)
                 .map_err(unavailable)?;
         }
-        transaction.execute("INSERT INTO builtin_plugin_operations(operation_id,request,receipt) VALUES(?1,?2,?3)",params![request.operation_id,serde_json::to_string(request).map_err(unavailable)?,serde_json::to_string(&receipt).map_err(unavailable)?]).map_err(unavailable)?;
+        transaction.execute("INSERT INTO builtin_plugin_operations(operation_id,request,receipt,opted_in) VALUES(?1,?2,?3,?4)",params![request.operation_id,serde_json::to_string(&compatible_request).map_err(unavailable)?,serde_json::to_string(&receipt).map_err(unavailable)?,opted_in]).map_err(unavailable)?;
         transaction.execute("DELETE FROM builtin_plugin_operations WHERE sequence NOT IN (SELECT sequence FROM builtin_plugin_operations ORDER BY sequence DESC LIMIT 256)",[]).map_err(unavailable)?;
         transaction.commit().map_err(unavailable)?;
+        receipt.composition.opted_in_plugin_ids = selected;
         Ok(receipt)
     }
 }
@@ -275,6 +348,7 @@ mod tests {
             composition: Composition {
                 profile: Profile::Desktop,
                 disabled_plugin_ids: vec!["io.localagent.builtin.source.codex".into()],
+                opted_in_plugin_ids: vec![],
                 removed_plugin_ids: vec![],
             },
         }

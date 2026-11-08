@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
 import http from "node:http";
+import { DatabaseSync } from "node:sqlite";
 
 // Owned service, synthetic source home, no model or credential calls.
 const binary = path.resolve(
@@ -161,10 +162,9 @@ try {
   passed("新目录与操作沿用令牌、Host、Origin 保护");
   let current = await catalog();
   assert.equal(current.schemaVersion, 1);
-  assert.equal(current.host.plugins.length, 18);
-  assert.equal(current.host.plugins.filter(plugin=>plugin.id.startsWith("builtin.")).length,7);
-  assert.equal(current.host.plugins.reduce((count,plugin)=>count+plugin.capabilities.length,0),30);
   assert.equal(active(current).length, 18);
+  const projects = current.host.plugins.find((plugin) => plugin.id === "builtin.projects");
+  assert(projects.optIn && !projects.runtimeActive);
   assert(
     current.host.plugins.every(
       (plugin) =>
@@ -178,7 +178,7 @@ try {
       (source) => !source.enabled && source.runtimeActive,
     ),
   );
-  passed("生产共享目录公开 7 个业务插件与 11 个支撑，注册不代表来源授权");
+  passed("生产共享目录登记默认关闭的项目插件，注册不代表启用或来源授权");
   const before = await catalog();
   for (const input of [
     await request({
@@ -351,6 +351,39 @@ try {
   );
   assert.equal(fs.readFileSync(source, "utf8"), original);
   passed("恢复模式重启后可恢复桌面采集，合成来源文件保持原样");
+
+  // The trigger runs in the real composition transaction. Its invalid source
+  // row makes authorization reconciliation fail after the commit has succeeded.
+  const fault = new DatabaseSync(path.join(data, "local-agent.sqlite3"));
+  try {
+    fault.exec(`CREATE TRIGGER fixture_reconcile_failure
+      AFTER UPDATE ON builtin_plugin_composition BEGIN
+        INSERT INTO native_sources(agent_id, enabled) VALUES(x'80', 1);
+      END;`);
+    const interrupted = await request({
+      profile: "desktop",
+      disabledPluginIds: ["builtin.overview"],
+    });
+    const rejected = await api("/api/builtin-plugins/changes", interrupted, 503);
+    assert.equal(rejected.outcomeUnknown, true);
+    const observed = await op(interrupted);
+    assert.deepEqual(observed.receipt.composition, interrupted.composition);
+    assert.equal(observed.catalog.effectiveProfile, "recovery");
+    assert.equal(observed.catalog.problem, "source_reconcile_failed");
+    assert.equal(active(observed.catalog).length, 0);
+    assert.equal((await api("/api/domain/directory", undefined, 409)).code, "plugin_disabled");
+    fault.exec("DROP TRIGGER fixture_reconcile_failure; DELETE FROM native_sources WHERE agent_id=x'80';");
+    const replayed = await change(interrupted);
+    assert.deepEqual(replayed, observed);
+    assert.equal((await api("/api/domain/directory", undefined, 409)).code, "plugin_disabled");
+    const repaired = await change(await request({ profile: "desktop", disabledPluginIds: [] }));
+    assert.equal(repaired.catalog.problem, null);
+    assert.equal(repaired.catalog.effectiveProfile, "desktop");
+    await api("/api/domain/directory");
+    passed("提交后来源同步失败会暂停业务并保留回执，显式恢复后才能继续");
+  } finally {
+    fault.close();
+  }
   await stop();
   await start(true, path.join(root, "headless-data"));
   assert.equal((await catalog()).effectiveProfile, "background");

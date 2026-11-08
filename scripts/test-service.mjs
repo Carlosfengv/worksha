@@ -815,11 +815,28 @@ try {
     await request("/api/sessions?agent=opencode")
   ).json();
   sameCosts(feeSessions.associatedCosts.cost, usdCosts);
-  const feeProject = await (
-    await request(
-      "/api/projects/" + encodeURIComponent(feeConversation.session.projectId),
-    )
-  ).json();
+  const pluginCatalogResponse = await request("/api/builtin-plugins");
+  assert.equal(pluginCatalogResponse.status, 200);
+  const plugins = await pluginCatalogResponse.json();
+  const enabledProjects = await request("/api/builtin-plugins/changes", {
+    method: "POST",
+    body: JSON.stringify({
+      operationId: randomUUID(),
+      storeId: plugins.storeId,
+      expectedRevision: plugins.revision,
+      expectedGeneration: plugins.host.generation,
+      composition: {
+        ...plugins.composition,
+        optedInPluginIds: ["builtin.projects"],
+      },
+    }),
+  });
+  assert.equal(enabledProjects.status, 200, await enabledProjects.clone().text());
+  const feeProjectResponse = await request(
+    "/api/projects/" + encodeURIComponent(feeConversation.session.projectId),
+  );
+  assert.equal(feeProjectResponse.status, 200);
+  const feeProject = await feeProjectResponse.json();
   sameCosts(feeProject.project.totals.associatedCosts.cost, usdCosts);
   assert.equal(
     feeProject.project.agents[0].totals.associatedCosts.gatewayAttempts,

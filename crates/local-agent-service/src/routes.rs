@@ -420,17 +420,11 @@ pub(crate) fn management(state: AppState) -> Router {
             "/api/request-exports/{id}/finish",
             axum::routing::post(observation::request_export::finish),
         )
-        .route("/api/projects", get(projects::query))
-        .route(
-            "/api/project-visibility",
-            axum::routing::put(projects::set_hidden),
-        )
-        .route("/api/projects/{id}", get(projects::detail))
-        .route("/api/projects/{id}/diff/{file}", get(projects::diff))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             crate::plugin_host::builtin::guard,
         ))
+        .merge(projects::routes(state.clone()))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             crate::api::authorize,

@@ -154,3 +154,14 @@ export interface ProjectDetail {
   appliedFilter: ProjectQuery;
   activities: { native: NativeActivity[]; gateway: GatewayActivity[] };
 }
+import type { Snapshot } from "@/app/types";
+
+export type ProjectsPageProps = {
+  data: Snapshot | null;
+  selectedId?: string;
+  selectedTab?: string;
+  anchor?: string;
+  initialAgent?: string;
+  initialScope?: string;
+  refresh: () => Promise<void>;
+};

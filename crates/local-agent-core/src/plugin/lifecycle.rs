@@ -8,7 +8,6 @@ use std::sync::{
 
 pub(super) const PREPARED: u8 = 0;
 pub(super) const ACTIVE: u8 = 1;
-pub(super) const STOPPED: u8 = 2;
 
 pub(super) struct GenerationLife {
     pub phase: AtomicU8,
@@ -44,7 +43,8 @@ impl PluginLease {
         }
     }
     pub fn is_preparing(&self) -> bool {
-        self.generation.phase.load(Ordering::Acquire) == PREPARED
+        self.active.load(Ordering::Acquire)
+            && self.generation.phase.load(Ordering::Acquire) == PREPARED
     }
     /// Hold the generation barrier only for the final bounded mutation. The
     /// callback must not do I/O, invoke plugins, or recursively acquire this barrier.

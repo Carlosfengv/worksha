@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { IconProvider } from "@/lib/icon-context";
 import { systemFeatureCatalog } from "@/features/plugins/system-features";
 import { PluginManager } from "@/features/plugins/manager";
+import { createProjectsPlugin } from "@/features/projects/plugin";
 import {
   builtinPluginsApi,
   fullPluginsApi,
@@ -31,6 +32,7 @@ import type {
 import "@/styles/globals.css";
 import { notifyBackendRecovery } from "@/shared/lib/backend-recovery";
 const mode = new URLSearchParams(location.search).get("mode") ?? "plugin";
+const projectsPlugin = createProjectsPlugin(() => null);
 const storeId = emptyBuiltinCatalog.storeId;
 const calls: string[] = [];
 declare global {
@@ -114,10 +116,44 @@ const builtinCatalog: CompositionCatalog = {
     ],
   },
 };
+if (mode === "recovery") {
+  builtinCatalog.effectiveProfile = "recovery";
+  builtinCatalog.composition = {
+    profile: "recovery",
+    disabledPluginIds: [
+      "builtin.agents",
+      "builtin.model-services",
+      "builtin.providers",
+    ],
+  };
+  builtinCatalog.host.plugins.push({
+    id: "project.source",
+    displayName: "项目目录",
+    version: "1.0.0",
+    executionKind: "builtin",
+    desiredEnabled: false,
+    runtimeActive: false,
+    activationEpoch: "1",
+    capabilities: [
+      {
+        address: { name: "project.source", version: 1, instance: "native" },
+        metadata: { kind: "query", resourceScope: "project" },
+      },
+    ],
+    requires: [
+      { name: "business.feature", version: 1, instance: "builtin.projects" },
+    ],
+    optionalRequires: [],
+    resources: [],
+  });
+  for (const plugin of builtinCatalog.host.plugins)
+    plugin.runtimeActive = plugin.desiredEnabled = false;
+}
 builtinPluginsApi.catalog = async () => structuredClone(builtinCatalog);
 builtinPluginsApi.change = async (input) => {
   calls.push("builtin:change");
   builtinCatalog.composition = structuredClone(input.composition);
+  builtinCatalog.effectiveProfile = input.composition.profile;
   builtinCatalog.revision = String(BigInt(builtinCatalog.revision) + 1n);
   builtinCatalog.host.generation = crypto.randomUUID();
   const selected = compositionSelection(
@@ -239,12 +275,20 @@ createRoot(document.getElementById("root")!).render(
         providers={[]}
         systemFeatures={systemFeatureCatalog(
           [
+            ...projectsPlugin.pages.map((page) => ({
+              id: projectsPlugin.id,
+              page: page.id,
+              name: page.label,
+              details: page.systemFeature,
+            })),
             {
               id: "builtin.model-services",
               page: "model-services",
               name: "模型服务",
             },
-            ...(mode === "dependencies" || mode === "active-task"
+            ...(mode === "dependencies" ||
+            mode === "active-task" ||
+            mode === "recovery"
               ? [
                   {
                     id: "builtin.providers",

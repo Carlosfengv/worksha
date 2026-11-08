@@ -21,6 +21,7 @@ pub(super) fn selected(
     if [
         &composition.disabled_plugin_ids,
         &composition.removed_plugin_ids,
+        &composition.opted_in_plugin_ids,
     ]
     .into_iter()
     .any(|list| {
@@ -35,14 +36,29 @@ pub(super) fn selected(
             "功能配置包含未知或重复的插件，请重新读取目录",
         ));
     }
+    if composition.opted_in_plugin_ids.iter().any(|id| {
+        !plugins
+            .iter()
+            .any(|plugin| plugin.opt_in() && plugin.descriptor().id == id)
+    }) {
+        return Err(PluginError::new(
+            "invalid_input",
+            "组合包含未登记的可选插件",
+        ));
+    }
     let mut enabled: BTreeSet<String> = plugins
         .iter()
         .filter(|plugin| {
             let descriptor = plugin.descriptor();
-            !composition
-                .disabled_plugin_ids
-                .iter()
-                .any(|id| id == descriptor.id)
+            (!plugin.opt_in()
+                || composition
+                    .opted_in_plugin_ids
+                    .iter()
+                    .any(|id| id == descriptor.id))
+                && !composition
+                    .disabled_plugin_ids
+                    .iter()
+                    .any(|id| id == descriptor.id)
                 && !composition
                     .removed_plugin_ids
                     .iter()
@@ -157,10 +173,75 @@ pub(crate) async fn change(
     .await
 }
 fn apply(state: &AppState, input: CompositionChange) -> Result<CompositionReply, PluginError> {
-    let transition = state
+    use super::intake::Scope;
+    let basis = read(state)?;
+    let enabled = selected(&state.readonly.factories, &input.composition)?;
+    let scoped = basis.effective_profile == input.composition.profile
+        && basis.problem.is_none()
+        && basis
+            .host
+            .plugins
+            .iter()
+            .all(|plugin| plugin.runtime_active == plugin.desired_enabled);
+    let changed: BTreeSet<_> = basis
+        .host
+        .plugins
+        .iter()
+        .filter(|plugin| !scoped || plugin.runtime_active != enabled.contains(&plugin.id))
+        .map(|plugin| plugin.id.clone())
+        .collect();
+    let retained = basis
+        .host
+        .plugins
+        .iter()
+        .filter(|plugin| !changed.contains(&plugin.id))
+        .map(|plugin| plugin.id.clone())
+        .collect();
+    let scope =
+        if scoped {
+            let mut blocked = changed.clone();
+            for plugin in &basis.host.plugins {
+                if changed.contains(&plugin.id) && !plugin.id.starts_with("builtin.") {
+                    blocked.extend(
+                        plugin
+                            .requires
+                            .iter()
+                            .filter(|key| key.name == "business.feature")
+                            .map(|key| key.instance.clone()),
+                    );
+                }
+            }
+            loop {
+                let before = blocked.len();
+                for plugin in &basis.host.plugins {
+                    if plugin.requires.iter().any(|key| {
+                        key.name == "business.feature" && blocked.contains(&key.instance)
+                    }) {
+                        blocked.insert(plugin.id.clone());
+                    }
+                }
+                if blocked.len() == before {
+                    break;
+                }
+            }
+            if [
+                "builtin.providers",
+                "builtin.agents",
+                "builtin.model-services",
+            ]
+            .into_iter()
+            .any(|id| blocked.contains(id))
+            {
+                blocked.insert("gateway".into());
+            }
+            Scope::Plugins(blocked)
+        } else {
+            Scope::All
+        };
+    let mut transition = state
         .readonly
         .intake
-        .transition(std::time::Duration::from_secs(3))?;
+        .transition_scope(std::time::Duration::from_secs(3), scope)?;
     let mut config = state.readonly.configuration()?;
     let store = state.store.lock().map_err(|_| unavailable())?;
     if let Some(receipt) = store.check_builtin_composition_replay(&input)? {
@@ -196,13 +277,14 @@ fn apply(state: &AppState, input: CompositionChange) -> Result<CompositionReply,
             "工作台仍有执行中的任务，请等待结束后再修改功能",
         ));
     }
-    if current.revision != input.expected_revision {
+    if current.revision != input.expected_revision
+        || current.host.generation != basis.host.generation
+    {
         return Err(PluginError::new(
             "stale_snapshot",
             "功能配置已变化，请重新读取",
         ));
     }
-    let enabled = selected(&state.readonly.factories, &input.composition)?;
     let revoked: Vec<_> = state
         .sessions
         .directory()
@@ -222,53 +304,103 @@ fn apply(state: &AppState, input: CompositionChange) -> Result<CompositionReply,
     // Retirement runs before the next graph publishes. Preserve shared request
     // views when their consumer remains selected, rather than inspecting a
     // temporarily stopped old lease from inside a cleanup callback.
-    let retained = state.readonly.retain_request_views.swap(
+    let retained_request_views = state.readonly.retain_request_views.swap(
         enabled.contains("builtin.requests"),
         std::sync::atomic::Ordering::AcqRel,
     );
-    let next = state
+    let result = state
         .readonly
         .host
-        .reconfigure(&input.expected_generation, &factories, &enabled, || {
-            receipt =
-                Some(store.save_builtin_composition(&input, config.default_profile, &revoked)?);
-            Ok(())
-        })
-        .inspect_err(|_| {
+        .reconfigure_retaining(
+            &input.expected_generation,
+            &factories,
+            &enabled,
+            &retained,
+            || {
+                receipt = Some(store.save_builtin_composition(
+                    &input,
+                    config.default_profile,
+                    &revoked,
+                )?);
+                transition.keep_closed_on_failure();
+                Ok(())
+            },
+        )
+        .and_then(|next| {
+            config.effective_profile = if next.cleanup_failed {
+                Profile::Recovery
+            } else {
+                input.composition.profile
+            };
+            config.problem = next.cleanup_failed.then(|| "cleanup_failed".into());
+            let source_problem =
+                || PluginError::new("source_reconcile_failed", "无法同步会话来源授权");
+            let authorized = store.native_sources().map_err(|_| source_problem())?;
+            if !scoped
+                || state.sessions.directory().sources().iter().any(|source| {
+                    state
+                        .sessions
+                        .source_plugin_id(&source.id)
+                        .is_some_and(|id| changed.contains(id))
+                })
+            {
+                state
+                    .sessions
+                    .reconcile_plugin_sources(&authorized)
+                    .map_err(|_| source_problem())?;
+            }
+            state
+                .readonly
+                .bind_changed_resources(state, |id| changed.contains(id))?;
+            catalog_locked(state, &config, &store)
+        });
+    let catalog = match result {
+        Ok(catalog) => catalog,
+        Err(problem) if receipt.is_some() => {
+            transition.block_all();
+            state.readonly.stop();
+            config.effective_profile = Profile::Recovery;
+            let cleanup_failed = state
+                .readonly
+                .host
+                .snapshot()
+                .is_ok_and(|host| host.cleanup_failed);
+            config.problem = Some(
+                if cleanup_failed {
+                    "cleanup_failed"
+                } else {
+                    problem.code
+                }
+                .into(),
+            );
+            transition.commit(false);
+            return Err(unavailable());
+        }
+        Err(problem) => {
             state
                 .readonly
                 .retain_request_views
-                .store(retained, std::sync::atomic::Ordering::Release);
-        })?;
-    config.effective_profile = if next.cleanup_failed {
-        Profile::Recovery
-    } else {
-        input.composition.profile
+                .store(retained_request_views, std::sync::atomic::Ordering::Release);
+            return Err(problem);
+        }
     };
-    config.problem = next.cleanup_failed.then(|| "cleanup_failed".into());
-    let authorized = store.native_sources().map_err(|_| unavailable())?;
-    state
-        .sessions
-        .reconcile_plugin_sources(&authorized)
-        .map_err(|_| unavailable())?;
-    if let Err(problem) = state.readonly.bind_resources(state) {
-        state.readonly.host.stop_all();
-        config.effective_profile = Profile::Recovery;
-        config.problem = Some(problem.code.into());
-        transition.commit(false);
-        return Err(unavailable());
-    }
-    transition.commit(config.effective_profile != Profile::Recovery && config.problem.is_none());
-    Ok(CompositionReply {
-        receipt,
-        catalog: catalog_locked(state, &config, &store)?,
-    })
+    transition.commit(catalog.effective_profile != Profile::Recovery && catalog.problem.is_none());
+    Ok(CompositionReply { receipt, catalog })
 }
 
 pub(crate) async fn guard(
     State(state): State<AppState>,
     request: axum::extract::Request,
     next: axum::middleware::Next,
+) -> axum::response::Response {
+    let owner = super::features::owner_of_path(request.uri().path());
+    guard_owned(state, request, next, owner).await
+}
+pub(crate) async fn guard_owned(
+    state: AppState,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+    owner: Option<&'static str>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
     let path = request.uri().path();
@@ -279,14 +411,24 @@ pub(crate) async fn guard(
     {
         return next.run(request).await;
     }
-    let Some(permit) = state.readonly.intake.acquire() else {
+    let scope = if path.starts_with("/gateway/")
+        || path.starts_with("/v1/")
+        || path.starts_with("/capture/")
+        || path.starts_with("/api/dynamic-")
+        || path == "/api/agents/model-connection"
+    {
+        Some("gateway")
+    } else {
+        owner
+    };
+    let Some(permit) = state.readonly.intake.acquire_for(scope) else {
         return error(PluginError::new(
             "plugin_disabled",
             "相关功能已暂停或正在调整，可在插件中心检查并恢复",
         ))
         .into_response();
     };
-    if let Some(owner) = super::features::owner_of_path(path) {
+    if let Some(owner) = owner {
         if super::features::deferred(owner) {
             return error(PluginError::new(
                 "plugin_disabled",

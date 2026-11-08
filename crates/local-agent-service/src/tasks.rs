@@ -147,6 +147,7 @@ impl CollectorScheduler {
         Self::definitions_for(vec![
             ("activity", Duration::from_secs(1)),
             ("sessions", Duration::from_secs(30)),
+            (crate::projects::LISTENER_ID, Duration::from_secs(10)),
         ])
     }
     fn definitions_for(specs: Vec<(&'static str, Duration)>) -> Vec<Arc<Collector>> {
@@ -250,7 +251,7 @@ pub(crate) fn start(state: &AppState) {
     let readers = Arc::downgrade(&state.readonly.projects);
     let cleanup_listeners = listeners.clone();
     jobs.insert(
-        "listeners",
+        crate::projects::LISTENER_ID,
         (
             Arc::new(move |lease| {
                 let Some(readers) = readers.upgrade() else {
@@ -416,7 +417,7 @@ mod tests {
         assert_eq!(cleanup.load(Ordering::SeqCst), 2);
     }
     #[test]
-    fn registration_excludes_project_listeners_and_starts_no_tasks() {
+    fn registration_includes_dormant_project_listener_and_starts_no_tasks() {
         let scheduler = CollectorScheduler::builtin().unwrap();
         assert_eq!(
             scheduler
@@ -424,7 +425,11 @@ mod tests {
                 .iter()
                 .map(|c| (c.id, c.interval.as_secs()))
                 .collect::<Vec<_>>(),
-            [("activity", 1), ("sessions", 30)]
+            [
+                ("activity", 1),
+                ("sessions", 30),
+                (crate::projects::LISTENER_ID, 10),
+            ]
         );
         assert!(scheduler.handles.lock().unwrap().is_empty());
         assert!(!scheduler.started.load(Ordering::Acquire));

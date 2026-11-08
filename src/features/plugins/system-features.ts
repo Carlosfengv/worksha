@@ -11,6 +11,10 @@ export type SystemFeature = {
   conditions: string;
   supportScenes: PluginScenario[];
 };
+export type SystemFeatureDetails = Omit<
+  SystemFeature,
+  "id" | "name" | "href" | "version"
+>;
 export const businessDisableEffects: Record<string, string> = {
   "builtin.providers":
     "模型 API 连接、账户用量刷新与本机模型网关不可用；依赖它的模型服务和 Agent 连接同时停用。",
@@ -101,22 +105,28 @@ const definitions: Record<
   },
 };
 export function systemFeatureCatalog(
-  pages: { id: string; page: string; name: string }[],
+  pages: {
+    id: string;
+    page: string;
+    name: string;
+    details?: SystemFeatureDetails;
+  }[],
   version?: string,
 ): SystemFeature[] {
-  return pages.flatMap((page) =>
-    definitions[page.page]
+  return pages.flatMap((page) => {
+    const details = page.details ?? definitions[page.page];
+    return details
       ? [
           {
-            ...definitions[page.page],
+            ...details,
             id: page.id,
             name: page.name,
             href: `#/${page.page}`,
             version,
           },
         ]
-      : [],
-  );
+      : [];
+  });
 }
 
 export function systemAgentPlugins(

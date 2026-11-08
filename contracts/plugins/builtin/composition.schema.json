@@ -18,6 +18,12 @@
       },
       "type": "array"
     },
+    "optedInPluginIds": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
     "profile": {
       "$ref": "#/$defs/Profile"
     },

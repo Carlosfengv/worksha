@@ -421,11 +421,8 @@ export function BuiltinPluginManager({
               disabled={editingDisabled}
               onClick={() =>
                 preview({
+                  ...catalog.composition,
                   profile: "desktop",
-                  disabledPluginIds: [],
-                  ...(catalog.composition.removedPluginIds?.length
-                    ? { removedPluginIds: catalog.composition.removedPluginIds }
-                    : {}),
                 })
               }
             >

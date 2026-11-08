@@ -1,4 +1,5 @@
 import { systemFeatureCatalog } from "@/features/plugins/system-features";
+import { createProjectsPlugin } from "@/features/projects/plugin";
 import { retryableLazy as lazy } from "./render-boundary";
 import { createUiRegistry, type UiPlugin } from "./plugin-registry";
 
@@ -44,6 +45,13 @@ const SessionsPage = lazy(() =>
 );
 const McpPage = lazy(() =>
   import("@/features/mcp/page").then((module) => ({ default: module.McpPage })),
+);
+const projectsPlugin = createProjectsPlugin(
+  lazy(() =>
+    import("@/features/projects/page").then(({ ProjectsPage }) => ({
+      default: ProjectsPage,
+    })),
+  ),
 );
 
 export const builtinPlugins: readonly UiPlugin[] = [
@@ -202,6 +210,7 @@ export const builtinPlugins: readonly UiPlugin[] = [
       },
     ],
   },
+  projectsPlugin,
   {
     id: "builtin.plugins",
     version: 1,
@@ -228,6 +237,7 @@ export const builtinPlugins: readonly UiPlugin[] = [
                   id: plugin.id,
                   page: page.id,
                   name: page.label,
+                  details: page.systemFeature,
                 })),
               ),
               data?.version,

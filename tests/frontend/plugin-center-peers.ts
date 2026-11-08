@@ -49,13 +49,15 @@ export function builtinBusinessPlugins(): CompositionCatalog["host"]["plugins"] 
     ["builtin.requests", "请求", []],
     ["builtin.overview", "总览", ["builtin.sessions", "builtin.requests"]],
     ["builtin.mcp", "MCP", ["builtin.sessions"]],
+    ["builtin.projects", "项目", ["builtin.sessions"]],
   ].map(([id, displayName, deps]) => ({
     id: id as string,
     displayName: displayName as string,
     version: "1.0.0",
     executionKind: "builtin",
-    desiredEnabled: true,
-    runtimeActive: true,
+    desiredEnabled: id !== "builtin.projects",
+    runtimeActive: id !== "builtin.projects",
+    ...(id === "builtin.projects" ? { optIn: true } : {}),
     activationEpoch: "1",
     capabilities: [
       {

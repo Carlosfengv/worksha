@@ -80,12 +80,13 @@ export function builtinChange(value: unknown): CompositionChange {
   const input = parseSchema<CompositionChange>(changeSchema, value);
   const ids = input.composition.disabledPluginIds;
   const removed = input.composition.removedPluginIds ?? [];
+  const optedIn = input.composition.optedInPluginIds ?? [];
   if (
     !uuid.test(input.operationId) ||
     !uuid.test(input.storeId) ||
     !uuid.test(input.expectedGeneration) ||
     !decimal(input.expectedRevision) ||
-    [ids, removed].some(
+    [ids, removed, optedIn].some(
       (list) =>
         list.length > 256 ||
         list.some(
@@ -105,11 +106,16 @@ export function builtinChange(value: unknown): CompositionChange {
       ...(input.composition.removedPluginIds
         ? { removedPluginIds: [...removed] }
         : {}),
+      ...(input.composition.optedInPluginIds
+        ? { optedInPluginIds: [...optedIn] }
+        : {}),
     },
   };
   Object.freeze(request.composition.disabledPluginIds);
   if (request.composition.removedPluginIds)
     Object.freeze(request.composition.removedPluginIds);
+  if (request.composition.optedInPluginIds)
+    Object.freeze(request.composition.optedInPluginIds);
   if (request.expectedImpact) {
     Object.freeze(request.expectedImpact.modelServices);
     Object.freeze(request.expectedImpact);
@@ -143,6 +149,8 @@ export function builtinReply(
         receipt.composition.disabledPluginIds.some(
           (id, index) => id !== request.composition.disabledPluginIds[index],
         ) ||
+        JSON.stringify(receipt.composition.optedInPluginIds ?? []) !==
+          JSON.stringify(request.composition.optedInPluginIds ?? []) ||
         JSON.stringify(receipt.composition.removedPluginIds ?? []) !==
           JSON.stringify(request.composition.removedPluginIds ?? []))
     )

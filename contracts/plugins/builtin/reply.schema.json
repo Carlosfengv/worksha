@@ -73,6 +73,12 @@
           },
           "type": "array"
         },
+        "optedInPluginIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "profile": {
           "$ref": "#/$defs/Profile"
         },
@@ -240,6 +246,9 @@
         },
         "id": {
           "type": "string"
+        },
+        "optIn": {
+          "type": "boolean"
         },
         "optionalRequires": {
           "items": {

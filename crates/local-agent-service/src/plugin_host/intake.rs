@@ -1,20 +1,35 @@
 //! Keep request ownership through response completion, including streaming bodies.
 use local_agent_core::plugin::PluginError;
 use std::{
+    collections::{BTreeMap, BTreeSet},
     sync::{Arc, Condvar, Mutex},
     time::{Duration, Instant},
 };
 
 struct State {
     accepting: bool,
-    switching: bool,
+    switching: Option<Scope>,
     in_flight: usize,
+    requests: BTreeMap<Option<&'static str>, usize>,
+}
+pub(crate) enum Scope {
+    All,
+    Plugins(BTreeSet<String>),
+}
+impl Scope {
+    fn blocks(&self, owner: Option<&str>) -> bool {
+        match self {
+            Self::All => true,
+            Self::Plugins(plugins) if plugins.is_empty() => false,
+            Self::Plugins(plugins) => owner.is_none_or(|id| plugins.contains(id)),
+        }
+    }
 }
 pub(crate) struct Intake {
     state: Mutex<State>,
     changed: Condvar,
 }
-pub(crate) struct Permit(Arc<Intake>);
+pub(crate) struct Permit(Arc<Intake>, Option<&'static str>);
 pub(crate) struct Transition {
     intake: Arc<Intake>,
     previous: bool,
@@ -25,45 +40,69 @@ impl Intake {
         Arc::new(Self {
             state: Mutex::new(State {
                 accepting,
-                switching: false,
+                switching: None,
                 in_flight: 0,
+                requests: BTreeMap::new(),
             }),
             changed: Condvar::new(),
         })
     }
+    #[cfg(test)]
     pub(crate) fn acquire(self: &Arc<Self>) -> Option<Permit> {
+        self.acquire_for(None)
+    }
+    pub(crate) fn acquire_for(self: &Arc<Self>, owner: Option<&'static str>) -> Option<Permit> {
         let mut state = self.state.lock().ok()?;
-        if !state.accepting || state.switching || state.in_flight >= 4096 {
+        if !state.accepting
+            || state
+                .switching
+                .as_ref()
+                .is_some_and(|scope| scope.blocks(owner))
+            || state.in_flight >= 4096
+        {
             return None;
         }
         state.in_flight += 1;
-        Some(Permit(self.clone()))
+        *state.requests.entry(owner).or_default() += 1;
+        Some(Permit(self.clone(), owner))
     }
+    #[cfg(test)]
     pub(crate) fn transition(
         self: &Arc<Self>,
         budget: Duration,
     ) -> Result<Transition, PluginError> {
+        self.transition_scope(budget, Scope::All)
+    }
+    pub(crate) fn transition_scope(
+        self: &Arc<Self>,
+        budget: Duration,
+        scope: Scope,
+    ) -> Result<Transition, PluginError> {
         let mut state = self.state.lock().map_err(|_| unavailable())?;
-        if state.switching {
+        if state.switching.is_some() {
             return Err(PluginError::new(
                 "busy",
                 "另一个组合切换正在进行，请先核查其结果",
             ));
         }
         let previous = state.accepting;
-        state.switching = true;
-        state.accepting = false;
+        state.switching = Some(scope);
         let mut transition = Transition {
             intake: self.clone(),
             previous,
             completed: false,
         };
         let deadline = Instant::now() + budget;
-        while state.in_flight > 0 {
+        while state.requests.keys().any(|owner| {
+            state
+                .switching
+                .as_ref()
+                .expect("pending transition")
+                .blocks(*owner)
+        }) {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                state.switching = false;
-                state.accepting = previous;
+                state.switching = None;
                 transition.completed = true;
                 return Err(PluginError::new(
                     "busy",
@@ -87,14 +126,33 @@ impl Drop for Permit {
     fn drop(&mut self) {
         let mut state = self.0.state.lock().unwrap_or_else(|e| e.into_inner());
         state.in_flight = state.in_flight.saturating_sub(1);
+        if let Some(count) = state.requests.get_mut(&self.1) {
+            *count -= 1;
+            if *count == 0 {
+                state.requests.remove(&self.1);
+            }
+        }
         self.0.changed.notify_all();
     }
 }
 impl Transition {
+    /// Durable changes cannot use the previous admission state on failure.
+    pub(crate) fn keep_closed_on_failure(&mut self) {
+        self.previous = false;
+    }
+
+    pub(crate) fn block_all(&self) {
+        self.intake
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .switching = Some(Scope::All);
+    }
+
     pub(crate) fn commit(mut self, accepting: bool) {
         let mut state = self.intake.state.lock().unwrap_or_else(|e| e.into_inner());
         state.accepting = accepting;
-        state.switching = false;
+        state.switching = None;
         self.completed = true;
         self.intake.changed.notify_all();
     }
@@ -104,7 +162,7 @@ impl Drop for Transition {
         if !self.completed {
             let mut state = self.intake.state.lock().unwrap_or_else(|e| e.into_inner());
             state.accepting = self.previous;
-            state.switching = false;
+            state.switching = None;
             self.intake.changed.notify_all();
         }
     }
@@ -154,6 +212,21 @@ mod tests {
         assert!(intake.acquire().is_none());
         drop(transition);
         assert!(intake.acquire().is_some());
+    }
+    #[test]
+    fn a_scoped_drain_rejects_affected_and_unclassified_requests_only() {
+        let intake = Intake::new(true);
+        let unrelated = intake.acquire_for(Some("gateway")).unwrap();
+        let affected = intake.acquire_for(Some("builtin.projects")).unwrap();
+        let scope = || Scope::Plugins(BTreeSet::from(["builtin.projects".into()]));
+        assert!(intake.transition_scope(Duration::ZERO, scope()).is_err());
+        drop(affected);
+        let transition = intake.transition_scope(Duration::ZERO, scope()).unwrap();
+        assert!(intake.acquire_for(Some("builtin.projects")).is_none());
+        assert!(intake.acquire().is_none());
+        assert!(intake.acquire_for(Some("gateway")).is_some());
+        transition.commit(true);
+        drop(unrelated);
     }
     #[test]
     fn recovery_keeps_new_calls_closed_and_can_reopen_with_a_new_transition() {

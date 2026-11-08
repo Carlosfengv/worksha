@@ -511,8 +511,11 @@ pub(crate) fn initialize(
     fresh: bool,
 ) -> Result<(), ConfigError> {
     if original_version == crate::Store::SCHEMA_VERSION {
-        return crate::plugin::initialize_composition(db, original_version)
-            .map_err(plugin_storage_error);
+        let tx =
+            Transaction::new_unchecked(db, TransactionBehavior::Immediate).map_err(unavailable)?;
+        crate::plugin::initialize_composition(&tx, original_version)
+            .map_err(plugin_storage_error)?;
+        return tx.commit().map_err(unavailable);
     }
     let parent = path
         .parent()

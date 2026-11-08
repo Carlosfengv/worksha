@@ -64,6 +64,8 @@ pub struct PluginInfo {
     pub version: String,
     pub execution_kind: crate::domain::ExecutionKind,
     pub desired_enabled: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub opt_in: bool,
     pub runtime_active: bool,
     pub activation_epoch: crate::domain::Decimal,
     pub capabilities: Vec<CapabilityInfo>,
@@ -86,6 +88,8 @@ pub enum Profile {
 pub struct Composition {
     pub profile: Profile,
     pub disabled_plugin_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub opted_in_plugin_ids: Vec<String>,
     /// Removing a bundled plugin unregisters its functionality; the signed app
     /// remains the trusted reinstall source. Historical domain data is retained.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

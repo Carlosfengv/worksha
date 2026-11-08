@@ -13,6 +13,7 @@ const binary = path.resolve(
     "target/debug/local-agent-service",
 );
 const previous = process.env.PLUGIN_DATABASE_PREVIOUS_BINARY;
+const rollback = process.env.PLUGIN_DATABASE_ROLLBACK_BINARY;
 const root = fs.realpathSync(
   fs.mkdtempSync(path.join(tmpdir(), "plugin-database-")),
 );
@@ -25,7 +26,9 @@ const report = {
   complete: false,
   binarySha256: hash(binary),
   previousBinarySha256: previous ? hash(previous) : null,
+  rollbackBinarySha256: rollback ? hash(rollback) : null,
   actualDowngradeVerified: false,
+  sameSchemaRollbackVerified: false,
   cases: [],
   realModelCalls: 0,
   realCredentialCalls: 0,
@@ -111,6 +114,42 @@ async function api(
   });
   return { status: response.status, body: await response.json() };
 }
+async function changeComposition(service, update) {
+  const { status, body: catalog } = await api(service, "/api/builtin-plugins");
+  assert.equal(status, 200);
+  const request = {
+    operationId: randomUUID(),
+    storeId: catalog.storeId,
+    expectedRevision: catalog.revision,
+    expectedGeneration: catalog.host.generation,
+    composition: { ...catalog.composition, ...update },
+    expectedImpact: catalog.impact,
+  };
+  const changed = await api(service, "/api/builtin-plugins/changes", request);
+  assert.equal(changed.status, 200, JSON.stringify(changed.body));
+  return { request, ...changed.body };
+}
+function saveFixtureProvider(service) {
+  return api(
+    service,
+    "/api/providers",
+    {
+      id: "custom-" + randomUUID(),
+      name: "Offline migration fixture",
+      vendor: "custom",
+      endpoint: "http://127.0.0.1:9/v1",
+      protocol: "responses",
+      model: "fixture-model",
+      models: ["fixture-model"],
+      configured: false,
+      credentialRef: null,
+      credentialLabel: null,
+      revision: 0,
+      category: "local",
+    },
+    "PUT",
+  );
+}
 function sql(data, action) {
   const db = new DatabaseSync(path.join(data, "local-agent.sqlite3"));
   try {
@@ -134,27 +173,10 @@ function evidence(data) {
 }
 try {
   const data = path.join(root, "upgrade");
-  // A real schema-15 process is preferred; the optional branch keeps the suite useful without historical binaries.
-  let current = await boot(data, previous ?? binary);
-  const savedProvider = await api(
-    current,
-    "/api/providers",
-    {
-      id: "custom-" + randomUUID(),
-      name: "Offline migration fixture",
-      vendor: "custom",
-      endpoint: "http://127.0.0.1:9/v1",
-      protocol: "responses",
-      model: "fixture-model",
-      models: ["fixture-model"],
-      configured: false,
-      credentialRef: null,
-      credentialLabel: null,
-      revision: 0,
-      category: "local",
-    },
-    "PUT",
-  );
+  // Simulate schema 15 with historical composition evidence. The actual older
+  // process below predates the composition API and seeds its own database.
+  let current = await boot(data);
+  const savedProvider = await saveFixtureProvider(current);
   assert.equal(savedProvider.status, 200, JSON.stringify(savedProvider.body));
   fs.mkdirSync(path.join(home, ".codex", "sessions"), { recursive: true });
   assert.equal(
@@ -185,7 +207,7 @@ try {
   assert.equal(changed.status, 200);
   const receipt = changed.body.receipt;
   await stop(current.child);
-  if (!previous) sql(data, (db) => db.exec("PRAGMA user_version=15"));
+  sql(data, (db) => db.exec("PRAGMA user_version=15"));
   const before = evidence(data);
   assert.equal(before.version, 15);
   assert.equal(before.providers.length, 1);
@@ -200,7 +222,10 @@ try {
   const active = (await api(current, "/api/builtin-plugins")).body;
   assert.equal(active.storeId, catalog.storeId);
   assert.deepEqual(active.composition, request.composition);
-  assert(!active.host.plugins.some((p) => p.id === "builtin.projects"));
+  assert.equal(
+    active.host.plugins.find((p) => p.id === "builtin.projects").runtimeActive,
+    false,
+  );
   const queried = await api(current, "/api/builtin-plugins/operations", {
     storeId: request.storeId,
     operationId: request.operationId,
@@ -235,14 +260,6 @@ try {
     "pre-upgrade private backup is valid and contains the exact original plugin state and receipts",
   );
   await stop(current.child);
-  if (previous) {
-    assert.match(await boot(data, previous, true), /数据库来自更新版本/);
-    assert.deepEqual(evidence(data), after);
-    report.actualDowngradeVerified = true;
-    passed(
-      "actual previous schema-15 executable refuses the upgraded database before readiness and does not change its rows",
-    );
-  }
   current = await boot(data);
   assert.deepEqual(
     (await api(current, "/api/builtin-plugins/changes", request)).body.receipt,
@@ -326,9 +343,9 @@ try {
     "missing committed configuration blocks startup instead of silently enabling every plugin; receipts remain intact",
   );
   sql(data, (db) => {
-    db.prepare("INSERT INTO builtin_plugin_composition VALUES(1,?)").run(
-      after.state[0].value,
-    );
+    db.prepare(
+      "INSERT INTO builtin_plugin_composition(id,value) VALUES(1,?)",
+    ).run(after.state[0].value);
     db.exec("DROP TABLE builtin_plugin_operations");
   });
   assert.match(await boot(data, binary, true), /内置插件存储不完整/);
@@ -387,6 +404,140 @@ try {
   passed(
     "upgrade backup includes committed WAL rows while a second connection remains open",
   );
+  const inlineData = path.join(root, "inline-opt-in");
+  current = await boot(inlineData);
+  const inline = await changeComposition(current, {
+    profile: "desktop",
+    optedInPluginIds: ["builtin.projects"],
+  });
+  await stop(current.child);
+  sql(inlineData, (db) =>
+    db.exec(`
+    UPDATE builtin_plugin_composition SET value=json_set(value,'$.composition.optedInPluginIds',json(opted_in));
+    UPDATE builtin_plugin_operations SET request=json_set(request,'$.composition.optedInPluginIds',json(opted_in)),
+      receipt=json_set(receipt,'$.composition.optedInPluginIds',json(opted_in));
+    ALTER TABLE builtin_plugin_composition DROP COLUMN opted_in;
+    ALTER TABLE builtin_plugin_operations DROP COLUMN opted_in;
+  `),
+  );
+  current = await boot(inlineData);
+  assert.deepEqual(
+    (await api(current, "/api/builtin-plugins")).body.composition,
+    inline.receipt.composition,
+  );
+  assert.deepEqual(
+    (await api(current, "/api/builtin-plugins/changes", inline.request)).body
+      .receipt,
+    inline.receipt,
+  );
+  await stop(current.child);
+  const migrated = evidence(inlineData);
+  assert.equal(migrated.state[0].opted_in, '["builtin.projects"]');
+  assert(
+    !Object.hasOwn(
+      JSON.parse(migrated.state[0].value).composition,
+      "optedInPluginIds",
+    ),
+  );
+  assert.equal(migrated.receipts[0].opted_in, '["builtin.projects"]');
+  assert(
+    !Object.hasOwn(
+      JSON.parse(migrated.receipts[0].receipt).composition,
+      "optedInPluginIds",
+    ),
+  );
+  passed(
+    "existing inline Projects choices and receipts migrate atomically to the rollback-compatible storage layout",
+  );
+  if (previous) {
+    const oldData = path.join(root, "actual-schema15");
+    const old = await boot(oldData, previous);
+    assert.equal((await saveFixtureProvider(old)).status, 200);
+    await stop(old.child);
+    const original = sql(oldData, (db) => {
+      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 15);
+      return db.prepare("SELECT * FROM providers").all();
+    });
+    current = await boot(oldData);
+    await stop(current.child);
+    const upgraded = evidence(oldData);
+    assert.equal(upgraded.version, 16);
+    assert.deepEqual(upgraded.providers, original);
+    assert.match(await boot(oldData, previous, true), /数据库来自更新版本/);
+    assert.deepEqual(evidence(oldData), upgraded);
+    report.actualDowngradeVerified = true;
+    passed(
+      "actual schema-15 executable refuses the upgraded database without changing its rows",
+    );
+  }
+  if (rollback) {
+    const rollbackData = path.join(root, "same-schema-rollback");
+    const old = await boot(rollbackData, rollback);
+    assert.equal((await saveFixtureProvider(old)).status, 200);
+    const older = await changeComposition(old, { profile: "desktop" });
+    await stop(old.child);
+    const original = evidence(rollbackData);
+    assert.equal(original.version, 16);
+
+    current = await boot(rollbackData);
+    const opted = await changeComposition(current, {
+      optedInPluginIds: ["builtin.projects"],
+    });
+    assert(
+      opted.catalog.host.plugins.find((p) => p.id === "builtin.projects")
+        .runtimeActive,
+    );
+    await stop(current.child);
+
+    const reverted = await boot(rollbackData, rollback);
+    const revertedCatalog = (await api(reverted, "/api/builtin-plugins")).body;
+    assert.equal(revertedCatalog.revision, opted.receipt.revision);
+    assert.equal(revertedCatalog.storeId, older.catalog.storeId);
+    assert.deepEqual(evidence(rollbackData).providers, original.providers);
+    const updated = await changeComposition(reverted, {
+      disabledPluginIds: ["builtin.mcp"],
+    });
+    await stop(reverted.child);
+
+    current = await boot(rollbackData);
+    const restored = (await api(current, "/api/builtin-plugins")).body;
+    assert.equal(restored.revision, updated.receipt.revision);
+    assert.deepEqual(restored.composition.optedInPluginIds, [
+      "builtin.projects",
+    ]);
+    assert.deepEqual(restored.composition.disabledPluginIds, ["builtin.mcp"]);
+    assert(
+      restored.host.plugins.find((p) => p.id === "builtin.projects")
+        .runtimeActive,
+    );
+    const receipt = (request) =>
+      api(current, "/api/builtin-plugins/operations", {
+        storeId: request.storeId,
+        operationId: request.operationId,
+      });
+    assert.deepEqual(
+      (await receipt(older.request)).body.receipt,
+      older.receipt,
+    );
+    assert.deepEqual(
+      (await receipt(opted.request)).body.receipt,
+      opted.receipt,
+    );
+    assert.deepEqual(
+      (await receipt(updated.request)).body.receipt,
+      updated.receipt,
+    );
+    assert.deepEqual(
+      (await api(current, "/api/builtin-plugins/changes", opted.request)).body
+        .receipt,
+      opted.receipt,
+    );
+    await stop(current.child);
+    report.sameSchemaRollbackVerified = true;
+    passed(
+      "same-schema rollback can write another plugin choice and upgrade again with Projects and all original receipts intact",
+    );
+  }
   report.complete = true;
 } finally {
   await Promise.all([...children].map(stop));

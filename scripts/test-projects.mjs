@@ -235,6 +235,21 @@ try {
     ).status,
     401,
   );
+  const disabled = await request("/api/projects");
+  assert.equal(disabled.status, 409);
+  assert.equal((await disabled.json()).code, "plugin_disabled");
+  const plugins = await json("/api/builtin-plugins");
+  const enabled = await request("/api/builtin-plugins/changes", {
+    method: "POST",
+    body: JSON.stringify({
+      operationId: randomUUID(),
+      storeId: plugins.storeId,
+      expectedRevision: plugins.revision,
+      expectedGeneration: plugins.host.generation,
+      composition: { ...plugins.composition, optedInPluginIds: ["builtin.projects"] },
+    }),
+  });
+  assert.equal(enabled.status, 200, await enabled.clone().text());
   for (const agentId of ["claude", "codex"])
     assert.equal(
       (

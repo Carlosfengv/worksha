@@ -7,7 +7,7 @@ test("一个列表按安装来源展示，搜索和来源筛选不暴露内部�
   const table = page
     .getByLabel("插件中心列表", { exact: true })
     .getByRole("table");
-  await expect(table.getByRole("row")).toHaveCount(5);
+  await expect(table.getByRole("row")).toHaveCount(6);
   await expect(page.getByRole("tablist")).toHaveCount(0);
   await expect(table).toContainText("系统自带");
   await expect(table).toContainText("用户上传");
@@ -141,13 +141,28 @@ test("可用业务插件展示真实入口，待接入功能没有安装和启�
   await expect(
     detail.getByRole("link", { name: "打开模型服务", exact: true }),
   ).toHaveAttribute("href", "#/model-services");
-  await expect(page.getByText("任务与项目普通插件待接入")).toBeVisible();
-  await expect(
-    page.locator('a[href="#/tasks"], a[href="#/projects"]'),
-  ).toHaveCount(0);
+  await expect(page.getByText("任务普通插件待接入")).toBeVisible();
+  await expect(page.locator('a[href="#/tasks"]')).toHaveCount(0);
   await expect(page.getByRole("switch", { name: "启用 任务" })).toHaveCount(0);
-  await expect(page.getByRole("switch", { name: "启用 项目" })).toHaveCount(0);
+  const projects = page.getByRole("switch", { name: "启用 项目", exact: true });
+  await expect(projects).not.toBeChecked();
+  await projects.click();
+  await page.getByRole("button", { name: "确认变更", exact: true }).click();
+  await expect(projects).toBeChecked();
   await expect(page.getByText("运行组合", { exact: true })).toHaveCount(0);
+});
+
+test("从恢复模式单独启用项目时一同恢复其目录支撑", async ({ page }) => {
+  await page.goto("/tests/frontend/plugin-center.html?mode=recovery");
+  const projects = page.getByRole("switch", { name: "启用 项目", exact: true });
+  await projects.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("项目列表 · 启用");
+  await dialog.getByRole("button", { name: "确认变更", exact: true }).click();
+  await expect(projects).toBeChecked();
+  await expect(
+    page.getByRole("switch", { name: "启用 Providers", exact: true }),
+  ).not.toBeChecked();
 });
 test("按功能场景筛选业务插件与上传扩展，同一数据插件可服务多个场景", async ({
   page,
@@ -162,8 +177,8 @@ test("按功能场景筛选业务插件与上传扩展，同一数据插件可�
     .getByRole("table");
   await expect(table).toContainText("完整只读历史");
   await expect(
-    page.getByText("项目普通插件待接入", { exact: true }),
-  ).toBeVisible();
+    table.getByRole("switch", { name: "启用 项目", exact: true }),
+  ).not.toBeChecked();
   await page
     .getByRole("group", { name: "功能场景", exact: true })
     .getByRole("button", { name: "任务执行", exact: true })
