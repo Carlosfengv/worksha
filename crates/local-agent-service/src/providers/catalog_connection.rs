@@ -256,6 +256,7 @@ pub(super) async fn commit_selected(
             choice(&manager, &frozen, &op, explicit.as_ref())?;
             return Ok((false, op));
         }
+        super::ensure_write_enabled(&copy)?;
         let start = store.start_provider_operation(&frozen.operation)?;
         let recorded = if let Some(source) = &explicit {
             manager.record_source_operation(&store, source)
@@ -329,6 +330,7 @@ pub(super) async fn commit_selected(
         let manager = copy.providers.lock().map_err(|_| unavailable())?;
         let store = copy.store.lock().map_err(|_| unavailable())?;
         let result = detected.and_then(|detected| {
+            super::ensure_write_enabled(&copy)?;
             lease
                 .ensure(
                     &copy.plugins,
@@ -377,6 +379,7 @@ async fn save(
             choice(&manager, &input, &op, source.as_ref())?;
             return Ok(op);
         }
+        super::ensure_write_enabled(&state)?;
         let providers = store
             .provider_by_id(&input.operation.provider.id)
             .map_err(|_| unavailable())?

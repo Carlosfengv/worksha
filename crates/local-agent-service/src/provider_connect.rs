@@ -350,6 +350,7 @@ pub(crate) async fn connect(
     crate::blocking::run(move || {
         let manager = state.providers.lock().map_err(|_| crate::error("配置服务暂不可用".into()))?;
         let store = state.store.lock().map_err(|_| crate::error("数据服务暂不可用".into()))?;
+        providers::ensure_write_enabled(&state).map_err(providers::error)?;
         let (provider, verification) = manager.save_connected_provider(&store, detected.provider, checked_at)
             .map_err(providers::error)?;
         json_value(serde_json::json!({"provider":provider,"verification":verification,"catalog":detected.catalog.as_deref()}))

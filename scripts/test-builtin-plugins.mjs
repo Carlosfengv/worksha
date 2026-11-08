@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { randomUUID, createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -280,6 +280,91 @@ try {
     "operation_conflict",
   );
   passed("旧版本、其他数据库和复用编号换参数均无写入");
+  const key = path.join(root, "provider-preset.key");
+  const archive = path.join(root, "provider-preset.laplug");
+  execFileSync(binary, ["--plugin-sdk", "keygen", key]);
+  execFileSync(binary, [
+    "--plugin-sdk", "pack", "sdk/plugins/examples/provider-presets/package",
+    archive, key,
+  ]);
+  const presetReview = await api("/api/plugins/inspect", { path: archive });
+  const preset = await api("/api/plugins/install", {
+    packageRef: presetReview.packageRef,
+    digest: presetReview.digest,
+    approvePublisher: true,
+  });
+  const plugin = { pluginId: preset.manifest.id, digest: preset.digest };
+  await api("/api/plugins/state", { ...plugin, action: "enable" });
+  const createPreset = { ...plugin, action: { kind: "create-provider", preset: "responses" } };
+  const writeProtocol = await api("/api/provider-operations/protocol");
+  const provider = {
+    id: `custom-${randomUUID()}`,
+    name: "Disabled Provider fixture",
+    vendor: "custom",
+    endpoint: "https://provider.example.invalid/v1",
+    protocol: "responses",
+    model: "fixture",
+    models: ["fixture"],
+    configured: false,
+    revision: 0,
+    category: "cloud",
+  };
+  const operation = {
+    storeId: writeProtocol.storeId,
+    expectedSequence: writeProtocol.sequence,
+    operationId: randomUUID(),
+    kind: "save",
+    provider,
+  };
+  const records = (file, sql) => {
+    const db = new DatabaseSync(path.join(data, file), { readOnly: true });
+    try {
+      return db.prepare(sql).all();
+    } finally {
+      db.close();
+    }
+  };
+  const providerRows = () => records("local-agent.sqlite3", "SELECT * FROM providers ORDER BY id");
+  const beforeProviders = providerRows();
+  await change(await request({
+    profile: "desktop",
+    disabledPluginIds: ["builtin.agents", "builtin.model-services", "builtin.providers"],
+  }));
+  for (const [route, body, method] of [
+    ["/api/providers", provider, "PUT"],
+    ["/api/provider-operations", operation, "POST"],
+    ["/api/provider-connect", provider, "POST"],
+    ["/api/provider-imports", {}, "POST"],
+    ["/api/provider-source-operations", {}, "POST"],
+    ["/api/catalog-provider-operations", {}, "POST"],
+  ]) {
+    assert.equal((await api(route, body, 409, method)).code, "plugin_disabled");
+  }
+  assert.equal((await api("/api/plugins/action", createPreset, 400)).code, "plugin_disabled");
+  assert.deepEqual(providerRows(), beforeProviders);
+  assert.deepEqual(records("plugin-host.sqlite3", "SELECT * FROM provider_presets"), []);
+  await change(await request({ profile: "desktop", disabledPluginIds: [] }));
+  const created = await api("/api/plugins/action", createPreset);
+  assert(providerRows().some((row) => row.id === created.providerId));
+  const providerReceipt = await api("/api/provider-operations", operation);
+  assert.equal(providerReceipt.status, "committed");
+  const sourceProtocol = await api("/api/provider-operations/protocol");
+  const sourceOperation = {
+    operation: {
+      ...operation,
+      expectedSequence: sourceProtocol.sequence,
+      operationId: randomUUID(),
+      provider: { ...provider, id: `custom-${randomUUID()}` },
+    },
+    source: { kind: "builtin" },
+    expectedSourceRevision: null,
+  };
+  const sourceReceipt = await api("/api/provider-source-operations", {
+    kind: "commit",
+    request: sourceOperation,
+  });
+  assert.equal(sourceReceipt.status, "committed");
+  passed("Providers 停用后所有创建入口拒绝写入，恢复后预设与普通创建可用");
   const background = await change(
     await request({ profile: "background", disabledPluginIds: [] }),
   );
@@ -313,6 +398,40 @@ try {
     (await api("/api/domain/directory", undefined, 409)).code,
     "plugin_disabled",
   );
+  const receiptRoute = (request) =>
+    `/api/provider-operations/${request.operationId}?storeId=${request.storeId}`;
+  assert.deepEqual(await api(receiptRoute(operation)), providerReceipt);
+  await api(receiptRoute(operation), undefined, 401, "GET", {
+    authorization: "invalid",
+  });
+  const sourceQueryRoute = "/api/provider-source-operations/query";
+  assert.deepEqual(await api(sourceQueryRoute, sourceOperation), sourceReceipt);
+  await api(sourceQueryRoute, sourceOperation, 401, "POST", {
+    authorization: "invalid",
+  });
+  assert.equal(
+    (await api("/api/provider-source-operations", {
+      kind: "commit",
+      request: sourceOperation,
+    }, 409)).code,
+    "plugin_disabled",
+  );
+  const recoveryProtocol = await api("/api/provider-operations/protocol");
+  const cancelRequest = {
+    ...operation,
+    expectedSequence: recoveryProtocol.sequence,
+    operationId: randomUUID(),
+    provider: { ...provider, id: `custom-${randomUUID()}` },
+  };
+  const cancelRoute = "/api/provider-operations/cancel";
+  await api(cancelRoute, cancelRequest, 401, "POST", {
+    origin: "https://fixture.example.invalid",
+  });
+  const cancellation = await api(cancelRoute, cancelRequest);
+  assert.equal(cancellation.status, "cancelled");
+  assert.deepEqual(await api(receiptRoute(cancelRequest)), cancellation);
+  assert.equal((await api("/api/provider-operations", cancelRequest, 409)).code, "plugin_disabled");
+  assert(!providerRows().some((row) => row.id === cancelRequest.provider.id));
   await api("/api/builtin-plugins", undefined, 401, "GET", {
     authorization: "invalid",
   });
@@ -351,6 +470,7 @@ try {
   );
   assert.equal(fs.readFileSync(source, "utf8"), original);
   passed("恢复模式重启后可恢复桌面采集，合成来源文件保持原样");
+  assert.deepEqual(await api("/api/provider-operations", cancelRequest), cancellation);
 
   // The trigger runs in the real composition transaction. Its invalid source
   // row makes authorization reconciliation fail after the commit has succeeded.
@@ -372,6 +492,7 @@ try {
     assert.equal(observed.catalog.problem, "source_reconcile_failed");
     assert.equal(active(observed.catalog).length, 0);
     assert.equal((await api("/api/domain/directory", undefined, 409)).code, "plugin_disabled");
+    assert.deepEqual(await api(receiptRoute(operation)), providerReceipt);
     fault.exec("DROP TRIGGER fixture_reconcile_failure; DELETE FROM native_sources WHERE agent_id=x'80';");
     const replayed = await change(interrupted);
     assert.deepEqual(replayed, observed);

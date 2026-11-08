@@ -3,6 +3,8 @@ import { IconProvider } from "@/lib/icon-context";
 import { systemFeatureCatalog } from "@/features/plugins/system-features";
 import { PluginManager } from "@/features/plugins/manager";
 import { createProjectsPlugin } from "@/features/projects/plugin";
+import { providersApi } from "@/features/providers/api";
+import type { ProviderOperation } from "@/features/providers/operation-receipt";
 import {
   builtinPluginsApi,
   fullPluginsApi,
@@ -148,6 +150,47 @@ if (mode === "recovery") {
   });
   for (const plugin of builtinCatalog.host.plugins)
     plugin.runtimeActive = plugin.desiredEnabled = false;
+  const operation: ProviderOperation = {
+    apiVersion: 1,
+    sequence: 1,
+    status: "pending",
+    request: {
+      storeId,
+      operationId: "10000000-0000-4000-8000-000000000021",
+      expectedSequence: 0,
+      kind: "save",
+      provider: {
+        id: "custom-10000000-0000-4000-8000-000000000022",
+        name: "待核查服务商",
+        endpoint: "https://example.invalid/v1",
+        protocol: "responses",
+        model: "fixture",
+        models: ["fixture"],
+        configured: false,
+        credentialRef: null,
+        credentialLabel: null,
+        revision: 0,
+        category: "cloud",
+      },
+    },
+    provider: null,
+    verification: null,
+    error: null,
+  };
+  providersApi.writeProtocol = async () => ({
+    version: 1,
+    storeId,
+    sequence: 1,
+    receiptLimit: 256,
+    receiptBytes: 1048576,
+    pendingLimit: 4,
+    pendingOperationIds: [operation.request.operationId],
+  });
+  providersApi.pendingOperation = async () => operation;
+  providersApi.cancelOperation = async () => ({
+    ...operation,
+    status: "cancelled",
+  });
 }
 builtinPluginsApi.catalog = async () => structuredClone(builtinCatalog);
 builtinPluginsApi.change = async (input) => {

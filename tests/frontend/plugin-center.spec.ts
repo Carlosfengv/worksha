@@ -152,6 +152,31 @@ test("可用业务插件展示真实入口，待接入功能没有安装和启�
   await expect(page.getByText("运行组合", { exact: true })).toHaveCount(0);
 });
 
+test("恢复模式可从插件中心取消原操作，恢复功能保留 Providers 停用", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 760, height: 720 });
+  await page.goto("/tests/frontend/plugin-center.html?mode=recovery");
+  const recovery = page.getByRole("region", { name: "服务商操作恢复" });
+  await recovery.getByRole("button", { name: "读取后台待核查操作" }).click();
+  await expect(
+    recovery.getByText("待核查服务商", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    recovery.getByRole("button", { name: "重试原请求" }),
+  ).toHaveCount(0);
+  await recovery.getByRole("button", { name: "取消原操作" }).click();
+  await expect(recovery.getByText("原操作已确认取消。")).toBeVisible();
+  await page.getByRole("button", { name: "恢复应用功能" }).click();
+  await page.getByRole("button", { name: "确认变更", exact: true }).click();
+  await expect(
+    page.getByRole("switch", { name: "启用 Providers", exact: true }),
+  ).not.toBeChecked();
+  await expect(
+    page.getByRole("switch", { name: "启用 Sessions", exact: true }),
+  ).toBeChecked();
+});
+
 test("从恢复模式单独启用项目时一同恢复其目录支撑", async ({ page }) => {
   await page.goto("/tests/frontend/plugin-center.html?mode=recovery");
   const projects = page.getByRole("switch", { name: "启用 项目", exact: true });

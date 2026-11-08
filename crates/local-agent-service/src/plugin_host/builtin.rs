@@ -1,6 +1,10 @@
 use super::RuntimeConfiguration;
 use crate::{ApiResult, AppState};
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{
+    Json,
+    extract::{MatchedPath, State},
+    http::StatusCode,
+};
 use local_agent_core::{
     Store,
     plugin::{BuiltinPlugin, PluginError, builtin::*},
@@ -404,10 +408,17 @@ pub(crate) async fn guard_owned(
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
     let path = request.uri().path();
-    if path == "/api/snapshot"
-        || path == "/api/session-sources"
-        || path == "/api/builtin-plugins"
-        || path.starts_with("/api/builtin-plugins/")
+    if matches!(
+        path,
+        "/api/snapshot"
+            | "/api/session-sources"
+            | "/api/builtin-plugins"
+            | "/api/builtin-plugins/changes"
+            | "/api/builtin-plugins/operations"
+    ) || request
+        .extensions()
+        .get::<MatchedPath>()
+        .is_some_and(|route| super::features::recovery_path(route.as_str(), request.method()))
     {
         return next.run(request).await;
     }
@@ -436,9 +447,7 @@ pub(crate) async fn guard_owned(
             ))
             .into_response();
         }
-        if !super::features::recovery_path(path, request.method())
-            && !super::features::active(&state, owner)
-        {
+        if !super::features::active(&state, owner) {
             return error(PluginError::new(
                 "plugin_disabled",
                 "此功能的插件已停用或卸载，请在插件中心恢复；历史数据和配置仍保留",

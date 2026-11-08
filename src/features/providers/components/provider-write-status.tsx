@@ -3,8 +3,10 @@ import { Button } from "@/components/ui/button";
 import type { useProviderWrite } from "../hooks/use-provider-write";
 export function ProviderWriteStatus({
   write,
+  allowRetry = true,
 }: {
   write: ReturnType<typeof useProviderWrite>;
+  allowRetry?: boolean;
 }) {
   if (write.state.kind === "cancelled")
     return (
@@ -38,14 +40,16 @@ export function ProviderWriteStatus({
           >
             核查原结果
           </Button>
-          <Button
-            type="button"
-            variant="tertiary"
-            disabled={write.busy}
-            onClick={() => void write.resume("retry", request, catalog)}
-          >
-            重试原请求
-          </Button>
+          {allowRetry && (
+            <Button
+              type="button"
+              variant="tertiary"
+              disabled={write.busy}
+              onClick={() => void write.resume("retry", request, catalog)}
+            >
+              重试原请求
+            </Button>
+          )}
           <Button
             type="button"
             variant="tertiary"
@@ -56,7 +60,9 @@ export function ProviderWriteStatus({
           </Button>
         </div>
         <p className="mt-2">
-          重试使用相同编号与输入；若请求尚未开始，连接验证可能产生费用。取消阻止后续保存，不撤回已经发出的远端请求。
+          {allowRetry &&
+            "重试使用相同编号与输入；若请求尚未开始，连接验证可能产生费用。"}
+          取消阻止后续保存，不撤回已经发出的远端请求。
         </p>
       </AlertDescription>
     </Alert>

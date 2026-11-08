@@ -42,6 +42,19 @@ fn unavailable() -> ConfigError {
     ConfigError::new("unavailable", "配置服务暂不可用")
 }
 
+// Check while holding the main store lock. A cancelled HTTP request can leave a
+// blocking write running, and composition changes hold the same lock.
+pub(crate) fn ensure_write_enabled(state: &AppState) -> Result<(), ConfigError> {
+    if crate::plugin_host::features::active(state, "builtin.providers") {
+        Ok(())
+    } else {
+        Err(ConfigError::new(
+            "plugin_disabled",
+            "Providers 已停用或卸载，请在插件中心恢复后再创建连接",
+        ))
+    }
+}
+
 #[cfg(test)]
 mod error_contract_tests {
     use super::*;
@@ -92,6 +105,7 @@ pub async fn import_native(
     crate::blocking::run(move || {
         let manager = state.providers.lock().map_err(|_| error(unavailable()))?;
         let store = state.store.lock().map_err(|_| error(unavailable()))?;
+        ensure_write_enabled(&state).map_err(error)?;
         json_value(manager.import_provider(&store, input).map_err(error)?)
     })
     .await
@@ -598,8 +612,8 @@ pub async fn prepare(State(state): State<AppState>, Json(draft): Json<BindingDra
             .transpose()?;
         if let Some(source) = &p {
             if ["opencode", "claude-desktop", "codex"].contains(&draft.agent_id.as_str()) {
-                for model in source.enabled_model_ids() {
-                    m.require_verification(&select_model(source, Some(&model)).map_err(error)?)
+                for id in source.enabled_model_ids() {
+                    m.require_verification(&select_model(source, Some(&id)).map_err(error)?)
                         .map_err(error)?;
                 }
             } else {
@@ -706,8 +720,8 @@ async fn switch(state: AppState, id: String, commit: bool) -> ApiResult {
                 .as_ref()
                 .is_some_and(|route| !route.models.is_empty())
             {
-                for model in p.enabled_model_ids() {
-                    m.require_verification(&select_model(p, Some(&model)).map_err(error)?)
+                for id in p.enabled_model_ids() {
+                    m.require_verification(&select_model(p, Some(&id)).map_err(error)?)
                         .map_err(error)?;
                 }
             } else {
@@ -979,12 +993,12 @@ pub(crate) async fn save_provider(
         let _guard = manager
             .provider_edit_guard()
             .map_err(|e| crate::error(e.message))?;
-        state
+        let store = state
             .store
             .lock()
-            .map_err(|_| crate::error("数据服务暂不可用".into()))?
-            .save_provider(provider)
-            .map_err(crate::error)?;
+            .map_err(|_| crate::error("数据服务暂不可用".into()))?;
+        ensure_write_enabled(&state).map_err(error)?;
+        store.save_provider(provider).map_err(crate::error)?;
         Ok(Json(serde_json::json!({"saved":true})))
     })
     .await

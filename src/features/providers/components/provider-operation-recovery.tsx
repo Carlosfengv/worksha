@@ -39,11 +39,13 @@ function RecoveryRow({
   storeId,
   onResolved,
   catalog = null,
+  allowRetry,
 }: {
   request: ProviderWriteRequest;
   storeId?: string;
   onResolved: (operation: ProviderOperation) => void;
   catalog?: ProviderWriteRoute | null;
+  allowRetry: boolean;
 }) {
   const write = useProviderWrite(storeId, onResolved);
   return (
@@ -63,7 +65,7 @@ function RecoveryRow({
       )}
       {catalog && (
         <p className="text-body text-fg-muted">
-          此原请求保存了明确的模型目录选择；核查与重试保留原选择。
+          此原请求保存了明确的模型目录选择；核查保留原选择。
         </p>
       )}
       {!write.unresolved && (
@@ -76,14 +78,16 @@ function RecoveryRow({
           >
             核查原结果
           </Button>
-          <Button
-            type="button"
-            variant="tertiary"
-            disabled={write.busy}
-            onClick={() => void write.resume("retry", request, catalog)}
-          >
-            重试原请求
-          </Button>
+          {allowRetry && (
+            <Button
+              type="button"
+              variant="tertiary"
+              disabled={write.busy}
+              onClick={() => void write.resume("retry", request, catalog)}
+            >
+              重试原请求
+            </Button>
+          )}
           <Button
             type="button"
             variant="tertiary"
@@ -100,7 +104,7 @@ function RecoveryRow({
           <AlertDescription>{write.state.message}</AlertDescription>
         </Alert>
       )}
-      <ProviderWriteStatus write={write} />
+      <ProviderWriteStatus write={write} allowRetry={allowRetry} />
     </div>
   );
 }
@@ -109,6 +113,7 @@ interface RecoveryData {
   request: ProviderWriteRequest | null;
   record?: ProviderRecoveryRecord;
   storeId?: string;
+  allowRetry: boolean;
   onResolved: (operation: ProviderOperation) => void;
   onReview: (record: ProviderRecoveryRecord) => void;
 }
@@ -127,6 +132,7 @@ const recoveryColumns: ColumnDef<RecoveryData>[] = [
               storeId={data.storeId}
               onResolved={data.onResolved}
               catalog={data.record?.catalog}
+              allowRetry={data.allowRetry}
             />
           ) : (
             <p className="text-body">有一项无法读取的本地恢复记录</p>
@@ -153,9 +159,11 @@ const recoveryColumns: ColumnDef<RecoveryData>[] = [
 export function ProviderOperationRecovery({
   storeId,
   onUpdated,
+  allowRetry = true,
 }: {
   storeId?: string;
   onUpdated: () => Promise<void>;
+  allowRetry?: boolean;
 }) {
   const [local, setLocal] = useState<
     ReturnType<typeof providerRecoveryRecords>
@@ -291,6 +299,7 @@ export function ProviderOperationRecovery({
           r.request.operationId === request.operationId,
       ),
       storeId,
+      allowRetry,
       onResolved: resolved,
       onReview: openReview,
     }));
@@ -301,11 +310,12 @@ export function ProviderOperationRecovery({
           request: null,
           record,
           storeId,
+          allowRetry,
           onResolved: resolved,
           onReview: openReview,
         });
     return rows;
-  }, [local.records, server, storeId, resolved, openReview]);
+  }, [local.records, server, storeId, allowRetry, resolved, openReview]);
   const { table } = useDataTable({
     data: rows,
     columns: recoveryColumns,
@@ -330,7 +340,9 @@ export function ProviderOperationRecovery({
         </Button>
       </div>
       <p className="text-label text-fg-muted">
-        查询只读取原结果；重试保留原编号和输入，尚未开始的连接验证可能产生费用。取消阻止后续保存，不能撤回已经发出的远端请求。
+        查询只读取原结果。
+        {allowRetry && "重试保留原编号和输入，尚未开始的连接验证可能产生费用。"}
+        取消阻止后续保存，不能撤回已经发出的远端请求。
       </p>
       {storageError && (
         <Alert status="warning">

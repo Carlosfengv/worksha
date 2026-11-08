@@ -108,12 +108,11 @@ pub(crate) async fn commit(
     .map_err(|e| super::error(crate::blocking::config_error(e)))?
     .map_err(super::catalog_connection::error)?;
     if request.kind == Kind::Save {
-        let store = state.store.clone();
-        let manager = state.providers.clone();
         let result = crate::blocking::run(move || {
-            let manager = manager.lock().map_err(|_| unavailable())?;
+            let manager = state.providers.lock().map_err(|_| unavailable())?;
             let _guard = manager.provider_edit_guard()?;
-            let store = store.lock().map_err(|_| unavailable())?;
+            let store = state.store.lock().map_err(|_| unavailable())?;
+            super::ensure_write_enabled(&state)?;
             Ok::<_, ConfigError>(store.start_provider_operation(&request)?.operation)
         })
         .await
@@ -135,9 +134,13 @@ pub(crate) async fn commit(
         .await
         .map_err(super::error)?;
     let frozen = request.clone();
-    let start = work(&state, move |store| store.start_provider_operation(&frozen))
-        .await
-        .map_err(super::error)?;
+    let copy = state.clone();
+    let start = work(&state, move |store| {
+        super::ensure_write_enabled(&copy)?;
+        store.start_provider_operation(&frozen)
+    })
+    .await
+    .map_err(super::error)?;
     if !start.started {
         return json_value(start.operation);
     }
@@ -159,13 +162,13 @@ pub(crate) async fn commit(
     });
     let result: Result<Operation, ConfigError> = match detected {
         Ok(detected) => {
-            let store = state.store.clone();
-            let manager = state.providers.clone();
+            let copy = state.clone();
             let frozen = request.clone();
             // Keep the established manager -> store lock order. No network or Vault I/O under these locks.
             crate::blocking::run(move || {
-                let manager = manager.lock().map_err(|_| unavailable())?;
-                let store = store.lock().map_err(|_| unavailable())?;
+                let manager = copy.providers.lock().map_err(|_| unavailable())?;
+                let store = copy.store.lock().map_err(|_| unavailable())?;
+                super::ensure_write_enabled(&copy)?;
                 manager.finish_provider_operation(
                     &store,
                     &frozen,

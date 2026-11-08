@@ -278,6 +278,9 @@ async fn action(State(state): State<AppState>, Json(request): Json<ActionRequest
                         &request.digest,
                         &preset,
                     )?;
+                    let store = state.store.lock().checked("unavailable")?;
+                    crate::providers::ensure_write_enabled(&state)
+                        .map_err(|_| fail("plugin_disabled"))?;
                     let id = state.plugins.preset_provider_id(
                         &request.plugin_id,
                         &request.digest,
@@ -307,7 +310,6 @@ async fn action(State(state): State<AppState>, Json(request): Json<ActionRequest
                         revision: 0,
                         category: "cloud".into(),
                     };
-                    let store = state.store.lock().checked("unavailable")?;
                     if !store
                         .providers()
                         .checked("unavailable")?

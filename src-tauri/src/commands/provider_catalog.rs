@@ -147,11 +147,22 @@ pub(crate) async fn perform_provider_source_operation(
     backend: tauri::State<'_, Backend>,
     input: local_agent_core::domain::provider_source_operation::SourceOperationAction,
 ) -> Result<serde_json::Value, String> {
+    use local_agent_core::domain::provider_source_operation::SourceOperationAction;
+    let (route, body) = match input {
+        SourceOperationAction::Query { request } => (
+            "/api/provider-source-operations/query",
+            serde_json::to_value(request),
+        ),
+        commit => (
+            "/api/provider-source-operations",
+            serde_json::to_value(commit),
+        ),
+    };
     backend
         .request(
             reqwest::Method::POST,
-            "/api/provider-source-operations",
-            Some(serde_json::to_value(input).map_err(|_| "来源操作参数无效")?),
+            route,
+            Some(body.map_err(|_| "来源操作参数无效")?),
         )
         .await
 }

@@ -58,23 +58,34 @@ async fn ensure(state: AppState, input: SourceRequest) -> Result<(), ConfigError
     .await
     .map_err(crate::blocking::config_error)?
 }
+pub(crate) async fn query(
+    State(state): State<AppState>,
+    Json(request): Json<SourceRequest>,
+) -> ApiResult {
+    let operation = lookup(&state, request)
+        .await
+        .map_err(super::catalog_connection::error)?
+        .ok_or_else(|| {
+            super::catalog_connection::error(ConfigError::new(
+                "operation_not_found",
+                "未查到原结果；保留原请求，没有重新发送",
+            ))
+        })?;
+    json_value(operation)
+}
 pub(crate) async fn action(
     State(state): State<AppState>,
     Json(action): Json<SourceOperationAction>,
 ) -> ApiResult {
     use super::catalog_connection::error;
-    let (input, commit) = match action {
-        SourceOperationAction::Commit { request } => (request, true),
-        SourceOperationAction::Query { request } => (request, false),
+    let input = match action {
+        SourceOperationAction::Commit { request } => request,
+        SourceOperationAction::Query { request } => {
+            return query(State(state), Json(request)).await;
+        }
     };
     if let Some(op) = lookup(&state, input.clone()).await.map_err(error)? {
         return json_value(op);
-    }
-    if !commit {
-        return Err(error(ConfigError::new(
-            "operation_not_found",
-            "未查到原结果；保留原请求，没有重新发送",
-        )));
     }
     if let SourceChoice::External { catalog } = &input.source {
         let connection = ConnectionRequest {
@@ -93,6 +104,7 @@ pub(crate) async fn action(
                 }
                 return Ok(op);
             }
+            super::ensure_write_enabled(&state)?;
             manager.save_source_provider(&store, &input, || Ok(()))
         })
         .await
@@ -120,6 +132,7 @@ pub(crate) async fn action(
             }
             return Ok((false, op));
         }
+        super::ensure_write_enabled(&copy)?;
         let start = store.start_provider_operation(&frozen.operation)?;
         if let Err(reason) = manager.record_source_operation(&store, &frozen) {
             return Ok((
@@ -156,6 +169,7 @@ pub(crate) async fn action(
         let manager = state.providers.lock().map_err(|_| unavailable())?;
         let store = state.store.lock().map_err(|_| unavailable())?;
         let result = detected.and_then(|detected| {
+            super::ensure_write_enabled(&state)?;
             manager.verify_source_operation(&input)?;
             manager.stage_catalog_source(&store, &input.operation, &detected.provider)?;
             manager.finish_provider_operation(

@@ -236,19 +236,51 @@ pub(crate) fn owner_of_path(path: &str) -> Option<&'static str> {
         None
     }
 }
-pub(crate) fn recovery_path(path: &str, method: &axum::http::Method) -> bool {
-    // Receipts, cancellation and explicit file restoration remain host-owned.
-    (method == axum::http::Method::GET
-        && (path.starts_with("/api/model-service-operations/")
-            || path.contains("-operations/")
-            || path.ends_with("/protocol")))
-        || (method == axum::http::Method::POST
-            && (path.ends_with("/cancel")
-                || path == "/api/catalog-provider-operations/query"
-                || path == "/api/provider-imports/operations/query"
-                || (path.starts_with("/api/provider-switches/")
-                    && ["/restore", "/check", "/defer", "/launched"]
-                        .iter()
-                        .any(|suffix| path.ends_with(suffix)))))
-        || path == "/api/provider-draft-recovery"
+pub(super) fn recovery_path(route: &str, method: &axum::http::Method) -> bool {
+    use axum::http::Method;
+    // Only registered recovery routes bypass business admission. A path suffix
+    // or an endpoint that also accepts new work cannot grant an exemption.
+    match *method {
+        Method::GET => matches!(
+            route,
+            "/api/provider-operations/protocol"
+                | "/api/provider-operations/{id}"
+                | "/api/provider-imports/protocol"
+                | "/api/provider-credentials/protocol"
+                | "/api/provider-credentials/v3/protocol"
+                | "/api/provider-credential-operations/{id}"
+                | "/api/provider-credential-operations/scoped/{id}"
+                | "/api/provider-credential-operations/v3/{id}"
+                | "/api/local-tokens/protocol"
+                | "/api/model-service-operations/{id}"
+                | "/api/gateway-lan/operations/{id}"
+                | "/api/settings/operations/{id}"
+                | "/api/settings/scoped/operations/{id}"
+        ),
+        Method::POST => matches!(
+            route,
+            "/api/provider-operations/cancel"
+                | "/api/provider-imports/operations/query"
+                | "/api/provider-imports/operations/cancel"
+                | "/api/provider-source-operations/query"
+                | "/api/provider-credential-operations/{id}/cancel"
+                | "/api/provider-credential-operations/scoped/cancel"
+                | "/api/provider-credential-operations/v3/cancel"
+                | "/api/catalog-provider-operations/query"
+                | "/api/provider-draft-recovery"
+                | "/api/provider-switches/{id}/cancel"
+                | "/api/provider-switches/{id}/restore"
+                | "/api/provider-switches/{id}/check"
+                | "/api/provider-switches/{id}/defer"
+                | "/api/provider-switches/{id}/launched"
+                | "/api/local-tokens/query"
+                | "/api/local-tokens/cancel"
+                | "/api/gateway-lan/clients/{id}/revoke"
+        ),
+        Method::DELETE => matches!(
+            route,
+            "/api/request-exports/{id}" | "/api/domain/request-exports/{id}"
+        ),
+        _ => false,
+    }
 }

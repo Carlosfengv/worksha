@@ -244,6 +244,12 @@ pub(crate) fn management(state: AppState) -> Router {
             ),
         )
         .route(
+            "/api/provider-source-operations/query",
+            axum::routing::post(providers::source_operation::query).layer(
+                axum::extract::DefaultBodyLimit::max(2 * 1024 * 1024 + 32768),
+            ),
+        )
+        .route(
             "/api/provider-draft-catalog",
             axum::routing::post(providers::draft_catalog::action)
                 .layer(axum::extract::DefaultBodyLimit::max(32768)),

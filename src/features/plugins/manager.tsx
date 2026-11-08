@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { Provider } from "@/features/providers/types";
+import { ProviderOperationRecovery } from "@/features/providers/components/provider-operation-recovery";
 import { useSharedRead, useSharedQuery } from "@/shared/hooks/use-shared-read";
 import {
   modelServicesResource,
@@ -82,6 +83,11 @@ export function PluginManager({
   const storeId =
     builtinState.data?.storeId ??
     (models.error ? undefined : models.data?.writeProtocol?.storeId);
+  const providersActive =
+    !builtinState.error &&
+    !!builtinState.data?.host.plugins.find(
+      (plugin) => plugin.id === "builtin.providers",
+    )?.runtimeActive;
   const policy = useSharedQuery(
     routingPoliciesResource,
     storeId ?? "",
@@ -216,6 +222,13 @@ export function PluginManager({
           <AlertTitle>插件操作未完成</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
+      )}
+      {!!builtinState.data && !providersActive && (
+        <ProviderOperationRecovery
+          storeId={builtinState.error ? undefined : storeId}
+          onUpdated={refreshSnapshot ?? refresh}
+          allowRetry={false}
+        />
       )}
       <BuiltinPluginManager
         refreshSnapshot={refreshSnapshot}
