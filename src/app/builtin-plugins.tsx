@@ -3,6 +3,11 @@ import { createProjectsPlugin } from "@/features/projects/plugin";
 import { retryableLazy as lazy } from "./render-boundary";
 import { createUiRegistry, type UiPlugin } from "./plugin-registry";
 
+const AccountsPage = lazy(() =>
+  import("@/features/iam/page").then((module) => ({
+    default: module.AccountsPage,
+  })),
+);
 const OverviewPage = lazy(() =>
   import("@/features/observation/overview-page").then((module) => ({
     default: module.OverviewPage,
@@ -212,6 +217,30 @@ export const builtinPlugins: readonly UiPlugin[] = [
     ],
   },
   projectsPlugin,
+  {
+    id: "builtin.iam",
+    version: 1,
+    pages: [
+      {
+        id: "iam",
+        label: "账号管理",
+        icon: "shield",
+        systemFeature: {
+          purpose: "启用本机账号登录并按账号分配模型服务查看权限",
+          scenes: ["accounts"],
+          operations: [
+            "管理账号和内置角色",
+            "分配与撤回资源",
+            "修改或重置密码",
+          ],
+          conditions:
+            "默认关闭。完成首次设置后，此实例始终要求登录，账号管理插件无法关闭或卸载。",
+          supportScenes: [],
+        },
+        render: () => <AccountsPage />,
+      },
+    ],
+  },
   {
     id: "builtin.plugins",
     version: 1,

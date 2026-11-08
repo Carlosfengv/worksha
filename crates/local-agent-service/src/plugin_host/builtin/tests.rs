@@ -283,6 +283,7 @@ impl Fixture {
         let sources = readonly.accounts.clone();
         let (gateway, _listener) = crate::gateway::Gateway::bind(&data).await.unwrap();
         let state = AppState {
+            iam: Default::default(),
             workbench: None,
             provider_adapters: crate::provider_models::adapters::builtin(),
             provider_client: crate::state::provider_client().unwrap(),

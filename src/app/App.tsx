@@ -13,6 +13,9 @@ import { AgentDirectoryProvider } from "@/shared/hooks/use-agent-directory";
 import { BuiltinCompositionNotice } from "@/features/plugins/builtin-composition-notice";
 import type { Page } from "@/app/types";
 import { useSnapshot } from "@/app/use-snapshot";
+import { IamSession } from "@/features/iam/session";
+import { useIam } from "@/features/iam/context";
+import { useIamAction } from "@/features/iam/actions";
 import {
   Alert,
   AlertAction,
@@ -69,6 +72,11 @@ const ExtensionsPage = retryableLazy(() =>
     default: ExtensionsPage,
   })),
 );
+const MemberWorkspace = retryableLazy(() =>
+  import("@/features/iam/member-workspace").then(({ MemberWorkspace }) => ({
+    default: MemberWorkspace,
+  })),
+);
 
 function WorkspacePage({
   render,
@@ -93,6 +101,8 @@ function WorkspacePage({
 
 function WindowTitlebar({ title, status }: { title: string; status: string }) {
   const { open, isMobile } = useSidebar();
+  const iam = useIam();
+  const logout = useIamAction();
   return (
     <header
       aria-label="窗口工具栏"
@@ -120,6 +130,30 @@ function WindowTitlebar({ title, status }: { title: string; status: string }) {
       <Badge variant="dot" status="neutral" role="status">
         {status}
       </Badge>
+      {iam.status?.account && (
+        <div className="ml-3 flex min-w-0 items-center gap-2">
+          <span className="max-w-36 truncate text-label">
+            {iam.status.account.displayName}
+          </span>
+          <Button
+            size="sm"
+            variant="tertiary"
+            disabled={logout.busy}
+            onClick={() =>
+              void logout.run(async () => {
+                await iam.logout?.();
+              })
+            }
+          >
+            退出登录
+          </Button>
+          {logout.error && (
+            <span role="alert" className="text-label">
+              {logout.error}
+            </span>
+          )}
+        </div>
+      )}
     </header>
   );
 }
@@ -413,7 +447,15 @@ export default function App() {
   return (
     <RenderBoundary scope="application" resetKey="application">
       <IconProvider>
-        <Workspace />
+        <IamSession
+          member={(account) => (
+            <Suspense fallback={<p role="status">正在加载资源工作区…</p>}>
+              <MemberWorkspace account={account} />
+            </Suspense>
+          )}
+        >
+          <Workspace />
+        </IamSession>
       </IconProvider>
     </RenderBoundary>
   );

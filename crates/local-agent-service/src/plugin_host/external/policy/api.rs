@@ -3,7 +3,7 @@ use super::{
     store::{self, Control, Intent},
 };
 use crate::{ApiResult, AppState};
-use axum::{Json, Router, extract::State, routing::post};
+use axum::{Extension, Json, Router, extract::State, routing::post};
 use local_agent_core::{
     model_services::operations::{OperationAction, OperationReceipt},
     plugin::policy as p,
@@ -16,9 +16,13 @@ pub(in crate::plugin_host::external) fn routes() -> Router<AppState> {
             post(super::recovery::perform),
         )
 }
-async fn perform(State(state): State<AppState>, Json(action): Json<p::Action>) -> ApiResult {
+async fn perform(
+    State(state): State<AppState>,
+    actor: Option<Extension<crate::iam::Actor>>,
+    Json(action): Json<p::Action>,
+) -> ApiResult {
     response(
-        apply(state, action)
+        apply(state, actor, action)
             .await
             .and_then(|v| serde_json::to_value(v).checked("invalid_record")),
     )
@@ -31,7 +35,11 @@ fn scope(state: &AppState, id: &str) -> Result<()> {
         .require_model_service_store(id)
         .checked("stale_snapshot")
 }
-async fn apply(state: AppState, action: p::Action) -> Result<p::Reply> {
+async fn apply(
+    state: AppState,
+    actor: Option<Extension<crate::iam::Actor>>,
+    action: p::Action,
+) -> Result<p::Reply> {
     let s = state.clone();
     let id = action.store_id().to_owned();
     run_sync(move || scope(&s, &id)).await?;
@@ -49,6 +57,7 @@ async fn apply(state: AppState, action: p::Action) -> Result<p::Reply> {
         } => {
             publish(
                 state,
+                actor,
                 request,
                 expected_binding_revision,
                 package,
@@ -68,7 +77,7 @@ async fn apply(state: AppState, action: p::Action) -> Result<p::Reply> {
                     status: Box::new(status),
                 });
             }
-            submit_original(state, status.request).await
+            submit_original(state, actor, status.request).await
         }
         action => {
             run_sync(move || match action {
@@ -253,6 +262,7 @@ async fn apply(state: AppState, action: p::Action) -> Result<p::Reply> {
 }
 async fn publish(
     state: AppState,
+    actor: Option<Extension<crate::iam::Actor>>,
     request: local_agent_core::model_services::operations::OperationRequest,
     expected: Option<String>,
     package: p::PackageQuery,
@@ -359,12 +369,13 @@ async fn publish(
             status: Box::new(prepared.1),
         });
     }
-    submit_original(state, request).await
+    submit_original(state, actor, request).await
 }
 /// Only an explicit first publication or resume may enter the original publisher.
 /// The persisted original request and operation ID remain the sole input.
 async fn submit_original(
     state: AppState,
+    actor: Option<Extension<crate::iam::Actor>>,
     request: local_agent_core::model_services::operations::OperationRequest,
 ) -> Result<p::Reply> {
     let s = state.clone();
@@ -414,7 +425,8 @@ async fn submit_original(
     }
     // Core checks the immutable receipt before any fresh validation or write.
     let result =
-        crate::model_services::commit_operation(State(state.clone()), Json(request.clone())).await;
+        crate::model_services::commit_operation(State(state.clone()), actor, Json(request.clone()))
+            .await;
     let s = state.clone();
     let store = request.store_id;
     let op = request.operation_id;

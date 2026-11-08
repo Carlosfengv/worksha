@@ -7,6 +7,8 @@ use std::{
 };
 
 pub const PROTOCOL: u32 = 1;
+pub const IAM_PROTOCOL_HEADER: &str = "x-local-agent-iam-protocol";
+pub const IAM_PROTOCOL: &str = "1";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

@@ -276,6 +276,16 @@ impl Store {
         default_profile: Profile,
         revoked_sources: &[String],
     ) -> Result<CompositionReceipt, PluginError> {
+        self.save_builtin_composition_with_iam(request, default_profile, revoked_sources, None)
+    }
+
+    pub fn save_builtin_composition_with_iam(
+        &self,
+        request: &CompositionChange,
+        default_profile: Profile,
+        revoked_sources: &[String],
+        bootstrap: Option<&crate::iam::Bootstrap>,
+    ) -> Result<CompositionReceipt, PluginError> {
         self.require_builtin_store(&request.store_id)?;
         if !valid_id(&request.operation_id)
             || !valid_id(&request.expected_generation)
@@ -285,6 +295,9 @@ impl Store {
                 "invalid_input",
                 "组合参数、版本或操作编号无效",
             ));
+        }
+        if bootstrap.is_some() && !self.iam_enabled()? {
+            self.backup_iam_activation()?;
         }
         let transaction =
             rusqlite::Transaction::new_unchecked(&self.connection, TransactionBehavior::Immediate)
@@ -305,6 +318,7 @@ impl Store {
             .checked_add(1)
             .filter(|v| *v <= 9_007_199_254_740_991)
             .ok_or_else(|| PluginError::new("resource_limit", "组合版本已达上限"))?;
+        crate::iam::composition_change(&transaction, &request.composition, bootstrap)?;
         let mut compatible_request = request.clone();
         let selected = std::mem::take(&mut compatible_request.composition.opted_in_plugin_ids);
         let opted_in = (!selected.is_empty())

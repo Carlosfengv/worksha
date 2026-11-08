@@ -34,7 +34,10 @@ impl ConnectionContext {
     }
     pub(crate) fn ensure_current(&self) -> Result<(), String> {
         let state = self.state()?;
-        if state.current(&self.connection.generation)
+        if state
+            .connection
+            .as_ref()
+            .is_some_and(|current| self.matches_access(current))
             && state.status == Status::Connected
             && !state.stopping
         {
@@ -45,6 +48,10 @@ impl ConnectionContext {
                 "连接已变化，请核对原后台状态后再试",
             ))
         }
+    }
+    pub(super) fn matches_access(&self, current: &Connection) -> bool {
+        current.generation == self.connection.generation
+            && current.iam_epoch == self.connection.iam_epoch
     }
     pub(crate) fn instance_id(&self) -> &str {
         &self.connection.instance_id
@@ -151,7 +158,10 @@ impl ConnectionContext {
                     None,
                     None,
                 );
-                if state.current(&self.connection.generation)
+                if state
+                    .connection
+                    .as_ref()
+                    .is_some_and(|current| self.matches_access(current))
                     && !state.stopping
                     && !live_read_timeout
                     && matches!(

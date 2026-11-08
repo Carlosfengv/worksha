@@ -89,7 +89,16 @@ pub(super) fn lock_at(path: &Path) -> Result<ConfigTransactionGuard, ConfigError
     Ok(ConfigTransactionGuard { file })
 }
 fn metadata(db: &Connection) -> Result<Metadata, ConfigError> {
-    metadata_at(db, crate::Store::SCHEMA_VERSION)
+    let version: u32 = db
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .map_err(unavailable)?;
+    if !matches!(
+        version,
+        crate::Store::SCHEMA_VERSION | crate::iam::PROTECTED_SCHEMA_VERSION
+    ) {
+        return Err(corrupt());
+    }
+    metadata_at(db, version)
 }
 fn metadata_at(db: &Connection, expected_schema: u32) -> Result<Metadata, ConfigError> {
     let version: u32 = db
@@ -510,11 +519,16 @@ pub(crate) fn initialize(
     original_version: u32,
     fresh: bool,
 ) -> Result<(), ConfigError> {
-    if original_version == crate::Store::SCHEMA_VERSION {
+    if matches!(
+        original_version,
+        crate::Store::SCHEMA_VERSION | crate::iam::PROTECTED_SCHEMA_VERSION
+    ) {
         let tx =
             Transaction::new_unchecked(db, TransactionBehavior::Immediate).map_err(unavailable)?;
         crate::plugin::initialize_composition(&tx, original_version)
             .map_err(plugin_storage_error)?;
+        crate::iam::initialize(&tx, original_version)
+            .map_err(|error| plugin_storage_error(error.message))?;
         return tx.commit().map_err(unavailable);
     }
     let parent = path
@@ -532,6 +546,8 @@ pub(crate) fn initialize(
         super::super::local_tokens::validate_scope(&tx, &meta.store_id, &meta.namespace_id)?;
         crate::plugin::initialize_composition(&tx, original_version)
             .map_err(plugin_storage_error)?;
+        crate::iam::initialize(&tx, original_version)
+            .map_err(|error| plugin_storage_error(error.message))?;
         tx.pragma_update(None, "user_version", crate::Store::SCHEMA_VERSION)
             .map_err(unavailable)?;
         metadata(&tx)?;
@@ -558,6 +574,8 @@ pub(crate) fn initialize(
         }
         crate::plugin::initialize_composition(&tx, original_version)
             .map_err(plugin_storage_error)?;
+        crate::iam::initialize(&tx, original_version)
+            .map_err(|error| plugin_storage_error(error.message))?;
         tx.pragma_update(None, "user_version", crate::Store::SCHEMA_VERSION)
             .map_err(unavailable)?;
         metadata(&tx)?;
@@ -613,6 +631,8 @@ pub(crate) fn initialize(
         return Err(corrupt());
     }
     crate::plugin::initialize_composition(&tx, original_version).map_err(plugin_storage_error)?;
+    crate::iam::initialize(&tx, original_version)
+        .map_err(|error| plugin_storage_error(error.message))?;
     tx.pragma_update(None, "user_version", crate::Store::SCHEMA_VERSION)
         .map_err(unavailable)?;
     let meta = metadata(&tx)?;

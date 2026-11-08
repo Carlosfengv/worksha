@@ -8,6 +8,41 @@ pub struct Store {
     directory: std::sync::Arc<crate::agents::AgentDirectory>,
 }
 
+fn migration_backup(
+    connection: &Connection,
+    directory: &Path,
+    backup: &Path,
+    schema_version: u32,
+) -> Result<(), String> {
+    providers::files::private_dir(directory).map_err(|e| e.message)?;
+    providers::files::checked_path(backup).map_err(|e| e.message)?;
+    if !backup.exists() {
+        connection
+            .execute("VACUUM INTO ?1", [backup.to_string_lossy().as_ref()])
+            .map_err(|_| "数据库升级前备份失败，原库未迁移")?;
+    }
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let metadata = fs::symlink_metadata(backup).map_err(|_| "无法检查升级备份")?;
+    if !metadata.is_file() || metadata.nlink() != 1 || metadata.uid() != unsafe { libc::geteuid() }
+    {
+        return Err("升级备份必须为当前用户拥有的单链接普通文件".into());
+    }
+    fs::set_permissions(backup, fs::Permissions::from_mode(0o600))
+        .map_err(|_| "升级备份权限设置失败")?;
+    let snapshot = Connection::open_with_flags(backup, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|_| "升级备份无法读取，原库未迁移")?;
+    let valid = snapshot
+        .query_row("PRAGMA quick_check", [], |r| r.get::<_, String>(0))
+        .is_ok_and(|value| value == "ok")
+        && snapshot
+            .query_row("PRAGMA user_version", [], |r| r.get::<_, u32>(0))
+            .is_ok_and(|value| value == schema_version);
+    if !valid {
+        return Err("升级备份校验失败，原库未迁移".into());
+    }
+    Ok(())
+}
+
 impl Store {
     pub const SCHEMA_VERSION: u32 = 16;
     pub fn open(directory: &Path) -> Result<Self, String> {
@@ -27,7 +62,7 @@ impl Store {
         let schema_version: u32 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .map_err(|e| e.to_string())?;
-        if schema_version > Self::SCHEMA_VERSION {
+        if schema_version > crate::iam::PROTECTED_SCHEMA_VERSION {
             return Err("数据库来自更新版本，请升级应用后重试".into());
         }
         if (2..Self::SCHEMA_VERSION).contains(&schema_version) {
@@ -60,35 +95,7 @@ impl Store {
             } else {
                 "local-agent.pre-plugin-lifecycle-v15.sqlite3"
             });
-            providers::files::private_dir(directory).map_err(|e| e.message)?;
-            providers::files::checked_path(&backup).map_err(|e| e.message)?;
-            if !backup.exists() {
-                connection
-                    .execute("VACUUM INTO ?1", [backup.to_string_lossy().as_ref()])
-                    .map_err(|_| "数据库升级前备份失败，原库未迁移")?;
-            }
-            use std::os::unix::fs::{MetadataExt, PermissionsExt};
-            let metadata = fs::symlink_metadata(&backup).map_err(|_| "无法检查升级备份")?;
-            if !metadata.is_file()
-                || metadata.nlink() != 1
-                || metadata.uid() != unsafe { libc::geteuid() }
-            {
-                return Err("升级备份必须为当前用户拥有的单链接普通文件".into());
-            }
-            fs::set_permissions(&backup, fs::Permissions::from_mode(0o600))
-                .map_err(|_| "升级备份权限设置失败")?;
-            let snapshot =
-                Connection::open_with_flags(&backup, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-                    .map_err(|_| "升级备份无法读取，原库未迁移")?;
-            let valid = snapshot
-                .query_row("PRAGMA quick_check", [], |r| r.get::<_, String>(0))
-                .is_ok_and(|value| value == "ok")
-                && snapshot
-                    .query_row("PRAGMA user_version", [], |r| r.get::<_, u32>(0))
-                    .is_ok_and(|value| value == schema_version);
-            if !valid {
-                return Err("升级备份校验失败，原库未迁移".into());
-            }
+            migration_backup(&connection, directory, &backup, schema_version)?;
         }
         connection
             .busy_timeout(std::time::Duration::from_secs(3))
@@ -128,6 +135,19 @@ impl Store {
             path: path.to_string_lossy().into_owned(),
             directory: agents,
         })
+    }
+
+    pub(crate) fn backup_iam_activation(&self) -> Result<(), crate::plugin::PluginError> {
+        let directory = Path::new(&self.path).parent().ok_or_else(|| {
+            crate::plugin::PluginError::new("iam_unavailable", "账号管理数据目录不可用")
+        })?;
+        migration_backup(
+            &self.connection,
+            directory,
+            &directory.join("local-agent.pre-iam-v16.sqlite3"),
+            Self::SCHEMA_VERSION,
+        )
+        .map_err(|message| crate::plugin::PluginError::new("iam_unavailable", message))
     }
 
     pub fn settings(&self) -> Result<Settings, String> {
@@ -648,7 +668,11 @@ mod tests {
         let path = directory.path().join("local-agent.sqlite3");
         let connection = Connection::open(&path).unwrap();
         connection
-            .pragma_update(None, "user_version", Store::SCHEMA_VERSION + 1)
+            .pragma_update(
+                None,
+                "user_version",
+                crate::iam::PROTECTED_SCHEMA_VERSION + 1,
+            )
             .unwrap();
         drop(connection);
         assert!(Store::open(directory.path()).is_err());
@@ -657,7 +681,7 @@ mod tests {
             connection
                 .query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))
                 .unwrap(),
-            Store::SCHEMA_VERSION + 1
+            crate::iam::PROTECTED_SCHEMA_VERSION + 1
         );
     }
 

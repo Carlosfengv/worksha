@@ -258,7 +258,10 @@ impl Store {
             .connection
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .map_err(unavailable)?;
-        if schema != Store::SCHEMA_VERSION {
+        if !matches!(
+            schema,
+            Store::SCHEMA_VERSION | crate::iam::PROTECTED_SCHEMA_VERSION
+        ) {
             return fail(
                 "write_protocol_unavailable",
                 "当前数据库不支持服务商结果核查",

@@ -54,6 +54,7 @@
     "test:plugin-source-host": "node scripts/test-plugin-source-host.mjs",
     "test:plugin-source-sdk": "node scripts/test-plugin-source-sdk.mjs",
     "prepare:plugins": "node scripts/prepare-plugin-fixtures.mjs",
+    "test:iam": "node scripts/test-iam.mjs",
     "test:plugins": "node scripts/test-plugins.mjs",
     "test:builtin-plugins": "node scripts/test-builtin-plugins.mjs",
     "test:plugin-database": "node scripts/test-plugin-database.mjs",

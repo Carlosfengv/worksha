@@ -29,7 +29,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(backend::start)
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(commands::iam::guard_invocations(tauri::generate_handler![
+            commands::iam::get_iam_status,
+            commands::iam::perform_iam,
             commands::object_contributions::perform_object_contribution,
             commands::routing_policy::perform_routing_policy,
             commands::routing_policy::perform_routing_policy_recovery,
@@ -177,7 +179,7 @@ pub fn run() {
             commands::projects::get_project,
             commands::projects::get_project_diff,
             commands::projects::select_project_directory
-        ])
+        ]))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();

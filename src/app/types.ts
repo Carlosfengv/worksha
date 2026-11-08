@@ -41,5 +41,6 @@ export type Page =
   | "mcp"
   | "sessions"
   | "requests"
+  | "iam"
   | "plugins"
   | "settings";

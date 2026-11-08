@@ -10,6 +10,7 @@ pub(crate) struct AppState {
     pub(crate) credentials: Arc<dyn local_agent_core::providers::vault::Vault>,
     pub(crate) plugins: Arc<crate::plugin_host::external::Manager>,
     pub(crate) readonly: Arc<crate::plugin_host::ReadonlyRuntime>,
+    pub(crate) iam: Arc<crate::iam::Iam>,
     pub(crate) store: Arc<Mutex<Store>>,
     pub(crate) token: Arc<String>,
     pub(crate) host: Arc<String>,

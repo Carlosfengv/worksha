@@ -35,6 +35,9 @@ export async function command<T>(
   try {
     return await invoke<T>(name, args);
   } catch (reason) {
-    throw new DesktopError(reason);
+    const error = new DesktopError(reason);
+    if (error.code === "login_required")
+      window.dispatchEvent(new Event("local-agent:login-required"));
+    throw error;
   }
 }

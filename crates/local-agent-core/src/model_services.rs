@@ -390,12 +390,19 @@ impl Store {
         current(&self.connection, id)
     }
     pub fn save_model_service(&self, draft: ServiceDraft) -> Result<ModelService, ConfigError> {
+        self.save_model_service_as(draft, None)
+    }
+    pub fn save_model_service_as(
+        &self,
+        draft: ServiceDraft,
+        creator: Option<&str>,
+    ) -> Result<ModelService, ConfigError> {
         let tx = rusqlite::Transaction::new_unchecked(
             &self.connection,
             rusqlite::TransactionBehavior::Immediate,
         )
         .map_err(error)?;
-        let service = self.write_model_service(&tx, draft)?;
+        let service = self.write_model_service(&tx, draft, creator)?;
         tx.commit().map_err(error)?;
         Ok(service)
     }
@@ -403,6 +410,7 @@ impl Store {
         &self,
         tx: &Connection,
         mut draft: ServiceDraft,
+        creator: Option<&str>,
     ) -> Result<ModelService, ConfigError> {
         if draft.revision >= operations::MAX_REVISION {
             return fail("invalid_input", "模型服务版本无效");
@@ -490,6 +498,9 @@ impl Store {
             published_at: chrono::Utc::now().to_rfc3339(),
         };
         tx.execute("INSERT INTO model_services(id,revision,current) VALUES(?1,?2,?3) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,current=excluded.current",params![service.id,i64::try_from(service.revision).map_err(error)?,service.version_id]).map_err(error)?;
+        if old.is_none() {
+            crate::iam::model_created(tx, &service.id, creator).map_err(error)?;
+        }
         tx.execute(
             "INSERT INTO model_service_versions VALUES(?1,?2,?3)",
             params![
@@ -543,6 +554,7 @@ impl Store {
             [id],
         )
         .map_err(error)?;
+        crate::iam::model_deleted(tx, id).map_err(error)?;
         Ok(())
     }
     pub fn attach_model_service(

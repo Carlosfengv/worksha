@@ -384,6 +384,9 @@ assert(
   ),
   "Workbench IPC cannot replace existing IPC",
 );
+const iamCommands = JSON.parse(
+  fs.readFileSync("tests/iam-ipc-contract.json", "utf8"),
+);
 const expected = Object.fromEntries(
   Object.entries({
     ...original,
@@ -403,6 +406,7 @@ const expected = Object.fromEntries(
     ...requestExportCommands,
     ...policyRecoveryCommands,
     ...workbenchCommands,
+    ...iamCommands,
   }).sort(),
 );
 assert.deepEqual(

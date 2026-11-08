@@ -168,19 +168,19 @@ impl Drop for Transition {
     }
 }
 
-pub(crate) struct ScopedBody {
+pub(crate) struct ScopedBody<P = Permit> {
     body: axum::body::Body,
-    _permit: Permit,
+    _permit: P,
 }
-impl ScopedBody {
-    pub(crate) fn new(body: axum::body::Body, permit: Permit) -> Self {
+impl<P> ScopedBody<P> {
+    pub(crate) fn new(body: axum::body::Body, permit: P) -> Self {
         Self {
             body,
             _permit: permit,
         }
     }
 }
-impl axum::body::HttpBody for ScopedBody {
+impl<P: Unpin> axum::body::HttpBody for ScopedBody<P> {
     type Data = axum::body::Bytes;
     type Error = axum::Error;
     fn poll_frame(

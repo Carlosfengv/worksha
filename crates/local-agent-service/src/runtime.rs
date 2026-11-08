@@ -5,7 +5,7 @@ use axum::{
     middleware,
     routing::{get, post},
 };
-use local_agent_core::runtime::Identity;
+use local_agent_core::runtime::{IAM_PROTOCOL, IAM_PROTOCOL_HEADER, Identity};
 use tokio::sync::watch;
 
 #[derive(Clone)]
@@ -40,8 +40,13 @@ impl Runtime {
     }
 }
 
-async fn identity(State(runtime): State<Runtime>) -> Json<Identity> {
-    Json(runtime.identity)
+async fn identity(
+    State(runtime): State<Runtime>,
+) -> ([(&'static str, &'static str); 1], Json<Identity>) {
+    (
+        [(IAM_PROTOCOL_HEADER, IAM_PROTOCOL)],
+        Json(runtime.identity),
+    )
 }
 
 async fn shutdown(State(runtime): State<Runtime>) -> Json<serde_json::Value> {

@@ -75,6 +75,11 @@ fn bounded_diagnostics_exclude_connection_and_error_payloads_and_ignore_old_exit
             persistent: true,
             generation: generation.clone(),
             instance_id: generation.clone(),
+            iam_protocol: true,
+            iam_epoch: 1,
+            iam_session: Some(std::sync::Arc::new(zeroize::Zeroizing::new(
+                "private-session-sentinel".into(),
+            ))),
         })
         .unwrap();
     state.process_exit("old-generation", &operation, Some(7), Some(15));
@@ -85,6 +90,7 @@ fn bounded_diagnostics_exclude_connection_and_error_payloads_and_ignore_old_exit
     for secret in [
         "private-error-sentinel",
         "private-token-sentinel",
+        "private-session-sentinel",
         "private-endpoint.invalid",
         "old-generation",
         &generation,
@@ -343,6 +349,9 @@ fn old_reads_and_failures_cannot_replace_a_new_connection_but_confirmed_writes_r
                     } else {
                         uuid::Uuid::new_v4().to_string()
                     },
+                    iam_protocol: true,
+                    iam_epoch: 0,
+                    iam_session: None,
                 })
                 .unwrap();
             release.send(()).unwrap();

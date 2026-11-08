@@ -24,6 +24,8 @@ import type {
   PluginInfo,
 } from "../../../contracts/plugins/builtin/types";
 import { builtinPluginsApi } from "./api";
+import { useIam } from "@/features/iam/context";
+import { IAM_PLUGIN_ID } from "@/features/iam/types";
 import { builtinChange, builtinReply } from "./builtin-contract";
 import {
   BUILTIN_OPERATIONS_CHANGED,
@@ -46,6 +48,7 @@ import { businessDisableEffects } from "./system-features";
 export type BuiltinPluginRow = {
   plugin: PluginInfo;
   disabled: boolean;
+  locked?: boolean;
   toggle: (enabled: boolean) => void;
   installed: boolean;
   remove: () => void;
@@ -183,6 +186,7 @@ export function BuiltinPluginManager({
   externalBusy?: boolean;
 }) {
   const resource = useSharedRead(builtinPluginResource);
+  const iam = useIam();
   const [review, setReview] = useState<CompositionChange | null>(null);
   const [pending, setPending] = useState(builtinPending);
   const [busy, setBusy] = useState(false);
@@ -237,8 +241,10 @@ export function BuiltinPluginManager({
   const rows: BuiltinPluginRow[] = (catalog?.host.plugins ?? []).map(
     (plugin) => ({
       plugin,
+      locked: plugin.id === IAM_PLUGIN_ID && !!iam.status?.enabled,
       installed: !catalog?.composition.removedPluginIds?.includes(plugin.id),
       remove: () => {
+        if (plugin.id === IAM_PLUGIN_ID && iam.status?.enabled) return;
         if (catalog)
           preview(
             removeBuiltin(
@@ -252,6 +258,10 @@ export function BuiltinPluginManager({
           );
       },
       install: () => {
+        if (plugin.id === IAM_PLUGIN_ID) {
+          if (!editingDisabled && !iam.status?.enabled) iam.beginSetup?.();
+          return;
+        }
         if (catalog)
           preview(
             installBuiltin(
@@ -267,9 +277,15 @@ export function BuiltinPluginManager({
       disabled:
         editingDisabled ||
         !!catalog?.problem ||
+        (plugin.id === IAM_PLUGIN_ID &&
+          (!!iam.status?.enabled || !iam.beginSetup)) ||
         plugin.desiredEnabled !== plugin.runtimeActive,
       toggle: (enabled) => {
         if (!catalog || editingDisabled) return;
+        if (plugin.id === IAM_PLUGIN_ID) {
+          if (enabled && !iam.status?.enabled) iam.beginSetup?.();
+          return;
+        }
         try {
           const editable = editableBuiltinSelection(
             catalog.host.plugins,

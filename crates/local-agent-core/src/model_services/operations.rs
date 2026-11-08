@@ -254,6 +254,15 @@ impl Store {
         request: &OperationRequest,
         validate_change: impl FnOnce(&OperationAction) -> Result<Vec<String>, ConfigError>,
     ) -> Result<OperationReceipt, ConfigError> {
+        self.commit_model_service_operation_as(request, None, validate_change)
+    }
+
+    pub fn commit_model_service_operation_as(
+        &self,
+        request: &OperationRequest,
+        creator: Option<&str>,
+        validate_change: impl FnOnce(&OperationAction) -> Result<Vec<String>, ConfigError>,
+    ) -> Result<OperationReceipt, ConfigError> {
         validate(request)?;
         let tx =
             rusqlite::Transaction::new_unchecked(&self.connection, TransactionBehavior::Immediate)
@@ -272,7 +281,9 @@ impl Store {
         }
         let active = validate_change(&request.action)?;
         let service = match &request.action {
-            OperationAction::Save { draft } => Some(self.write_model_service(&tx, draft.clone())?),
+            OperationAction::Save { draft } => {
+                Some(self.write_model_service(&tx, draft.clone(), creator)?)
+            }
             OperationAction::Delete {
                 service_id,
                 expected_revision,

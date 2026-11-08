@@ -3,6 +3,7 @@ pub(crate) mod backend;
 pub(crate) mod credential_recovery;
 pub(crate) mod domain;
 pub(crate) mod gateway;
+pub(crate) mod iam;
 pub(crate) mod local_tokens;
 pub(crate) mod model_services;
 pub(crate) mod native_imports;

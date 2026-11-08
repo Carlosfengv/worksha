@@ -35,6 +35,7 @@ impl Fixture {
         let providers = ProviderManager::new(home.clone(), &data, helper, vault.clone()).unwrap();
         let (gateway, _listener) = crate::gateway::Gateway::bind(&data).await.unwrap();
         let state = AppState {
+            iam: Default::default(),
             workbench: None,
             provider_adapters: crate::provider_models::adapters::builtin(),
             provider_client: crate::state::provider_client().unwrap(),

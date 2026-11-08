@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 pub(crate) mod builtin;
 pub(crate) mod external;
 pub(crate) mod features;
-mod intake;
+pub(crate) mod intake;
 
 pub(crate) struct RuntimeConfiguration {
     pub(crate) default_profile: Profile,

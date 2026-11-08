@@ -1,3 +1,4 @@
+import { iamApi } from "@/features/iam/api";
 import { Suspense, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import App from "@/app/App";
@@ -32,6 +33,11 @@ window.recoveryFixture = {
   writes: 0,
   rootCrash: new URLSearchParams(location.search).has("root"),
 };
+iamApi.status = async () => ({
+  enabled: false,
+  available: true,
+  account: null,
+});
 appApi.snapshot = async () => {
   throw new Error("fixture service offline");
 };

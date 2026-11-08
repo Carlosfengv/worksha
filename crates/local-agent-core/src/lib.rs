@@ -4,6 +4,7 @@ pub mod associated_cost;
 mod associated_cost_tests;
 pub mod billing;
 pub mod domain;
+pub mod iam;
 pub mod model_services;
 pub mod model_usage;
 pub mod observation;

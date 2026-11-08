@@ -10,6 +10,7 @@ import {
 } from "./scenarios";
 import type { SystemFeature } from "./system-features";
 import type { BuiltinPluginRow } from "./builtin-manager";
+import { IAM_PLUGIN_ID } from "@/features/iam/types";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -212,7 +213,13 @@ export function PluginCenterCatalog({
                   : runtime.plugin.desiredEnabled
                     ? "运行异常"
                     : "已停用",
-            setup: !runtime ? "尚未读取到运行状态" : null,
+            setup: !runtime
+              ? "尚未读取到运行状态"
+              : runtime.locked
+                ? "登录保护已开启，无法关闭或卸载"
+                : feature.id === IAM_PLUGIN_ID && runtime.installed
+                  ? "默认关闭，按需开启"
+                  : null,
             active: !!runtime?.plugin.runtimeActive,
             disabled: busy || !runtime || runtime.disabled,
             ...(runtime && !runtime.installed

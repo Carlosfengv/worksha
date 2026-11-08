@@ -19,6 +19,8 @@ import {
 import type { Provider } from "@/features/providers/types";
 import { useSharedRead } from "@/shared/hooks/use-shared-read";
 import { modelServicesResource } from "./queries";
+import { useIam } from "@/features/iam/context";
+import { IamResourceDetail } from "@/features/iam/resource-detail";
 import { ServiceEditor } from "./components/service-editor";
 import { commonCapabilities, type ModelService } from "./types";
 
@@ -30,6 +32,7 @@ type Row = {
   configurationUnknown: boolean;
   disabled: boolean;
   edit: () => void;
+  detail?: () => void;
   remove: () => void;
 };
 const columns: ColumnDef<Row>[] = [
@@ -41,7 +44,7 @@ const columns: ColumnDef<Row>[] = [
         <Button
           variant="link"
           size="sm"
-          onClick={row.original.edit}
+          onClick={row.original.detail ?? row.original.edit}
           disabled={row.original.disabled}
         >
           {row.original.service.name}
@@ -127,7 +130,7 @@ const columns: ColumnDef<Row>[] = [
         <Button
           variant="tertiary"
           size="sm"
-          onClick={row.original.edit}
+          onClick={row.original.detail ?? row.original.edit}
           disabled={row.original.disabled}
         >
           编辑<span className="sr-only"> {row.original.service.name}</span>
@@ -147,6 +150,8 @@ const columns: ColumnDef<Row>[] = [
 
 export function ModelServicesPage({ providers }: { providers: Provider[] }) {
   const catalog = useSharedRead(modelServicesResource);
+  const showDetails = !!useIam().status?.enabled;
+  const [detail, setDetail] = useState("");
   const [editor, setEditor] = useState<ModelService | "new" | null>(null);
   const [removing, setRemoving] = useState<ModelService | null>(null);
   const removingStore = useRef<string | undefined>(undefined);
@@ -175,13 +180,14 @@ export function ModelServicesPage({ providers }: { providers: Provider[] }) {
             (a) => a.serviceId === service.id && a.configurationUnknown,
           ) ?? false,
         edit: () => setEditor(service),
+        detail: showDetails ? () => setDetail(service.id) : undefined,
         remove: () => {
           resetDeletion();
           removingStore.current = catalog.data?.writeProtocol?.storeId;
           setRemoving(service);
         },
       })),
-    [catalog.data, catalog.error, busy, resetDeletion],
+    [catalog.data, catalog.error, busy, resetDeletion, showDetails],
   );
   const { table } = useDataTable({
     data: rows,
@@ -261,6 +267,9 @@ export function ModelServicesPage({ providers }: { providers: Provider[] }) {
           storeId={catalog.data.writeProtocol.storeId}
           services={catalog.data.services}
         />
+      )}
+      {detail && (
+        <IamResourceDetail id={detail} onClose={() => setDetail("")} />
       )}
       {editor && (
         <ServiceEditor

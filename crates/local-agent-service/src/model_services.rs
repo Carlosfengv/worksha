@@ -1,6 +1,6 @@
 use crate::{ApiResult, AppState, json_value, providers};
 use axum::{
-    Json,
+    Extension, Json,
     extract::{Path, Query, State},
 };
 use local_agent_core::{
@@ -68,13 +68,21 @@ pub async fn list(State(state): State<AppState>) -> ApiResult {
         Ok(Json(json!({"services":services,"attachments":attachments,"connectionAgents":CONNECTION_AGENTS,"routingHealth":health,"writeProtocol":{"version":1,"receiptLimit":RECEIPT_LIMIT,"storeId":store.model_service_operation_store_id().map_err(providers::error)?}})))
     }).await.map_err(|e|providers::error(crate::blocking::config_error(e)))?
 }
-pub async fn save(State(state): State<AppState>, Json(draft): Json<ServiceDraft>) -> ApiResult {
+pub async fn save(
+    State(state): State<AppState>,
+    actor: Option<Extension<crate::iam::Actor>>,
+    Json(draft): Json<ServiceDraft>,
+) -> ApiResult {
     crate::blocking::run(move || {
         let m = state.providers.lock().map_err(|_| unavailable())?;
         let store = state.store.lock().map_err(|_| unavailable())?;
         policy_publication_guard(&state, &store, &draft.id, None)?;
         validate_draft(&store, &m, &draft).map_err(providers::error)?;
-        json_value(store.save_model_service(draft).map_err(providers::error)?)
+        json_value(
+            store
+                .save_model_service_as(draft, actor.as_ref().map(|actor| actor.0.0.as_str()))
+                .map_err(providers::error)?,
+        )
     })
     .await
     .map_err(|e| providers::error(crate::blocking::config_error(e)))?
@@ -189,6 +197,7 @@ pub async fn operation(
 }
 pub async fn commit_operation(
     State(state): State<AppState>,
+    actor: Option<Extension<crate::iam::Actor>>,
     Json(request): Json<OperationRequest>,
 ) -> ApiResult {
     crate::blocking::run(move || {
@@ -197,19 +206,23 @@ pub async fn commit_operation(
         // The core transaction checks a prior receipt before this validation;
         // a retry cannot re-verify or re-publish an already committed operation.
         let receipt = store
-            .commit_model_service_operation(&request, |action| {
-                policy_publication_guard(&state, &store, action.identity().1, Some(&request))
-                    .map_err(|_| {
+            .commit_model_service_operation_as(
+                &request,
+                actor.as_ref().map(|actor| actor.0.0.as_str()),
+                |action| {
+                    policy_publication_guard(&state, &store, action.identity().1, Some(&request))
+                        .map_err(|_| {
                         ConfigError::new("result_pending", "策略发布结果尚未确认，请核查原操作编号")
                     })?;
-                match action {
-                    OperationAction::Save { draft } => {
-                        validate_draft(&store, &manager, draft)?;
-                        Ok(vec![])
+                    match action {
+                        OperationAction::Save { draft } => {
+                            validate_draft(&store, &manager, draft)?;
+                            Ok(vec![])
+                        }
+                        OperationAction::Delete { .. } => active_bindings(&state, &store, &manager),
                     }
-                    OperationAction::Delete { .. } => active_bindings(&state, &store, &manager),
-                }
-            })
+                },
+            )
             .map_err(providers::error)?;
         json_value(receipt)
     })

@@ -13,15 +13,24 @@ pub(super) struct Connection {
     pub persistent: bool,
     pub generation: String,
     pub instance_id: String,
+    pub iam_protocol: bool,
+    pub iam_epoch: u64,
+    pub iam_session: Option<std::sync::Arc<zeroize::Zeroizing<String>>>,
 }
-impl From<local_agent_core::runtime::ServiceRecord> for Connection {
-    fn from(record: local_agent_core::runtime::ServiceRecord) -> Self {
+impl Connection {
+    pub(super) fn verified(
+        record: local_agent_core::runtime::ServiceRecord,
+        iam_protocol: bool,
+    ) -> Self {
         Self {
             endpoint: format!("http://127.0.0.1:{}", record.port),
             token: record.token,
             persistent: record.identity.persistent,
             generation: uuid::Uuid::new_v4().to_string(),
             instance_id: record.identity.instance_id,
+            iam_protocol,
+            iam_epoch: 0,
+            iam_session: None,
         }
     }
 }
@@ -152,11 +161,6 @@ impl Lifecycle {
             exit_code: exit,
             signal,
         });
-    }
-    pub fn current(&self, generation: &str) -> bool {
-        self.connection
-            .as_ref()
-            .is_some_and(|c| c.generation == generation)
     }
     pub fn install(&mut self, connection: Connection) -> Result<(), String> {
         if self.stopping {

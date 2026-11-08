@@ -7,6 +7,7 @@ mod connections;
 mod daemon;
 mod domain;
 mod gateway;
+mod iam;
 mod lan;
 mod local_tokens;
 mod model_services;
@@ -224,6 +225,7 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
     let address = listener.local_addr()?;
     let state = AppState {
+        iam: Arc::new(iam::Iam::new(store.iam_enabled()?)),
         workbench: workbench.clone(),
         provider_adapters: provider_models::adapters::builtin(),
         provider_client: state::provider_client().map_err(|_| "无法建立模型连接服务")?,

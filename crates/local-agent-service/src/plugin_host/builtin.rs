@@ -176,7 +176,48 @@ pub(crate) async fn change(
     })
     .await
 }
+pub(crate) fn enable_iam(
+    state: &AppState,
+    operation_id: String,
+    bootstrap: local_agent_core::iam::Bootstrap,
+) -> Result<(), PluginError> {
+    let catalog = read(state)?;
+    let mut composition = catalog.composition;
+    composition
+        .opted_in_plugin_ids
+        .push(local_agent_core::iam::PLUGIN_ID.into());
+    composition.opted_in_plugin_ids.sort();
+    composition.opted_in_plugin_ids.dedup();
+    composition
+        .disabled_plugin_ids
+        .retain(|id| id != local_agent_core::iam::PLUGIN_ID);
+    composition
+        .removed_plugin_ids
+        .retain(|id| id != local_agent_core::iam::PLUGIN_ID);
+    apply_inner(
+        state,
+        CompositionChange {
+            store_id: catalog.store_id,
+            operation_id,
+            expected_revision: catalog.revision,
+            expected_generation: catalog.host.generation,
+            expected_impact: Some(catalog.impact),
+            composition,
+        },
+        Some(&bootstrap),
+    )?;
+    Ok(())
+}
+
 fn apply(state: &AppState, input: CompositionChange) -> Result<CompositionReply, PluginError> {
+    apply_inner(state, input, None)
+}
+
+fn apply_inner(
+    state: &AppState,
+    input: CompositionChange,
+    bootstrap: Option<&local_agent_core::iam::Bootstrap>,
+) -> Result<CompositionReply, PluginError> {
     use super::intake::Scope;
     let basis = read(state)?;
     let enabled = selected(&state.readonly.factories, &input.composition)?;
@@ -202,7 +243,7 @@ fn apply(state: &AppState, input: CompositionChange) -> Result<CompositionReply,
         .map(|plugin| plugin.id.clone())
         .collect();
     let scope =
-        if scoped {
+        if scoped && bootstrap.is_none() {
             let mut blocked = changed.clone();
             for plugin in &basis.host.plugins {
                 if changed.contains(&plugin.id) && !plugin.id.starts_with("builtin.") {
@@ -321,11 +362,15 @@ fn apply(state: &AppState, input: CompositionChange) -> Result<CompositionReply,
             &enabled,
             &retained,
             || {
-                receipt = Some(store.save_builtin_composition(
+                receipt = Some(store.save_builtin_composition_with_iam(
                     &input,
                     config.default_profile,
                     &revoked,
+                    bootstrap,
                 )?);
+                if bootstrap.is_some() {
+                    state.iam.mark_enabled();
+                }
                 transition.keep_closed_on_failure();
                 Ok(())
             },

@@ -53,6 +53,12 @@ impl BuiltinPlugin for Feature {
 pub(crate) fn definitions() -> Vec<Arc<dyn BuiltinPlugin>> {
     [
         Feature {
+            id: local_agent_core::iam::PLUGIN_ID,
+            title: "账号管理",
+            requires: &[],
+            opt_in: true,
+        },
+        Feature {
             id: "builtin.providers",
             title: "Providers",
             requires: &[],

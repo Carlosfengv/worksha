@@ -1,3 +1,4 @@
+import { iamApi } from "@/features/iam/api";
 import { providersApi } from "@/features/providers/api";
 import { installProviderOperationFixture } from "../../provider-operation-fixture";
 import { installAssociatedCosts } from "../../associated-cost-fixture";
@@ -28,6 +29,11 @@ export const applicationTableModes = new Set([
   "plugin-navigation",
 ]);
 export function installTableFixtures() {
+  iamApi.status = async () => ({
+    enabled: false,
+    available: true,
+    account: null,
+  });
   const context = createTableFixtureContext();
   installTableShell(context);
   if (context.mode === "agents" && context.params.has("uploadedAgent")) {

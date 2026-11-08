@@ -21,6 +21,7 @@ pub(crate) struct Backend {
     lifecycle: Arc<Mutex<Lifecycle>>,
     child: Arc<Mutex<Option<(String, CommandChild)>>>,
     reconnect_capacity: Arc<tokio::sync::Semaphore>,
+    iam_transition: tokio::sync::Mutex<()>,
 }
 
 impl Backend {
@@ -34,6 +35,7 @@ impl Backend {
             lifecycle: Arc::new(Mutex::new(Lifecycle::new(connection, startup_error))),
             child: Arc::new(Mutex::new(None)),
             reconnect_capacity: Arc::new(tokio::sync::Semaphore::new(1)),
+            iam_transition: tokio::sync::Mutex::new(()),
         }
     }
     fn state(&self) -> Result<std::sync::MutexGuard<'_, Lifecycle>, String> {
@@ -75,10 +77,9 @@ impl Backend {
             operation: operation.clone(),
         };
         let result: Result<Diagnostics, String> = async {
-            let record = existing_with_capacity(directory, &self.client, Some(permit.clone()))
+            let connection = existing_with_capacity(directory, &self.client, Some(permit.clone()))
                 .await?
                 .ok_or("未找到可验证的后台。请先启动已有常驻服务，或正常重新打开应用后再试")?;
-            let connection = Connection::from(record);
             // A verified publication cannot transfer ownership of a live child.
             if self
                 .child
@@ -163,6 +164,9 @@ impl Backend {
                 persistent: false,
                 generation: uuid::Uuid::new_v4().to_string(),
                 instance_id: uuid::Uuid::new_v4().to_string(),
+                iam_protocol: true,
+                iam_epoch: 0,
+                iam_session: None,
             })
             .unwrap();
     }
@@ -181,9 +185,37 @@ impl Backend {
                 persistent,
                 generation: uuid::Uuid::new_v4().to_string(),
                 instance_id: uuid::Uuid::new_v4().to_string(),
+                iam_protocol: true,
+                iam_epoch: 0,
+                iam_session: None,
             }),
             None,
         )
+    }
+    pub(crate) fn set_iam_session(
+        &self,
+        context: &ConnectionContext,
+        token: Option<String>,
+    ) -> Result<(), String> {
+        let mut state = self.state()?;
+        let connection = state
+            .connection
+            .as_mut()
+            .filter(|connection| context.matches_access(connection))
+            .ok_or_else(|| {
+                local_error(
+                    "backend_connection_changed",
+                    "连接或登录已变化，请核对当前账号",
+                )
+            })?;
+        connection.iam_epoch += 1;
+        connection.iam_session = token.map(|token| Arc::new(zeroize::Zeroizing::new(token)));
+        Ok(())
+    }
+    pub(crate) fn iam_transition(&self) -> Result<tokio::sync::MutexGuard<'_, ()>, String> {
+        self.iam_transition
+            .try_lock()
+            .map_err(|_| local_error("busy", "账号状态正在变更，请稍后重试"))
     }
     pub(crate) fn context(&self) -> Result<ConnectionContext, String> {
         Ok(ConnectionContext::new(
@@ -208,9 +240,14 @@ impl Backend {
         body: Option<serde_json::Value>,
     ) -> Result<serde_json::Value, String> {
         let mutation = !read_only_request(&method, path);
+        let iam_probe = method == reqwest::Method::GET
+            && matches!(path, "/api/iam/status" | "/api/iam/admission");
         let mut request = client
             .request(method, format!("{}{path}", connection.endpoint))
             .bearer_auth(&connection.token);
+        if let Some(token) = &connection.iam_session {
+            request = request.header("x-local-agent-session", token.as_str());
+        }
         if path.starts_with("/api/plugins") || path.starts_with("/api/plugin-extensions") {
             request = request.timeout(Duration::from_secs(35));
         }
@@ -251,6 +288,17 @@ impl Backend {
             )
         })?;
         let status = response.status();
+        if iam_probe && status == reqwest::StatusCode::NOT_FOUND {
+            if connection.iam_protocol {
+                return Err(local_error("iam_unavailable", "后台账号管理接口暂不可用"));
+            }
+            // A verified, pre-IAM service can only open the unprotected schema.
+            return Ok(if path == "/api/iam/status" {
+                serde_json::json!({"enabled":false,"account":null,"available":false})
+            } else {
+                serde_json::json!({"allowed":true})
+            });
+        }
         if status == reqwest::StatusCode::NOT_FOUND && path == "/api/provider-operations/protocol" {
             return Err(serde_json::json!({"code":"write_protocol_unavailable","outcomeUnknown":false,"message":"当前后台不支持服务商结果核查，请升级后台后再保存或连接。"}).to_string());
         }
@@ -441,7 +489,7 @@ impl Drop for RecoveryReset {
     }
 }
 
-fn local_error(code: &str, message: &str) -> String {
+pub(crate) fn local_error(code: &str, message: &str) -> String {
     serde_json::json!({"code":code,"message":message,"outcomeUnknown":false}).to_string()
 }
 
@@ -481,12 +529,14 @@ impl Drop for ExportCleanup {
         let path = self.kind.path();
         if let Ok(runtime) = tokio::runtime::Handle::try_current() {
             runtime.spawn(async move {
-                let _ = client
+                let mut request = client
                     .delete(format!("{}{path}/{operation}", connection.endpoint))
                     .bearer_auth(connection.token)
-                    .timeout(Duration::from_secs(8))
-                    .send()
-                    .await;
+                    .timeout(Duration::from_secs(8));
+                if let Some(token) = &connection.iam_session {
+                    request = request.header("x-local-agent-session", token.as_str());
+                }
+                let _ = request.send().await;
             });
         }
     }
@@ -644,7 +694,7 @@ pub(crate) fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
 async fn existing(
     directory: &std::path::Path,
     client: &reqwest::Client,
-) -> Result<Option<ServiceRecord>, String> {
+) -> Result<Option<Connection>, String> {
     existing_with_capacity(directory, client, None).await
 }
 
@@ -664,7 +714,7 @@ async fn existing_with_capacity(
     directory: &std::path::Path,
     client: &reqwest::Client,
     capacity: Option<Arc<tokio::sync::OwnedSemaphorePermit>>,
-) -> Result<Option<ServiceRecord>, String> {
+) -> Result<Option<Connection>, String> {
     let Some(record) = read_record(directory, capacity.clone()).await? else {
         return Ok(None);
     };
@@ -681,6 +731,11 @@ async fn existing_with_capacity(
     if !response.status().is_success() {
         return Err("无法验证已有本地服务身份，未接入占用端口的程序".into());
     }
+    let iam_protocol = match response.headers().get(runtime::IAM_PROTOCOL_HEADER) {
+        None => false,
+        Some(value) if value.as_bytes() == runtime::IAM_PROTOCOL.as_bytes() => true,
+        Some(_) => return Err("已有本地服务的账号管理协议不兼容".into()),
+    };
     let mut bytes = Vec::new();
     while let Some(chunk) = response
         .chunk()
@@ -708,7 +763,7 @@ async fn existing_with_capacity(
     }) {
         return Err("本地服务发布已变化，请再次核对连接".into());
     }
-    Ok(Some(record))
+    Ok(Some(Connection::verified(record, iam_protocol)))
 }
 
 fn connect_or_start(
@@ -718,9 +773,9 @@ fn connect_or_start(
 ) -> Result<(), String> {
     let client = &backend.client;
     let directory = runtime::desktop_data_dir(&app.config().identifier)?;
-    if let Some(record) = tauri::async_runtime::block_on(existing(&directory, client))? {
+    if let Some(connection) = tauri::async_runtime::block_on(existing(&directory, client))? {
         let mut state = backend.state()?;
-        state.install(record.into())?;
+        state.install(connection)?;
         state.record(operation, Phase::Startup, Category::Verified, None, None);
         return Ok(());
     }
@@ -744,8 +799,8 @@ fn connect_or_start(
         .await
         .map_err(|_| "本地服务启动超时，请检查已有服务后重新打开".to_string())?
     });
-    let record = match ready {
-        Ok(record) => record,
+    let connection = match ready {
+        Ok(connection) => connection,
         Err(error) => {
             let _ = child.kill();
             tauri::async_runtime::spawn(observe_process(
@@ -759,8 +814,8 @@ fn connect_or_start(
             return Err(error);
         }
     };
-    let generation = record.identity.instance_id.clone();
-    let owned = record.token == token;
+    let generation = connection.instance_id.clone();
+    let owned = connection.token == token;
     if owned {
         *backend
             .child
@@ -771,7 +826,7 @@ fn connect_or_start(
     }
     {
         let mut state = backend.state()?;
-        state.install(record.into())?;
+        state.install(connection)?;
         state.record(operation, Phase::Startup, Category::Verified, None, None);
     }
     let (lifecycle, child, operation) = (
@@ -790,7 +845,7 @@ async fn wait_for_startup(
     backend: &Backend,
     operation: &str,
     events: &mut tauri::async_runtime::Receiver<CommandEvent>,
-) -> Result<ServiceRecord, String> {
+) -> Result<Connection, String> {
     let mut hint = None;
     loop {
         if let Some(record) = existing(directory, &backend.client).await? {
@@ -962,6 +1017,120 @@ mod tests {
     }
 
     struct Temp(PathBuf);
+
+    #[test]
+    fn stale_iam_replies_cannot_restore_a_session_after_logout() {
+        let backend = Backend::test_connection("http://127.0.0.1:9".into());
+        let signed_out = backend.context().unwrap();
+        backend
+            .set_iam_session(&signed_out, Some("owner-fixture".into()))
+            .unwrap();
+        let signed_in = backend.context().unwrap();
+        backend.set_iam_session(&signed_in, None).unwrap();
+
+        assert!(backend.set_iam_session(&signed_in, None).is_err());
+        assert!(
+            backend
+                .set_iam_session(&signed_out, Some("late-fixture".into()))
+                .is_err()
+        );
+        assert!(backend.connection().unwrap().iam_session.is_none());
+    }
+
+    #[test]
+    fn only_verified_pre_iam_backends_allow_missing_iam_endpoints() {
+        for supports_iam in [false, true] {
+            let temp = Temp::new();
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let guard = ServiceGuard::acquire(&temp.0).unwrap();
+            let identity = guard
+                .publish(
+                    listener.local_addr().unwrap().port(),
+                    uuid::Uuid::new_v4().to_string(),
+                    env!("CARGO_PKG_VERSION"),
+                )
+                .unwrap();
+            let body = serde_json::to_string(&identity).unwrap();
+            let header = if supports_iam {
+                format!(
+                    "{}: {}\r\n",
+                    runtime::IAM_PROTOCOL_HEADER,
+                    runtime::IAM_PROTOCOL
+                )
+            } else {
+                String::new()
+            };
+            let server = std::thread::spawn(move || {
+                let responses = [
+                    (
+                        "/api/runtime",
+                        format!(
+                            "HTTP/1.1 200 OK\r\n{header}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        ),
+                    ),
+                    (
+                        "/api/iam/status",
+                        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            .into(),
+                    ),
+                    (
+                        "/api/iam/admission",
+                        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            .into(),
+                    ),
+                ];
+                for (path, reply) in responses {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    stream
+                        .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+                        .unwrap();
+                    let mut request = std::io::BufReader::new(&mut stream);
+                    let mut line = String::new();
+                    std::io::BufRead::read_line(&mut request, &mut line).unwrap();
+                    assert_eq!(line, format!("GET {path} HTTP/1.1\r\n"));
+                    loop {
+                        line.clear();
+                        assert_ne!(
+                            std::io::BufRead::read_line(&mut request, &mut line).unwrap(),
+                            0
+                        );
+                        if line == "\r\n" {
+                            break;
+                        }
+                    }
+                    stream.write_all(reply.as_bytes()).unwrap();
+                }
+            });
+            tauri::async_runtime::block_on(async {
+                let client = reqwest::Client::builder()
+                    .no_proxy()
+                    .timeout(std::time::Duration::from_secs(3))
+                    .build()
+                    .unwrap();
+                let connection = existing(&temp.0, &client).await.unwrap().unwrap();
+                let backend = Backend::new(client, Some(connection), None);
+                for (path, fallback) in [
+                    (
+                        "/api/iam/status",
+                        serde_json::json!({"enabled":false,"account":null,"available":false}),
+                    ),
+                    ("/api/iam/admission", serde_json::json!({"allowed":true})),
+                ] {
+                    let reply = backend.request(reqwest::Method::GET, path, None).await;
+                    if supports_iam {
+                        let error: serde_json::Value =
+                            serde_json::from_str(&reply.unwrap_err()).unwrap();
+                        assert_eq!(error["code"], "iam_unavailable");
+                    } else {
+                        assert_eq!(reply.unwrap(), fallback);
+                    }
+                }
+            });
+            server.join().unwrap();
+        }
+    }
+
     #[test]
     fn domain_uncertainty_is_preserved_across_http_error_responses() {
         let pending = r#"{"code":"credential_result_unknown","outcomeUnknown":true,"message":"fixture pending"}"#;

@@ -433,8 +433,13 @@ pub(crate) fn management(state: AppState) -> Router {
         .merge(projects::routes(state.clone()))
         .layer(middleware::from_fn_with_state(
             state.clone(),
+            crate::iam::guard,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
             crate::api::authorize,
         ))
+        .merge(crate::iam::routes(state.clone()))
         .merge(
             Router::new()
                 .route(

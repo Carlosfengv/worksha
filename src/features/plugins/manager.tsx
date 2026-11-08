@@ -292,22 +292,28 @@ export function PluginManager({
                               <a href={feature.href}>打开{feature.name}</a>
                             </Button>
                           )}
-                          <Button
-                            variant="tertiary"
-                            disabled={row.disabled || busy}
-                            onClick={() =>
-                              row.installed
-                                ? row.toggle(!row.plugin.runtimeActive)
-                                : row.install()
-                            }
-                          >
-                            {row.installed
-                              ? row.plugin.runtimeActive
-                                ? "停用"
-                                : "启用"
-                              : "安装并启用"}
-                          </Button>
-                          {row.installed && (
+                          {row.locked ? (
+                            <p className="text-label text-fg-muted">
+                              登录保护已开启，无法关闭或卸载。
+                            </p>
+                          ) : (
+                            <Button
+                              variant="tertiary"
+                              disabled={row.disabled || busy}
+                              onClick={() =>
+                                row.installed
+                                  ? row.toggle(!row.plugin.runtimeActive)
+                                  : row.install()
+                              }
+                            >
+                              {row.installed
+                                ? row.plugin.runtimeActive
+                                  ? "停用"
+                                  : "启用"
+                                : "安装并启用"}
+                            </Button>
+                          )}
+                          {row.installed && !row.locked && (
                             <Button
                               variant="tertiary"
                               disabled={row.disabled || busy}

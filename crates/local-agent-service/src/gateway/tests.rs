@@ -561,6 +561,7 @@ async fn http_gateway_converts_all_paths_authenticates_observes_and_restores_tem
     let sessions = Arc::new(NativeSessions::new(home.clone(), &[]));
     let (gateway, listener) = super::Gateway::bind(&data).await.unwrap();
     let state = crate::AppState {
+        iam: Default::default(),
         workbench: None,
         provider_adapters: crate::provider_models::adapters::builtin(),
         provider_client: crate::state::provider_client().unwrap(),
