@@ -612,10 +612,8 @@ pub async fn prepare(State(state): State<AppState>, Json(draft): Json<BindingDra
             .transpose()?;
         if let Some(source) = &p {
             if ["opencode", "claude-desktop", "codex"].contains(&draft.agent_id.as_str()) {
-                for id in source.enabled_model_ids() {
-                    m.require_verification(&select_model(source, Some(&id)).map_err(error)?)
-                        .map_err(error)?;
-                }
+                m.require_model_verifications(source, source.enabled_model_ids())
+                    .map_err(error)?;
             } else {
                 m.require_verification(selected.as_ref().unwrap())
                     .map_err(error)?;
@@ -720,10 +718,8 @@ async fn switch(state: AppState, id: String, commit: bool) -> ApiResult {
                 .as_ref()
                 .is_some_and(|route| !route.models.is_empty())
             {
-                for id in p.enabled_model_ids() {
-                    m.require_verification(&select_model(p, Some(&id)).map_err(error)?)
-                        .map_err(error)?;
-                }
+                m.require_model_verifications(p, p.enabled_model_ids())
+                    .map_err(error)?;
             } else {
                 m.require_verification(&selected).map_err(error)?;
             }

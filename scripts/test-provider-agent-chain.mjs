@@ -385,7 +385,7 @@ try {
     await api("/api/provider-operations", sourceRequest.operation),
     saved,
   );
-  for (const model of provider.models)
+  for (const model of provider.models) {
     assert.equal(
       (
         await api(`/api/providers/${provider.id}/verify`, {
@@ -395,6 +395,23 @@ try {
       ).state,
       "verified",
     );
+    if (model === provider.models[0]) {
+      const config = (await api("/api/provider-status")).configs.find(
+        (c) => c.agentId === "opencode",
+      );
+      const blocked = await api("/api/provider-switches", {
+        agentId: "opencode",
+        providerId: provider.id,
+        expectedProviderRevision: provider.revision,
+        model,
+        expectedRevision: config.revision,
+      }, 400);
+      assert.equal(blocked.code, "verification_required");
+      assert(blocked.message.includes(provider.models[1]));
+      assert(!blocked.message.includes(model));
+      assert.equal(posts(), 1);
+    }
+  }
   assert.equal(posts(), 2);
   assert.equal((await protocol()).sequence, saved.sequence);
   await action(wire, {

@@ -16,6 +16,33 @@ test("Agent table exposes a single shared local-entry recovery panel instead of 
 
 const cardName = "配置事务 目标供应商 · new-model";
 
+test("OpenCode names the remaining paid probe and offers a single-model route without probing", async ({
+  page,
+}) => {
+  await page.goto(
+    "/tests/frontend/provider-switch.html?agent=opencode&group=1&expired=1&partial=1&list=1",
+  );
+  await page.getByRole("combobox", { name: "OpenCode 模型连接" }).click();
+  await page.getByRole("option", { name: "目标供应商", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("切换前需要验证 1 个模型");
+  await expect(dialog).toContainText("待验证：alternate-model。");
+  await expect(dialog).toContainText("可能产生费用");
+  await expect(
+    dialog.getByRole("link", { name: "打开模型服务" }),
+  ).toHaveAttribute("href", "#/model-services");
+  const manage = dialog.getByRole("link", { name: "管理启用模型" });
+  await expect(manage).toHaveAttribute(
+    "href",
+    "#/providers/target-provider?tab=models",
+  );
+  await manage.click();
+  await expect(dialog).toHaveCount(0);
+  expect(
+    await page.evaluate(() => window.providerSwitchFixture.actions),
+  ).toEqual([]);
+});
+
 test("dynamic switching works with running processes and preserves a dismissed preview", async ({
   page,
 }) => {

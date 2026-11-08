@@ -29,6 +29,8 @@ const list = new URLSearchParams(location.search).has("list");
 const dynamic = new URLSearchParams(location.search).has("dynamic");
 const verifiedModels = new Set<string>();
 if (grouped) provider.models.push("alternate-model");
+if (new URLSearchParams(location.search).has("partial"))
+  verifiedModels.add(provider.model);
 const product =
   agentProducts.find(
     (p) => p.id === new URLSearchParams(location.search).get("agent"),

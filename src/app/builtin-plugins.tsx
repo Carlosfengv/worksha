@@ -113,6 +113,7 @@ export const builtinPlugins: readonly UiPlugin[] = [
             data={data}
             refresh={refresh}
             selectedId={route.objectId}
+            selectedTab={route.tab}
           />
         ),
       },

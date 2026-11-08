@@ -40,10 +40,12 @@ export function ProvidersPage({
   data,
   refresh,
   selectedId,
+  selectedTab,
 }: {
   data: Snapshot | null;
   refresh: () => Promise<void>;
   selectedId?: string;
+  selectedTab?: string;
 }) {
   const status = useSharedRead(providerStatusResource, !!data);
   const [listTab, setListTab] = useState("overview");
@@ -143,6 +145,7 @@ export function ProvidersPage({
           <ProviderDetail
             key={`${data.providerWriteProtocol?.storeId ?? "unknown"}:${selected.id}`}
             provider={selected}
+            initialTab={selectedTab === "models" ? "models" : "overview"}
             storeId={data.providerWriteProtocol?.storeId}
             status={freshStatus}
             onEdit={edit}

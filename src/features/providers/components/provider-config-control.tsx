@@ -429,22 +429,8 @@ export function ProviderConfigControl({
       }
       if (!nativeSelection && !(dynamicBinding && chosen && usingDynamic))
         requireLocalTokenSource(tokenSource);
-      const modelsToVerify =
-        !usingDynamic &&
-        ["opencode", "claude-desktop", "codex"].includes(draft.agentId)
-          ? modelIds
-          : [model];
       for (const [index, modelId] of modelsToVerify.entries()) {
-        if (
-          !chosen ||
-          status.verifications.some(
-            (v) =>
-              v.providerId === chosen.id &&
-              (v.model ?? chosen.model) === modelId &&
-              v.state === "verified",
-          )
-        )
-          continue;
+        if (!chosen) break;
         setVerificationProgress(
           `正在验证 ${index + 1}/${modelsToVerify.length} · ${modelId}`,
         );
@@ -524,21 +510,22 @@ export function ProviderConfigControl({
     !!draft &&
     !!chosen &&
     chosen.protocol !== (draft.agentId === "codex" ? "responses" : "messages");
-  const verified =
-    nativeSelection ||
-    (!!chosen &&
-      (!usingDynamic &&
-      ["opencode", "claude-desktop", "codex"].includes(draft?.agentId ?? "")
-        ? modelIds
-        : [model]
-      ).every((modelId) =>
-        status.verifications.some(
-          (v) =>
-            v.providerId === selection &&
-            (v.model ?? chosen?.model) === modelId &&
-            v.state === "verified",
-        ),
-      ));
+  const publishesCatalog =
+    !usingDynamic &&
+    ["opencode", "claude-desktop", "codex"].includes(draft?.agentId ?? "");
+  const modelsToVerify =
+    !chosen || !model
+      ? []
+      : (publishesCatalog ? modelIds : [model]).filter(
+          (modelId) =>
+            !status.verifications.some(
+              (v) =>
+                v.providerId === chosen.id &&
+                (v.model ?? chosen.model) === modelId &&
+                v.state === "verified",
+            ),
+        );
+  const verified = nativeSelection || (!!chosen && modelsToVerify.length === 0);
   const transactions = status.transactions.filter((t) =>
     renderPicker
       ? t.agentId === onlyAgent
@@ -1194,20 +1181,47 @@ export function ProviderConfigControl({
               )}
               {!verified && chosen && (
                 <Alert>
-                  <AlertTitle>切换前验证所选模型</AlertTitle>
+                  <AlertTitle>
+                    切换前需要验证 {modelsToVerify.length} 个模型
+                  </AlertTitle>
                   <AlertDescription>
-                    将向所选服务商的
-                    {!usingDynamic &&
-                    ["opencode", "claude-desktop", "codex"].includes(
-                      draft.agentId,
-                    )
-                      ? `${modelIds.length} 个已启用模型分别`
-                      : "所选模型"}
-                    发送最多 16 个输出 Token
-                    的短请求，可能产生少量费用；验证成功后生成预览，不立即改写
-                    Agent 配置。
+                    <p>
+                      待验证：{modelsToVerify.slice(0, 8).join("、")}
+                      {modelsToVerify.length > 8
+                        ? ` 等 ${modelsToVerify.length} 个模型`
+                        : ""}
+                      。
+                    </p>
+                    <p>
+                      确认后会分别发出最多 16 个输出 Token
+                      的短请求，可能产生费用。验证成功后生成预览。
+                    </p>
                   </AlertDescription>
                 </Alert>
+              )}
+              {chosen && publishesCatalog && modelIds.length > 1 && (
+                <div className="space-y-2 text-label text-fg-muted">
+                  <p>
+                    此固定入口发布 Provider
+                    的全部已启用模型。只使用当前模型时，可在 Provider
+                    中停用其他模型，或创建一个只包含当前模型的模型服务。
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button asChild variant="tertiary" size="sm">
+                      <a
+                        href={`#/providers/${encodeURIComponent(chosen.id)}?tab=models`}
+                        onClick={() => setDraft(null)}
+                      >
+                        管理启用模型
+                      </a>
+                    </Button>
+                    <Button asChild variant="tertiary" size="sm">
+                      <a href="#/model-services" onClick={() => setDraft(null)}>
+                        打开模型服务
+                      </a>
+                    </Button>
+                  </div>
+                </div>
               )}
               {(!dynamicBinding || selection === "native") && (
                 <p className="text-label text-fg-subtle">
@@ -1242,7 +1256,9 @@ export function ProviderConfigControl({
                     ? "生成动态路由预览"
                     : verified
                       ? "生成切换预览与备份"
-                      : "验证并生成预览"}
+                      : publishesCatalog && modelIds.length > 1
+                        ? `验证 ${modelsToVerify.length} 个模型并生成预览`
+                        : "验证并生成预览"}
                 </Button>
               </DialogFooter>
             </div>

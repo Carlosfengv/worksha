@@ -236,9 +236,8 @@ fn verified(
     } else if request.purpose == Purpose::FixedRoute
         && ["codex", "opencode", "claude-desktop"].contains(&request.agent_id.as_str())
     {
-        for model in request.provider.enabled_model_ids() {
-            manager.require_verification(&select_model(&request.provider, Some(&model))?)?;
-        }
+        manager
+            .require_model_verifications(&request.provider, request.provider.enabled_model_ids())?;
     } else {
         manager.require_verification(&request.provider)?;
     }

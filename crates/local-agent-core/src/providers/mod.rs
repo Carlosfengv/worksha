@@ -488,23 +488,52 @@ impl ProviderManager {
         })
     }
     pub fn require_verification(&self, p: &Provider) -> Result<(), ConfigError> {
+        self.require_model_verifications(p, vec![p.model.clone()])
+    }
+    pub fn require_model_verifications(
+        &self,
+        provider: &Provider,
+        models: Vec<String>,
+    ) -> Result<(), ConfigError> {
         let now = chrono::Utc::now();
-        let valid = self.verifications()?.iter().any(|v| {
-            v.state == "verified"
-                && v.fingerprint == fingerprint(p)
-                && chrono::DateTime::parse_from_rfc3339(&v.checked_at).is_ok_and(|date| {
-                    let age = now.signed_duration_since(date);
-                    age >= chrono::Duration::zero() && age < chrono::Duration::minutes(15)
-                })
-        });
-        if valid {
-            Ok(())
-        } else {
-            fail(
-                "verification_required",
-                "请先验证此端点、协议、模型和凭据版本；验证结果保留 15 分钟",
-            )
+        let verified: std::collections::HashSet<_> = self
+            .verifications()?
+            .into_iter()
+            .filter(|v| {
+                v.state == "verified"
+                    && chrono::DateTime::parse_from_rfc3339(&v.checked_at).is_ok_and(|date| {
+                        let age = now.signed_duration_since(date);
+                        age >= chrono::Duration::zero() && age < chrono::Duration::minutes(15)
+                    })
+            })
+            .map(|v| v.fingerprint)
+            .collect();
+        let mut missing = Vec::new();
+        for model in models {
+            if !verified.contains(&fingerprint(&select_model(provider, Some(&model))?)) {
+                missing.push(model);
+            }
         }
+        if missing.is_empty() {
+            return Ok(());
+        }
+        let display = missing
+            .iter()
+            .take(8)
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join("、");
+        let extra = if missing.len() > 8 {
+            format!("等 {} 个模型", missing.len())
+        } else {
+            String::new()
+        };
+        Err(ConfigError::new(
+            "verification_required",
+            &format!(
+                "需要验证 {display}{extra}。请使用当前端点和凭据验证，或在供应商详情调整要发布的模型。验证结果保留 15 分钟。"
+            ),
+        ))
     }
     fn helper(&self) -> Result<PathBuf, ConfigError> {
         let bytes = fs::read(&self.helper_source)

@@ -148,6 +148,7 @@ const modelColumns: ColumnDef<ModelRow>[] = [
 
 export function ProviderDetail({
   provider,
+  initialTab = "overview",
   status,
   onEdit,
   onVerify,
@@ -157,6 +158,7 @@ export function ProviderDetail({
   storeId,
 }: {
   provider: Provider;
+  initialTab?: "models" | "overview";
   status: ProviderStatus | null;
   onEdit: (p: Provider) => void;
   onVerify: (p: Provider) => void;
@@ -166,7 +168,7 @@ export function ProviderDetail({
   storeId?: string;
 }) {
   const [search, setSearch] = useState("");
-  const [detailTab, setDetailTab] = useState("overview");
+  const [detailTab, setDetailTab] = useState<string>(initialTab);
   const [page, setPage] = useState(0);
   const [activeModel, setActiveModel] = useState<string | null>(null);
   const [modelNotice, setModelNotice] = useState<string | null>(null);
