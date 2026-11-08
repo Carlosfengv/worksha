@@ -65,7 +65,7 @@ export function PublishedSources({
       </Alert>
     );
   if (!sources.length)
-    return sourceId ? (
+    return sourceId || productId ? (
       <p role="status" className="text-body text-fg-muted">
         {directory.loading
           ? "正在读取来源…"
@@ -136,7 +136,7 @@ export function PublishedSources({
           <FactWorkspace
             scope={scope}
             names={names}
-            initialKind={mode === "mcp" ? "mcp-catalog" : "project"}
+            initialKind={mode === "mcp" ? "mcp-execution" : "project"}
             returnLabel="管理来源"
             onClose={close}
           />

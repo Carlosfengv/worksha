@@ -24,10 +24,13 @@ export function normalizeSession(row, page, observedAt) {
   const titleProjection = values.title;
   const title = typeof titleProjection === "string" ? titleProjection : titleProjection?.title;
   const conversation = [], responses = [];
+  const mcp = new Map(), responseSteps = new Map();
   for (const event of events) {
     const data = event.data ?? {};
     const id = String(event.seq);
     // A durable assistant attempt is source evidence, never a host request ID.
+    if (event.type === "assistant/message" && Number.isSafeInteger(data.turn) && Number.isSafeInteger(data.step))
+      responseSteps.set(`${data.turn}:${data.step}`, `${row.sessionId}:response:${id}`);
     if (event.type === "assistant/attempt" || event.type === "assistant/message") responses.push({ fact: { kind: "response", value: {
       nativeId: `${row.sessionId}:response:${id}`, sessionRef: row.sessionId,
       productId: PRODUCT, occurredAt: timestamp(event.time),
@@ -35,10 +38,34 @@ export function normalizeSession(row, page, observedAt) {
       outcome: event.type === "assistant/message" && !data.interrupted ? "success" : "failure",
       usage: usageOf(data.usage), reportedResponseId: null, durationMs: null,
     } } });
+    if (event.type === "tool/call" && typeof data.callId === "string" &&
+        typeof data.name === "string" && /^mcp__[A-Za-z0-9_-]{1,32}__\S+$/.test(data.name) &&
+        Buffer.byteLength(data.name) <= 200 && !mcp.has(data.callId)) {
+      mcp.set(data.callId, {
+        nativeId: `${row.sessionId}:mcp:${id}`,
+        serverRef: null,
+        sessionRef: row.sessionId,
+        responseRef: responseSteps.get(`${data.turn}:${data.step}`) ?? null,
+        toolName: data.name,
+        occurredAt: timestamp(event.time),
+        durationMs: null,
+        outcome: "unknown",
+      });
+    }
+    if (event.type === "tool/result" && typeof data.message?.isError === "boolean") {
+      const execution = mcp.get(data.message.toolCallId);
+      if (execution?.outcome === "unknown") {
+        execution.outcome = data.message.isError ? "failure" : "success";
+        const ended = timestamp(event.time);
+        if (ended && execution.occurredAt)
+          execution.durationMs = decimal(Date.parse(ended) - Date.parse(execution.occurredAt));
+      }
+    }
     if (event.type === "user/message" || event.type === "assistant/message") {
       const content = data.content ?? data.message?.content;
       const text = typeof content === "string" ? content : Array.isArray(content) ? content.filter((part) => part.type === "text" && typeof part.text === "string").map((part) => part.text).join("\n") : null;
-      if (text) conversation.push({ id, nativeId: id, turnId: id, kind: "message", role: event.type === "user/message" ? "user" : "assistant", status: "recorded", text: text.slice(0, 4096), input: null, output: null, model: null, responseId: null, usage: null });
+      const runtime = event.type === "user/message" && data.source?.kind === "runtime-context";
+      if (text) conversation.push({ id, nativeId: id, turnId: id, kind: runtime ? "runtime-context" : "message", role: runtime ? null : event.type === "user/message" ? "user" : "assistant", status: "recorded", text: text.slice(0, 4096), input: null, output: null, model: null, responseId: null, usage: null });
     }
   }
   const project = typeof row.cwd === "string" && row.cwd ? row.cwd : null;
@@ -55,6 +82,7 @@ export function normalizeSession(row, page, observedAt) {
   }
   facts.push({ fact: { kind: "session", value: { nativeId: row.sessionId, productIds: [PRODUCT], unknownClient: false, title: title || `DSH ${row.sessionId}`, createdAt: null, updatedAt: timestamp(row.updatedAt), projectRef: projectId, usage: sessionUsage, partial: Boolean(page.hasMore) } }, conversation: conversation.slice(-40) });
   facts.push(...responses);
+  for (const execution of mcp.values()) facts.push({ fact: { kind: "mcp-execution", value: execution } });
   facts.push({ fact: { kind: "activity", value: { nativeId: `${row.sessionId}:activity`, sessionRef: row.sessionId, responseRef: null, occurredAt: row.running ? observedAt : timestamp(row.updatedAt), phase: row.running ? "running" : "idle", durationMs: null } } });
   return facts;
 }

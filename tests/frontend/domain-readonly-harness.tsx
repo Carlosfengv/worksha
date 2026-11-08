@@ -648,6 +648,20 @@ const graph: FactRecord[] = [
     kind: "session",
     value: { ...items[0].record, projectRef: "project-one" },
   }),
+  ...(params.has("staleFactBody")
+    ? [
+        factRecord("execution-one", {
+          kind: "mcp-execution",
+          value: {
+            nativeId: "execution-one",
+            sessionRef: items[0].record.id,
+            toolName: "mcp__fixture__probe",
+            outcome: "success",
+            durationMs: "7",
+          },
+        }),
+      ]
+    : []),
   ...Array.from({ length: params.get("factsMany") === "1" ? 83 : 1 }, (_, n) =>
     factRecord(`response-${n}`, {
       kind: "response",

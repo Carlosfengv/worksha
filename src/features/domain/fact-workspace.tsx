@@ -559,6 +559,16 @@ function FactDetail({
           ；配置或目录不代表已连接或发生调用。
         </p>
       )}
+      {fact.kind === "mcp-execution" && (
+        <p>
+          {fact.value.outcome === "success"
+            ? "工具已返回"
+            : fact.value.outcome === "failure"
+              ? "工具返回错误"
+              : "结果未知"}
+          {" · "}耗时 {numbers(fact.value.durationMs)} 毫秒
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
         {links.map((link, i) => (
           <Button key={i} variant="tertiary" size="sm" onClick={() => go(link)}>
@@ -712,7 +722,9 @@ function FactSessionBody({
       )}
       {conversation?.events.map((event) => (
         <div key={event.id} className="space-y-1 border-b border-border py-2">
-          <p className="text-fg-muted">{event.role}</p>
+          <p className="text-fg-muted">
+            {event.kind === "runtime-context" ? "运行上下文" : event.role}
+          </p>
           {[event.text, event.input, event.output]
             .filter((text): text is string => text !== null)
             .map((text, index) => (

@@ -6,6 +6,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
+import { normalizeSession } from "../sdk/plugins/examples/dsh-desktop/bridge/normalize.js";
 const binary = path.resolve(process.env.PLUGIN_TEST_BINARY ?? "target/debug/local-agent-service");
 const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "dynamic-plugins-")));
 const home = path.join(root, "home"), data = path.join(root, "data"), key = path.join(root, "publisher.key");
@@ -37,6 +38,18 @@ const writeRows = (count, torn = false) => {
   records.push({ fact: { kind: "activity", value: { nativeId: "a1", sessionRef: "s0", responseRef: null, occurredAt: new Date().toISOString(), phase: "running", durationMs: null } } });
   const snapshot = randomUUID();
   fs.writeFileSync(history, [{ snapshot, records: records.length }, ...records, { commit: torn ? randomUUID() : snapshot }].map((r) => JSON.stringify(r)).join("\n") + "\n");
+};
+const writeDshObservation = () => {
+  const time = Date.now();
+  const event = (seq, type, data) => ({ type: "event", event: { seq, time: time + seq, type, data } });
+  const records = normalizeSession({ sessionId: "s0", updatedAt: time, running: false }, { hasMore: false, records: [
+    event(1, "user/message", { content: "Owned prompt" }),
+    event(2, "user/message", { source: { kind: "runtime-context" }, content: "Owned context" }),
+    event(3, "tool/call", { callId: "probe", name: "mcp__owned__probe", arguments: "private arguments" }),
+    event(4, "tool/result", { message: { toolCallId: "probe", isError: false, content: "private result" } }),
+  ] }, new Date(time).toISOString());
+  const snapshot = randomUUID();
+  fs.writeFileSync(history, [{ snapshot, records: records.length }, ...records, { commit: snapshot }].map((r) => JSON.stringify(r)).join("\n") + "\n");
 };
 try {
   child = spawn(binary, ["--data-dir", data], { env: { ...process.env, LOCAL_AGENT_SOURCE_HOME: home, LOCAL_AGENT_SERVICE_TOKEN: token, LOCAL_AGENT_TEST_MEMORY_VAULT: "1", LOCAL_AGENT_TEST_IDLE_AGENTS: "1" }, stdio: ["ignore", "pipe", "pipe"] });
@@ -103,6 +116,26 @@ try {
   pass("消费者授权与来源授权独立；报表真实调用另一插件的会话能力并得到精确计数");
   const snapshot = await api("/api/snapshot"); assert.equal(snapshot.agents.length, initial.agents.length + 1); assert(snapshot.agents.some((p) => p.id === productId && p.readonly && p.sourceId === sourceId && p.capabilities.includes("domain.activity-source@1")));
   assert.deepEqual(snapshot.agents.filter((p) => !p.readonly), initial.agents);
+  writeDshObservation();
+  await api("/api/plugin-sources/refresh", source);
+  const observation = await api("/api/domain/sessions", query);
+  const sessionId = observation.items[0].record.id;
+  const factQuery = { scope: query.scope, sessionId, projectId: null, responseId: null, cursor: null, snapshotToken: null };
+  const executions = await api("/api/domain/facts", { ...factQuery, kind: "mcp-execution" });
+  assert.equal(executions.items.length, 1);
+  const execution = executions.items[0].value.value;
+  assert.equal(execution.sessionRef, sessionId);
+  assert.equal(execution.outcome, "success");
+  assert.equal(execution.toolName, "mcp__owned__probe");
+  assert.equal(execution.serverRef, null);
+  assert(!JSON.stringify(executions).includes("private "));
+  const catalog = await api("/api/domain/facts", { ...factQuery, kind: "mcp-catalog" });
+  assert.equal(catalog.items.length, 0);
+  const body = await api("/api/domain/conversation", { sessionId, snapshotToken: observation.snapshotToken, cursor: null, anchor: null });
+  assert.deepEqual(body.conversation.events.map(({ kind, role }) => [kind, role]), [["message", "user"], ["runtime-context", null]]);
+  writeRows(1);
+  await api("/api/plugin-sources/refresh", source);
+  pass("DSH 签名源发布 MCP 执行与关联会话，运行上下文独立，参数和结果保持私有");
   const secondReview = await api("/api/plugin-sources/inspect", { path: pack("full-history") });
   await api("/api/plugin-sources/install", { packageRef: secondReview.packageRef, digest: secondReview.digest, approvePublisher: true, expectedSigningKey: secondReview.signingKey });
   const secondSource = { pluginId: "org.example.full-history", digest: secondReview.digest };

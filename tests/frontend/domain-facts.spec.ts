@@ -32,7 +32,7 @@ for (const [mode, label] of [
   });
 }
 
-test("fact detail retries stale body in the same session selection", async ({
+test("MCP execution leads to its session and retries stale body in the same selection", async ({
   page,
 }) => {
   await page.goto(
@@ -41,8 +41,14 @@ test("fact detail retries stale body in the same session selection", async ({
   await page
     .getByRole("button", { name: "查看项目与响应事实", exact: true })
     .click();
-  await page.getByRole("row").filter({ hasText: "Reported workspace" }).click();
-  await page.getByRole("button", { name: "查看项目会话" }).click();
+  await page.getByLabel("事实种类", { exact: true }).click();
+  await page.getByRole("option", { name: "MCP 执行", exact: true }).click();
+  await page
+    .getByRole("row")
+    .filter({ hasText: "mcp__fixture__probe" })
+    .click();
+  await expect(page.getByText("工具已返回 · 耗时 7 毫秒")).toBeVisible();
+  await page.getByRole("button", { name: "定位所属会话" }).click();
   await page.getByRole("row").filter({ hasText: "Alpha" }).click();
   await page.getByRole("button", { name: "按当前授权读取此会话正文" }).click();
   await expect(page.getByText("快照已失效，请重新读取。")).toBeVisible();

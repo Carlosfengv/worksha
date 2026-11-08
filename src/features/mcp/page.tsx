@@ -120,6 +120,15 @@ export function McpPage({
     days = initialDays ?? "all",
     model = initialModel ?? "all",
     project = initialProject ?? "all";
+  const externalAgent = agentProducts.some(
+    (product) => product.id === agent && product.sourceId,
+  );
+  const unobserved = agentProducts.filter(
+    (product) =>
+      product.sourceId &&
+      (agent === "all" || agent === product.id) &&
+      !sourceProvides(product, "mcp"),
+  );
   const filters = { agent, days, model, project };
   const key = JSON.stringify([selectedId, agent, days, model, project]);
   const [state, setState] = useState<{
@@ -135,6 +144,7 @@ export function McpPage({
   const sequence = useRef(0);
   const epoch = useBackendReadEpoch();
   useEffect(() => {
+    if (externalAgent) return;
     const token = ++sequence.current;
     let alive = true;
     setMore(false);
@@ -179,6 +189,7 @@ export function McpPage({
     refresh,
     refreshToken,
     epoch,
+    externalAgent,
   ]);
   const data = state.key === key ? state.data : null;
   const loading = state.key !== key || state.loading;
@@ -246,7 +257,6 @@ export function McpPage({
   }
   return (
     <div className="min-w-0 space-y-6">
-      <PublishedSources mode="mcp" />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           <Select value={agent} onValueChange={(v) => change({ agent: v })}>
@@ -265,25 +275,40 @@ export function McpPage({
               <SelectItem value="codex-unknown">Codex · 客户端未知</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={days} onValueChange={(v) => change({ days: v })}>
-            <SelectTrigger aria-label="MCP 会话开始范围" />
-            <SelectContent>
-              <SelectItem value="all">全部会话</SelectItem>
-              <SelectItem value="7">最近 7 天开始的会话</SelectItem>
-              <SelectItem value="30">最近 30 天开始的会话</SelectItem>
-            </SelectContent>
-          </Select>
+          {!externalAgent && (
+            <Select value={days} onValueChange={(v) => change({ days: v })}>
+              <SelectTrigger aria-label="MCP 会话开始范围" />
+              <SelectContent>
+                <SelectItem value="all">全部会话</SelectItem>
+                <SelectItem value="7">最近 7 天开始的会话</SelectItem>
+                <SelectItem value="30">最近 30 天开始的会话</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
         </div>
-        <Button
-          variant="tertiary"
-          loading={loading}
-          disabled={loading}
-          onClick={refreshData}
-        >
-          重新读取 MCP 配置
-        </Button>
+        {!externalAgent && (
+          <Button
+            variant="tertiary"
+            loading={loading}
+            disabled={loading}
+            onClick={refreshData}
+          >
+            重新读取 MCP 配置
+          </Button>
+        )}
       </div>
-      {state.key === key && state.error && (
+      {!!unobserved.length && (
+        <p role="status" className="text-label text-fg-muted">
+          {unobserved.map((product) => product.name).join("、")}的来源插件未提供
+          MCP 记录，调用次数未知。
+        </p>
+      )}
+      <PublishedSources
+        key={agent}
+        mode="mcp"
+        productId={agent === "all" ? undefined : agent}
+      />
+      {!externalAgent && state.key === key && state.error && (
         <Alert status="danger">
           <AlertTitle>MCP 数据读取未完成</AlertTitle>
           <AlertDescription>
@@ -300,7 +325,7 @@ export function McpPage({
           )}
         </Alert>
       )}
-      {selectedId && (
+      {!externalAgent && selectedId && (
         <Button
           variant="ghost"
           onClick={() =>
@@ -310,7 +335,7 @@ export function McpPage({
           返回 MCP 列表
         </Button>
       )}
-      {!data ? (
+      {externalAgent ? null : !data ? (
         <ConnectionEmpty
           title={loading ? "正在读取 MCP 与调用…" : "MCP 数据暂不可用"}
           description="只读标准配置与已授权历史，不执行工具。"
@@ -583,4 +608,7 @@ function Metric({
     </div>
   );
 }
-import { PublishedSources } from "@/features/domain/published-sources";
+import {
+  PublishedSources,
+  sourceProvides,
+} from "@/features/domain/published-sources";

@@ -597,7 +597,9 @@ function UnifiedBody({
                   ? "模型回复"
                   : event.role === "user"
                     ? "用户"
-                    : event.kind}
+                    : event.kind === "runtime-context"
+                      ? "运行上下文"
+                      : event.kind}
               </p>
               {[event.text, event.input, event.output]
                 .filter((s): s is string => s !== null)
