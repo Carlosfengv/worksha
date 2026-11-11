@@ -12,6 +12,8 @@ const directory = await fs.realpath(
   await fs.mkdtemp("/tmp/local-agent-connect-"),
 );
 const ownedSource = process.env.DSH_TEST_SOURCE_DIR;
+const bundled = process.argv.includes("--bundled");
+assert(!(bundled && ownedSource));
 if (ownedSource) {
   assert.match(
     ownedSource,
@@ -22,7 +24,12 @@ if (ownedSource) {
     path.join("/private", ownedSource),
   );
 }
-const source = ownedSource ?? path.join(directory, "source");
+const home = path.join(directory, "home");
+const source =
+  ownedSource ??
+  (bundled
+    ? path.join(home, ".local/share/local-agent/dsh-desktop")
+    : path.join(directory, "source"));
 const binary = path.resolve(
   process.env.PLUGIN_TEST_BINARY ?? "target/debug/local-agent-service",
 );
@@ -103,6 +110,7 @@ const profile = {
   keys: {},
   loseRestoreReply: false,
 };
+let accountUser = null;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function api(
   route,
@@ -125,7 +133,7 @@ async function api(
 }
 try {
   if (!ownedSource) {
-    await fs.mkdir(source, { mode: 0o700 });
+    await fs.mkdir(source, { mode: 0o700, recursive: true });
     const generation = randomUUID();
     const agent = "org.example.new-agent:desktop";
     const records = [
@@ -146,11 +154,13 @@ try {
       },
       { commit: generation },
     ];
-    await fs.writeFile(
-      path.join(source, "facts.jsonl"),
-      records.map((row) => JSON.stringify(row)).join("\n") + "\n",
-      { mode: 0o600 },
-    );
+    if (!bundled) {
+      await fs.writeFile(
+        path.join(source, "facts.jsonl"),
+        records.map((row) => JSON.stringify(row)).join("\n") + "\n",
+        { mode: 0o600 },
+      );
+    }
     bridge.apply(
       {
         effect: (start) => {
@@ -161,7 +171,21 @@ try {
             throw Error(message);
           },
         },
-        get: () => ({ resolveCallConfig: async () => {} }),
+        get: (service) =>
+          service === "deepseekAccount"
+            ? {
+                getState: async () => ({
+                  status: accountUser ? "credential-stored" : "signed-out",
+                }),
+                getDeviceIdentity: async () => ({ userId: accountUser }),
+              }
+            : {
+                resolveCallConfig: async () => {},
+                listModels: async (provider) => {
+                  assert.equal(provider, "deepseek-account");
+                  return [{ id: "account-model", name: "Account model" }];
+                },
+              },
         settingsController: {
           describe: () => ({
             writable: true,
@@ -214,8 +238,7 @@ try {
     }
   }
   await fs.access(path.join(source, "agent-connection.sock"));
-  const home = path.join(directory, "home");
-  await fs.mkdir(home);
+  await fs.mkdir(home, { recursive: true });
   await new Promise((resolve) => upstream.listen(0, "127.0.0.1", resolve));
   child = spawn(binary, ["--data-dir", path.join(directory, "app")], {
     env: {
@@ -241,63 +264,131 @@ try {
     }),
   ]);
   base = `http://127.0.0.1:${JSON.parse(line).port}`;
-  const folder = path.join(directory, "package");
-  await fs.cp("sdk/plugins/examples/dsh-desktop/package", folder, {
-    recursive: true,
-  });
-  const file = path.join(folder, "manifest.json");
-  const manifest = JSON.parse(await fs.readFile(file, "utf8"));
-  if (!ownedSource) {
-    manifest.id = "org.example.new-agent";
-    manifest.publisher = "org.example";
-    manifest.displayName = "New Agent fixture";
-  }
-  await fs.writeFile(file, JSON.stringify(manifest));
-  const archive = path.join(directory, "source.laplug");
-  const key = path.join(directory, "publisher.key");
-  sdk("keygen", key);
-  sdk("pack", folder, archive, key);
-  const inspected = await api("/api/plugin-sources/inspect", { path: archive });
-  const pkg = { pluginId: manifest.id, digest: inspected.digest };
-  await api("/api/plugin-sources/install", {
-    packageRef: inspected.packageRef,
-    digest: pkg.digest,
-    approvePublisher: true,
-    expectedSigningKey: inspected.signingKey,
-  });
-  await api("/api/plugin-sources/state", { package: pkg, action: "enable" });
-  await api("/api/domain/source-authorize", {
-    ...pkg,
-    path: path.join(source, "facts.jsonl"),
-  });
-  const agentId = `${manifest.id}:desktop`;
+  const pluginId =
+    bundled || ownedSource
+      ? "net.worksha.dsh-desktop"
+      : "org.example.new-agent";
+  const agentId = `${pluginId}:desktop`;
   const connect = (action, status) =>
     api("/api/agents/model-connection", { agentId, action }, status);
-  const entry = (await api("/api/snapshot")).agents.find(
-    (agent) => agent.id === agentId,
-  );
-  assert.equal(entry.connectionAdapter, "agent.connection@1");
-  if (!ownedSource) {
-    await api("/api/domain/source-refresh", pkg);
-    const consent = await api("/api/domain/consent-review", pkg);
-    await api("/api/domain/consent", {
+  if (bundled) {
+    assert.deepEqual((await api("/api/plugin-sources")).items, []);
+    await assert.rejects(fs.access(path.join(source, "facts.jsonl")), {
+      code: "ENOENT",
+    });
+  } else {
+    const folder = path.join(directory, "package");
+    await fs.cp("sdk/plugins/examples/dsh-desktop/package", folder, {
+      recursive: true,
+    });
+    const file = path.join(folder, "manifest.json");
+    const manifest = JSON.parse(await fs.readFile(file, "utf8"));
+    if (!ownedSource) {
+      manifest.id = pluginId;
+      manifest.publisher = "org.example";
+      manifest.displayName = "New Agent fixture";
+    }
+    await fs.writeFile(file, JSON.stringify(manifest));
+    const archive = path.join(directory, "source.laplug");
+    const key = path.join(directory, "publisher.key");
+    sdk("keygen", key);
+    sdk("pack", folder, archive, key);
+    const inspected = await api("/api/plugin-sources/inspect", {
+      path: archive,
+    });
+    const pkg = { pluginId: manifest.id, digest: inspected.digest };
+    await api("/api/plugin-sources/install", {
+      packageRef: inspected.packageRef,
+      digest: pkg.digest,
+      approvePublisher: true,
+      expectedSigningKey: inspected.signingKey,
+    });
+    await api("/api/plugin-sources/state", { package: pkg, action: "enable" });
+    await api("/api/domain/source-authorize", {
       ...pkg,
-      enabled: true,
-      persistMetadata: false,
-      reviewRef: consent.reviewRef,
+      path: path.join(source, "facts.jsonl"),
     });
-    const page = await api("/api/domain/sessions", {
-      scope: { kind: "external", sourceIds: [agentId] },
-      filter: { productId: agentId, query: null, days: null },
-      snapshotToken: null,
-      cursor: null,
-    });
-    assert.equal(page.items[0].record.title, "New plugin fixture");
+    const entry = (await api("/api/snapshot")).agents.find(
+      (agent) => agent.id === agentId,
+    );
+    assert.equal(entry.connectionAdapter, "agent.connection@1");
+    if (!ownedSource) {
+      await api("/api/domain/source-refresh", pkg);
+      const consent = await api("/api/domain/consent-review", pkg);
+      await api("/api/domain/consent", {
+        ...pkg,
+        enabled: true,
+        persistMetadata: false,
+        reviewRef: consent.reviewRef,
+      });
+      const page = await api("/api/domain/sessions", {
+        scope: { kind: "external", sourceIds: [agentId] },
+        filter: { productId: agentId, query: null, days: null },
+        snapshotToken: null,
+        cursor: null,
+      });
+      assert.equal(page.items[0].record.title, "New plugin fixture");
+    }
   }
   assert.equal(
     (await connect({ kind: "status" })).state,
     "authorization-required",
   );
+  if (bundled) {
+    assert.equal(
+      (await connect({ kind: "account-models" }, 403)).code,
+      "permission_denied",
+    );
+    const initial = await connect({ kind: "authorize" });
+    assert.deepEqual(await connect({ kind: "account-models" }), {
+      signedIn: false,
+      models: [],
+    });
+    await connect({ kind: "preview-account", model: "account-model" }, 400);
+    accountUser = "account-a";
+    assert.deepEqual(await connect({ kind: "account-models" }), {
+      signedIn: true,
+      models: [{ id: "account-model", name: "Account model" }],
+    });
+    await connect({ kind: "preview-account", model: "unlisted" }, 409);
+    const first = await connect({
+      kind: "preview-account",
+      model: "account-model",
+    });
+    assert.deepEqual(
+      (await connect({ kind: "status" })).selected,
+      initial.selected,
+    );
+    accountUser = "account-b";
+    await connect({ kind: "apply", reviewId: first.reviewId }, 409);
+    const preview = await connect({
+      kind: "preview-account",
+      model: "account-model",
+    });
+    const applied = await connect({
+      kind: "apply",
+      reviewId: preview.reviewId,
+    });
+    assert.equal(applied.selectedTarget, true);
+    assert.deepEqual((await connect({ kind: "status" })).currentTarget, {
+      kind: "account",
+      name: "DeepSeek 官方账号",
+      model: "account-model",
+    });
+    assert.deepEqual((await connect({ kind: "status" })).recovery, {
+      kind: "account",
+      reviewId: preview.reviewId,
+      before: initial.selected,
+    });
+    assert.deepEqual(
+      (await connect({ kind: "restore", reviewId: preview.reviewId })).selected,
+      initial.selected,
+    );
+    assert.deepEqual(profile.routes, {});
+    assert.deepEqual(profile.keys, {});
+    assert.equal(traffic.length, 0);
+    await connect({ kind: "revoke" });
+  }
   const provider = {
     id: `custom-${randomUUID()}`,
     name: "Isolated upstream",
@@ -528,6 +619,8 @@ try {
   console.log(
     JSON.stringify({
       agentId,
+      bundledConnectionWithoutSource: bundled,
+      deepSeekAccountSwitchAndRestore: bundled,
       installedDshRuntime: !!ownedSource,
       providerApplied: true,
       modelServiceApplied: true,

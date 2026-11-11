@@ -27,7 +27,11 @@ export function AgentsPage({
       </div>
     );
   const agents = data.agents.some((agent) => agent.id === bundledDshAgent.id)
-    ? data.agents
+    ? data.agents.map((agent) =>
+        agent.id === bundledDshAgent.id && !agent.connectionAdapter
+          ? { ...agent, connectionAdapter: bundledDshAgent.connectionAdapter }
+          : agent,
+      )
     : [...data.agents, bundledDshAgent];
   const selected =
     agents.find((agent) => agent.id === selectedId) ??

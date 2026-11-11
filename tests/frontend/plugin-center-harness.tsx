@@ -43,7 +43,7 @@ import type {
 import "@/styles/globals.css";
 import { notifyBackendRecovery } from "@/shared/lib/backend-recovery";
 const mode = new URLSearchParams(location.search).get("mode") ?? "plugin";
-const agentParity = mode === "agent-parity" || mode === "agent-parity-versions";
+const agentParity = mode.startsWith("agent-parity");
 const projectsPlugin = createProjectsPlugin(() => null);
 const storeId = emptyBuiltinCatalog.storeId;
 const calls: string[] = [];
@@ -75,8 +75,8 @@ let source: SourceStatus = {
     : rawSource) as Manifest,
   digest: "c".repeat(64),
   signingKey: "b".repeat(64),
-  enabled: false,
-  runtimeActive: false,
+  enabled: mode === "agent-parity-source",
+  runtimeActive: mode === "agent-parity-source",
   publisherTrusted: true,
   activationEpoch: "0",
   grantRevision: "0",
@@ -419,7 +419,7 @@ function AgentParity() {
     connected: false,
     location: null,
   }));
-  if (revision && source.runtimeActive)
+  if ((revision || mode === "agent-parity-source") && source.runtimeActive)
     agents.push({
       ...bundledDshAgent,
       found: true,

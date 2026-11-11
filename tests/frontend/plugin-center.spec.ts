@@ -96,7 +96,7 @@ test("干净实例从随附包接入 DSH，仍需确认安装并另选会话文�
     "source:enable",
   ]);
 });
-test("DSH 和原生 Agent 共用列表和详情，安装及授权在自身连接页完成", async ({
+test("DSH 和原生 Agent 共用列表和详情，模型连接入口独立于会话来源", async ({
   page,
 }) => {
   await page.goto("/tests/frontend/plugin-center.html?mode=agent-parity");
@@ -117,6 +117,9 @@ test("DSH 和原生 Agent 共用列表和详情，安装及授权在自身连接
     .getByRole("row")
     .filter({ hasText: "DeepSeek Harness 桌面端" });
   await expect(dsh).toContainText("待接入");
+  await expect(
+    dsh.getByRole("combobox", { name: "DeepSeek Harness 桌面端 模型连接" }),
+  ).toBeEnabled();
   await dsh.getByRole("link", { name: "详情 DeepSeek Harness 桌面端" }).click();
   const overview = page.getByRole("tab", { name: "概览" });
   await expect(overview).toHaveAttribute("aria-selected", "true");
@@ -124,13 +127,21 @@ test("DSH 和原生 Agent 共用列表和详情，安装及授权在自身连接
   await expect(page.getByRole("tab", { name: "Sessions" })).toBeVisible();
   const connection = page.getByRole("tab", { name: "连接与观测" });
   await connection.click();
-  await page.getByRole("button", { name: "安装随附 DSH" }).click();
-  const review = page.getByRole("dialog");
+  await expect(page.getByRole("button", { name: "安装随附 DSH" })).toHaveCount(
+    0,
+  );
   await expect(
-    review.getByRole("button", { name: "安装并启用" }),
-  ).toBeDisabled();
-  await review.getByRole("checkbox").check();
-  await review.getByRole("button", { name: "安装并启用" }).click();
+    page.getByRole("link", { name: "管理来源插件" }),
+  ).toHaveAttribute("href", "#/plugins?scene=agents");
+  await expect(
+    page.getByRole("combobox", { name: "DeepSeek Harness 桌面端 模型连接" }),
+  ).toBeEnabled();
+  expect(await page.evaluate(() => window.centerCalls)).toEqual([]);
+});
+test("DSH 已启用的会话来源仍可在自身详情授权", async ({ page }) => {
+  await page.goto(
+    "/tests/frontend/plugin-center.html?mode=agent-parity-source#/agents/net.worksha.dsh-desktop%3Adesktop?tab=connection",
+  );
   await expect(page.getByText("来源文件：未授权")).toBeVisible();
   await expect(
     page.getByRole("combobox", { name: "DeepSeek Harness 桌面端 模型连接" }),
@@ -150,12 +161,12 @@ test("DSH 和原生 Agent 共用列表和详情，安装及授权在自身连接
     /#\/agents\/net\.worksha\.dsh-desktop%3Adesktop\?tab=connection$/,
   );
   await page.getByRole("link", { name: "返回 Agents" }).click();
+  const dsh = page
+    .getByRole("row")
+    .filter({ hasText: "DeepSeek Harness 桌面端" });
   await expect(dsh).toHaveCount(1);
   await expect(dsh).toContainText("待授权统一展示");
   expect(await page.evaluate(() => window.centerCalls)).toEqual([
-    "inspect:bundled-dsh",
-    "source:install",
-    "source:enable",
     "source:authorize-file",
   ]);
 });

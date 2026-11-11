@@ -142,7 +142,9 @@ const columns: ColumnDef<AgentRow>[] = [
     size: 264,
     header: () => <span className="block text-right">模型连接</span>,
     cell: ({ row: { original: item } }) =>
-      item.agent.sourceId && !item.agent.found ? (
+      item.agent.sourceId &&
+      !item.agent.found &&
+      !item.agent.connectionAdapter ? (
         <div className="flex justify-end">
           <Button asChild variant="tertiary" size="sm">
             <a href={agentDetailHref(item.agent.id, "connection")}>

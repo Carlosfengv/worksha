@@ -4,8 +4,7 @@ import type { AgentDiscovery } from "@/shared/types/agent";
 const product = manifest.source.products[0];
 const productId = `${manifest.id}:${product.id}`;
 
-// This listing advertises a setup route. Only the service publishes enabled
-// products to the data and model connection directories.
+// The bundled model bridge is available before a session source is installed.
 export const bundledDshAgent: AgentDiscovery = {
   id: productId,
   configId: productId,
@@ -14,6 +13,7 @@ export const bundledDshAgent: AgentDiscovery = {
   pluginId: manifest.id,
   sourceId: `${manifest.id}:${manifest.source.id}`,
   capabilities: manifest.capabilities,
+  connectionAdapter: "agent.connection@1",
   readonly: true,
   found: false,
   connected: false,

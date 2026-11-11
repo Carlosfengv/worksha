@@ -88,4 +88,6 @@ CLI 与共享 OpenCode 使用相同的当前网关监听地址规则，CLI 创�
 
 上传的 Agent 来源按声明能力向 Agents、Sessions、请求、活动和项目发布数据。停用来源会从业务目录移除贡献，插件中心继续管理包与授权。声明 `agent.connection@1` 的 Agent 共用模型切换入口，写入通过各自桥接完成。来源读取与模型连接分别授权，已使用的网关入口在恢复时撤销，保留请求历史。
 
+随附 DSH 模型连接通过用户目录中的私有连接桥接提供，首次切换时单独授权。会话来源在插件中心启用并选择文件。已有文件授权的 DSH 来源仍可使用所选目录中的连接桥接。
+
 普通桌面服务随应用退出；独立常驻服务通过显式 LaunchAgent 管理，桌面退出不停止它。LAN 模型入口使用独立客户端授权和监听配置，详见 [常驻网关](standalone-gateway.md)。模型版本、绑定和发布分别持久化，见 [动态路由](dynamic-routing.md)、[模型服务](model-services.md) 与 [策略恢复](../sdk/plugins/docs/routing-policy-recovery.md)。

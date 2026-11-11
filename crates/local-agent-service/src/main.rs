@@ -222,7 +222,7 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let sessions = Arc::new(
         local_agent_core::sessions::NativeSessions::with_source_plugins(
-            source_home,
+            source_home.clone(),
             &store.native_sources()?,
             source_plugins,
         ),
@@ -235,10 +235,10 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
         provider_adapters: provider_models::adapters::builtin(),
         provider_client: state::provider_client().map_err(|_| "无法建立模型连接服务")?,
         credentials: provider_vault.clone(),
-        plugins: Arc::new(plugin_host::external::Manager::for_service(
-            &directory,
-            provider_vault,
-        )),
+        plugins: Arc::new(
+            plugin_host::external::Manager::for_service(&directory, provider_vault)
+                .with_bundled_dsh(&source_home),
+        ),
         readonly: readonly.clone(),
         billing,
         gateway: Arc::new(gateway),

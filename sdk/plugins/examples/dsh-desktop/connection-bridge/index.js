@@ -12,6 +12,7 @@ export const inject = [
 ];
 
 const NAMESPACE = "llm-pi-ai";
+const ACCOUNT_PROVIDER = "deepseek-account";
 const LIMIT = 65536;
 const ROUTE = /^local-agent-[a-f0-9]{32}$/;
 const TOKEN = /^[a-f0-9]{64}$/;
@@ -116,11 +117,87 @@ async function mutate(ctx, ops, revision) {
   }
 }
 
-async function change(ctx, request, instance) {
+async function accountIdentity(account) {
+  const state = await account.getState();
+  const signedIn = state.status === "credential-stored";
+  const identity = signedIn ? await account.getDeviceIdentity() : null;
+  return {
+    signedIn,
+    key: JSON.stringify([state.status, state.attempt?.id, identity?.userId]),
+  };
+}
+
+async function accountCatalog(ctx, versionOf) {
+  const account = ctx.get("deepseekAccount");
+  const llm = ctx.get("llm");
+  if (!account?.getDeviceIdentity || !llm?.listModels)
+    throw Error("account-unsupported");
+  const before = await accountIdentity(account);
+  const models = before.signedIn ? await llm.listModels(ACCOUNT_PROVIDER) : [];
+  if ((await accountIdentity(account)).key !== before.key)
+    throw Error("conflict");
+  return {
+    signedIn: before.signedIn,
+    version: versionOf(before.key),
+    models: models
+      .filter(({ id, name }) => id.length <= 128 && name.length <= 160)
+      .slice(0, 64)
+      .map(({ id, name }) => ({ id, name })),
+  };
+}
+
+async function change(ctx, request, instance, accountVersion) {
   if (request.kind === "read") {
     if (request.route !== null && !ROUTE.test(request.route))
       throw Error("invalid");
     return read(ctx, request.route);
+  }
+  if (request.kind === "account-models") {
+    const account = await accountCatalog(ctx, accountVersion);
+    return { ...read(ctx, null), account };
+  }
+  if (request.kind === "select-account") {
+    const account = await accountCatalog(ctx, accountVersion);
+    const current = read(ctx, null);
+    if (
+      instance !== request.expectedInstance ||
+      current.revision !== request.expectedRevision ||
+      !sameSelection(current.selected, request.before) ||
+      account.version !== request.accountVersion
+    )
+      throw Error("conflict");
+    if (
+      !account.signedIn ||
+      !account.models.some(({ id }) => id === request.model)
+    )
+      throw Error("conflict");
+    await ctx.agentDefaultModel.saveSelection({
+      provider: ACCOUNT_PROVIDER,
+      model: request.model,
+    });
+    return read(ctx, null);
+  }
+  if (request.kind === "restore-account") {
+    const current = read(ctx, null);
+    if (
+      instance !== request.expectedInstance ||
+      !sameSelection(current.selected, {
+        provider: ACCOUNT_PROVIDER,
+        model: request.model,
+        reasoningEffort: null,
+      })
+    )
+      throw Error("conflict");
+    const previous = request.previous;
+    if (!previous?.provider || !previous?.model) throw Error("invalid");
+    await ctx.agentDefaultModel.saveSelection({
+      provider: previous.provider,
+      model: previous.model,
+      ...(previous.reasoningEffort === null
+        ? {}
+        : { reasoningEffort: previous.reasoningEffort }),
+    });
+    return read(ctx, null);
   }
   const profile = request.profile;
   if (!validProfile(profile)) throw Error("invalid");
@@ -221,6 +298,15 @@ export function apply(ctx, config) {
     const keyPath = path.join(directory, "agent-connection.key");
     const token = randomBytes(32).toString("hex");
     const instance = randomUUID();
+    let lastAccount;
+    let version;
+    const accountVersion = (identity) => {
+      if (identity !== lastAccount) {
+        lastAccount = identity;
+        version = randomUUID();
+      }
+      return version;
+    };
     let busy = false;
     let closed = false;
     const sockets = new Set();
@@ -258,14 +344,22 @@ export function apply(ctx, config) {
           try {
             reply({
               status: {
-                ...(await change(ctx, frame.request ?? {}, instance)),
+                ...(await change(
+                  ctx,
+                  frame.request ?? {},
+                  instance,
+                  accountVersion,
+                )),
                 instance,
               },
             });
           } catch (error) {
-            const expected = ["conflict", "invalid", "unavailable"].includes(
-              error?.message,
-            );
+            const expected = [
+              "conflict",
+              "invalid",
+              "unavailable",
+              "account-unsupported",
+            ].includes(error?.message);
             reply({ error: expected ? error.message : "unknown" });
           } finally {
             busy = false;

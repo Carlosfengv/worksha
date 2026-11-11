@@ -4,7 +4,7 @@ test("上传来源与系统 Agent 共用列表，详情只展示已声明能力"
   page,
 }) => {
   await page.goto(
-    "/tests/frontend/tables.html?mode=agents&uploadedAgent#/agents",
+    "/tests/frontend/tables.html?mode=agents&uploadedAgent&genericAgent#/agents",
   );
   const table = page
     .getByLabel("Agent 列表", { exact: true })
@@ -15,16 +15,15 @@ test("上传来源与系统 Agent 共用列表，详情只展示已声明能力"
     "OpenCode CLI",
     "OpenCode Desktop",
     "DeepSeek Harness 桌面端",
+    "Example Agent",
   ])
     await expect(table.getByRole("row").filter({ hasText: name })).toHaveCount(
       1,
     );
-  const row = table
-    .getByRole("row")
-    .filter({ hasText: "DeepSeek Harness 桌面端" });
+  const row = table.getByRole("row").filter({ hasText: "Example Agent" });
   await expect(row).toContainText("尚未授权读取");
   await expect(row).toContainText("仅观测");
-  await row.getByRole("link", { name: "详情 DeepSeek Harness 桌面端" }).click();
+  await row.getByRole("link", { name: "详情 Example Agent" }).click();
   const tabs = page.getByRole("tablist", { name: "Agent 详情" });
   await expect(tabs.getByRole("tab")).toHaveCount(3);
   await expect(tabs.getByRole("tab", { name: "概览" })).toHaveAttribute(
@@ -60,12 +59,12 @@ test("Agent 接入场景同时展示系统自带与用户上传的接入", async
   }
 });
 
-test("DSH 从列表选择 Provider 后选模型，授权后预览并可回到列表恢复", async ({
+test("DSH 无会话来源时仍可从列表验证 Provider、预览、应用和恢复", async ({
   page,
 }) => {
   const name = "DeepSeek Harness 桌面端";
   await page.goto(
-    "/tests/frontend/tables.html?mode=agents&uploadedAgent&connectionAdapter#/agents",
+    "/tests/frontend/tables.html?mode=agents&uploadedAgent&connectionAdapter&cleanDsh#/agents",
   );
   const current = page.getByLabel(`${name} 当前连接`);
   const picker = page.getByRole("combobox", { name: `${name} 模型连接` });
@@ -80,12 +79,12 @@ test("DSH 从列表选择 Provider 后选模型，授权后预览并可回到列
   ).toBeVisible();
   await page.getByRole("option", { name: "连接 000" }).click();
   await expect(
-    dialog.getByRole("button", { name: "授权并预览" }),
+    dialog.getByRole("button", { name: "授权、验证并预览" }),
   ).toBeDisabled();
   const model = dialog.getByRole("combobox", { name: "选择模型" });
   await model.fill("model-042");
   await page.getByRole("option", { name: "model-042", exact: true }).click();
-  await dialog.getByRole("button", { name: "授权并预览" }).click();
+  await dialog.getByRole("button", { name: "授权、验证并预览" }).click();
   await expect(dialog).toContainText("新会话");
   await expect(dialog).toContainText("model-042");
   await expect(current).toHaveText("dsh · native");
@@ -122,11 +121,38 @@ test("声明模型连接能力的新 Agent 复用列表入口和模型服务恢�
 
   await page.getByRole("combobox", { name: "Example Agent 模型连接" }).click();
   await page.getByRole("option", { name: "Fixture model service" }).click();
-  await dialog.getByRole("button", { name: "授权并预览" }).click();
+  await dialog.getByRole("button", { name: "授权、验证并预览" }).click();
   await dialog.getByRole("button", { name: "确认切换默认模型" }).click();
   await expect(current).toHaveText(
     "模型服务 · Fixture model service · Fixture default model",
   );
+  await page.getByRole("button", { name: "恢复变更前的连接" }).click();
+  await dialog.getByRole("button", { name: "确认恢复" }).click();
+  await expect(current).toHaveText("dsh · native");
+});
+
+test("DSH 官方账号从同一选择器读取登录状态、切换并恢复默认模型", async ({
+  page,
+}) => {
+  const name = "DeepSeek Harness 桌面端";
+  await page.goto(
+    "/tests/frontend/tables.html?mode=agents&uploadedAgent&connectionAdapter&cleanDsh#/agents",
+  );
+  const dialog = page.getByRole("dialog");
+  await page.getByRole("combobox", { name: `${name} 模型连接` }).click();
+  await page.getByRole("option", { name: "DeepSeek 官方账号" }).click();
+  await dialog.getByRole("button", { name: "授权并读取模型" }).click();
+  await expect(
+    dialog.getByText(/请先在 DeepSeek Harness 登录官方账号/),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "读取账号模型" }).click();
+  await dialog.getByRole("combobox", { name: "选择模型" }).fill("DeepSeek");
+  await page.getByRole("option", { name: "DeepSeek Fixture" }).click();
+  await dialog.getByRole("button", { name: "生成预览" }).click();
+  await expect(dialog).toContainText("DeepSeek Fixture");
+  await dialog.getByRole("button", { name: "确认切换默认模型" }).click();
+  const current = page.getByRole("status", { name: `${name} 当前连接` });
+  await expect(current).toHaveText("DeepSeek 官方账号 · deepseek-fixture");
   await page.getByRole("button", { name: "恢复变更前的连接" }).click();
   await dialog.getByRole("button", { name: "确认恢复" }).click();
   await expect(current).toHaveText("dsh · native");

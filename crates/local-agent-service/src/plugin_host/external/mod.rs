@@ -84,6 +84,8 @@ impl std::error::Error for Error {}
 pub(crate) fn message(code: &str) -> &'static str {
     match code {
         "bridge_unavailable" => "Agent 连接桥接不可用，请确认已启动并启用模型连接桥接。",
+        "account_unsupported" => "请在 DeepSeek Harness 更新并启用随附的模型连接桥接。",
+        "account_signed_out" => "请先在 DeepSeek Harness 登录官方账号，再重新读取模型。",
         "connection_unverified" => "请先在 Providers 或模型服务页面验证目标模型。",
         "connection_result_unknown" => "写入结果待核查。请先查看 Agent 的连接状态。",
         "credential_unavailable" => "本机连接凭据暂不可用。",
@@ -163,6 +165,7 @@ pub(crate) struct Manager {
     advanced: Mutex<advanced::Store>,
     connectors: Mutex<BTreeMap<String, advanced::Live>>,
     source_watches: Mutex<BTreeMap<String, tokio::task::JoinHandle<()>>>,
+    bundled_dsh: Option<full::BundledDshConnection>,
     pub(crate) connection_reviews: Mutex<crate::agent_connections::Reviews>,
 }
 pub(crate) use full::ConnectionAccess;

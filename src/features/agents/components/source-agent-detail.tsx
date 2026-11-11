@@ -217,18 +217,14 @@ export function SourceAgentDetail({
               {bundled && (
                 <>
                   <p className="text-label text-fg-muted">
-                    在 DeepSeek Harness
-                    启用随附的只读桥接，再选择其导出的会话文件。模型连接使用独立桥接和授权。
+                    要在首页查看直连任务，请在 DeepSeek Harness
+                    的桌面配置中安装并启用只读桥接（bridge
+                    文件夹）。在本应用安装并启用会话来源后，选择桥接导出的
+                    facts.jsonl，并确认允许展示。
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <PluginUpload
                       hideFileUpload
-                      offerBundledDsh={
-                        !!catalog.data &&
-                        !catalog.error &&
-                        !packages.length &&
-                        !agent.found
-                      }
                       showDshBridge
                       disabled={busy}
                       onUploaded={reload}

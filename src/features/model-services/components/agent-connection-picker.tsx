@@ -20,6 +20,7 @@ export function AgentConnectionPicker({
   services,
   emptyServices,
   native = false,
+  nativeLabel = "官方原生登录",
   disabled,
   onSelect,
 }: {
@@ -28,6 +29,7 @@ export function AgentConnectionPicker({
   services: ModelService[] | undefined;
   emptyServices: string;
   native?: boolean;
+  nativeLabel?: string;
   disabled?: boolean;
   onSelect: (choice: ConnectionChoice) => void;
 }) {
@@ -86,7 +88,7 @@ export function AgentConnectionPicker({
         {native && (
           <>
             <SelectSeparator />
-            <SelectItem value="native">官方原生登录</SelectItem>
+            <SelectItem value="native">{nativeLabel}</SelectItem>
           </>
         )}
       </SelectContent>

@@ -25,6 +25,9 @@ use external::fail;
 
 const REVIEW_TTL: Duration = Duration::from_secs(300);
 const SOURCE_GATE_WAIT: Duration = Duration::from_secs(2);
+pub(crate) const DSH_DESKTOP: &str = "net.worksha.dsh-desktop:desktop";
+const ACCOUNT_PROVIDER: &str = "deepseek-account";
+const ACCOUNT_NAME: &str = "DeepSeek 官方账号";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -45,6 +48,8 @@ enum Action {
     Authorize,
     Revoke,
     Preview { target: Target },
+    AccountModels,
+    PreviewAccount { model: String },
     Apply { review_id: String },
     Check { review_id: String },
     Restore { review_id: String },
@@ -137,10 +142,20 @@ pub(crate) struct Review {
     agent: String,
     access: ConnectionAccess,
     before: Status,
-    target: Target,
-    target_version: String,
-    profile: Profile,
+    change: ReviewChange,
     applied: bool,
+}
+#[derive(Clone)]
+enum ReviewChange {
+    Gateway {
+        target: Target,
+        target_version: String,
+        profile: Profile,
+    },
+    Account {
+        model: String,
+        version: String,
+    },
 }
 pub(crate) type Reviews = BTreeMap<Uuid, Review>;
 
@@ -203,6 +218,22 @@ fn reply(status: &Status, profile: Option<&Profile>) -> Value {
     })
 }
 
+fn account_selected(status: &Status, model: &str) -> bool {
+    status.selected.as_ref().is_some_and(|selection| {
+        selection.provider == ACCOUNT_PROVIDER
+            && selection.model == model
+            && selection.reasoning_effort.is_none()
+    })
+}
+
+fn account_reply(status: &Status, model: &str) -> Value {
+    let mut value = reply(status, None);
+    let selected = account_selected(status, model);
+    value["configured"] = json!(selected);
+    value["selectedTarget"] = json!(selected);
+    value
+}
+
 async fn describe(
     state: &AppState,
     agent: &str,
@@ -213,6 +244,28 @@ async fn describe(
     let Some(selected) = &status.selected else {
         return Ok(value);
     };
+    if agent == DSH_DESKTOP && selected.provider == ACCOUNT_PROVIDER {
+        value["currentTarget"] =
+            json!({"kind":"account","name":ACCOUNT_NAME,"model":selected.model});
+        let reviews = state
+            .plugins
+            .connection_reviews
+            .lock()
+            .map_err(|_| fail("unavailable"))?;
+        if let Some((id, review)) = reviews.iter().filter(|(_, review)| {
+            review.agent == agent
+                && &review.access == grant
+                && review.applied
+                && review.before.instance == status.instance
+                && review.before.selected.as_ref() != Some(selected)
+                && matches!(&review.change, ReviewChange::Account { model, .. } if account_selected(status, model))
+        }).max_by_key(|(_, review)| review.created)
+            && let Some(before) = &review.before.selected
+        {
+            value["recovery"] = json!({"reviewId":id.to_string(),"before":before,"kind":"account"});
+        }
+        return Ok(value);
+    }
     let Some(id) = selected
         .provider
         .strip_prefix("local-agent-")
@@ -371,6 +424,27 @@ fn remember_review(state: &AppState, id: Uuid, applied: bool) {
     }
 }
 
+fn save_review(state: &AppState, id: Uuid, review: Review) -> Result<()> {
+    let mut reviews = state
+        .plugins
+        .connection_reviews
+        .lock()
+        .map_err(|_| fail("unavailable"))?;
+    reviews.retain(|_, review| {
+        review.created.elapsed()
+            < if review.applied {
+                Duration::from_secs(1800)
+            } else {
+                REVIEW_TTL
+            }
+    });
+    if reviews.len() >= 64 {
+        return Err(fail("resource_limit"));
+    }
+    reviews.insert(id, review);
+    Ok(())
+}
+
 async fn wait_for_source(
     state: &AppState,
     agent: &str,
@@ -382,10 +456,29 @@ async fn wait_for_source(
 }
 
 async fn apply(state: &AppState, id: Uuid, review: &Review) -> Result<Value> {
+    let (target, target_version, profile) = match &review.change {
+        ReviewChange::Gateway {
+            target,
+            target_version,
+            profile,
+        } => (target, target_version, profile),
+        ReviewChange::Account { model, version } => {
+            let after =
+                bridge::select_account(&review.access, &review.before, model, version).await?;
+            if authorized(state, &review.agent)? != review.access {
+                return Err(fail("grant_revoked"));
+            }
+            if !account_selected(&after, model) || after.instance != review.before.instance {
+                return Err(fail("connection_result_unknown"));
+            }
+            remember_review(state, id, true);
+            return Ok(account_reply(&after, model));
+        }
+    };
     if connection_binding(state, id)?.is_some() {
         return Err(fail("connection_result_unknown"));
     }
-    let current = bridge::read(&review.access, Some(&review.profile.route)).await?;
+    let current = bridge::read(&review.access, Some(&profile.route)).await?;
     if current.instance != review.before.instance
         || current.revision != review.before.revision
         || current.selected != review.before.selected
@@ -393,10 +486,8 @@ async fn apply(state: &AppState, id: Uuid, review: &Review) -> Result<Value> {
     {
         return Err(fail("stale_snapshot"));
     }
-    let target = destination(state, &review.target)?;
-    if target.version() != review.target_version
-        || authorized(state, &review.agent)? != review.access
-    {
+    let target = destination(state, target)?;
+    if target.version() != *target_version || authorized(state, &review.agent)? != review.access {
         return Err(fail("stale_snapshot"));
     }
     let binding = store_binding(state, id, review, &target)?;
@@ -408,7 +499,7 @@ async fn apply(state: &AppState, id: Uuid, review: &Review) -> Result<Value> {
         }
     };
     let token = std::str::from_utf8(&token).map_err(|_| fail("credential_unavailable"))?;
-    let result = bridge::apply(&review.access, &review.before, &review.profile, token).await;
+    let result = bridge::apply(&review.access, &review.before, profile, token).await;
     if let Err(err) = result {
         if matches!(
             err.code,
@@ -426,13 +517,11 @@ async fn apply(state: &AppState, id: Uuid, review: &Review) -> Result<Value> {
     if authorized(state, &review.agent)? != review.access {
         return Err(fail("grant_revoked"));
     }
-    if !after.matches(&review.profile)
-        || after.selected.as_ref() != Some(&review.profile.selection())
-    {
+    if !after.matches(profile) || after.selected.as_ref() != Some(&profile.selection()) {
         return Err(fail("connection_result_unknown"));
     }
     remember_review(state, id, true);
-    Ok(reply(&after, Some(&review.profile)))
+    Ok(reply(&after, Some(profile)))
 }
 
 async fn operation(state: &AppState, request: Request) -> Result<Value> {
@@ -451,6 +540,7 @@ async fn operation(state: &AppState, request: Request) -> Result<Value> {
         Action::Authorize => {
             let available = access(state, &agent, None)?;
             let status = bridge::read(&available, None).await?;
+            let _source = wait_for_source(state, &agent).await?;
             if access(state, &agent, None)? != available {
                 return Err(fail("grant_revoked"));
             }
@@ -483,22 +573,6 @@ async fn operation(state: &AppState, request: Request) -> Result<Value> {
             if before.route.is_some() || authorized(state, &agent)? != access {
                 return Err(fail("stale_snapshot"));
             }
-            let mut reviews = state
-                .plugins
-                .connection_reviews
-                .lock()
-                .map_err(|_| fail("unavailable"))?;
-            reviews.retain(|_, review| {
-                review.created.elapsed()
-                    < if review.applied {
-                        Duration::from_secs(1800)
-                    } else {
-                        REVIEW_TTL
-                    }
-            });
-            if reviews.len() >= 64 {
-                return Err(fail("resource_limit"));
-            }
             let response = json!({
                 "reviewId": id.to_string(),
                 "before": before.selected,
@@ -506,19 +580,61 @@ async fn operation(state: &AppState, request: Request) -> Result<Value> {
                 "models": profile.models.iter().map(|m| &m.name).collect::<Vec<_>>(),
                 "scope": "new-sessions",
             });
-            reviews.insert(
+            save_review(
+                state,
                 id,
                 Review {
                     created: Instant::now(),
                     agent,
                     access,
                     before,
-                    target,
-                    target_version: selected.version(),
-                    profile,
+                    change: ReviewChange::Gateway {
+                        target,
+                        target_version: selected.version(),
+                        profile,
+                    },
                     applied: false,
                 },
-            );
+            )?;
+            Ok(response)
+        }
+        Action::AccountModels | Action::PreviewAccount { .. } => {
+            if agent != DSH_DESKTOP {
+                return Err(fail("unsupported"));
+            }
+            let access = authorized(state, &agent)?;
+            let before = bridge::account_models(&access).await?;
+            if authorized(state, &agent)? != access {
+                return Err(fail("grant_revoked"));
+            }
+            let catalog = before.account.as_ref().ok_or(fail("account_unsupported"))?;
+            let Action::PreviewAccount { model } = request.action else {
+                return Ok(json!({"signedIn":catalog.signed_in,"models":catalog.models}));
+            };
+            if !catalog.signed_in {
+                return Err(fail("account_signed_out"));
+            }
+            let entry = catalog
+                .models
+                .iter()
+                .find(|entry| entry.id == model)
+                .ok_or(fail("stale_snapshot"))?;
+            let id = Uuid::new_v4();
+            let response = json!({"reviewId":id.to_string(),"before":before.selected,
+                "targetName":ACCOUNT_NAME,"models":[entry.name],"scope":"new-sessions"});
+            let version = catalog.version.clone();
+            save_review(
+                state,
+                id,
+                Review {
+                    created: Instant::now(),
+                    agent,
+                    access,
+                    before,
+                    change: ReviewChange::Account { model, version },
+                    applied: false,
+                },
+            )?;
             Ok(response)
         }
         Action::Apply { review_id } => {
@@ -531,10 +647,26 @@ async fn operation(state: &AppState, request: Request) -> Result<Value> {
             let review_id = Uuid::parse_str(&review_id).map_err(|_| fail("invalid_input"))?;
             let _source = wait_for_source(state, &agent).await?;
             let review = get_review(state, review_id, &agent, &authorized(state, &agent)?)?;
-            let status = bridge::read(&review.access, Some(&review.profile.route)).await?;
+            let profile = match &review.change {
+                ReviewChange::Gateway { profile, .. } => Some(profile),
+                ReviewChange::Account { .. } => None,
+            };
+            let status = bridge::read(
+                &review.access,
+                profile.map(|profile| profile.route.as_str()),
+            )
+            .await?;
             if authorized(state, &agent)? != review.access {
                 return Err(fail("grant_revoked"));
             }
+            if let ReviewChange::Account { model, .. } = &review.change {
+                if status.instance != review.before.instance {
+                    return Err(fail("stale_snapshot"));
+                }
+                remember_review(state, review_id, account_selected(&status, model));
+                return Ok(account_reply(&status, model));
+            }
+            let profile = profile.ok_or(fail("invalid_record"))?;
             if let Some(binding) = connection_binding(state, review_id)?
                 && routing::agent_connection_digest(&binding.agent_id, &binding.scope).is_some()
             {
@@ -543,22 +675,41 @@ async fn operation(state: &AppState, request: Request) -> Result<Value> {
                         retire(state, &binding)?;
                     }
                     remember_review(state, review_id, false);
-                } else if status.matches(&review.profile)
-                    && status.selected.as_ref() == Some(&review.profile.selection())
+                } else if status.matches(profile)
+                    && status.selected.as_ref() == Some(&profile.selection())
                 {
                     remember_review(state, review_id, true);
                 }
             }
-            Ok(reply(&status, Some(&review.profile)))
+            Ok(reply(&status, Some(profile)))
         }
         Action::Restore { review_id } => {
             let review_id = Uuid::parse_str(&review_id).map_err(|_| fail("invalid_input"))?;
             let _source = wait_for_source(state, &agent).await?;
             let review = get_review(state, review_id, &agent, &authorized(state, &agent)?)?;
-            let binding = connection_binding(state, review_id)?.ok_or(fail("not_found"))?;
             let previous: &Selection =
                 review.before.selected.as_ref().ok_or(fail("unsupported"))?;
-            let status = bridge::restore(&review.access, &review.profile, previous).await?;
+            let profile = match &review.change {
+                ReviewChange::Gateway { profile, .. } => profile,
+                ReviewChange::Account { model, .. } => {
+                    let status = bridge::restore_account(
+                        &review.access,
+                        &review.before.instance,
+                        model,
+                        previous,
+                    )
+                    .await?;
+                    if status.selected.as_ref() != Some(previous)
+                        || status.instance != review.before.instance
+                    {
+                        return Err(fail("connection_result_unknown"));
+                    }
+                    remember_review(state, review_id, false);
+                    return Ok(reply(&status, None));
+                }
+            };
+            let binding = connection_binding(state, review_id)?.ok_or(fail("not_found"))?;
+            let status = bridge::restore(&review.access, profile, previous).await?;
             if status.route.is_some() || status.selected.as_ref() != Some(previous) {
                 return Err(fail("connection_result_unknown"));
             }

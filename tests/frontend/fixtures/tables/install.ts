@@ -43,6 +43,10 @@ export function installTableFixtures() {
   });
   const context = createTableFixtureContext();
   installTableShell(context);
+  if (context.mode === "agents")
+    agentConnectionApi.status = async () => ({
+      state: "authorization-required",
+    });
   if (context.mode === "agents" && context.params.has("uploadedAgent")) {
     const snapshot = appApi.snapshot;
     const plugin = context.params.has("genericAgent")
@@ -69,6 +73,9 @@ export function installTableFixtures() {
       ],
     });
     const connection = context.params.has("connectionAdapter");
+    const cleanDsh = context.params.has("cleanDsh");
+    if (cleanDsh)
+      fullPluginsApi.list = async () => ({ apiVersion: "1.0.0", items: [] });
     if (connection) {
       const original = {
         provider: "dsh",
@@ -78,7 +85,23 @@ export function installTableFixtures() {
       let authorized = false;
       let preview: AgentConnectionReview | null = null;
       let choice: ConnectionTarget | null = null;
+      let accountModel: string | null = null;
+      let accountReads = 0;
       const provider = fixtureProvider(0);
+      let verified: string | null = null;
+      providersApi.verifyProvider = async (id, revision, model) => {
+        if (id !== provider.id || revision !== provider.revision || !model)
+          throw Error("wrong verification target");
+        verified = model;
+        return {
+          providerId: id,
+          model,
+          fingerprint: "fixture",
+          state: "verified",
+          checkedAt: new Date().toISOString(),
+          message: "已验证",
+        };
+      };
       const service = {
         id: "fixture-service",
         versionId: "fixture-service-v1",
@@ -110,10 +133,9 @@ export function installTableFixtures() {
         if (action.kind === "apply") {
           if (!preview || preview.reviewId !== action.reviewId)
             throw Error("missing preview");
-          selected = {
-            provider: "local-agent-fixture",
-            model: "local-agent-default",
-          };
+          selected = accountModel
+            ? { provider: "deepseek-account", model: accountModel }
+            : { provider: "local-agent-fixture", model: "local-agent-default" };
         }
         if (action.kind === "restore") selected = original;
         const applied = selected !== original;
@@ -122,6 +144,20 @@ export function installTableFixtures() {
           selected,
           configured: applied,
           selectedTarget: applied,
+          ...(applied && accountModel && preview?.before
+            ? {
+                currentTarget: {
+                  kind: "account" as const,
+                  name: "DeepSeek 官方账号",
+                  model: accountModel,
+                },
+                recovery: {
+                  kind: "account" as const,
+                  reviewId: preview.reviewId,
+                  before: preview.before,
+                },
+              }
+            : {}),
           ...(applied && preview?.before && choice
             ? {
                 currentTarget: {
@@ -142,7 +178,13 @@ export function installTableFixtures() {
       };
       agentConnectionApi.preview = async (agentId, target) => {
         if (!authorized || agentId !== id) throw Error("not authorized");
+        if (
+          verified !==
+          (target.kind === "provider" ? target.model : provider.model)
+        )
+          throw Error("not verified");
         choice = target;
+        accountModel = null;
         preview = {
           reviewId: "owned-review",
           before: selected,
@@ -154,9 +196,34 @@ export function installTableFixtures() {
         };
         return preview;
       };
+      agentConnectionApi.accountModels = async (agentId) => {
+        if (!authorized || agentId !== id) throw Error("not authorized");
+        const signedIn = ++accountReads > 1;
+        return {
+          signedIn,
+          models: signedIn
+            ? [{ id: "deepseek-fixture", name: "DeepSeek Fixture" }]
+            : [],
+        };
+      };
+      agentConnectionApi.previewAccount = async (agentId, model) => {
+        if (!authorized || agentId !== id || model !== "deepseek-fixture")
+          throw Error("wrong account model");
+        choice = null;
+        accountModel = model;
+        preview = {
+          reviewId: "account-review",
+          before: selected,
+          targetName: "DeepSeek 官方账号",
+          models: ["DeepSeek Fixture"],
+          scope: "new-sessions",
+        };
+        return preview;
+      };
     }
     appApi.snapshot = async () => {
       const data = await snapshot();
+      if (cleanDsh) return data;
       return {
         ...data,
         agents: [

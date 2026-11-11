@@ -1,8 +1,10 @@
 # DSH 模型连接桥接
 
-适配 DSH 0.2.2-rc.1。这个伴随包与会话读取桥接分别启用。Local Agent 侧安装带 `agent.connection@1` 的 DSH 来源包。用 DSH 自带的 `dsh plugin --profile desktop add /absolute/path/to/connection-bridge` 安装伴随包，通过 DSH 插件面板启用。
+适配 DSH 0.2.2-rc.1。这个伴随包与会话读取桥接分别启用。用 DSH 自带的 `dsh plugin --profile desktop add /absolute/path/to/connection-bridge` 安装伴随包，通过 DSH 插件面板启用。
 
-两个 DSH 桥接包使用同一个私有输出目录。Local Agent 选择事实文件后，在 Agents 的「连接与观测」中单独授权管理连接。文件授权和统一展示授权本身不允许写配置。连接授权限本次 Local Agent 运行。停用来源后，已发布的专用入口停止接收新请求。撤销连接授权会永久停用该 Agent 已发布的本机入口，重新授权后需要准备新连接。在 DSH 界面选择其他连接可继续使用 DSH。
+在 Local Agent 的 Agents 列表中选择 DSH 的 Provider 或模型服务，授权并验证后预览默认模型变更。随附模型连接使用 `~/.local/share/local-agent/dsh-desktop`。使用自定义输出目录时，已有会话来源可通过所授权文件的同级目录连接。连接授权限本次 Local Agent 运行。撤销连接授权会停用该 Agent 已发布的本机入口，重新授权后需要准备新连接。
+
+桥接 1.1 起，先在 DeepSeek Harness 登录官方账号，再在 Local Agent 的同一选择器选择「DeepSeek 官方账号」。模型列表来自 DSH 当前账号。确认切换后，DSH 将选中的账号模型用于新会话，账号与套餐由 DSH 管理。
 
 切换范围是新会话的默认模型。桥接通过 `settingsController.mutate` 写入专用自定义 Provider，保存单用途本机网关令牌，然后通过 DSH 默认模型服务应用选择并回读。已有会话各自保留模型选择。已发布的入口在未撤销时可以继续服务引用它的会话。
 

@@ -23,7 +23,15 @@ type Selection = {
   model: string;
   reasoningEffort?: string | null;
 };
-export type AgentConnectionRecovery = { reviewId: string; before: Selection };
+export type AgentConnectionRecovery = {
+  reviewId: string;
+  before: Selection;
+  kind?: "account";
+};
+export type DshAccountCatalog = {
+  signedIn: boolean;
+  models: { id: string; name: string }[];
+};
 export type AgentConnectionStatus =
   | { state: "authorization-required" }
   | {
@@ -32,7 +40,7 @@ export type AgentConnectionStatus =
       configured: boolean;
       selectedTarget: boolean;
       currentTarget?: {
-        kind: "provider" | "service";
+        kind: "provider" | "service" | "account";
         name: string;
         model: string;
       };
@@ -53,7 +61,11 @@ type StatusAction =
 
 function connectionCommand<T>(
   agentId: string,
-  action: StatusAction | { kind: "preview"; target: ConnectionTarget },
+  action:
+    | StatusAction
+    | { kind: "preview"; target: ConnectionTarget }
+    | { kind: "account-models" }
+    | { kind: "preview-account"; model: string },
 ) {
   return command<T>("perform_agent_model_connection", {
     input: { agentId, action },
@@ -68,6 +80,17 @@ export const agentConnectionApi = {
     return connectionCommand<AgentConnectionReview>(agentId, {
       kind: "preview",
       target,
+    });
+  },
+  accountModels(agentId: string) {
+    return connectionCommand<DshAccountCatalog>(agentId, {
+      kind: "account-models",
+    });
+  },
+  previewAccount(agentId: string, model: string) {
+    return connectionCommand<AgentConnectionReview>(agentId, {
+      kind: "preview-account",
+      model,
     });
   },
 };

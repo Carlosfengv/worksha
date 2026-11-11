@@ -37,6 +37,7 @@ pub(super) struct Status {
     pub instance: String,
     pub selected: Option<Selection>,
     pub route: Option<Route>,
+    pub account: Option<AccountCatalog>,
 }
 impl Status {
     pub fn matches(&self, profile: &Profile) -> bool {
@@ -49,6 +50,21 @@ impl Status {
                     .eq(profile.models.iter().map(|m| m.id.as_str()))
         })
     }
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct AccountCatalog {
+    pub signed_in: bool,
+    pub version: String,
+    pub models: Vec<AccountModel>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct AccountModel {
+    pub id: String,
+    pub name: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -100,7 +116,12 @@ fn key(directory: &Path, uid: u32) -> Result<zeroize::Zeroizing<String>> {
 }
 
 async fn call(access: &ConnectionAccess, request: Value, mutating: bool) -> Result<Status> {
-    // The socket and credential are siblings of the exact authorized source.
+    // The bundled path is fixed by the host. Other directories are selected
+    // through an existing, checked file grant.
+    if access.bundled {
+        local_agent_core::providers::files::checked_path(&access.directory)
+            .map_err(|_| fail("permission_denied"))?;
+    }
     let uid = unsafe { libc::geteuid() };
     let dir = fs::symlink_metadata(&access.directory).map_err(|_| fail("bridge_unavailable"))?;
     if !dir.is_dir() || dir.uid() != uid || dir.mode() & 0o077 != 0 {
@@ -161,6 +182,7 @@ async fn call(access: &ConnectionAccess, request: Value, mutating: bool) -> Resu
                 "denied" => "permission_denied",
                 "invalid" => "invalid_input",
                 "busy" => "busy",
+                "account-unsupported" => "account_unsupported",
                 _ if mutating => "connection_result_unknown",
                 _ => "bridge_unavailable",
             }));
@@ -180,6 +202,49 @@ async fn call(access: &ConnectionAccess, request: Value, mutating: bool) -> Resu
 
 pub(super) async fn read(access: &ConnectionAccess, route: Option<&str>) -> Result<Status> {
     call(access, json!({"kind":"read","route":route}), false).await
+}
+
+pub(super) async fn account_models(access: &ConnectionAccess) -> Result<Status> {
+    call(access, json!({"kind":"account-models"}), false)
+        .await
+        .map_err(|error| {
+            if error.code == "invalid_input" {
+                fail("account_unsupported")
+            } else {
+                error
+            }
+        })
+}
+
+pub(super) async fn select_account(
+    access: &ConnectionAccess,
+    before: &Status,
+    model: &str,
+    account_version: &str,
+) -> Result<Status> {
+    call(
+        access,
+        json!({"kind":"select-account","expectedRevision":before.revision,
+            "expectedInstance":before.instance,"before":before.selected,
+            "model":model,"accountVersion":account_version}),
+        true,
+    )
+    .await
+}
+
+pub(super) async fn restore_account(
+    access: &ConnectionAccess,
+    instance: &str,
+    model: &str,
+    previous: &Selection,
+) -> Result<Status> {
+    call(
+        access,
+        json!({"kind":"restore-account","expectedInstance":instance,
+            "model":model,"previous":previous}),
+        true,
+    )
+    .await
 }
 
 pub(super) async fn apply(

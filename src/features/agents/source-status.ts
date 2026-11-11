@@ -5,7 +5,8 @@ export function sourceStatus(
   agent: AgentDiscovery,
   status?: Pick<Status, "sourceAuthorized" | "unifiedAuthorized" | "freshness">,
 ) {
-  if (!agent.found) return "待接入";
+  if (!agent.found)
+    return agent.connectionAdapter ? "会话来源待接入" : "待接入";
   if (agent.sourceState?.enabled === false) return "已停用";
   if (agent.sourceState?.runtimeActive === false) return "待启用";
   if (status && !status.sourceAuthorized) return "尚未授权读取";
