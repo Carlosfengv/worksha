@@ -5,6 +5,7 @@ import {
   backendReadEpoch,
   subscribeBackendRecovery,
 } from "@/shared/lib/backend-recovery";
+import { isDesktopRuntime } from "@/shared/lib/desktop-command";
 
 function sameQuery(a: OverviewQuery, b: OverviewQuery) {
   return (
@@ -28,6 +29,7 @@ export function useOverview(query: OverviewQuery) {
     epoch: symbol;
   }>({ key, agent, data: null, error: null, epoch: backendReadEpoch() });
   useEffect(() => {
+    const desktop = isDesktopRuntime();
     let alive = true;
     let pending: Promise<void> | null = null;
     let version = 0;
@@ -93,7 +95,8 @@ export function useOverview(query: OverviewQuery) {
     });
     void load();
     const poll = () => {
-      if (document.visibilityState !== "visible") return;
+      // An occluded desktop window still has a live overview mounted.
+      if (!desktop && document.visibilityState !== "visible") return;
       // A slow read must not freeze old Token/s as a current measurement.
       if (pending)
         setState((old) =>

@@ -1,14 +1,26 @@
 //! Read-only execution evidence for fresh activities, never historical usage.
 //! A process merely existing, a renderer receipt or a Session creator is not evidence.
 use super::{live::NativeActivity, safe_path};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, FixedOffset, Utc};
 use rusqlite::{Connection, OpenFlags, params};
-use std::{collections::HashMap, path::Path, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+    time::Duration,
+};
 
 #[derive(Default)]
 pub(super) struct RuntimeEvidence {
     database: Option<(u64, u64)>,
     tui_modes: HashMap<String, (Process, Option<Process>)>,
+    desktop_turns: HashMap<(String, String), DesktopTurn>,
+}
+
+struct DesktopTurn {
+    runtime: String,
+    process: Process,
+    parent: Process,
+    confirmed_at: DateTime<FixedOffset>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -351,6 +363,18 @@ fn tui(
     false
 }
 
+fn activity_turn(activity: &NativeActivity) -> Option<(&str, &str)> {
+    if activity.agent_id != "codex" {
+        return None;
+    }
+    let session = activity
+        .session_id
+        .strip_prefix("codex:")
+        .filter(|id| valid_id(id))?;
+    let turn = activity.turn_id.as_deref().filter(|id| valid_id(id))?;
+    Some((session, turn))
+}
+
 fn attribute_cached_with(
     home: &Path,
     activities: &mut [NativeActivity],
@@ -358,15 +382,34 @@ fn attribute_cached_with(
     evidence: &mut RuntimeEvidence,
     mut inspect: impl FnMut(i32) -> Option<Process>,
 ) {
-    // Mode proof has the lifetime of one verified OS process and native database,
-    // never a Session or turn. Every activity still needs fresh execution below.
     use std::os::unix::fs::MetadataExt;
-    let database = std::fs::metadata(home.join(".codex/logs_2.sqlite"))
+    let path = home.join(".codex/logs_2.sqlite");
+    let database = path
+        .symlink_metadata()
         .ok()
+        .filter(|m| m.is_file())
         .map(|m| (m.dev(), m.ino()));
     if evidence.database != database || database.is_none() {
         evidence.tui_modes.clear();
+        evidence.desktop_turns.clear();
         evidence.database = database;
+    }
+    if !evidence.desktop_turns.is_empty() {
+        if safe_database(home, &path) {
+            let turns = activities
+                .iter()
+                .filter_map(activity_turn)
+                .collect::<HashSet<_>>();
+            evidence.desktop_turns.retain(|(session, turn), proof| {
+                turns.contains(&(session.as_str(), turn.as_str()))
+                    && proof.process.uid == uid
+                    && process_id(&proof.runtime).and_then(&mut inspect).as_ref()
+                        == Some(&proof.process)
+                    && inspect(proof.process.parent).as_ref() == Some(&proof.parent)
+            });
+        } else {
+            evidence.desktop_turns.clear();
+        }
     }
     evidence.tui_modes.retain(|runtime, (process, parent)| {
         process.uid == uid
@@ -382,6 +425,39 @@ fn attribute_cached_with(
         a.agent_product_id = None;
         a.agent_attribution = None;
     }
+    attribute_fresh(home, activities, uid, evidence, &mut inspect);
+
+    // A verified desktop execution identifies this turn across sparse step logs.
+    // The live row keeps its own timestamp, freshness, and tool status.
+    for activity in activities {
+        let Some((session, turn)) = activity_turn(activity) else {
+            continue;
+        };
+        let key = (session.to_owned(), turn.to_owned());
+        if activity.agent_product_id.as_deref() == Some("codex-desktop") {
+            continue;
+        }
+        if activity.agent_product_id.is_some() || activity.agent_attribution.is_some() {
+            evidence.desktop_turns.remove(&key);
+            continue;
+        }
+        if let Some(proof) = evidence.desktop_turns.get(&key)
+            && DateTime::parse_from_rfc3339(&activity.event_at)
+                .is_ok_and(|at| at >= proof.confirmed_at)
+        {
+            activity.agent_product_id = Some("codex-desktop".into());
+            activity.agent_attribution = Some("desktop_runtime_execution".into());
+        }
+    }
+}
+
+fn attribute_fresh(
+    home: &Path,
+    activities: &mut [NativeActivity],
+    uid: u32,
+    evidence: &mut RuntimeEvidence,
+    inspect: &mut impl FnMut(i32) -> Option<Process>,
+) {
     let eligible: Vec<_> = activities
         .iter()
         .enumerate()
@@ -412,27 +488,22 @@ fn attribute_cached_with(
     }
     let Some(connection) = open(home) else {
         evidence.tui_modes.clear();
+        evidence.desktop_turns.clear();
         return;
     };
     // Force the native index: absent / changed schema must not cause a full-table scan.
     let Ok(mut statement) = connection.prepare("SELECT ts,ts_nanos,target,process_uuid,substr(feedback_log_body,1,4096) FROM logs INDEXED BY idx_logs_thread_id_ts WHERE thread_id=?1 AND ts BETWEEN ?2 AND ?3 AND target IN ('codex_core::stream_events_utils','codex_core::tools::parallel','codex_core::session::turn','codex_core::session::world_state','codex_code_mode::timing') ORDER BY ts DESC,ts_nanos DESC,id DESC LIMIT 257") else { return; };
     for index in eligible {
         let a = &mut activities[index];
-        let Some(session) = a
-            .session_id
-            .strip_prefix("codex:")
-            .filter(|id| valid_id(id))
-        else {
+        let Some((session, turn)) = activity_turn(a) else {
             continue;
         };
-        let Some(turn) = a.turn_id.as_deref().filter(|id| valid_id(id)) else {
-            continue;
-        };
+        let key = (session.to_owned(), turn.to_owned());
         let Ok(event) = DateTime::parse_from_rfc3339(&a.event_at) else {
             continue;
         };
-        let event = event.timestamp();
-        let Ok(rows) = statement.query_map(params![session, event - 5, event + 5], |r| {
+        let timestamp = event.timestamp();
+        let Ok(rows) = statement.query_map(params![session, timestamp - 5, timestamp + 5], |r| {
             Ok((
                 r.get::<_, i64>(0)?,
                 r.get::<_, u32>(1)?,
@@ -441,6 +512,7 @@ fn attribute_cached_with(
                 r.get::<_, String>(4)?,
             ))
         }) else {
+            evidence.desktop_turns.remove(&key);
             continue;
         };
         let mut candidates = HashMap::new();
@@ -480,10 +552,20 @@ fn attribute_cached_with(
             // Keep even an unrecognised or exited runtime as a competing candidate.
             candidates.insert(process_uuid, (ts, nanos));
         }
-        if !complete || candidates.len() != 1 {
+        if !complete || candidates.len() > 1 {
+            evidence.desktop_turns.remove(&key);
             continue;
         }
-        let (runtime, (ts, nanos)) = candidates.into_iter().next().unwrap();
+        let Some((runtime, (ts, nanos))) = candidates.into_iter().next() else {
+            continue;
+        };
+        if evidence
+            .desktop_turns
+            .get(&key)
+            .is_some_and(|proof| proof.runtime != runtime)
+        {
+            evidence.desktop_turns.remove(&key);
+        }
         let Some(pid) = process_id(&runtime) else {
             continue;
         };
@@ -514,18 +596,46 @@ fn attribute_cached_with(
         if inspect(pid).as_ref() != Some(&process) || inspect(process.parent) != parent {
             continue;
         }
-        if product == "codex-cli" && evidence.tui_modes.len() < 64 {
-            evidence.tui_modes.insert(runtime, (process, parent));
-        }
         if a.agent_product_id
             .as_deref()
             .is_some_and(|id| id != product)
         {
+            evidence.desktop_turns.remove(&key);
             a.agent_product_id = None;
             a.agent_attribution = Some("conflicting_evidence".into());
         } else if a.agent_product_id.is_none() {
             a.agent_product_id = Some(product.into());
             a.agent_attribution = Some(attribution.into());
+        }
+        if product == "codex-cli" && evidence.tui_modes.len() < 64 {
+            evidence.tui_modes.insert(runtime, (process, parent));
+        } else if product == "codex-desktop"
+            && a.agent_product_id.as_deref() == Some(product)
+            && let Some(parent) = parent
+        {
+            if evidence.desktop_turns.len() >= 128
+                && !evidence.desktop_turns.contains_key(&key)
+                && let Some(oldest) = evidence
+                    .desktop_turns
+                    .iter()
+                    .min_by_key(|(_, proof)| proof.confirmed_at)
+                    .map(|(key, _)| key.clone())
+            {
+                evidence.desktop_turns.remove(&oldest);
+            }
+            let confirmed_at = evidence
+                .desktop_turns
+                .get(&key)
+                .map_or(event, |proof| proof.confirmed_at.min(event));
+            evidence.desktop_turns.insert(
+                key,
+                DesktopTurn {
+                    runtime,
+                    process,
+                    parent,
+                    confirmed_at,
+                },
+            );
         }
     }
 }

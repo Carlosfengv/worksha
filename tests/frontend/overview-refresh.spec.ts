@@ -217,6 +217,44 @@ test("hidden overview pauses polling and immediately refreshes on return without
   );
 });
 
+test("the native overview updates a fixed Codex Desktop filter while the document is hidden", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "isTauri", { value: true });
+  });
+  await page.clock.install();
+  await page.goto(
+    "/tests/frontend/tables.html?mode=activity&activity=empty#/overview",
+  );
+  const filter = page.getByRole("combobox", { name: "首页筛选 Agent" });
+  await filter.click();
+  await page.getByRole("option", { name: "Codex 桌面端", exact: true }).click();
+  const feed = page.getByRole("region", { name: "当前活动列表", exact: true });
+  await expect(feed).toContainText("暂无活动记录");
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.activityCase = "native-desktop-output-thinking";
+  });
+  await page.clock.fastForward(2000);
+  const task = feed.getByRole("row").filter({ hasText: "原生采集同一条消息" });
+  await expect(task).toContainText("思考中");
+  await expect(task).not.toContainText("状态待更新");
+
+  await page.evaluate(() => {
+    window.activityCase = "native-desktop-output-tools";
+  });
+  await page.clock.fastForward(2000);
+  await expect(task).toContainText("Read 工具执行中");
+  await expect(task).toContainText("已提出工具调用");
+  await expect(filter).toContainText("Codex 桌面端");
+});
+
 test("a failed analysis change keeps the prior scope labeled and recovery publishes the requested metric immediately", async ({
   page,
 }) => {

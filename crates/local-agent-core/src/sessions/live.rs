@@ -236,6 +236,14 @@ impl NativeWatch {
             self.error = Some("原生采集状态不可用".into());
             return vec![];
         };
+        #[cfg(target_os = "macos")]
+        if !sources.iter().any(|s| {
+            s.agent_id == "codex"
+                && s.enabled
+                && self.source_revisions.get("codex") == Some(&s.authorization_revision)
+        }) {
+            self.runtime_evidence = Default::default();
+        }
         self.tails.retain(|_, tail| {
             sources.iter().any(|s| {
                 s.enabled
@@ -1272,12 +1280,7 @@ impl NativeWatch {
         let mut rows: Vec<_> = activities.into_values().collect();
         rows.sort_by(|a, b| b.event_at.cmp(&a.event_at));
         #[cfg(target_os = "macos")]
-        {
-            if !sources.iter().any(|s| s.enabled && s.agent_id == "codex") {
-                self.runtime_evidence = Default::default();
-            }
-            super::codex_runtime::attribute(&sessions.home, &mut rows, &mut self.runtime_evidence);
-        }
+        super::codex_runtime::attribute(&sessions.home, &mut rows, &mut self.runtime_evidence);
         for row in &rows {
             self.database_recent.insert(row.id.clone(), row.clone());
         }

@@ -360,10 +360,12 @@ export function CurrentActivities({
   error: string | null;
   latest?: { text: string; time: string; href: string };
 }) {
-  const [now, setNow] = useState(Date.now);
+  const [clock, setClock] = useState(Date.now);
+  // Fresh snapshots can arrive while the visible-window clock is paused.
+  const now = Math.max(clock, Date.parse(overview?.asOf ?? "") || 0);
   useEffect(() => {
     const update = () => {
-      if (document.visibilityState === "visible") setNow(Date.now());
+      if (document.visibilityState === "visible") setClock(Date.now());
     };
     const timer = window.setInterval(update, 1000);
     document.addEventListener("visibilitychange", update);

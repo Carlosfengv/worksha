@@ -499,6 +499,111 @@ fn tool_evidence_requires_the_exact_execution_not_a_receipt_or_neighbor_call() {
 }
 
 #[test]
+fn confirmed_desktop_turn_stays_visible_across_later_steps_without_tool_evidence() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().canonicalize().unwrap();
+    let c = database(&home);
+    insert(
+        &c,
+        "a",
+        "codex_core::tools::parallel",
+        RUN,
+        &tool_body("a", "turn-a", "call-one", true),
+    );
+    let mut cache = RuntimeEvidence::default();
+    let mut confirmed = activity("a", "turn-a", "tool_returned");
+    attribute_cached_with(
+        &home,
+        std::slice::from_mut(&mut confirmed),
+        501,
+        &mut cache,
+        processes,
+    );
+    assert_eq!(confirmed.agent_product_id.as_deref(), Some("codex-desktop"));
+    c.execute("DELETE FROM logs", []).unwrap();
+
+    for phase in ["thinking", "tool_requested", "streaming", "waiting_input"] {
+        let mut step = activity("a", "turn-a", phase);
+        step.call_id = (phase == "tool_requested").then(|| "call-two".into());
+        step.stale = phase == "thinking";
+        let mut rows = [
+            step,
+            activity("a", "turn-b", phase),
+            activity("b", "turn-a", phase),
+        ];
+        attribute_cached_with(&home, &mut rows, 501, &mut cache, processes);
+        assert_eq!(
+            rows[0].agent_product_id.as_deref(),
+            Some("codex-desktop"),
+            "{phase}"
+        );
+        assert_eq!(rows[0].phase, phase);
+        assert_eq!(rows[0].stale, phase == "thinking");
+        assert!(rows[1..].iter().all(|row| row.agent_product_id.is_none()));
+    }
+}
+
+#[test]
+fn desktop_turn_proof_is_discarded_on_runtime_database_or_attribution_conflict() {
+    for case in [
+        "process-reused",
+        "database-replaced",
+        "competing-runtime",
+        "explicit-conflict",
+    ] {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().canonicalize().unwrap();
+        let c = database(&home);
+        insert(
+            &c,
+            "a",
+            "codex_core::stream_events_utils",
+            RUN,
+            &body("a", "turn-a"),
+        );
+        let mut cache = RuntimeEvidence::default();
+        let mut rows = [activity("a", "turn-a", "processing")];
+        attribute_cached_with(&home, &mut rows, 501, &mut cache, processes);
+        assert_eq!(rows[0].agent_product_id.as_deref(), Some("codex-desktop"));
+        rows[0] = activity("a", "turn-a", "thinking");
+        match case {
+            "database-replaced" => {
+                drop(c);
+                fs::rename(
+                    home.join(".codex/logs_2.sqlite"),
+                    home.join(".codex/previous.sqlite"),
+                )
+                .unwrap();
+                database(&home);
+            }
+            "competing-runtime" => {
+                rows[0].phase = "tool_returned".into();
+                for run in [RUN, "pid:789:00000000-0000-4000-8000-000000000002"] {
+                    insert(
+                        &c,
+                        "a",
+                        "codex_core::tools::parallel",
+                        run,
+                        &tool_body("a", "turn-a", "call-one", true),
+                    );
+                }
+            }
+            "explicit-conflict" => rows[0].agent_attribution = Some("conflicting_evidence".into()),
+            _ => {}
+        }
+        attribute_cached_with(&home, &mut rows, 501, &mut cache, |pid| {
+            let mut process = processes(pid)?;
+            if case == "process-reused" && pid == 123 {
+                process.started_micros += 1;
+            }
+            Some(process)
+        });
+        assert!(rows[0].agent_product_id.is_none(), "{case}");
+        assert!(cache.desktop_turns.is_empty(), "{case}");
+    }
+}
+
+#[test]
 fn runtime_must_be_current_owned_direct_and_stable() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path().canonicalize().unwrap();

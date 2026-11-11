@@ -1,5 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
+export { isTauri as isDesktopRuntime };
+
 function requireDesktop() {
   if (!isTauri()) throw new Error("请在 Local Agent 桌面应用中连接本机数据。");
 }
