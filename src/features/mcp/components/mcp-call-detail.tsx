@@ -2,6 +2,12 @@ import { useAgentDirectory } from "@/shared/hooks/use-agent-directory";
 import { useBackendReadEpoch } from "@/shared/hooks/use-backend-read-epoch";
 import { backendReadEpoch } from "@/shared/lib/backend-recovery";
 import { recordAgentKey } from "@/shared/types/agent";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -66,13 +72,15 @@ export function SessionMcpLatency({
   agentId: NativeCall["agentId"];
 }) {
   const { agentNames } = useAgentDirectory();
-  const [state, setState] = useState<{
+  const [result, setResult] = useState<{
+    epoch: symbol;
     service?: McpGroup;
     asOf?: string;
     error?: string;
-  }>({});
+  } | null>(null);
   const [retry, setRetry] = useState(0);
   const epoch = useBackendReadEpoch();
+  const state = result?.epoch === epoch ? result : null;
   const agent = recordAgentKey({
     agentId,
     agentProductId: event.agentProductId,
@@ -83,14 +91,16 @@ export function SessionMcpLatency({
       .mcp({ agent, call: event.id })
       .then((data) => {
         if (alive && epoch === backendReadEpoch())
-          setState({
+          setResult({
+            epoch,
             service: data.groups.find((s) => s.id === data.selectedGroupId),
             asOf: data.asOf,
           });
       })
       .catch((reason) => {
         if (alive && epoch === backendReadEpoch())
-          setState({
+          setResult({
+            epoch,
             error: reason instanceof Error ? reason.message : String(reason),
           });
       });
@@ -98,7 +108,7 @@ export function SessionMcpLatency({
       alive = false;
     };
   }, [agent, event.id, retry, epoch]);
-  return state.service && state.asOf ? (
+  return state?.service && state.asOf ? (
     <McpLatency
       service={state.service}
       scope={`${agentNames[agent]} · 全部已授权会话`}
@@ -106,13 +116,20 @@ export function SessionMcpLatency({
     />
   ) : (
     <div className="space-y-1 text-label text-fg-muted">
-      <p>所属服务 P95：{state.error ? `未知 · ${state.error}` : "正在读取…"}</p>
-      {state.error && (
+      <p>
+        所属服务 P95：
+        {state?.error
+          ? `未知 · ${state.error}`
+          : state
+            ? "暂无可核对的服务统计"
+            : "正在读取…"}
+      </p>
+      {state?.error && (
         <Button
           size="sm"
           variant="ghost"
           onClick={() => {
-            setState({});
+            setResult(null);
             setRetry((n) => n + 1);
           }}
         >
@@ -153,26 +170,33 @@ export function McpCallDetail({
 }) {
   const { agentNames } = useAgentDirectory();
   const { call } = row;
-  const [state, setState] = useState<{ data?: Conversation; error?: string }>(
-    {},
-  );
+  const [result, setResult] = useState<{
+    epoch: symbol;
+    data?: Conversation;
+    error?: string;
+  } | null>(null);
   const [retry, setRetry] = useState(0);
   const epoch = useBackendReadEpoch();
+  const state = result?.epoch === epoch ? result : null;
   useEffect(() => {
     let alive = true;
     sessionsApi
       .conversation(call.sessionId, undefined, call.id)
       .then((data) => {
         if (alive && epoch === backendReadEpoch())
-          setState(
+          setResult(
             data.items.some((e) => e.id === call.id)
-              ? { data }
-              : { error: "原生调用记录已变化或无法定位，请刷新调用列表。" },
+              ? { epoch, data }
+              : {
+                  epoch,
+                  error: "原生调用记录已变化或无法定位，请刷新调用列表。",
+                },
           );
       })
       .catch((reason) => {
         if (alive && epoch === backendReadEpoch())
-          setState({
+          setResult({
+            epoch,
             error: reason instanceof Error ? reason.message : String(reason),
           });
       });
@@ -180,83 +204,28 @@ export function McpCallDetail({
       alive = false;
     };
   }, [call.id, call.sessionId, retry, epoch]);
-  const event = state.data?.items.find((e) => e.id === call.id);
+  const event = state?.data?.items.find((e) => e.id === call.id);
+  const outcome = event?.status ?? call.status;
   return (
-    <section aria-label="MCP 调用详情" className="min-w-0 space-y-4 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="break-all text-title font-medium">
-          调用详情 · {call.toolName ?? call.name}
-        </h3>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            window.location.hash = sessionLink(call.sessionId, {
-              agent: recordAgentKey(call),
-              anchor: call.id,
-              returnTo: window.location.hash.replace(/^#/, ""),
-            });
-          }}
-        >
-          查看 Session
-        </Button>
-      </div>
-      <DetailList>
-        {[
-          [
-            "MCP 服务 / 工具",
-            `${call.server ?? "未知"} / ${call.toolName ?? "未知（保留原调用名）"}`,
-          ],
-          [
-            "Agent / Session",
-            `${agentNames[recordAgentKey(call)]} / ${call.sessionTitle}`,
-          ],
-          ["项目", row.projectPath ?? "未知"],
-          ["模型", call.model ?? "未知"],
-          [
-            "客户端归属依据",
-            clientAttributionLabel(call.agentAttribution, call.agentId),
-          ],
-          [
-            "关联模型响应 Token",
-            row.relatedUsage?.totalTokens == null
-              ? row.relatedUsageState === "outside_agent_scope"
-                ? "未计入：关联响应来源不在所选 Agent 范围"
-                : "未知：没有明确关联的模型响应 usage"
-              : `${row.relatedUsage.totalTokens.toLocaleString()} · 整次关联响应，非工具独立计费`,
-          ],
-          [
-            "关联响应 Agent",
-            row.relatedAgentProductId
-              ? agentNames[row.relatedAgentProductId]
-              : "客户端未知",
-          ],
-          ["原生调用 ID", event?.callId ?? event?.nativeId ?? call.id],
-          [
-            "开始 / 结束",
-            `${date(event?.timestamp ?? call.timestamp)} / ${date(event?.endTime)}`,
-          ],
-          [
-            "本次调用延迟",
-            mcpElapsed(event ? event.durationMs : call.durationMs),
-          ],
-          [
-            "结果",
-            (event?.status ?? call.status) === "error"
-              ? "原生错误（细分未知）"
-              : status(event?.status ?? call.status),
-          ],
-        ].map(([label, value]) => (
-          <DetailListItem key={label}>
-            <DetailListLabel>{label}</DetailListLabel>
-            <DetailListValue>
-              <span className="break-all">{value}</span>
-            </DetailListValue>
-          </DetailListItem>
-        ))}
-      </DetailList>
-      <McpLatency service={service} scope={scope} asOf={asOf} />
-      {state.error ? (
+    <section aria-label="MCP 调用详情" className="min-w-0 space-y-4 p-4">
+      <p className="text-body font-medium">
+        {outcome === "error" ? "原生错误（细分未知）" : status(outcome)} · 耗时{" "}
+        {mcpElapsed(event ? event.durationMs : call.durationMs)}
+      </p>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => {
+          window.location.hash = sessionLink(call.sessionId, {
+            agent: recordAgentKey(call),
+            anchor: call.id,
+            returnTo: window.location.hash.replace(/^#/, ""),
+          });
+        }}
+      >
+        查看会话
+      </Button>
+      {state?.error ? (
         <Alert status="danger">
           <AlertTitle>调用内容暂不可读</AlertTitle>
           <AlertDescription>{state.error}</AlertDescription>
@@ -264,7 +233,7 @@ export function McpCallDetail({
             size="sm"
             variant="ghost"
             onClick={() => {
-              setState({});
+              setResult(null);
               setRetry((n) => n + 1);
             }}
           >
@@ -273,50 +242,87 @@ export function McpCallDetail({
         </Alert>
       ) : !event ? (
         <p className="text-label text-fg-muted" role="status">
-          正在读取原生 Input / Output…
+          正在读取原生调用内容…
         </p>
       ) : (
         <>
-          {event.status === "error" && (
-            <Alert status="danger">
-              <AlertTitle>原生调用错误</AlertTitle>
-              <AlertDescription>
-                原始错误保留在
-                Output；来源未细分时，协议、传输或工具错误类型保持未知。
-              </AlertDescription>
-            </Alert>
-          )}
-          <div className="grid min-w-0 gap-4 xl:grid-cols-2">
-            <Payload
-              label="Input · 输入参数"
-              value={event.input ?? "未知：原生记录未提供可读参数。"}
-            />
-            <Payload
-              label="Output · 返回结果 / 原始错误"
-              value={
-                event.output ??
-                (["returned", "error"].includes(event.status)
-                  ? "原生调用已返回，但来源未提供可读结果。"
-                  : "尚未记录结果，不能据此认定调用仍在执行。")
-              }
-            />
-          </div>
+          <Payload
+            label={outcome === "error" ? "原始错误" : "返回结果"}
+            value={
+              event.output ??
+              (["returned", "error"].includes(outcome)
+                ? "原生记录未提供可读结果。"
+                : "原生记录没有结果，执行状态未知。")
+            }
+          />
+          <Payload
+            label="输入参数"
+            value={event.input ?? "原生记录未提供可读参数。"}
+          />
           {event.truncated && (
             <p className="text-label text-fg-muted">
-              内容超过读取上限，展示已截断；完整内容仍保留在原生会话中。
+              已截断。可在原生会话中查看完整内容。
             </p>
           )}
-          {state.data?.warnings.map((w) => (
+          {state?.data?.warnings.map((w) => (
             <p key={w} className="break-all text-label text-fg-muted">
               {w}
             </p>
           ))}
-          <p className="text-label text-fg-subtle">
-            只读原生记录 · 敏感凭据已脱敏 ·
-            延迟仅取原生明确耗时，不从消息间隔估算 · 此处不会重新执行调用
-          </p>
         </>
       )}
+      <Accordion>
+        <AccordionItem value="source">
+          <AccordionTrigger>来源与统计</AccordionTrigger>
+          <AccordionContent className="space-y-3">
+            <DetailList>
+              {[
+                [
+                  "MCP 服务 / 工具",
+                  `${call.server ?? "未知"} / ${call.toolName ?? "未知（保留原调用名）"}`,
+                ],
+                [
+                  "Agent / Session",
+                  `${agentNames[recordAgentKey(call)]} / ${call.sessionTitle}`,
+                ],
+                ["项目", row.projectPath ?? "未知"],
+                ["模型", call.model ?? "未知"],
+                [
+                  "客户端归属依据",
+                  clientAttributionLabel(call.agentAttribution, call.agentId),
+                ],
+                [
+                  "关联模型响应 Token",
+                  row.relatedUsage?.totalTokens == null
+                    ? row.relatedUsageState === "outside_agent_scope"
+                      ? "未计入：关联响应来源不在所选 Agent 范围"
+                      : "未知：没有明确关联的模型响应 usage"
+                    : `${row.relatedUsage.totalTokens.toLocaleString()} · 整次关联响应，非工具独立计费`,
+                ],
+                [
+                  "关联响应 Agent",
+                  row.relatedAgentProductId
+                    ? agentNames[row.relatedAgentProductId]
+                    : "客户端未知",
+                ],
+                ["原生调用 ID", event?.callId ?? event?.nativeId ?? call.id],
+                [
+                  "开始 / 结束",
+                  `${date(event?.timestamp ?? call.timestamp)} / ${date(event?.endTime)}`,
+                ],
+              ].map(([label, value]) => (
+                <DetailListItem key={label}>
+                  <DetailListLabel>{label}</DetailListLabel>
+                  <DetailListValue>
+                    <span className="break-all">{value}</span>
+                  </DetailListValue>
+                </DetailListItem>
+              ))}
+            </DetailList>
+            <McpLatency service={service} scope={scope} asOf={asOf} />
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
     </section>
   );
 }

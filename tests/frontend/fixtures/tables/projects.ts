@@ -80,14 +80,27 @@ export function installTableProjects(context: TableFixtureContext) {
     const visualGroups = new URLSearchParams(location.search).has("visuals")
       ? visualizationMcp(group)
       : [group];
+    const paging = Boolean(query.service && context.params.has("mcpPaging"));
+    if (paging && !query.cursor && window.holdMcpRefresh)
+      await new Promise<void>((resolve) => {
+        window.releaseMcpRefresh = resolve;
+      });
+    const nextCall = {
+      ...mcpCalls[0],
+      call: { ...mcpCalls[0].call, id: "next-call", toolName: "next-read" },
+    };
     return {
       services: [],
       groups: visualGroups,
       usageSummary: group,
       facets: { models: [], projects: [] },
-      calls: [],
-      totalCalls: 0,
-      nextCursor: null,
+      calls: paging
+        ? query.cursor
+          ? [...mcpCalls, nextCall, nextCall]
+          : mcpCalls
+        : [],
+      totalCalls: paging ? 2 : 0,
+      nextCursor: paging && !query.cursor ? "next-page" : null,
       selectedServiceId: null,
       selectedGroupId: query.service
         ? (visualGroups.find((item) => item.id === query.service)?.id ??

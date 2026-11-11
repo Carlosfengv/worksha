@@ -2,6 +2,8 @@ import { useAgentDirectory } from "@/shared/hooks/use-agent-directory";
 import { recordAgentKey } from "@/shared/types/agent";
 import { Button } from "@/components/ui/button";
 import { DataTable, useDataTable } from "@/components/ui/data-table";
+import { DialogClose } from "@/components/ui/dialog";
+import { MobileDrawer } from "@/components/ui/mobile-drawer";
 import {
   McpCallDetail,
   mcpElapsed,
@@ -9,24 +11,58 @@ import {
 import type { McpGroup, McpSnapshot } from "@/features/mcp/types";
 import { date, sessionLink, status } from "@/features/sessions/display";
 import type { ColumnDef } from "@tanstack/react-table";
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export function McpCallsTable({
   items,
   selected,
   scope,
   asOf,
-  expandedCall,
-  onExpandedCallChange,
 }: {
   items: McpSnapshot["calls"];
   selected: McpGroup;
   scope: string;
   asOf: string;
-  expandedCall: string;
-  onExpandedCallChange: (next: string | ((old: string) => string)) => void;
 }) {
   const { agentNames } = useAgentDirectory();
+  const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement>(null);
+  const pendingFocus = useRef<HTMLElement>(null);
+  const openCall = useCallback((id: string, trigger?: HTMLElement) => {
+    const button = tableRef.current?.querySelector<HTMLButtonElement>(
+      `[data-mcp-call="${CSS.escape(id)}"]`,
+    );
+    const active = document.activeElement;
+    triggerRef.current =
+      trigger ??
+      (active instanceof HTMLElement && active === button?.closest("tr")
+        ? active
+        : (button ?? null));
+    triggerRef.current?.focus({ preventScroll: true });
+    pendingFocus.current = null;
+    setSelectedCallId(id);
+  }, []);
+  function closeCall() {
+    pendingFocus.current = triggerRef.current;
+    setSelectedCallId(null);
+  }
+  useEffect(() => {
+    const target = pendingFocus.current;
+    if (selectedCallId || !target) return;
+    // The modal has been removed, so WebKit can focus the table again.
+    const frame = requestAnimationFrame(() => {
+      pendingFocus.current = null;
+      const active = document.activeElement;
+      if (
+        target.isConnected &&
+        (active === document.body || active === document.documentElement)
+      ) {
+        target.focus({ preventScroll: true });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [selectedCallId]);
   const columns = useMemo<ColumnDef<McpSnapshot["calls"][number]>[]>(
     () => [
       {
@@ -36,11 +72,22 @@ export function McpCallsTable({
         cell: ({ row }) => {
           const record = row.original;
           const { call } = record;
+          const tool = call.toolName ?? call.name;
           return (
             <>
-              <p className="max-w-72 break-all font-medium">
-                {call.toolName ?? call.name}
-              </p>
+              <Button
+                size="sm"
+                variant="link"
+                className="max-w-56 justify-start px-0"
+                aria-label={`调用详情 · ${tool}`}
+                aria-haspopup="dialog"
+                title={tool}
+                tabIndex={0}
+                data-mcp-call={call.id}
+                onClick={(event) => openCall(call.id, event.currentTarget)}
+              >
+                <span className="truncate">{tool}</span>
+              </Button>
               <p className="text-label text-fg-muted">
                 {record.association === "current_configuration"
                   ? "当前配置关联"
@@ -123,45 +170,30 @@ export function McpCallsTable({
       },
       {
         id: "actions",
-        header: () => <>详情 / 对话</>,
+        header: () => <>会话</>,
         enableSorting: false,
         cell: ({ row }) => {
           const record = row.original;
           const { call } = record;
           return (
-            <>
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-expanded={expandedCall === call.id}
-                aria-controls={`mcp-detail-${call.id}`}
-                onClick={() =>
-                  onExpandedCallChange((old) =>
-                    old === call.id ? "" : call.id,
-                  )
-                }
-              >
-                {expandedCall === call.id ? "收起详情" : "调用详情"}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  window.location.hash = sessionLink(call.sessionId, {
-                    agent: call.agentProductId ?? "unknown",
-                    anchor: call.id,
-                    returnTo: window.location.hash.replace(/^#/, ""),
-                  });
-                }}
-              >
-                查看 Session
-              </Button>
-            </>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                window.location.hash = sessionLink(call.sessionId, {
+                  agent: recordAgentKey(call),
+                  anchor: call.id,
+                  returnTo: window.location.hash.replace(/^#/, ""),
+                });
+              }}
+            >
+              查看会话
+            </Button>
           );
         },
       },
     ],
-    [expandedCall, onExpandedCallChange, agentNames],
+    [openCall, agentNames],
   );
 
   const { table } = useDataTable({
@@ -174,29 +206,44 @@ export function McpCallsTable({
     manualPagination: true,
     manualSorting: true,
   });
-  const expanded = items.find((row) => row.call.id === expandedCall);
+  const expanded = items.find((row) => row.call.id === selectedCallId);
   return (
-    <div className="space-y-4">
+    <div ref={tableRef}>
       <DataTable
         table={table}
         role="region"
         aria-label="MCP 调用列表"
         showPagination={false}
-        activeRowId={expandedCall}
-        onRowActivate={(row) =>
-          onExpandedCallChange((old) => (old === row.id ? "" : row.id))
-        }
+        activeRowId={expanded?.call.id}
+        onRowActivate={(row) => openCall(row.id)}
       />
       {expanded && (
-        <div id={`mcp-detail-${expanded.call.id}`}>
-          <McpCallDetail
-            key={`${expanded.call.id}:${asOf}`}
-            row={expanded}
-            service={selected}
-            scope={scope}
-            asOf={asOf}
-          />
-        </div>
+        <MobileDrawer
+          open
+          onClose={closeCall}
+          side="end"
+          triggerRef={triggerRef}
+          ariaLabel="MCP 调用详情"
+          panelClassName="flex w-full max-w-xl flex-col overflow-hidden p-0"
+        >
+          <header className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-4">
+            <h3 className="min-w-0 break-words text-title font-medium">
+              调用详情 · {expanded.call.toolName ?? expanded.call.name}
+            </h3>
+            <DialogClose render={<Button variant="tertiary" size="sm" />}>
+              关闭详情
+            </DialogClose>
+          </header>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <McpCallDetail
+              key={`${expanded.call.id}:${asOf}`}
+              row={expanded}
+              service={selected}
+              scope={scope}
+              asOf={asOf}
+            />
+          </div>
+        </MobileDrawer>
       )}
     </div>
   );

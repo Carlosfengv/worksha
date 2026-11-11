@@ -29,7 +29,6 @@ function Harness() {
     fixture.provider.getProvider,
   );
   const [editing, setEditing] = useState(false);
-  const [expandedCall, setExpandedCall] = useState("");
   const mode = fixture.mode;
   if (applicationTableModes.has(mode ?? "")) return <App />;
   return (
@@ -52,8 +51,6 @@ function Harness() {
             selected={mcpGroup}
             scope="临时夹具"
             asOf="2026-10-19T00:00:00Z"
-            expandedCall={expandedCall}
-            onExpandedCallChange={setExpandedCall}
           />
         ) : (
           <ProviderDetail

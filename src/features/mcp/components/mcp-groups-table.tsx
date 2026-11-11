@@ -36,10 +36,20 @@ const groupColumns = (
       />
     ),
     cell: ({ row }) => {
-      const { group: g } = row.original;
+      const { group: g, onOpen } = row.original;
       return (
         <>
-          <p className="max-w-64 break-all font-medium">{g.name}</p>
+          <Button
+            size="sm"
+            variant="link"
+            className="max-w-56 justify-start px-0"
+            aria-label={`查看 ${g.name}`}
+            title={g.name}
+            data-mcp-group={g.id}
+            onClick={() => onOpen(g.id)}
+          >
+            <span className="truncate">{g.name}</span>
+          </Button>
           <p className="text-label text-fg-muted">
             {g.identity === "unattributed"
               ? "未确认的服务来源"
@@ -126,21 +136,6 @@ const groupColumns = (
               </Badge>
             )}
           </p>
-        </>
-      );
-    },
-  },
-  {
-    id: "details",
-    header: () => <>详情</>,
-    enableSorting: false,
-    cell: ({ row }) => {
-      const { group: g, onOpen } = row.original;
-      return (
-        <>
-          <Button size="sm" variant="ghost" onClick={() => onOpen(g.id)}>
-            查看 {g.name}
-          </Button>
         </>
       );
     },

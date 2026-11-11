@@ -7,9 +7,10 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PageActions, PageBody, PageHeader } from "@/components/ui/page-layout";
+import { TabItem, TabPanel, Tabs, TabsList } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -22,7 +23,7 @@ import type { McpService, McpSnapshot } from "@/features/mcp/types";
 import { date, number } from "@/features/sessions/display";
 
 import { ConnectionEmpty } from "@/shared/ui/connection-empty";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useBackendReadEpoch } from "@/shared/hooks/use-backend-read-epoch";
 import { backendReadEpoch } from "@/shared/lib/backend-recovery";
 import { McpCallsTable } from "./components/mcp-calls-table";
@@ -132,16 +133,25 @@ export function McpPage({
   const filters = { agent, days, model, project };
   const key = JSON.stringify([selectedId, agent, days, model, project]);
   const [state, setState] = useState<{
+    epoch: symbol | null;
     key: string;
     data: McpSnapshot | null;
     loading: boolean;
     error: string | null;
-  }>({ key: "", data: null, loading: true, error: null });
+  }>({ epoch: null, key: "", data: null, loading: true, error: null });
   const [refresh, setRefresh] = useState(0),
     [search, setSearch] = useState("");
-  const [more, setMore] = useState(false),
-    [expandedCall, setExpandedCall] = useState("");
+  const [view, setView] = useState("services");
+  const [more, setMore] = useState(false);
   const sequence = useRef(0);
+  const body = useRef<HTMLDivElement>(null);
+  const title = useRef<HTMLHeadingElement>(null);
+  const listPosition = useRef<{
+    id: string;
+    top: number;
+    filters: Filters;
+    epoch: symbol;
+  } | null>(null);
   const epoch = useBackendReadEpoch();
   useEffect(() => {
     if (externalAgent) return;
@@ -149,8 +159,9 @@ export function McpPage({
     let alive = true;
     setMore(false);
     setState((old) => ({
+      epoch,
       key,
-      data: old.key === key ? old.data : null,
+      data: old.epoch === epoch && old.key === key ? old.data : null,
       loading: true,
       error: null,
     }));
@@ -164,13 +175,14 @@ export function McpPage({
       })
       .then((data) => {
         if (alive && sequence.current === token && epoch === backendReadEpoch())
-          setState({ key, data, loading: false, error: null });
+          setState({ epoch, key, data, loading: false, error: null });
       })
       .catch((reason) => {
         if (alive && sequence.current === token && epoch === backendReadEpoch())
           setState((old) => ({
+            epoch,
             key,
-            data: old.key === key ? old.data : null,
+            data: old.epoch === epoch && old.key === key ? old.data : null,
             loading: false,
             error: reason instanceof Error ? reason.message : String(reason),
           }));
@@ -191,9 +203,29 @@ export function McpPage({
     epoch,
     externalAgent,
   ]);
-  const data = state.key === key ? state.data : null;
-  const loading = state.key !== key || state.loading;
+  const current = state.key === key && state.epoch === epoch;
+  const data = current ? state.data : null;
+  const loading = !current || state.loading;
   const selected = data?.groups.find((g) => g.id === data.selectedGroupId);
+  const error = current ? state.error : null;
+  useLayoutEffect(() => {
+    if (!selectedId) return;
+    body.current?.scrollTo(0, 0);
+    title.current?.focus({ preventScroll: true });
+  }, [selectedId]);
+  useLayoutEffect(() => {
+    const previous = listPosition.current;
+    if (selectedId || !previous || (!data && !error)) return;
+    listPosition.current = null;
+    if (previous.epoch !== epoch || document.activeElement !== document.body)
+      return;
+    body.current?.scrollTo(0, previous.top);
+    const trigger = body.current?.querySelector<HTMLButtonElement>(
+      `[data-mcp-group="${CSS.escape(previous.id)}"]`,
+    );
+    (trigger ?? title.current)?.focus({ preventScroll: true });
+    trigger?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [selectedId, data, error, epoch]);
   const rows =
     data?.groups.filter((g) =>
       `${g.name} ${[...g.agentIds, ...g.configuredAgentIds].map((a) => agentNames[a]).join(" ")} ${g.projectPaths.join(" ")}`
@@ -216,8 +248,26 @@ export function McpPage({
   function change(patch: Partial<Filters>) {
     link(selected?.id ?? selectedId, { ...filters, ...patch });
   }
+  function openGroup(id: string) {
+    listPosition.current = {
+      id,
+      top: body.current?.scrollTop ?? 0,
+      filters,
+      epoch,
+    };
+    link(id, filters);
+  }
+  function backToList() {
+    const previous = listPosition.current;
+    link(
+      undefined,
+      previous?.epoch === epoch
+        ? previous.filters
+        : { ...filters, model: "all", project: "all" },
+    );
+  }
   async function loadMore() {
-    if (!data?.nextCursor || more) return;
+    if (!data?.nextCursor || loading || more) return;
     const token = sequence.current;
     setMore(true);
     try {
@@ -225,21 +275,22 @@ export function McpPage({
         ...data.appliedFilter,
         cursor: data.nextCursor,
       });
-      if (sequence.current === token && epoch === backendReadEpoch())
+      if (sequence.current === token && epoch === backendReadEpoch()) {
+        const calls = [...data.calls];
+        const seen = new Set(calls.map(({ call }) => call.id));
+        for (const item of next.calls) {
+          if (seen.has(item.call.id)) continue;
+          seen.add(item.call.id);
+          calls.push(item);
+        }
         setState({
+          epoch,
           key,
-          data: {
-            ...next,
-            calls: [
-              ...data.calls,
-              ...next.calls.filter(
-                (c) => !data.calls.some((old) => old.call.id === c.call.id),
-              ),
-            ],
-          },
+          data: { ...next, calls },
           error: null,
           loading: false,
         });
+      }
     } catch (reason) {
       if (sequence.current === token && epoch === backendReadEpoch())
         setState((old) => ({
@@ -256,339 +307,367 @@ export function McpPage({
     setRefresh((n) => n + 1);
   }
   return (
-    <div className="min-w-0 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
-          <Select value={agent} onValueChange={(v) => change({ agent: v })}>
-            <SelectTrigger aria-label="MCP Agent" />
-            <SelectContent>
-              <SelectItem value="all">全部 Agents</SelectItem>
-              {agentProducts.map(({ id, name }) => (
-                <SelectItem key={id} value={id}>
-                  {name}
-                </SelectItem>
-              ))}
-              <SelectItem value="unknown">客户端未知</SelectItem>
-              <SelectItem value="claude-unknown">
-                Claude · 客户端未知
-              </SelectItem>
-              <SelectItem value="codex-unknown">Codex · 客户端未知</SelectItem>
-            </SelectContent>
-          </Select>
-          {!externalAgent && (
-            <Select value={days} onValueChange={(v) => change({ days: v })}>
-              <SelectTrigger aria-label="MCP 会话开始范围" />
+    <PageBody ref={body} className="relative space-y-4 p-4 lg:p-6">
+      <section
+        className="min-w-0 space-y-4"
+        aria-label={selectedId ? "MCP 聚合详情" : "MCP 工作区"}
+      >
+        <PageHeader className="px-0">
+          <h2
+            ref={title}
+            tabIndex={-1}
+            className="min-w-0 break-words text-title font-medium"
+          >
+            {selected?.name ?? (selectedId ? "MCP 详情" : "MCP")}
+          </h2>
+          <PageActions>
+            {!externalAgent && selectedId && (
+              <Button variant="tertiary" onClick={backToList}>
+                返回 MCP 列表
+              </Button>
+            )}
+            {!externalAgent && (
+              <Button
+                variant="tertiary"
+                loading={loading}
+                disabled={loading}
+                onClick={refreshData}
+              >
+                重新读取 MCP 配置
+              </Button>
+            )}
+          </PageActions>
+        </PageHeader>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
+            <Select value={agent} onValueChange={(v) => change({ agent: v })}>
+              <SelectTrigger aria-label="MCP Agent" />
               <SelectContent>
-                <SelectItem value="all">全部会话</SelectItem>
-                <SelectItem value="7">最近 7 天开始的会话</SelectItem>
-                <SelectItem value="30">最近 30 天开始的会话</SelectItem>
+                <SelectItem value="all">全部 Agents</SelectItem>
+                {agentProducts.map(({ id, name }) => (
+                  <SelectItem key={id} value={id}>
+                    {name}
+                  </SelectItem>
+                ))}
+                <SelectItem value="unknown">客户端未知</SelectItem>
+                <SelectItem value="claude-unknown">
+                  Claude · 客户端未知
+                </SelectItem>
+                <SelectItem value="codex-unknown">
+                  Codex · 客户端未知
+                </SelectItem>
               </SelectContent>
             </Select>
-          )}
+            {!externalAgent && (
+              <Select value={days} onValueChange={(v) => change({ days: v })}>
+                <SelectTrigger aria-label="MCP 会话开始范围" />
+                <SelectContent>
+                  <SelectItem value="all">全部会话</SelectItem>
+                  <SelectItem value="7">最近 7 天开始的会话</SelectItem>
+                  <SelectItem value="30">最近 30 天开始的会话</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          </div>
         </div>
-        {!externalAgent && (
-          <Button
-            variant="tertiary"
-            loading={loading}
-            disabled={loading}
-            onClick={refreshData}
-          >
-            重新读取 MCP 配置
-          </Button>
-        )}
-      </div>
-      {!!unobserved.length && (
-        <p role="status" className="text-label text-fg-muted">
-          {unobserved.map((product) => product.name).join("、")}的来源插件未提供
-          MCP 记录，调用次数未知。
-        </p>
-      )}
-      <PublishedSources
-        key={agent}
-        mode="mcp"
-        productId={agent === "all" ? undefined : agent}
-      />
-      {!externalAgent && state.key === key && state.error && (
-        <Alert status="danger">
-          <AlertTitle>MCP 数据读取未完成</AlertTitle>
-          <AlertDescription>
-            {state.error}
-            {data ? " 当前显示上次读取的快照。" : ""} 可刷新重试。
-          </AlertDescription>
-          {project !== "all" && (
-            <Button
-              variant="tertiary"
-              onClick={() => link(selectedId, { ...filters, project: "all" })}
-            >
-              清除项目筛选
-            </Button>
-          )}
-        </Alert>
-      )}
-      {!externalAgent && selectedId && (
-        <Button
-          variant="ghost"
-          onClick={() =>
-            link(undefined, { ...filters, model: "all", project: "all" })
-          }
-        >
-          返回 MCP 列表
-        </Button>
-      )}
-      {externalAgent ? null : !data ? (
-        <ConnectionEmpty
-          title={loading ? "正在读取 MCP 与调用…" : "MCP 数据暂不可用"}
-          description="只读标准配置与已授权历史，不执行工具。"
-        />
-      ) : (
-        <>
-          <p className="text-label text-fg-subtle">
-            更新于 {date(data.asOf)} · 部分采集
+        {!!unobserved.length && (
+          <p role="status" className="text-label text-fg-muted">
+            {unobserved.map((product) => product.name).join("、")}
+            的来源插件未提供 MCP 记录，调用次数未知。
           </p>
-          {!selectedId ? (
-            <>
-              <Input
-                aria-label="搜索 MCP"
-                placeholder="搜索 MCP、Agent 或项目"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              <p className="text-label text-fg-muted">
-                {rows.filter((g) => g.identity === "server_name").length} 个 MCP
-              </p>
-              <div>
-                <p className="text-label text-fg-muted">
-                  关联模型 Token · 已去重
-                </p>
-                <Tokens group={data.usageSummary} />
-              </div>
-              {rows.length ? (
-                <div className="space-y-4">
-                  <McpUsageComparison
-                    rows={rows}
-                    onOpen={(id) => link(id, filters)}
-                  />
-                  <McpGroupsTable
-                    rows={rows}
-                    onOpen={(id) => link(id, filters)}
-                  />
-                </div>
-              ) : (
-                <ConnectionEmpty
-                  title={
-                    search ? "没有匹配的 MCP" : "当前范围未发现 MCP 配置或调用"
-                  }
-                  description="这里只读已授权 Agent 的标准配置与历史，不会自动连接或启动 MCP。可重新读取配置，或在 Agents 中检查读取授权。"
-                  action="检查 Agent 读取范围"
-                  onAction={() => {
-                    window.location.hash = "/agents";
-                  }}
+        )}
+        <PublishedSources
+          key={agent}
+          mode="mcp"
+          productId={agent === "all" ? undefined : agent}
+        />
+        {!externalAgent && error && (
+          <Alert status="danger">
+            <AlertTitle>MCP 数据读取未完成</AlertTitle>
+            <AlertDescription>
+              {error}
+              {data ? " 当前显示上次读取的快照。" : ""} 可刷新重试。
+            </AlertDescription>
+            {project !== "all" && (
+              <Button
+                variant="tertiary"
+                onClick={() => link(selectedId, { ...filters, project: "all" })}
+              >
+                清除项目筛选
+              </Button>
+            )}
+          </Alert>
+        )}
+        {externalAgent ? null : !data ? (
+          loading && (
+            <p role="status" className="text-body text-fg-muted">
+              正在读取 MCP 与调用…
+            </p>
+          )
+        ) : (
+          <>
+            <p className="text-label text-fg-subtle">
+              更新于 {date(data.asOf)} · 部分采集
+            </p>
+            {!selectedId ? (
+              <>
+                <Input
+                  aria-label="搜索 MCP"
+                  placeholder="搜索 MCP、Agent 或项目"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
                 />
-              )}
-            </>
-          ) : selected ? (
-            <>
-              <section aria-label="MCP 聚合详情" className="space-y-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-title font-medium">{selected.name}</h2>
-                  <Badge>
-                    {selected.identity === "unattributed"
-                      ? "来源未知"
-                      : "按 MCP 名称聚合"}
-                  </Badge>
-                </div>
                 <p className="text-label text-fg-muted">
-                  调用来源：
-                  {selected.agentIds
-                    .map((a) => agentNames[a] ?? a)
-                    .join(" / ") || "尚无记录"}{" "}
-                  · {selected.configurationCount} 份当前配置 · 当前连接未知 ·
-                  原生历史
+                  {rows.filter((g) => g.identity === "server_name").length} 个
+                  MCP
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  <Select
-                    value={model}
-                    onValueChange={(v) => change({ model: v })}
+                {rows.length ? (
+                  <Tabs
+                    value={view}
+                    onValueChange={setView}
+                    variant="underline"
+                    color="default"
                   >
-                    <SelectTrigger
-                      aria-label="筛选 MCP 模型"
-                      wrapperClassName="min-w-0 max-w-full"
-                      className="w-64 max-w-full"
-                    />
-                    <SelectContent className="max-w-[calc(100vw-2rem)]">
-                      <SelectItem value="all">全部模型</SelectItem>
-                      {model !== "all" &&
-                        !data.facets.models.some((f) => f.id === model) && (
-                          <SelectItem value={model}>
-                            所选模型 · 当前范围无记录
-                          </SelectItem>
-                        )}
-                      {data.facets.models.map((f) => (
-                        <SelectItem key={f.id} value={f.id}>
-                          {f.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={project}
-                    onValueChange={(v) => change({ project: v })}
-                  >
-                    <SelectTrigger
-                      aria-label="筛选 MCP 项目"
-                      wrapperClassName="min-w-0 max-w-full"
-                      className="w-80 max-w-full"
-                    />
-                    <SelectContent className="max-w-[calc(100vw-2rem)]">
-                      <SelectItem value="all">全部项目</SelectItem>
-                      {project !== "all" &&
-                        !data.facets.projects.some((f) => f.id === project) && (
-                          <SelectItem value={project}>
-                            所选项目 · 当前范围无记录
-                          </SelectItem>
-                        )}
-                      {data.facets.projects.map((f) => (
-                        <SelectItem key={f.id} value={f.id}>
-                          {f.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {(agent !== "all" ||
-                    model !== "all" ||
-                    project !== "all") && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        change({ agent: "all", model: "all", project: "all" })
-                      }
+                    <TabsList aria-label="MCP 视图">
+                      <TabItem value="services" label="服务目录" />
+                      <TabItem value="analysis" label="调用分析" />
+                    </TabsList>
+                    <TabPanel value="services" className="pt-3">
+                      <McpGroupsTable rows={rows} onOpen={openGroup} />
+                    </TabPanel>
+                    <TabPanel value="analysis" className="space-y-4 pt-3">
+                      {!search.trim() && (
+                        <div>
+                          <p className="text-label text-fg-muted">
+                            关联模型 Token · 已去重
+                          </p>
+                          <Tokens group={data.usageSummary} />
+                        </div>
+                      )}
+                      <McpUsageComparison rows={rows} onOpen={openGroup} />
+                    </TabPanel>
+                  </Tabs>
+                ) : (
+                  <ConnectionEmpty
+                    title={
+                      search
+                        ? "没有匹配的 MCP"
+                        : "当前范围未发现 MCP 配置或调用"
+                    }
+                    description={
+                      search ? undefined : "只显示已读取的配置和调用历史。"
+                    }
+                    action={search ? "清除搜索" : "检查 Agent 读取范围"}
+                    onAction={() => {
+                      if (search) setSearch("");
+                      else window.location.hash = "/agents";
+                    }}
+                  />
+                )}
+              </>
+            ) : selected ? (
+              <>
+                <div className="space-y-2">
+                  <p className="text-label text-fg-muted">
+                    {selected.agentIds
+                      .map((a) => agentNames[a] ?? a)
+                      .join(" / ") || "调用来源未知"}{" "}
+                    · {selected.configurationCount} 份配置 · 连接状态未知
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Select
+                      value={model}
+                      onValueChange={(v) => change({ model: v })}
                     >
-                      清除调用筛选
+                      <SelectTrigger
+                        aria-label="筛选 MCP 模型"
+                        wrapperClassName="min-w-0 max-w-full"
+                        className="w-48 max-w-full"
+                      />
+                      <SelectContent className="max-w-[calc(100vw-2rem)]">
+                        <SelectItem value="all">全部模型</SelectItem>
+                        {model !== "all" &&
+                          !data.facets.models.some((f) => f.id === model) && (
+                            <SelectItem value={model}>
+                              所选模型 · 当前范围无记录
+                            </SelectItem>
+                          )}
+                        {data.facets.models.map((f) => (
+                          <SelectItem key={f.id} value={f.id}>
+                            {f.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={project}
+                      onValueChange={(v) => change({ project: v })}
+                    >
+                      <SelectTrigger
+                        aria-label="筛选 MCP 项目"
+                        wrapperClassName="min-w-0 max-w-full"
+                        className="w-56 max-w-full"
+                      />
+                      <SelectContent className="max-w-[calc(100vw-2rem)]">
+                        <SelectItem value="all">全部项目</SelectItem>
+                        {project !== "all" &&
+                          !data.facets.projects.some(
+                            (f) => f.id === project,
+                          ) && (
+                            <SelectItem value={project}>
+                              所选项目 · 当前范围无记录
+                            </SelectItem>
+                          )}
+                        {data.facets.projects.map((f) => (
+                          <SelectItem key={f.id} value={f.id}>
+                            {f.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {(agent !== "all" ||
+                      model !== "all" ||
+                      project !== "all") && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          change({ agent: "all", model: "all", project: "all" })
+                        }
+                      >
+                        清除调用筛选
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <section aria-label="MCP 历史调用" className="space-y-3">
+                  <h2 className="text-title font-medium">
+                    调用记录 · {number(data.totalCalls)}
+                  </h2>
+                  {data.calls.length ? (
+                    <McpCallsTable
+                      items={data.calls}
+                      selected={selected}
+                      scope={scope}
+                      asOf={data.asOf}
+                    />
+                  ) : (
+                    <ConnectionEmpty
+                      title="当前筛选没有已记录调用"
+                      description={
+                        selected.callCount == null
+                          ? "来源未授权或读取未完成，实际调用数量未知。"
+                          : "可调整 Agent、模型、项目或会话范围。"
+                      }
+                    />
+                  )}
+                  {data.nextCursor && (
+                    <Button
+                      variant="tertiary"
+                      disabled={loading}
+                      loading={more}
+                      onClick={() => void loadMore()}
+                    >
+                      加载更多调用
                     </Button>
                   )}
-                </div>
-                <p className="break-all text-label text-fg-subtle">{scope}</p>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <Metric
-                    label="调用次数"
-                    value={number(selected.callCount)}
-                    note={`${selected.sessionCount} 个关联 Session`}
-                  />
-                  <div className="rounded-xl border border-border p-4">
-                    <p className="mb-2 text-label text-fg-muted">
-                      关联模型 Token
-                    </p>
-                    <Tokens group={selected} />
-                  </div>
-                  <Metric
-                    label="最近一次调用"
-                    value={date(selected.lastCallAt)}
-                    note="当前筛选内的原生调用时间"
-                  />
-                  <Metric
-                    label="原生延迟 P95"
-                    value={mcpElapsed(selected.p95Ms)}
-                    note={`${selected.durationSamples} 个有效样本 · ${selected.errorCount} 次原生错误`}
-                  />
-                </div>
+                </section>
+                <Accordion>
+                  <AccordionItem value="metrics">
+                    <AccordionTrigger>调用指标</AccordionTrigger>
+                    <AccordionContent>
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <Metric
+                          label="调用次数"
+                          value={number(selected.callCount)}
+                          note={`${selected.sessionCount} 个关联会话`}
+                        />
+                        <div className="rounded-xl border border-border p-4">
+                          <p className="mb-2 text-label text-fg-muted">
+                            关联模型 Token
+                          </p>
+                          <Tokens group={selected} />
+                        </div>
+                        <Metric
+                          label="最近一次调用"
+                          value={date(selected.lastCallAt)}
+                          note="当前筛选内的原生调用时间"
+                        />
+                        <Metric
+                          label="原生延迟 P95"
+                          value={mcpElapsed(selected.p95Ms)}
+                          note={`${selected.durationSamples} 个有效样本 · ${selected.errorCount} 次原生错误`}
+                        />
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
                 <Configurations
                   services={data.services.filter((s) =>
                     selected.serviceIds.includes(s.id),
                   )}
                 />
-              </section>
-              <section aria-label="MCP 历史调用" className="space-y-3">
-                <h2 className="text-title font-medium">
-                  调用记录 · {number(data.totalCalls)}
-                </h2>
-                {data.calls.length ? (
-                  <McpCallsTable
-                    items={data.calls}
-                    selected={selected}
-                    scope={scope}
-                    asOf={data.asOf}
-                    expandedCall={expandedCall}
-                    onExpandedCallChange={setExpandedCall}
-                  />
-                ) : (
-                  <ConnectionEmpty
-                    title="当前筛选没有已记录调用"
-                    description={
-                      selected.callCount == null
-                        ? "来源未授权或读取未完成，实际调用数量未知。"
-                        : "可调整 Agent、模型、项目或会话范围。"
-                    }
-                  />
-                )}
-                {data.nextCursor && (
-                  <Button
-                    variant="tertiary"
-                    loading={more}
-                    onClick={() => void loadMore()}
-                  >
-                    加载更多调用
-                  </Button>
-                )}
-              </section>
-            </>
-          ) : null}
-          <Accordion className="w-full">
-            <AccordionItem value="scope">
-              <AccordionTrigger>采集与统计说明</AccordionTrigger>
-              <AccordionContent>
-                <div className="space-y-2 text-label text-fg-muted">
-                  <p>
-                    按 MCP 名称聚合，同名服务可能来自不同
-                    Endpoint。连接状态与无法确认的调用来源保留未知。
-                  </p>
-                  <p>
-                    Token 来自关联模型响应，包含该响应其他内容，不是 MCP
-                    独立用量。汇总已跨 MCP 去重，各行不可直接相加。
-                  </p>
-                  <p>会话索引更新于 {date(data.historyAsOf)}</p>
-                  {data.sources
-                    .filter(
-                      (s) =>
-                        agent === "all" ||
-                        agent === "unknown" ||
-                        s.agentId === agentFamily(agent),
-                    )
-                    .map((s) => (
-                      <p key={s.agentId}>
-                        {familyNames[s.agentId]} ·{" "}
-                        {!s.enabled
-                          ? "未授权"
-                          : s.status === "ready"
-                            ? "已接入"
-                            : s.status === "partial"
-                              ? "部分可读"
-                              : "读取中"}
-                      </p>
-                    ))}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      window.location.hash = "/agents";
-                    }}
-                  >
-                    管理会话来源
-                  </Button>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-          <div className="space-y-2">
-            {data.warnings.map((w) => (
-              <p key={w} className="break-all text-label text-fg-subtle">
-                {w}
-              </p>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
+              </>
+            ) : (
+              <ConnectionEmpty title="当前范围内没有该 MCP" />
+            )}
+            <Accordion className="w-full">
+              <AccordionItem value="scope">
+                <AccordionTrigger>采集与统计说明</AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-2 text-label text-fg-muted">
+                    <p>
+                      按 MCP 名称聚合，同名服务可能来自不同
+                      Endpoint。连接状态与无法确认的调用来源保留未知。
+                    </p>
+                    <p>
+                      Token 来自关联模型响应，包含该响应其他内容，不是 MCP
+                      独立用量。汇总已跨 MCP 去重，各行不可直接相加。
+                    </p>
+                    <p>会话索引更新于 {date(data.historyAsOf)}</p>
+                    {data.sources
+                      .filter(
+                        (s) =>
+                          agent === "all" ||
+                          agent === "unknown" ||
+                          s.agentId === agentFamily(agent),
+                      )
+                      .map((s) => (
+                        <p key={s.agentId}>
+                          {familyNames[s.agentId]} ·{" "}
+                          {!s.enabled
+                            ? "未授权"
+                            : s.status === "ready"
+                              ? "已接入"
+                              : s.status === "partial"
+                                ? "部分可读"
+                                : "读取中"}
+                        </p>
+                      ))}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        window.location.hash = "/agents";
+                      }}
+                    >
+                      管理会话来源
+                    </Button>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+            <div className="space-y-2">
+              {data.warnings.map((w) => (
+                <p key={w} className="break-all text-label text-fg-subtle">
+                  {w}
+                </p>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+    </PageBody>
   );
 }
 function Metric({

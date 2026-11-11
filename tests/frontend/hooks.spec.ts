@@ -212,7 +212,9 @@ test("browser entry keeps native operations unavailable across lazy routes", asy
   page,
 }) => {
   await page.goto("/");
-  await expect(page.getByText("本地服务未连接", { exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveText(
+    "请在 Local Agent 桌面应用中连接本机数据。",
+  );
   for (const hash of [
     "agents",
     "providers",
@@ -224,12 +226,12 @@ test("browser entry keeps native operations unavailable across lazy routes", asy
   ]) {
     await page.goto(`/#/${hash}`);
     await expect(page.locator("main")).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveText(
+      "请在 Local Agent 桌面应用中连接本机数据。",
+    );
     await expect(
-      page.getByText("本机数据尚未连接", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByText("本地服务未连接", { exact: true }),
-    ).toBeVisible();
+      page.getByRole("button", { name: "重新读取", exact: true }),
+    ).toBeEnabled();
   }
 });
 

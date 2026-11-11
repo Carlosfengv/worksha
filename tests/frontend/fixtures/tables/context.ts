@@ -6,6 +6,8 @@ declare global {
   interface Window {
     savedProviders: Provider[];
     scopeQueries: { feature: string; query: Record<string, unknown> }[];
+    holdMcpRefresh?: boolean;
+    releaseMcpRefresh?: () => void;
     projectVisibilityChanges: { id: string; hidden: boolean }[];
     failProjectVisibility: boolean;
     failProviderUsage: boolean;

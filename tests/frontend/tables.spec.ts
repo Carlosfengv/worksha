@@ -126,6 +126,35 @@ test("native Agent rows navigate to their own details alongside bundled DSH", as
 });
 import type {} from "./tables-harness";
 
+test("MCP pagination waits for a refresh and merges overlapping calls once", async ({
+  page,
+}) => {
+  await page.goto(
+    `/tests/frontend/tables.html?mode=mcp-page&mcpPaging#/mcp/${"a".repeat(64)}`,
+  );
+  const loadMore = page.getByRole("button", { name: "加载更多调用" });
+  await expect(loadMore).toBeEnabled();
+  await page.evaluate(() => {
+    window.holdMcpRefresh = true;
+  });
+  await page.getByRole("button", { name: "重新读取 MCP 配置" }).click();
+  await expect
+    .poll(() => page.evaluate(() => typeof window.releaseMcpRefresh))
+    .toBe("function");
+  await expect(loadMore).toBeDisabled();
+  await page.evaluate(() => {
+    window.holdMcpRefresh = false;
+    window.releaseMcpRefresh?.();
+  });
+  await loadMore.click();
+  await expect(
+    page.getByRole("button", { name: "调用详情 · read", exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "调用详情 · next-read", exact: true }),
+  ).toHaveCount(1);
+});
+
 test("MCP independent Agent filters retain configuration-only groups and scope detail requests", async ({
   page,
 }) => {
@@ -173,8 +202,8 @@ test("MCP independent Agent filters retain configuration-only groups and scope d
     )
     .toBe("unknown");
   await expect(
-    page.getByRole("region", { name: "MCP 聚合详情" }),
-  ).toContainText("调用来源：客户端来源未知");
+    page.getByText(/^客户端来源未知 · .*连接状态未知$/),
+  ).toBeVisible();
 });
 
 test("project Agent filter drives totals, calls, date and tab navigation together", async ({
@@ -520,28 +549,40 @@ test("DataTable owns horizontal overflow at narrow width", async ({ page }) => {
 test("MCP rows activate by keyboard while nested session actions keep their own behavior", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 720, height: 560 });
   await page.goto("/tests/frontend/tables.html?mode=mcp");
   const region = page.getByRole("region", {
     name: "MCP 调用列表",
     exact: true,
   });
+  const tool = region.getByRole("button", {
+    name: "调用详情 · read",
+    exact: true,
+  });
+  await expect(tool).toBeInViewport();
   const row = region.getByRole("row").nth(1);
   await row.focus();
   await row.press("Enter");
+  const drawer = page.getByRole("dialog", {
+    name: "MCP 调用详情",
+    exact: true,
+  });
+  await expect(drawer).toBeInViewport();
   await expect(
     page.getByRole("region", { name: "MCP 调用详情", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "调用详情 · read", exact: true }),
   ).toBeVisible();
-  await row.focus();
-  await row.press("Enter");
+  await page.keyboard.press("Escape");
   await expect(
     page.getByRole("region", { name: "MCP 调用详情", exact: true }),
   ).toHaveCount(0);
-  await region
-    .getByRole("button", { name: "查看 Session", exact: true })
-    .click();
+  await expect(row).toBeFocused();
+  await tool.click();
+  await drawer.getByRole("button", { name: "关闭详情", exact: true }).click();
+  await expect(tool).toBeFocused();
+  await region.getByRole("button", { name: "查看会话", exact: true }).click();
   await expect(page).toHaveURL(/#\/sessions\/fixture-session\?/);
   await expect(
     page.getByRole("region", { name: "MCP 调用详情", exact: true }),

@@ -151,7 +151,7 @@ export const builtinPlugins: readonly UiPlugin[] = [
         label: "MCP",
         icon: "doc-thinking-steps",
         footer: false,
-        ownsBody: false,
+        ownsBody: true,
         refreshInHeader: false,
         resetScrollOnObject: false,
         render: ({ data, route, pageRefresh }) => (

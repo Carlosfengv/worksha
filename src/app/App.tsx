@@ -93,7 +93,7 @@ function WorkspacePage({
   return ownsBody ? (
     content
   ) : (
-    <PageBody ref={bodyRef} className="relative p-4 sm:p-6">
+    <PageBody ref={bodyRef} className="relative p-4 lg:p-6">
       {content}
     </PageBody>
   );
@@ -411,7 +411,7 @@ function Workspace() {
                           bodyRef={pageBodyRef}
                         />
                       ) : (
-                        <PageBody className="p-4 sm:p-6">
+                        <PageBody className="p-4 lg:p-6">
                           <Alert>
                             <AlertTitle>
                               {builtin.loading && !builtin.data

@@ -137,6 +137,7 @@ test("MCP result and latency comparisons retain unknown groups and scoped servic
   await page.goto(
     "/tests/frontend/tables.html?mode=projects-page&visuals=1#/mcp?agent=codex-cli&days=7",
   );
+  await page.getByRole("tab", { name: "调用分析", exact: true }).click();
   const comparison = page.getByRole("region", {
     name: "MCP 调用比较",
     exact: true,
@@ -187,6 +188,8 @@ test("visual analysis fits compact light and dark contexts without page-wide ove
     await page.goto(url);
     if (name === "requests")
       await page.getByRole("tab", { name: "趋势分析", exact: true }).click();
+    if (name === "mcp")
+      await page.getByRole("tab", { name: "调用分析", exact: true }).click();
     await expect(
       page.getByRole("region", {
         name:
