@@ -18,14 +18,23 @@ const desktop = path.join(home, "Library/Application Support/Claude-3p/configLib
 const desktopProfile = randomUUID();
 mkdirSync(desktop, { recursive: true });
 writeFileSync(path.join(desktop, "_meta.json"), JSON.stringify({ appliedId: desktopProfile }), { mode: 0o600 });
+const opencodeComment = "// Keep this OpenCode setting\n";
+const opencodeBasePath = path.join(home, ".config/opencode/opencode.json");
+const opencodeBase = JSON.stringify({ enabled_providers: ["untouched", "inherited"] }) + "\n";
+writeFileSync(opencodeBasePath, opencodeBase, { mode: 0o600 });
 const originals = {
   claude: JSON.stringify({ permissions: { allow: ["Read"] }, enabledPlugins: { keep: true }, env: { KEEP_ME: "yes" } }) + "\n",
-  opencode: JSON.stringify({ provider: { untouched: { npm: "@ai-sdk/anthropic" } }, mcp: { keep: { type: "local", command: ["fixture"] } }, keep: true }) + "\n",
+  opencode: opencodeComment + JSON.stringify({ provider: { untouched: { npm: "@ai-sdk/anthropic" } }, mcp: { keep: { type: "local", command: ["fixture"] } }, keep: true }) + "\n",
   "claude-desktop": JSON.stringify({ coworkEgressAllowedHosts: ["example.invalid"] }) + "\n",
   codex: "# preserved\nmodel = 'original'\n[mcp_servers.keep]\ncommand = 'fixture'\n",
 };
-const files = { claude: path.join(home, ".claude/settings.json"), opencode: path.join(home, ".config/opencode/opencode.json"), "claude-desktop": path.join(desktop, desktopProfile + ".json"), codex: path.join(home, ".codex/config.toml") };
+const files = { claude: path.join(home, ".claude/settings.json"), opencode: path.join(home, ".config/opencode/opencode.jsonc"), "claude-desktop": path.join(desktop, desktopProfile + ".json"), codex: path.join(home, ".codex/config.toml") };
 for (const agent of Object.keys(files)) writeFileSync(files[agent], originals[agent], { mode: 0o600 });
+function readOpenCodeFixture() {
+  const text = readFileSync(files.opencode, "utf8");
+  assert(text.startsWith(opencodeComment));
+  return JSON.parse(text.slice(opencodeComment.length));
+}
 const hash = file => createHash("sha256").update(readFileSync(file)).digest("hex");
 const servers = [], seen = [];
 let child, stderr = "", hold = false, arrive, release, unexpectedTool = false, limitedAccount;
@@ -177,7 +186,9 @@ try {
   await api(`/api/model-services/${unused.id}/delete`, { expectedRevision: 1 });
   const cli = JSON.parse(readFileSync(files.claude));
   assert.equal(cli.modelPicker.options.length, 3); assert.equal(cli.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS, "48000"); assert.equal(cli.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS, "4096"); assert(cli.permissions.allow.includes("Read")); assert(cli.enabledPlugins.keep); assert.equal(cli.env.KEEP_ME, "yes");
-  const opencode = JSON.parse(readFileSync(files.opencode)); const group = opencode.model.split("/")[0]; const local = opencode.provider[group].options; const route = local.baseURL + "/messages";
+  const opencode = readOpenCodeFixture(); const group = opencode.model.split("/")[0]; const local = opencode.provider[group].options; const route = local.baseURL + "/messages";
+  assert.deepEqual(opencode.enabled_providers, ["untouched", "inherited", group]);
+  assert.equal(readFileSync(opencodeBasePath, "utf8"), opencodeBase);
   assert(opencode.keep && opencode.provider.untouched && opencode.mcp.keep); assert.equal(Object.keys(opencode.provider[group].models).length, 3); assert.equal(opencode.provider[group].models[`local-agent-model-${models[1].id}`].limit.context, 96000);
   const installedHashes = Object.fromEntries(Object.entries(files).map(([a, p]) => [a, hash(p)]));
   const desktopConfig = JSON.parse(readFileSync(files["claude-desktop"]));
@@ -286,7 +297,8 @@ try {
   const sync = await api("/api/model-service-connections", { agentId: "opencode", expectedRevision: config.revision, serviceId: service.id, expectedServiceRevision: service.revision });
   await api(`/api/provider-switches/${sync.id}/apply`, {});
   assert.notEqual(hash(files.opencode), installedHashes.opencode);
-  const synced=JSON.parse(readFileSync(files.opencode)); assert.equal(synced.model.split("/")[0],group); assert.equal(synced.small_model,opencode.small_model); assert(synced.provider[synced.small_model.split("/")[0]]); assert.deepEqual(Object.keys(synced.provider).sort(),Object.keys(opencode.provider).sort());
+  const synced=readOpenCodeFixture(); assert.equal(synced.model.split("/")[0],group); assert.equal(synced.small_model,opencode.small_model); assert(synced.provider[synced.small_model.split("/")[0]]); assert.deepEqual(Object.keys(synced.provider).sort(),Object.keys(opencode.provider).sort());
+  assert.deepEqual(synced.enabled_providers, opencode.enabled_providers);
   const undoSync = await api(`/api/provider-switches/${sync.id}/restore`, {}); await api(`/api/provider-switches/${undoSync.id}/apply`, {}); assert.equal(hash(files.opencode), installedHashes.opencode);
   const codexProviderId = () => readFileSync(files.codex, "utf8").match(/^model_provider = "([^"]+)"/m)[1];
   const installedCodexId = codexProviderId();
@@ -317,6 +329,8 @@ try {
   for (const agent of Object.keys(files)) {
     const restore = await api(`/api/provider-switches/${transactions[agent].id}/restore`, {}); await api(`/api/provider-switches/${restore.id}/apply`, {}); assert.equal(readFileSync(files[agent], "utf8"), originals[agent]);
   }
+  assert.equal(readFileSync(opencodeBasePath, "utf8"), opencodeBase);
+  assert.equal(readOpenCodeFixture().enabled_providers, undefined);
   await api(`/api/model-services/${service.id}/delete`, { expectedRevision: service.revision });
   assert.equal((await api("/api/model-services")).services.length, 0);
   for (const [index, provider] of sources.entries()) {
@@ -325,7 +339,7 @@ try {
     const config = (await api("/api/provider-status")).configs.find(c => c.agentId === "opencode");
     const connect = await api("/api/model-service-connections", { agentId: "opencode", expectedRevision: config.revision, serviceId: chat.id, expectedServiceRevision: chat.revision });
     await api(`/api/provider-switches/${connect.id}/apply`, {});
-    const installed = JSON.parse(readFileSync(files.opencode));
+    const installed = readOpenCodeFixture();
     const entry = installed.provider[installed.model.split("/")[0]];
     assert(Object.values(entry.models).every(model => model.tool_call === false), "Text-only metadata must not claim tool capability");
     const chatSession = `ses_chat${index}${randomUUID().replaceAll("-", "")}`;
@@ -487,7 +501,7 @@ try {
     agentId: "opencode", expectedRevision: poolConfig.revision, serviceId: pooledService.id, expectedServiceRevision: pooledService.revision,
   });
   await api(`/api/provider-switches/${poolConnect.id}/apply`, {});
-  const poolInstalled = JSON.parse(readFileSync(files.opencode));
+  const poolInstalled = readOpenCodeFixture();
   const poolEndpoint = poolInstalled.provider[poolInstalled.model.split("/")[0]].options;
   const callPool = async (messages, session, expected = 200, extra = {}) => {
     const headers = { Authorization: `Bearer ${poolEndpoint.apiKey}`, "Content-Type": "application/json" };
@@ -1083,7 +1097,7 @@ try {
     serviceId: conditioned.id, expectedServiceRevision: conditioned.revision,
   });
   await api(`/api/provider-switches/${conditionConnection.id}/apply`, {});
-  const conditionFile = JSON.parse(readFileSync(files.opencode));
+  const conditionFile = readOpenCodeFixture();
   const conditionOptions = conditionFile.provider[conditionFile.model.split("/")[0]].options;
   const callRule = async (session, options = {}, expected = 200, headers = {}) => {
     const r = await fetch(conditionOptions.baseURL + "/messages", {
@@ -1361,7 +1375,7 @@ try {
   await api(`/api/provider-switches/${nestedConnect.id}/apply`, {});
   assert.equal(seen.length, beforeAttach, "Attaching a published child doesn't require another paid probe");
   writeFileSync(verificationFile, freshVerifications);
-  const nestedFile = JSON.parse(readFileSync(files.opencode));
+  const nestedFile = readOpenCodeFixture();
   const nestedOptions = nestedFile.provider[nestedFile.model.split("/")[0]].options;
   const callNested = (session, messages = first, model = "local-agent-default", options = {}) => fetch(nestedOptions.baseURL + "/messages", {
     method: "POST",
@@ -1605,7 +1619,7 @@ try {
     agentId: "opencode", expectedRevision: duplicateConfig.revision, serviceId: duplicateRoot.id, expectedServiceRevision: duplicateRoot.revision,
   });
   await api(`/api/provider-switches/${duplicateConnect.id}/apply`, {});
-  const duplicateFile = JSON.parse(readFileSync(files.opencode));
+  const duplicateFile = readOpenCodeFixture();
   const duplicateOptions = duplicateFile.provider[duplicateFile.model.split("/")[0]].options;
   limitedAccount = duplicateKey;
   limitedAccountRetryAfter = "1";

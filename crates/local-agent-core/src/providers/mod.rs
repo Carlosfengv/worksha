@@ -13,6 +13,7 @@ pub mod imports;
 pub mod local_tokens;
 mod metadata;
 pub mod model_observations;
+mod opencode_config;
 pub mod operations;
 pub mod subscription;
 #[cfg(test)]
@@ -879,6 +880,9 @@ impl ProviderManager {
                 catalog,
             )?;
         }
+        if draft.agent_id == "opencode" {
+            opencode_config::preserve_route_allowlist(&path, before.bytes.as_deref(), &mut after)?;
+        }
         if draft.agent_id == "codex" && (codex_catalog.is_some() || catalog.is_some()) {
             let bytes = codex_catalog
                 .filter(|b| !b.is_empty() && b.len() as u64 <= files::LIMIT)
@@ -1067,17 +1071,29 @@ impl ProviderManager {
                 {
                     return fail("conflict", "服务商配置或凭据版本已改变，请撤销后重新预览");
                 }
-                if files::read(&self.transaction_path(t)?)?.stamp != self.plan(id)?.before_stamp {
+                let path = self.transaction_path(t)?;
+                let plan = self.plan(id)?;
+                if files::read(&path)?.stamp != plan.before_stamp {
                     return fail(
                         "conflict",
                         "配置被其他程序修改，请撤销后重新预览；未重启 Agent",
                     );
                 }
+                Self::check_opencode_route(t, &plan, &path)?;
             }
             "applied" => self.check_target(t)?,
             _ => return fail("conflict", "此事务已结束，请重新读取"),
         }
         Ok(t.clone())
+    }
+    fn check_opencode_route(t: &Transaction, plan: &Plan, path: &Path) -> Result<(), ConfigError> {
+        if t.agent_id == "opencode"
+            && t.restore_of.is_none()
+            && let Some(after) = plan.after.as_deref()
+        {
+            opencode_config::check_route_allowlist(path, plan.before.as_deref(), after)?;
+        }
+        Ok(())
     }
     pub fn apply_with_provider(
         &self,
@@ -1134,6 +1150,7 @@ impl ProviderManager {
             self.check_codex_catalog(p.after.as_deref())?;
         }
         check_idle()?;
+        Self::check_opencode_route(t, &p, &path)?;
         j.transactions[index].state = "applying".into();
         j.transactions[index].activation = Some(Activation {
             state: "awaiting_restart".into(),

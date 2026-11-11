@@ -20,6 +20,10 @@ opt-level = 1
 debug = 1
 opt-level = "s"
 
+[profile.dev.package.jsonc-parser]
+debug = 1
+opt-level = "s"
+
 [profile.release]
 codegen-units = 1
 lto = true

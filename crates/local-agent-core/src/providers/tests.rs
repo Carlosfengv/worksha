@@ -763,10 +763,34 @@ fn verification_binds_to_full_provider_version_and_expiry() {
 
 #[test]
 fn opencode_keeps_other_groups_uses_local_auth_and_restores_exactly() {
-    for grouped in [false, true] {
+    for (grouped, jsonc) in [(false, false), (true, false), (false, true), (true, true)] {
         let f = fixture();
-        let original=br#"{ "model":"old/model", "provider":{"old":{"options":{"apiKey":"old-native-secret"}}}, "mcp":{"keep":{}}, "enabled_providers":["old"] }"#;
-        let path = config(&f, "opencode", original);
+        let json = if jsonc {
+            br#"{"enabled_providers":["lower-priority-only"]}"#.as_slice()
+        } else {
+            br#"{ "model":"old/model", "provider":{"old":{"options":{"apiKey":"old-native-secret"}}}, "mcp":{"keep":{}}, "enabled_providers":["old"] }"#.as_slice()
+        };
+        let json_path = config(&f, "opencode", json);
+        let (path, original) = if jsonc {
+            let path = json_path.with_extension("jsonc");
+            let original = br#"// global settings
+{
+  "model": "old/model", // default model
+  "provider": {
+    // keep this provider
+    "old": { "options": { "apiKey": "old-native-secret", "baseURL": "http://localhost:6000/v1" } },
+  },
+  "mcp": { /* keep this MCP */ "keep": {} },
+  "enabled_providers": [
+    "old", // keep existing access
+  ],
+}
+"#;
+            fs::write(&path, original).unwrap();
+            (path, original.as_slice())
+        } else {
+            (json_path.clone(), json)
+        };
         let mut upstream = p(&f, "messages");
         upstream.name = "MyDeepSeek".into();
         upstream.vendor = "deepseek".into();
@@ -781,6 +805,10 @@ fn opencode_keeps_other_groups_uses_local_auth_and_restores_exactly() {
                 .credential_ref,
         );
         let before = config::inspect(&f.home, "opencode");
+        assert_eq!(before.path, path.to_str().unwrap());
+        if jsonc {
+            assert_eq!(before.endpoint.as_deref(), Some("http://localhost:6000/v1"));
+        }
         let transaction = f
             .manager
             .prepare_routed(
@@ -809,18 +837,32 @@ fn opencode_keeps_other_groups_uses_local_auth_and_restores_exactly() {
                 )),
             )
             .unwrap();
+        assert_eq!(fs::read(&path).unwrap(), original);
         f.manager
             .apply(&transaction.id, Some(&upstream), true)
             .unwrap();
         let bytes = fs::read(&path).unwrap();
-        let doc: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let doc = opencode_config::parse(Some(&bytes)).unwrap();
+        if jsonc {
+            let text = std::str::from_utf8(&bytes).unwrap();
+            for preserved in [
+                "// global settings",
+                "// default model",
+                "// keep this provider",
+                r#""mcp": { /* keep this MCP */ "keep": {} }"#,
+                "// keep existing access",
+            ] {
+                assert!(text.contains(preserved), "{preserved}");
+            }
+            assert_eq!(fs::read(&json_path).unwrap(), json);
+        }
         assert_eq!(
             doc["provider"]["old"]["options"]["apiKey"],
             "old-native-secret"
         );
         assert_eq!(doc["mcp"]["keep"], serde_json::json!({}));
-        assert_eq!(doc["enabled_providers"].as_array().unwrap().len(), 2);
         let group = doc["model"].as_str().unwrap().split_once('/').unwrap().0;
+        assert_eq!(doc["enabled_providers"], serde_json::json!(["old", group]));
         assert_eq!(doc["provider"][group]["name"], "MyDeepSeek · Local Agent");
         let published = doc["provider"][group]["models"].as_object().unwrap();
         assert_eq!(
@@ -842,6 +884,118 @@ fn opencode_keeps_other_groups_uses_local_auth_and_restores_exactly() {
         f.manager.apply(&restored.id, None, true).unwrap();
         assert_eq!(fs::read(path).unwrap(), original);
     }
+}
+
+#[test]
+fn opencode_inherits_allowlist_from_json_and_restores_only_the_overlay() {
+    let f = fixture();
+    let original_base = br#"{"enabled_providers":["old","other"],"keep":true}"#;
+    let base = config(&f, "opencode", original_base);
+    let legacy = base.with_file_name("config.json");
+    let original_legacy = br#"{"enabled_providers":["legacy-only"]}"#;
+    fs::write(&legacy, original_legacy).unwrap();
+    let overlay = base.with_extension("jsonc");
+    let original_overlay =
+        b"// Keep the inherited provider policy\n{\n  \"model\": \"old/model\",\n}\n";
+    fs::write(&overlay, original_overlay).unwrap();
+    let mut provider = p(&f, "messages");
+    provider.endpoint = "http://127.0.0.1:12345/gateway/fixture".into();
+
+    let preview = prepare(&f, "opencode", Some(&provider));
+    assert_eq!(fs::read(&overlay).unwrap(), original_overlay);
+    let changed_base = br#"{"enabled_providers":["old","new-choice"],"keep":true}"#;
+    fs::write(&base, changed_base).unwrap();
+    assert_eq!(
+        f.manager
+            .check_switch(&preview.id, Some(&provider))
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    assert_eq!(
+        f.manager
+            .apply(&preview.id, Some(&provider), true)
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
+    assert_eq!(fs::read(&overlay).unwrap(), original_overlay);
+    f.manager.cancel(&preview.id).unwrap();
+
+    let preview = prepare(&f, "opencode", Some(&provider));
+    let unrelated_edit = br#"{"enabled_providers":["old","new-choice"],"keep":false}"#;
+    fs::write(&base, unrelated_edit).unwrap();
+    f.manager
+        .check_switch(&preview.id, Some(&provider))
+        .unwrap();
+    f.manager.apply(&preview.id, Some(&provider), true).unwrap();
+    let written = fs::read(&overlay).unwrap();
+    assert!(written.starts_with(b"// Keep the inherited provider policy\n"));
+    let applied = opencode_config::parse(Some(&written)).unwrap();
+    let group = applied["model"]
+        .as_str()
+        .unwrap()
+        .split_once('/')
+        .unwrap()
+        .0;
+    assert_eq!(
+        applied["enabled_providers"],
+        serde_json::json!(["old", "new-choice", group])
+    );
+    assert_eq!(fs::read(&base).unwrap(), unrelated_edit);
+    assert_eq!(fs::read(&legacy).unwrap(), original_legacy);
+
+    let restored = f.manager.prepare_restore(&preview.id).unwrap();
+    fs::write(&base, original_base).unwrap();
+    f.manager.apply(&restored.id, None, true).unwrap();
+    assert_eq!(fs::read(&overlay).unwrap(), original_overlay);
+    assert_eq!(fs::read(&base).unwrap(), original_base);
+    assert_eq!(fs::read(&legacy).unwrap(), original_legacy);
+}
+
+#[test]
+fn opencode_rejects_a_newly_disabled_group_before_writing() {
+    let f = fixture();
+    let base = config(&f, "opencode", br#"{"enabled_providers":["old"]}"#);
+    let overlay = base.with_extension("jsonc");
+    let original = b"// Preserve the existing file\n{}\n";
+    fs::write(&overlay, original).unwrap();
+    let mut provider = p(&f, "messages");
+    provider.endpoint = "http://127.0.0.1:12345/gateway/fixture".into();
+    let preview = prepare(&f, "opencode", Some(&provider));
+    let group = format!("local_agent_{}", &files::hash(provider.id.as_bytes())[..16]);
+    let disabled = serde_json::to_vec(&serde_json::json!({
+        "enabled_providers": ["old"],
+        "disabled_providers": [group],
+    }))
+    .unwrap();
+    fs::write(&base, &disabled).unwrap();
+
+    let error = f
+        .manager
+        .apply(&preview.id, Some(&provider), true)
+        .unwrap_err();
+    assert_eq!(error.code, "conflict");
+    assert!(error.message.contains("禁用列表"));
+    assert_eq!(fs::read(overlay).unwrap(), original);
+    assert_eq!(fs::read(base).unwrap(), disabled);
+}
+
+#[test]
+fn invalid_opencode_jsonc_is_reported_without_falling_back_to_json() {
+    let f = fixture();
+    let json = config(&f, "opencode", b"{}");
+    let jsonc = json.with_extension("jsonc");
+    let broken = b"{ /* existing comment */ \"model\": }";
+    fs::write(&jsonc, broken).unwrap();
+    let before = config::inspect(&f.home, "opencode");
+    assert_eq!(before.path, jsonc.to_str().unwrap());
+    assert_eq!(before.state, "error");
+    let error =
+        opencode_config::edit(Some(broken), |_| panic!("invalid input reached edit")).unwrap_err();
+    assert_eq!(error.code, "invalid_config");
+    assert_eq!(fs::read(jsonc).unwrap(), broken);
+    assert_eq!(fs::read(json).unwrap(), b"{}");
 }
 
 #[test]

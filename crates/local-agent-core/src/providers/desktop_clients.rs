@@ -1,17 +1,18 @@
-use super::{ConfigError, config::NativeConfig, fail, files};
+use super::{ConfigError, config::NativeConfig, fail, files, opencode_config};
 use crate::{Provider, sessions::sanitize_label};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
 pub fn path(home: &Path, agent: &str) -> Result<PathBuf, ConfigError> {
     if agent == "opencode" {
-        if home.join(".config/opencode/opencode.jsonc").exists() {
-            return fail(
-                "unsupported",
-                "当前仅支持 OpenCode 的 JSON 用户配置；检测到 JSONC，保留原文件，请先在 OpenCode 中确认配置来源",
-            );
-        }
-        return Ok(home.join(".config/opencode/opencode.json"));
+        let root = home.join(".config/opencode");
+        let jsonc = root.join("opencode.jsonc");
+        // OpenCode merges this file after opencode.json.
+        return match jsonc.symlink_metadata() {
+            Ok(_) => Ok(jsonc),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(root.join("opencode.json")),
+            Err(_) => fail("unavailable", "无法检查 OpenCode 用户配置"),
+        };
     }
     let root = home.join("Library/Application Support/Claude-3p/configLibrary");
     let bytes=files::read(&root.join("_meta.json"))?.bytes.ok_or_else(||ConfigError::new("unsupported","请先在 Claude 桌面的第三方推理设置中创建本机配置；本应用只切换已存在的本机 Profile，不改写组织策略"))?;
@@ -71,7 +72,11 @@ pub fn inspect(home: &Path, agent: &str) -> NativeConfig {
         if read.bytes.is_none() {
             result.state = "absent".into();
         }
-        let d = parse(read.bytes.as_deref())?;
+        let d = if agent == "opencode" {
+            opencode_config::parse(read.bytes.as_deref())?
+        } else {
+            parse(read.bytes.as_deref())?
+        };
         if agent == "opencode" {
             if let Some(groups) = d["provider"].as_object() {
                 for provider in groups.values() {
@@ -138,69 +143,73 @@ pub fn render(
             "此客户端通过恢复备份回到原配置；请选择已配置的供应商",
         )
     })?;
-    let mut d = parse(before)?;
     if agent == "opencode" {
-        if !url::Url::parse(&p.endpoint).is_ok_and(|u| super::is_loopback_url(&u)) {
-            return fail(
-                "incompatible",
-                "OpenCode 使用本机受保护网关，避免把上游 API Key 写入客户端配置",
-            );
-        }
-        if d.get("provider").is_some_and(|v| !v.is_object()) {
-            return fail(
-                "invalid_config",
-                "OpenCode provider 字段不是对象，保留原配置",
-            );
-        }
-        if d.get("provider").is_none() {
-            d["provider"] = json!({});
-        }
-        let group = format!("local_agent_{}", &files::hash(p.id.as_bytes())[..16]);
-        d["provider"][&group] = json!({"npm":"@ai-sdk/anthropic","name":format!("{} · Local Agent",p.name),"options":{"baseURL":format!("{}/v1",p.endpoint.trim_end_matches('/'))},"models":{p.model.clone():{"name":p.model,"options":{"thinking":{"type":"disabled"}}}}});
-        d["model"] = json!(format!("{group}/{}", p.model));
-        d["small_model"] = d["model"].clone();
-        // An existing allowlist must include the new group. Preserve all existing entries.
-        if let Some(enabled) = d.get_mut("enabled_providers") {
-            let list = enabled.as_array_mut().ok_or_else(|| {
-                ConfigError::new("invalid_config", "OpenCode enabled_providers 无效")
-            })?;
-            if !list.iter().any(|v| v == &group) {
-                list.push(json!(group));
-            }
-        }
-    } else {
-        if p.credential_ref.is_none() {
-            return fail("invalid_credential", "桌面连接需要已保存的凭据");
-        }
-        d["inferenceProvider"] = json!("gateway");
-        d["inferenceGatewayBaseUrl"] = json!(p.endpoint);
-        d.as_object_mut().unwrap().remove("inferenceGatewayApiKey");
-        d.as_object_mut().unwrap().remove("inferenceGatewayOidc");
-        d.as_object_mut()
-            .unwrap()
-            .remove("inferenceCredentialHelperArgs");
-        d.as_object_mut()
-            .unwrap()
-            .remove("alwaysStartWithDefaultModel");
-        d["inferenceCredentialKind"] = json!("helper-script");
-        d["inferenceCredentialHelper"] = json!(helper.to_string_lossy());
-        d["inferenceCredentialHelperTimeoutSec"] = json!(6);
-        d["inferenceGatewayAuthScheme"] = json!("bearer");
-        d["modelDiscoveryEnabled"] = json!(false);
-        if !url::Url::parse(&p.endpoint).is_ok_and(|u| super::is_loopback_url(&u)) {
-            return fail(
-                "incompatible",
-                "Claude 桌面通过本机兼容模型映射接入第三方模型，请先准备本机路由",
-            );
-        }
-        d["inferenceModels"] =
-            json!([{"name":"claude-sonnet-5","labelOverride":format!("{} · {}",p.name,p.model)}]);
-        d["inferenceModelPricingEnabled"] = json!(false);
+        return opencode_config::edit(before, |d| render_opencode(d, p));
     }
+    let mut d = parse(before)?;
+    if p.credential_ref.is_none() {
+        return fail("invalid_credential", "桌面连接需要已保存的凭据");
+    }
+    d["inferenceProvider"] = json!("gateway");
+    d["inferenceGatewayBaseUrl"] = json!(p.endpoint);
+    d.as_object_mut().unwrap().remove("inferenceGatewayApiKey");
+    d.as_object_mut().unwrap().remove("inferenceGatewayOidc");
+    d.as_object_mut()
+        .unwrap()
+        .remove("inferenceCredentialHelperArgs");
+    d.as_object_mut()
+        .unwrap()
+        .remove("alwaysStartWithDefaultModel");
+    d["inferenceCredentialKind"] = json!("helper-script");
+    d["inferenceCredentialHelper"] = json!(helper.to_string_lossy());
+    d["inferenceCredentialHelperTimeoutSec"] = json!(6);
+    d["inferenceGatewayAuthScheme"] = json!("bearer");
+    d["modelDiscoveryEnabled"] = json!(false);
+    if !url::Url::parse(&p.endpoint).is_ok_and(|u| super::is_loopback_url(&u)) {
+        return fail(
+            "incompatible",
+            "Claude 桌面通过本机兼容模型映射接入第三方模型，请先准备本机路由",
+        );
+    }
+    d["inferenceModels"] =
+        json!([{"name":"claude-sonnet-5","labelOverride":format!("{} · {}",p.name,p.model)}]);
+    d["inferenceModelPricingEnabled"] = json!(false);
     let mut bytes = serde_json::to_vec_pretty(&d)
         .map_err(|_| ConfigError::new("invalid_config", "无法生成客户端配置"))?;
     bytes.push(b'\n');
     Ok(bytes)
+}
+
+fn render_opencode(d: &mut Value, p: &Provider) -> Result<(), ConfigError> {
+    if !url::Url::parse(&p.endpoint).is_ok_and(|u| super::is_loopback_url(&u)) {
+        return fail(
+            "incompatible",
+            "OpenCode 使用本机受保护网关，避免把上游 API Key 写入客户端配置",
+        );
+    }
+    if d.get("provider").is_some_and(|v| !v.is_object()) {
+        return fail(
+            "invalid_config",
+            "OpenCode provider 字段不是对象，保留原配置",
+        );
+    }
+    if d.get("provider").is_none() {
+        d["provider"] = json!({});
+    }
+    let group = format!("local_agent_{}", &files::hash(p.id.as_bytes())[..16]);
+    d["provider"][&group] = json!({"npm":"@ai-sdk/anthropic","name":format!("{} · Local Agent",p.name),"options":{"baseURL":format!("{}/v1",p.endpoint.trim_end_matches('/'))},"models":{p.model.clone():{"name":p.model,"options":{"thinking":{"type":"disabled"}}}}});
+    d["model"] = json!(format!("{group}/{}", p.model));
+    d["small_model"] = d["model"].clone();
+    // An existing allowlist must include the new group. Preserve all existing entries.
+    if let Some(enabled) = d.get_mut("enabled_providers") {
+        let list = enabled
+            .as_array_mut()
+            .ok_or_else(|| ConfigError::new("invalid_config", "OpenCode enabled_providers 无效"))?;
+        if !list.iter().any(|v| v == &group) {
+            list.push(json!(group));
+        }
+    }
+    Ok(())
 }
 pub fn opencode_credential(
     rendered: &mut Vec<u8>,
@@ -208,38 +217,34 @@ pub fn opencode_credential(
     key: &str,
     models: &[String],
 ) -> Result<(), ConfigError> {
-    let mut d = parse(Some(rendered))?;
-    let group = format!("local_agent_{}", &files::hash(provider.id.as_bytes())[..16]);
-    d["provider"][&group]["options"]["apiKey"] = json!(key);
-    if !models.is_empty() {
-        d["provider"][&group]["models"] = Value::Object(
-            models
-                .iter()
-                .map(|model| {
-                    (
-                        model.clone(),
-                        json!({"name":model,"options":{"thinking":{"type":"disabled"}}}),
-                    )
-                })
-                .collect(),
-        );
-    }
-    if provider.id.starts_with("dynamic-") && provider.model == crate::routing::ALIAS {
-        if d.get("$schema").is_none() {
-            d["$schema"] = json!("https://opencode.ai/config.json");
+    opencode_config::update(rendered, |d| {
+        let group = format!("local_agent_{}", &files::hash(provider.id.as_bytes())[..16]);
+        d["provider"][&group]["options"]["apiKey"] = json!(key);
+        if !models.is_empty() {
+            d["provider"][&group]["models"] = Value::Object(
+                models
+                    .iter()
+                    .map(|model| {
+                        (
+                            model.clone(),
+                            json!({"name":model,"options":{"thinking":{"type":"disabled"}}}),
+                        )
+                    })
+                    .collect(),
+            );
         }
-        d["provider"][&group]["models"][crate::routing::ALIAS] = json!({
-            "name":"Local Agent · 动态模型", "limit":{"context":32000,"output":8192},
-            "options":{"thinking":{"type":"disabled"}}
-        });
-        d["provider"][&group]["options"]["maxRetries"] = json!(0);
-    }
-    use zeroize::Zeroize;
-    rendered.zeroize();
-    *rendered = serde_json::to_vec_pretty(&d)
-        .map_err(|_| ConfigError::new("invalid_config", "本机认证配置无效"))?;
-    rendered.push(b'\n');
-    Ok(())
+        if provider.id.starts_with("dynamic-") && provider.model == crate::routing::ALIAS {
+            if d.get("$schema").is_none() {
+                d["$schema"] = json!("https://opencode.ai/config.json");
+            }
+            d["provider"][&group]["models"][crate::routing::ALIAS] = json!({
+                "name":"Local Agent · 动态模型", "limit":{"context":32000,"output":8192},
+                "options":{"thinking":{"type":"disabled"}}
+            });
+            d["provider"][&group]["options"]["maxRetries"] = json!(0);
+        }
+        Ok(())
+    })
 }
 
 pub fn claude_models(

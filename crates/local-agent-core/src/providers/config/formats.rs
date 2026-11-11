@@ -1,4 +1,4 @@
-use super::super::{ConfigError, fail, files};
+use super::super::{ConfigError, fail, files, opencode_config};
 use crate::{Provider, sessions::sanitize_label};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -21,18 +21,40 @@ pub(super) fn preserve_service_selection(
     if agent == "claude-desktop" {
         return Ok(());
     }
+    if agent == "opencode" {
+        return preserve_opencode_service(before, after, catalog, endpoint);
+    }
     let old: Value = serde_json::from_slice(before)
         .map_err(|_| ConfigError::new("invalid_config", "原模型服务配置无法读取"))?;
     let mut next: Value = serde_json::from_slice(after)
         .map_err(|_| ConfigError::new("invalid_config", "模型服务配置无法生成"))?;
-    if agent == "opencode" {
-        let Some((old_group, old_alias)) = old["model"].as_str().and_then(|m| m.split_once('/'))
-        else {
-            return Ok(());
-        };
-        if old["provider"][old_group]["options"]["baseURL"].as_str() != Some(endpoint) {
-            return fail("conflict", "原分组入口已改变，未覆盖模型选择");
-        }
+    if agent == "claude"
+        && let Some(alias) = old["model"].as_str().filter(|a| catalog.accepts(a))
+    {
+        next["model"] = json!(alias);
+    }
+    use zeroize::Zeroize;
+    after.zeroize();
+    *after = serde_json::to_vec_pretty(&next)
+        .map_err(|_| ConfigError::new("invalid_config", "模型服务选择无法生成"))?;
+    after.push(b'\n');
+    Ok(())
+}
+
+fn preserve_opencode_service(
+    before: &[u8],
+    after: &mut Vec<u8>,
+    catalog: &crate::model_services::ServiceAttachment,
+    endpoint: &str,
+) -> Result<(), ConfigError> {
+    let old = opencode_config::parse(Some(before))?;
+    let Some((old_group, old_alias)) = old["model"].as_str().and_then(|m| m.split_once('/')) else {
+        return Ok(());
+    };
+    if old["provider"][old_group]["options"]["baseURL"].as_str() != Some(endpoint) {
+        return fail("conflict", "原分组入口已改变，未覆盖模型选择");
+    }
+    opencode_config::update(after, |next| {
         let Some((new_group, _)) = next["model"].as_str().and_then(|m| m.split_once('/')) else {
             return fail("invalid_config", "新服务分组缺失");
         };
@@ -48,8 +70,7 @@ pub(super) fn preserve_service_selection(
             crate::routing::ALIAS
         };
         next["model"] = json!(format!("{old_group}/{alias}"));
-        // The adapter also emits a small_model reference. Remap it with the
-        // retained group, and keep an existing independent user override.
+        // Retain an independent small_model override while remapping catalog aliases.
         let small = match old["small_model"].as_str() {
             Some(value) if !value.starts_with(&format!("{old_group}/")) => value.to_owned(),
             Some(value)
@@ -62,17 +83,8 @@ pub(super) fn preserve_service_selection(
             _ => format!("{old_group}/{}", crate::routing::ALIAS),
         };
         next["small_model"] = json!(small);
-    } else if agent == "claude"
-        && let Some(alias) = old["model"].as_str().filter(|a| catalog.accepts(a))
-    {
-        next["model"] = json!(alias);
-    }
-    use zeroize::Zeroize;
-    after.zeroize();
-    *after = serde_json::to_vec_pretty(&next)
-        .map_err(|_| ConfigError::new("invalid_config", "模型服务选择无法生成"))?;
-    after.push(b'\n');
-    Ok(())
+        Ok(())
+    })
 }
 
 fn preserve_codex_service(
@@ -150,9 +162,18 @@ pub(super) fn service_models(
     if agent == "codex" {
         return codex_models(bytes, provider);
     }
+    let entries = catalog.catalog();
+    if agent == "opencode" {
+        let group = format!("local_agent_{}", &files::hash(provider.id.as_bytes())[..16]);
+        return opencode_config::update(bytes, |d| {
+            d["provider"][&group]["name"] =
+                json!(format!("Local Agent · {}", catalog.installed.name));
+            d["provider"][&group]["models"]=Value::Object(entries.iter().map(|(id,name,c)|(id.clone(),json!({"name":name,"limit":{"context":c.context_window,"output":c.max_output_tokens},"tool_call":c.tools,"reasoning":false,"attachment":false,"modalities":{"input":["text"],"output":["text"]},"options":{"thinking":{"type":"disabled"}}}))).collect());
+            Ok(())
+        });
+    }
     let mut d: Value = serde_json::from_slice(bytes)
         .map_err(|_| ConfigError::new("invalid_config", "模型服务目录配置无法解析"))?;
-    let entries = catalog.catalog();
     if agent == "claude" {
         if let Some(allow) = d.get("availableModels") {
             let allow = allow
@@ -178,13 +199,6 @@ pub(super) fn service_models(
             d["env"][format!("ANTHROPIC_DEFAULT_{family}_MODEL_NAME")] =
                 json!(format!("{} · 默认", catalog.installed.name));
         }
-    } else if agent == "opencode" {
-        let group = format!(
-            "local_agent_{}",
-            &super::super::files::hash(provider.id.as_bytes())[..16]
-        );
-        d["provider"][&group]["name"] = json!(format!("Local Agent · {}", catalog.installed.name));
-        d["provider"][&group]["models"]=Value::Object(entries.iter().map(|(id,name,c)|(id.clone(),json!({"name":name,"limit":{"context":c.context_window,"output":c.max_output_tokens},"tool_call":c.tools,"reasoning":false,"attachment":false,"modalities":{"input":["text"],"output":["text"]},"options":{"thinking":{"type":"disabled"}}}))).collect());
     } else if agent == "claude-desktop" {
         d["inferenceModels"] = json!(
             entries

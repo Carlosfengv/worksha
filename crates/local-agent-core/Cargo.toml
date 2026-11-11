@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+jsonc-parser = { version = "=0.34.0", features = ["cst"] }
 # Retention must detect future nested source fields without tightening shared API DTOs.
 serde_ignored = "=0.1.14"
 # SQLite 3.51.3 includes the Unix WAL open/close lock-order fix absent in 3.51.1.
