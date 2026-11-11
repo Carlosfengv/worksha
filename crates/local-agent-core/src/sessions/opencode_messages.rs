@@ -15,9 +15,11 @@ fn unavailable() -> NativeError {
 pub(super) fn recent(
     db: &Connection,
     now: DateTime<Utc>,
+    exclude_migrated: bool,
 ) -> NativeResult<(Vec<NativeActivity>, bool)> {
-    let scan_limited: bool = db.query_row("SELECT count(*)>4096 FROM (SELECT id FROM message WHERE session_id IN (SELECT id FROM session WHERE time_updated>=?1 ORDER BY time_updated DESC,id LIMIT 128) LIMIT 4097)", [now.timestamp_millis()-86_400_000], |r|r.get(0)).map_err(|_|unavailable())?;
-    let mut q = db.prepare("WITH recent AS MATERIALIZED (SELECT id,session_id,time_created FROM message WHERE session_id IN (SELECT id FROM session WHERE time_updated>=?1 ORDER BY time_updated DESC,id LIMIT 128) ORDER BY time_created DESC,id DESC LIMIT 4097) SELECT m.id,m.session_id,m.time_created,s.title,s.directory FROM recent r JOIN message m ON m.id=r.id JOIN session s ON s.id=m.session_id WHERE length(CAST(m.data AS BLOB))<=8388608 AND CASE WHEN json_valid(m.data) THEN json_extract(m.data,'$.role')='user' AND coalesce(json_extract(m.data,'$.summary'),0)!=1 ELSE 0 END ORDER BY m.time_created DESC,m.id DESC LIMIT 129").map_err(|_|unavailable())?;
+    let legacy = super::opencode_live::legacy_session_filter(exclude_migrated);
+    let scan_limited: bool = db.query_row(&format!("SELECT count(*)>4096 FROM (SELECT id FROM message WHERE session_id IN (SELECT id FROM session WHERE time_updated>=?1 {legacy} ORDER BY time_updated DESC,id LIMIT 128) LIMIT 4097)"), [now.timestamp_millis()-86_400_000], |r|r.get(0)).map_err(|_|unavailable())?;
+    let mut q = db.prepare(&format!("WITH recent AS MATERIALIZED (SELECT id,session_id,time_created FROM message WHERE session_id IN (SELECT id FROM session WHERE time_updated>=?1 {legacy} ORDER BY time_updated DESC,id DESC LIMIT 128) ORDER BY time_created DESC,id DESC LIMIT 4097) SELECT m.id,m.session_id,m.time_created,s.title,s.directory FROM recent r JOIN message m ON m.id=r.id JOIN session s ON s.id=m.session_id WHERE length(CAST(m.data AS BLOB))<=8388608 AND CASE WHEN json_valid(m.data) THEN json_extract(m.data,'$.role')='user' AND coalesce(json_extract(m.data,'$.summary'),0)!=1 ELSE 0 END ORDER BY m.time_created DESC,m.id DESC LIMIT 129")).map_err(|_|unavailable())?;
     let users = q
         .query_map([now.timestamp_millis() - 86_400_000], |r| {
             Ok((
@@ -115,8 +117,8 @@ pub(super) fn recent(
             turn_id: Some(user),
             #[cfg(any(target_os = "macos", test))]
             call_id: None,
-            agent_product_id: Some("opencode".into()),
-            agent_attribution: Some("native_record".into()),
+            agent_product_id: None,
+            agent_attribution: None,
             id: format!("opencode:{session}"),
             session_id: format!("opencode:{session}"),
             agent_id: "opencode".into(),

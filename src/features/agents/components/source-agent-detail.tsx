@@ -119,6 +119,7 @@ export function SourceAgentDetail({
       tabs={tabs}
       value={value}
       canConfigure={canConfigure}
+      refresh={reload}
       status={
         <div className="flex flex-wrap gap-2" aria-label="连接方式与采集范围">
           <Badge

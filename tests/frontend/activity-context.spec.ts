@@ -106,7 +106,7 @@ test("a missing context stops retrying after a bounded wait", async ({
   ).toHaveAttribute("aria-selected", "true");
 });
 
-test("five Agent cards show separate Session context, estimated ratios, observed input and unknown association", async ({
+test("Agent cards and legacy OpenCode activity show separate Session context, estimated ratios, observed input and unknown association", async ({
   page,
 }) => {
   await page.goto(url);
@@ -131,7 +131,9 @@ test("five Agent cards show separate Session context, estimated ratios, observed
       .getByLabel("Codex 桌面端会话上下文", { exact: true })
       .getByRole("link"),
   ).toHaveCount(2);
-  const opencode = page.getByLabel("OpenCode会话上下文", { exact: true });
+  const opencode = page.getByLabel("OpenCode · 客户端来源未知会话上下文", {
+    exact: true,
+  });
   await expect(opencode.getByRole("listitem")).toHaveCount(3);
   await expect(opencode).toContainText("100 Token · 真实采集");
   await expect(opencode).not.toContainText("%");

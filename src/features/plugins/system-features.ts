@@ -133,19 +133,41 @@ export function systemAgentPlugins(
   plugins: readonly PluginInfo[],
 ): SystemFeature[] {
   return plugins.flatMap((plugin) => {
+    const client = plugin.capabilities.find(
+      ({ address }) =>
+        address.name === "agent.client-profile" && address.version === 1,
+    );
+    const presentation = systemPluginPresentation(plugin);
+    if (client)
+      return [
+        {
+          id: plugin.id,
+          name: presentation.title,
+          purpose: presentation.purpose,
+          scenes: presentation.scenes,
+          href: `#/agents/${encodeURIComponent(client.address.instance)}?tab=connection`,
+          version: plugin.version,
+          operations: ["接入模型服务", "识别网关请求", "按客户端设置路由条件"],
+          conditions:
+            "两个客户端共用本机默认模型配置。停用后，该客户端的请求按 OpenCode 来源处理。",
+          supportScenes: [],
+        },
+      ];
     const source = plugin.capabilities.find(
       ({ address }) =>
         address.name === "session.source" && address.version === 1,
     );
     if (!source) return [];
-    const presentation = systemPluginPresentation(plugin);
     return [
       {
         id: plugin.id,
         name: presentation.title,
         purpose: presentation.purpose,
         scenes: presentation.scenes,
-        href: `#/agents/${encodeURIComponent(source.address.instance)}?tab=connection`,
+        href:
+          source.address.instance === "opencode"
+            ? "#/sessions?agent=opencode"
+            : `#/agents/${encodeURIComponent(source.address.instance)}?tab=connection`,
         version: plugin.version,
         operations: ["读取本机会话", "查看连接与观测"],
         conditions:

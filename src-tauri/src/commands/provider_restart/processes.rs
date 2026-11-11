@@ -74,7 +74,7 @@ fn classify(agent: &str, text: &str, roots: &[u32]) -> Result<(usize, usize), &'
             .ok_or(UNKNOWN)?;
         let relevant = match agent {
             "codex" => ["codex", "Codex", "ChatGPT"].contains(&base),
-            "opencode" => ["opencode", "OpenCode"].contains(&base),
+            "opencode" => ["opencode", "opencode-cli", "OpenCode"].contains(&base),
             "claude-desktop" => ["claude-desktop", "Claude"].contains(&base),
             _ => return Err(UNKNOWN),
         };
@@ -105,6 +105,20 @@ fn classify(agent: &str, text: &str, roots: &[u32]) -> Result<(usize, usize), &'
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn opencode_embedded_cli_ownership_follows_desktop_ancestry() {
+        let processes = "10 1 S /Applications/OpenCode.app/Contents/MacOS/OpenCode\n\
+                         11 10 S /Users/test/Library/Application Support/ai.opencode.desktop/cli/2.2.7-arm64/opencode-cli\n\
+                         12 11 S /test/opencode\n\
+                         20 1 S /bin/zsh\n\
+                         21 20 S /test/opencode-cli\n";
+        assert_eq!(classify("opencode", processes, &[10]).unwrap(), (4, 3));
+        assert_eq!(classify("opencode", processes, &[]).unwrap(), (4, 0));
+        assert_eq!(
+            classify("opencode", "11 1 S /test/opencode-cli", &[10]).unwrap(),
+            (1, 0)
+        );
+    }
     #[test]
     fn desktop_helpers_are_owned_but_independent_terminal_clients_are_not() {
         let processes = "10 1 S /Applications/ChatGPT.app/Contents/MacOS/ChatGPT\n11 10 S /app/codex\n12 10 S /app/node_repl\n13 12 S /app/codex\n20 1 S /bin/zsh\n21 20 S /app/codex\n22 1 Z+ (codex)\n23 1 Z\n";

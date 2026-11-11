@@ -200,7 +200,7 @@ mod tests {
         let mut all = catalog();
         all.entries = entries;
         all.validate().unwrap();
-        assert_eq!(sessions.domain_catalog().unwrap().products.len(), 5);
+        assert_eq!(sessions.domain_catalog().unwrap().products.len(), 6);
         assert!(
             sessions
                 .query(crate::sessions::SessionQuery::default())

@@ -112,7 +112,7 @@ pub struct Parsed {
 #[derive(Default)]
 pub(super) struct ProjectCache(HashMap<String, Option<crate::projects::ProjectIdentity>>);
 impl ProjectCache {
-    fn identity(&mut self, path: &str) -> Option<crate::projects::ProjectIdentity> {
+    pub(super) fn identity(&mut self, path: &str) -> Option<crate::projects::ProjectIdentity> {
         if let Some(identity) = self.0.get(path) {
             return identity.clone();
         }

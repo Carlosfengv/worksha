@@ -10,19 +10,21 @@ test("OpenCode native tool remains active between completed model requests with 
   await page.evaluate(() => {
     window.activityCase = "opencode-tool";
   });
-  const card = page.getByRole("article", {
-    name: "OpenCode实时活动",
+  const card = page.getByRole("region", {
+    name: "OpenCode · 客户端来源未知实时活动",
     exact: true,
   });
   await expect(card).toContainText("已提出工具调用");
   await expect(card).toContainText("100 Token");
   await card
     .getByRole("button", {
-      name: "OpenCode，1 个活动进行中，查看明细",
+      name: "OpenCode · 客户端来源未知，1 个活动进行中，查看明细",
       exact: true,
     })
     .click();
-  const dialog = page.getByRole("dialog", { name: "OpenCode活动明细" });
+  const dialog = page.getByRole("dialog", {
+    name: "OpenCode · 客户端来源未知活动明细",
+  });
   await expect(dialog).toContainText("正在执行工具：bash");
   await dialog
     .getByRole("link", { name: /OpenCode 已关联会话.*查看会话/ })
@@ -97,8 +99,8 @@ test("OpenCode explicit Session link provides context and conversation without d
   await page.evaluate(() => {
     window.activityCase = "client-session-links";
   });
-  const card = page.getByRole("article", {
-    name: "OpenCode实时活动",
+  const card = page.getByRole("region", {
+    name: "OpenCode · 客户端来源未知实时活动",
     exact: true,
   });
   await expect(card).toContainText("OpenCode 已关联会话");
@@ -106,11 +108,13 @@ test("OpenCode explicit Session link provides context and conversation without d
   await expect(card).not.toContainText("会话未关联");
   await card
     .getByRole("button", {
-      name: "OpenCode，1 个活动进行中，查看明细",
+      name: "OpenCode · 客户端来源未知，1 个活动进行中，查看明细",
       exact: true,
     })
     .click();
-  const popover = page.getByRole("dialog", { name: "OpenCode活动明细" });
+  const popover = page.getByRole("dialog", {
+    name: "OpenCode · 客户端来源未知活动明细",
+  });
   await popover
     .getByRole("link", { name: /OpenCode 已关联会话.*查看会话/ })
     .click();

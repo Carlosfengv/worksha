@@ -6,6 +6,9 @@ use rusqlite::params;
 use serde_json::Value;
 use std::path::Path;
 
+#[path = "opencode_live_v2.rs"]
+mod v2;
+
 fn unavailable() -> NativeError {
     NativeError::new("unavailable", "OpenCode 工具活动暂不可读取")
 }
@@ -15,26 +18,51 @@ pub(super) fn activities(
     now: DateTime<Utc>,
 ) -> NativeResult<(Vec<NativeActivity>, bool)> {
     let db = opencode::open(home)?;
-    live(&db, now)
+    live(&db, now, false)
 }
 pub(super) fn messages(
     home: &Path,
     now: DateTime<Utc>,
 ) -> NativeResult<(Vec<NativeActivity>, bool)> {
-    let db = opencode::open(home)?;
-    let (mut rows, limited) = super::opencode_messages::recent(&db, now)?;
-    let (active, live_limited) = live(&db, now)?;
-    for activity in active {
-        rows.retain(|old| old.session_id != activity.session_id || old.turn_id != activity.turn_id);
-        rows.insert(0, activity);
+    let db = opencode::open_database(home)?;
+    let has_v2 = opencode::has_table(&db, "session_v2")?;
+    let current = has_v2 && opencode::has_table(&db, "session_message")?;
+    let has_legacy = opencode::has_legacy_tables(&db)?;
+    let mut limited = has_v2 && !current;
+    let mut rows = Vec::new();
+    if has_legacy {
+        let (recent, recent_limited) = super::opencode_messages::recent(&db, now, current)?;
+        rows = recent;
+        let (active, live_limited) = live(&db, now, current)?;
+        for activity in active {
+            rows.retain(|old| {
+                old.session_id != activity.session_id || old.turn_id != activity.turn_id
+            });
+            rows.insert(0, activity);
+        }
+        limited |= recent_limited || live_limited;
     }
-    Ok((rows, limited || live_limited))
+    if current {
+        match v2::messages(&db, now) {
+            Ok((current_rows, current_limited)) => {
+                rows.extend(current_rows);
+                limited |= current_limited;
+            }
+            Err(_) if has_legacy => limited = true,
+            Err(error) => return Err(error),
+        }
+    } else if !has_legacy {
+        return Err(unavailable());
+    }
+    Ok((rows, limited))
 }
 fn live(
     db: &rusqlite::Connection,
     now: DateTime<Utc>,
+    exclude_migrated: bool,
 ) -> NativeResult<(Vec<NativeActivity>, bool)> {
-    let mut query = db.prepare("SELECT id,title,directory FROM session WHERE time_updated>=?1 ORDER BY time_updated DESC,id LIMIT 129").map_err(|_| unavailable())?;
+    let legacy = legacy_session_filter(exclude_migrated);
+    let mut query = db.prepare(&format!("SELECT id,title,directory FROM session WHERE time_updated>=?1 {legacy} ORDER BY time_updated DESC,id LIMIT 129")).map_err(|_| unavailable())?;
     let sessions = query
         .query_map([now.timestamp_millis() - 86_400_000], |r| {
             Ok((
@@ -162,8 +190,8 @@ fn live(
                 turn_id: Some(user.clone()),
                 #[cfg(any(target_os = "macos", test))]
                 call_id: Some(id),
-                agent_product_id: Some("opencode".into()),
-                agent_attribution: Some("native_record".into()),
+                agent_product_id: None,
+                agent_attribution: None,
                 id: format!("opencode:{session}"),
                 agent_id: "opencode".into(),
                 session_id: format!("opencode:{session}"),
@@ -238,4 +266,12 @@ fn live(
         result.extend(latest);
     }
     Ok((result, limited))
+}
+
+pub(super) fn legacy_session_filter(exclude_migrated: bool) -> &'static str {
+    if exclude_migrated {
+        "AND NOT EXISTS (SELECT 1 FROM session_v2 WHERE session_v2.id=session.id)"
+    } else {
+        ""
+    }
 }

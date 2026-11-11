@@ -1,4 +1,5 @@
 import type { Snapshot } from "@/app/types";
+import { PageHeader } from "@/components/ui/page-layout";
 import { AgentList } from "@/features/agents/components/agent-list";
 import { ConnectionEmpty } from "@/shared/ui/connection-empty";
 import { bundledDshAgent } from "./bundled-source";
@@ -18,11 +19,12 @@ export function AgentsPage({
 }) {
   if (!data)
     return (
-      <ConnectionEmpty
-        title="尚未连接本机数据"
-        description="在桌面应用中读取 Agent 的会话与调用。"
-        icon="brain"
-      />
+      <div className="min-w-0 space-y-4">
+        <PageHeader className="px-0">
+          <h2 className="text-title font-medium">Agents</h2>
+        </PageHeader>
+        <ConnectionEmpty title="尚未连接本机数据" icon="brain" />
+      </div>
     );
   const agents = data.agents.some((agent) => agent.id === bundledDshAgent.id)
     ? data.agents
@@ -63,5 +65,5 @@ export function AgentsPage({
         data={data}
       />
     );
-  return <AgentList data={data} agents={agents} />;
+  return <AgentList data={data} agents={agents} refresh={refresh} />;
 }

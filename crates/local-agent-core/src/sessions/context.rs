@@ -279,7 +279,7 @@ impl Collector {
     }
     pub fn opencode_message(&mut self, v: &Value, ts: Option<&str>, line: usize) {
         if v["summary"] == true {
-            self.compact("压缩摘要消息 · 原生记录", None, ts, line, Some("opencode"));
+            self.compact("压缩摘要消息 · 原生记录", None, ts, line, None);
         } else if v["role"] == "assistant" {
             let t = &v["tokens"];
             let input = t["input"].as_u64().map(|n| {
@@ -295,7 +295,7 @@ impl Collector {
             {
                 return;
             }
-            self.data.sample_agent_product_id = Some("opencode".into());
+            self.data.sample_agent_product_id = None;
             self.usage(
                 input,
                 None,
@@ -307,13 +307,7 @@ impl Collector {
     }
     pub fn opencode_part(&mut self, v: &Value, ts: Option<&str>, line: usize) {
         if v["type"] == "compaction" {
-            self.compact(
-                "压缩触发记录 · 完成状态未知",
-                None,
-                ts,
-                line,
-                Some("opencode"),
-            );
+            self.compact("压缩触发记录 · 完成状态未知", None, ts, line, None);
         }
         if v["type"] == "text" && v["synthetic"] == true {
             self.record(
@@ -322,7 +316,7 @@ impl Collector {
                 v["text"].as_str(),
                 ts,
                 line,
-                Some("opencode"),
+                None,
             );
         }
         let path = v["state"]["input"]["filePath"].as_str().unwrap_or("");
@@ -340,7 +334,7 @@ impl Collector {
                 v["state"]["output"].as_str(),
                 ts,
                 line,
-                Some("opencode"),
+                None,
             );
         }
     }

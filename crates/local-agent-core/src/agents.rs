@@ -33,10 +33,7 @@ pub fn matches(filter: Option<&str>, family: &str, product: Option<&str>) -> boo
     builtin_directory().matches(filter, family, product)
 }
 pub fn group(family: &str, product: Option<&str>) -> String {
-    product
-        .or_else(|| builtin_directory().single_product(family))
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("{family}-unknown"))
+    builtin_directory().group(family, product)
 }
 pub fn matches_group(filter: Option<&str>, group: &str) -> bool {
     builtin_directory().matches_group(filter, group)
@@ -109,12 +106,19 @@ mod tests {
 
     #[test]
     fn products_do_not_inherit_unknown_family_records() {
-        assert_eq!(PRODUCTS.len(), 5);
+        assert_eq!(PRODUCTS.len(), 6);
         assert!(!matches(Some("codex-cli"), "codex", None));
         assert!(!matches(Some("codex-desktop"), "codex", Some("codex-cli")));
         assert!(matches(Some("codex"), "codex", Some("codex-desktop")));
         assert!(matches(Some("unknown"), "codex", None));
-        assert!(!matches(Some("unknown"), "opencode", Some("opencode")));
+        assert!(matches(Some("unknown"), "opencode", Some("opencode")));
+        assert_eq!(group("opencode", Some("opencode")), "opencode-unknown");
+        assert!(!matches(Some("opencode-cli"), "opencode", Some("opencode")));
+        assert!(matches(
+            Some("opencode"),
+            "opencode",
+            Some("opencode-desktop")
+        ));
     }
 
     #[test]

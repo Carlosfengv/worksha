@@ -65,8 +65,12 @@ export function recordProduct(
   const shared = catalog.sources.find(
     (source) => source.id === record.agentId,
   )?.shared;
+  const product =
+    record.agentId === "opencode" && record.agentProductId === "opencode"
+      ? null
+      : record.agentProductId;
   return (
-    record.agentProductId ??
+    product ??
     (shared !== true && candidates.length === 1 ? candidates[0].id : null)
   );
 }

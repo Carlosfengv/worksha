@@ -6,7 +6,8 @@ for (const agent of [
   "claude-code-desktop",
   "codex-cli",
   "codex-desktop",
-  "opencode",
+  "opencode-cli",
+  "opencode-desktop",
 ]) {
   test(`${agent} memory lists, searches and reads without claiming loaded state`, async ({
     page,

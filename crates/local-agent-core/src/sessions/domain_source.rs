@@ -132,6 +132,7 @@ impl SessionSource for NativeBridge<'_> {
         let catalog = Catalog {
             sources: vec![],
             files: std::mem::take(&mut scan.files),
+            route_projects: Default::default(),
             revision: 0,
             as_of: String::new(),
         };

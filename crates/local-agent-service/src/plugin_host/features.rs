@@ -129,6 +129,13 @@ pub(crate) fn owner(plugin: &dyn BuiltinPlugin) -> Option<&'static str> {
     if descriptor
         .provides
         .iter()
+        .any(|key| key.name == "agent.client-profile")
+    {
+        return Some("builtin.agents");
+    }
+    if descriptor
+        .provides
+        .iter()
         .any(|key| key.name == "account.source")
     {
         return Some("builtin.providers");

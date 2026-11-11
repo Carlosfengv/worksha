@@ -31,10 +31,10 @@ const verifiedModels = new Set<string>();
 if (grouped) provider.models.push("alternate-model");
 if (new URLSearchParams(location.search).has("partial"))
   verifiedModels.add(provider.model);
-const product =
-  agentProducts.find(
-    (p) => p.id === new URLSearchParams(location.search).get("agent"),
-  ) ?? agentProducts[4];
+const selectedAgent =
+  new URLSearchParams(location.search).get("agent") ?? "opencode-desktop";
+const product = agentProducts.find((p) => p.id === selectedAgent);
+if (!product) throw new Error("Unknown fixture Agent product");
 const config = {
   agentId: product.configId,
   path: "/test/opencode.json",
@@ -311,7 +311,11 @@ providersApi.providerSwitchAction = async (_id, action) => {
   }
   return structuredClone(transaction);
 };
-providersApi.restartAgentProvider = async () => {
+providersApi.restartAgentProvider = async (id, agentProductId) => {
+  if (id !== transaction.id || agentProductId !== product.id)
+    throw new Error(
+      "Restart must target the selected transaction and Agent product",
+    );
   fixture.actions.push("restart");
   if (fixture.failNext || fixture.processes == null || fixture.processes > 1) {
     fixture.failNext = false;

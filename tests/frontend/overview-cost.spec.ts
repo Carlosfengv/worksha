@@ -25,11 +25,11 @@ test("overview separates actual zero, sub-micro estimates and unknown fees while
   await page.getByLabel("时间范围").click();
   await page.getByRole("option", { name: "最近 6 小时", exact: true }).click();
   await page.getByLabel("首页筛选 Agent").click();
-  await page.getByRole("option", { name: "OpenCode", exact: true }).click();
+  await page.getByRole("option", { name: "OpenCode CLI", exact: true }).click();
   await expect
     .poll(() => page.evaluate(() => window.overviewReads.at(-1)))
     .toMatchObject({
-      agent: "opencode",
+      agent: "opencode-cli",
       range: 6,
       metric: "cost",
       source: "gateway",

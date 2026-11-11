@@ -106,9 +106,22 @@ const builtinCatalog: CompositionCatalog = {
     plugins: [
       ...builtinBusinessPlugins(),
       ...(mode === "agent-peers"
-        ? ["claude", "codex", "opencode"].map((instance) => ({
-            id: "io.localagent.builtin.source." + instance,
-            displayName: instance,
+        ? [
+            ...["claude", "codex", "opencode"].map((instance) => ({
+              id: "io.localagent.builtin.source." + instance,
+              displayName: instance,
+              name: "session.source",
+              instance,
+            })),
+            ...["CLI", "Desktop"].map((client) => ({
+              id: "opencode-" + client.toLowerCase(),
+              displayName: "OpenCode " + client,
+              name: "agent.client-profile",
+              instance: "opencode-" + client.toLowerCase(),
+            })),
+          ].map(({ id, displayName, name, instance }) => ({
+            id,
+            displayName,
             version: "1.0.0",
             executionKind: "builtin" as const,
             desiredEnabled: true,
@@ -116,7 +129,7 @@ const builtinCatalog: CompositionCatalog = {
             activationEpoch: "1",
             capabilities: [
               {
-                address: { name: "session.source", version: 1, instance },
+                address: { name, version: 1, instance },
                 metadata: {
                   kind: "query" as const,
                   resourceScope: "application" as const,

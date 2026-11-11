@@ -91,6 +91,7 @@ fn new_shared_family_keeps_product_groups_visible_under_family_and_unknown_filte
         session.agent_id = AGENT.into();
         session.agent_product_id = Some("fixture-cli".into());
         session.agent_products = vec!["fixture-cli".into()];
+        session.has_unknown_client = false;
     }
     for call in catalog.calls.iter_mut() {
         call.agent_id = AGENT.into();

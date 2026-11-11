@@ -308,7 +308,7 @@ impl ProcessSnapshot {
             if agent == "codex" && ["Codex", "ChatGPT"].contains(&base) {
                 count.desktop += 1;
             } else if base == agent
-                || agent == "opencode" && base == "OpenCode"
+                || agent == "opencode" && ["OpenCode", "opencode-cli"].contains(&base)
                 || agent == "claude-desktop" && base == "Claude"
                 || agent == "claude" && executable.contains("/claude/versions/")
             {
@@ -378,6 +378,29 @@ fn check_idle(state: &AppState, agent: &str) -> Result<(), ConfigError> {
 #[cfg(test)]
 mod runtime_tests {
     use super::*;
+    #[test]
+    fn opencode_embedded_cli_processes_are_counted_until_they_exit() {
+        let parent = std::process::id();
+        let mut snapshot = ProcessSnapshot {
+            processes: format!(
+                "10 1 S /Applications/OpenCode.app/Contents/MacOS/OpenCode\n\
+                 11 10 S /Users/test/Library/Application Support/ai.opencode.desktop/cli/2.2.7-arm64/opencode-cli\n\
+                 20 1 S /bin/zsh\n\
+                 21 20 S /test/opencode-cli\n\
+                 22 20 S /test/opencode\n\
+                 30 1 Z /test/opencode-cli\n\
+                 31 {parent} S /test/opencode-cli\n"
+            ),
+            probes: [31].into(),
+            ..Default::default()
+        };
+        assert_eq!(snapshot.count("opencode").map(ProcessCount::total), Some(4));
+        snapshot.processes = "11 1 S /test/opencode-cli\n".into();
+        assert_eq!(snapshot.count("opencode").map(ProcessCount::total), Some(1));
+        snapshot.processes =
+            format!("30 1 Z /test/opencode-cli\n31 {parent} S /test/opencode-cli\n");
+        assert_eq!(snapshot.count("opencode").map(ProcessCount::total), Some(0));
+    }
     #[test]
     fn exited_and_owned_version_processes_do_not_block_codex() {
         let parent = std::process::id();

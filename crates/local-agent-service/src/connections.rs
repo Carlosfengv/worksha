@@ -140,13 +140,14 @@ pub fn snapshot(state: &AppState) -> Connections {
             let product = match config.agent_id.as_str() {
                 "claude" => "claude-code-cli",
                 "claude-desktop" => "claude-code-desktop",
-                "opencode" => "opencode",
                 _ => "",
             };
-            let active_requests = if config.agent_id == "codex" {
+            let active_requests = if ["codex", "opencode"].contains(&config.agent_id.as_str()) {
                 active_counts
                     .iter()
-                    .filter(|(id, _)| local_agent_core::agents::family(id) == Some("codex"))
+                    .filter(|(id, _)| {
+                        local_agent_core::agents::family(id) == Some(config.agent_id.as_str())
+                    })
                     .map(|(_, count)| count)
                     .sum()
             } else {

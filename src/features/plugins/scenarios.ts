@@ -65,8 +65,8 @@ const systemNames: Record<string, { title: string; purpose: string }> = {
     purpose: "查看 Codex CLI 与桌面端共享的已有会话",
   },
   "io.localagent.builtin.source.opencode": {
-    title: "OpenCode 接入",
-    purpose: "查看本机已有对话、工具记录和原生用量",
+    title: "OpenCode 共享会话",
+    purpose: "查看 OpenCode 共享的本机对话、工具记录和原生用量",
   },
   sessions: { title: "自动更新会话", purpose: "发现新增会话并更新历史列表" },
   activity: { title: "实时活动", purpose: "查看 Agent 当前任务的活动进展" },
@@ -87,6 +87,10 @@ export function systemPluginPresentation(plugin: PluginInfo) {
   for (const cap of plugin.capabilities) {
     const { name, instance } = cap.address;
     if (name === "session.source") scenes.add("agents");
+    if (name === "agent.client-profile") {
+      scenes.add("agents");
+      scenes.add("connections");
+    }
     if (
       name.startsWith("session.") ||
       (name === "collector" && ["sessions", "activity"].includes(instance))
@@ -111,9 +115,13 @@ export function systemPluginPresentation(plugin: PluginInfo) {
         : plugin.displayName),
     purpose:
       known?.purpose ??
-      (account
-        ? "查看已授权账户的订阅、额度或用量信息"
-        : "具体能力和配置方式见详情"),
+      (plugin.capabilities.some(
+        ({ address }) => address.name === "agent.client-profile",
+      )
+        ? "识别 OpenCode 客户端并支持按客户端配置模型路由"
+        : account
+          ? "查看已授权账户的订阅、额度或用量信息"
+          : "具体能力和配置方式见详情"),
     scenes: scenes.size ? [...scenes] : ["other" as PluginScenario],
   };
 }

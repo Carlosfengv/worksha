@@ -22,18 +22,22 @@ pub(crate) fn discover_with_directory(
                         Some(std::path::PathBuf::from(location))
                     }
                 })
-                .find(|path| path.is_dir());
+                .find(|path| {
+                    if product.id == "opencode-cli" {
+                        path.is_file()
+                    } else {
+                        path.is_dir()
+                    }
+                });
             // Discovery checks metadata of these known locations only; no session content is read.
-            let found = path.as_ref().is_some_and(|path| path.is_dir());
+            let found = path.is_some();
             AgentDiscovery {
                 id: product.id.clone(),
                 family: product.family.clone(),
                 config_id: product.config_id.clone(),
                 name: product.name.clone(),
                 found,
-                location: path
-                    .filter(|_| found)
-                    .map(|p| p.to_string_lossy().into_owned()),
+                location: path.map(|p| p.to_string_lossy().into_owned()),
                 connected: false,
             }
         })

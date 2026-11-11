@@ -20,9 +20,9 @@ test("OpenCode names the remaining paid probe and offers a single-model route wi
   page,
 }) => {
   await page.goto(
-    "/tests/frontend/provider-switch.html?agent=opencode&group=1&expired=1&partial=1&list=1",
+    "/tests/frontend/provider-switch.html?agent=opencode-cli&group=1&expired=1&partial=1&list=1",
   );
-  await page.getByRole("combobox", { name: "OpenCode 模型连接" }).click();
+  await page.getByRole("combobox", { name: "OpenCode CLI 模型连接" }).click();
   await page.getByRole("option", { name: "目标供应商", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("切换前需要验证 1 个模型");
@@ -101,12 +101,13 @@ test("Agent list selects a model service without changing the current connection
 }) => {
   await page.goto("/tests/frontend/provider-switch.html?list=1");
   const table = page.getByRole("table");
-  await expect(table.getByRole("row")).toHaveCount(12);
+  await expect(table.getByRole("row")).toHaveCount(13);
   for (const name of [
     "Claude Code 桌面端",
     "Codex CLI",
     "Codex 桌面端",
-    "OpenCode",
+    "OpenCode CLI",
+    "OpenCode Desktop",
   ]) {
     await page
       .getByRole("combobox", { name: `${name} 模型连接`, exact: true })
@@ -197,9 +198,9 @@ test("Agent list keeps shared Codex configuration pending until confirmed", asyn
     .click();
   await expect(dialog).toHaveCount(0);
   for (const name of ["Codex CLI", "Codex 桌面端"]) {
-    const row = page
-      .getByRole("row")
-      .filter({ has: page.getByRole("heading", { name, exact: true }) });
+    const row = page.getByRole("row").filter({
+      has: page.getByRole("link", { name: `详情 ${name}`, exact: true }),
+    });
     await expect(row).toContainText("待重启后生效");
     await expect(row).toContainText("Provider · 原供应商");
   }
@@ -214,7 +215,7 @@ test("Agent list supports keyboard selection and recovers from configuration rea
   await page.setViewportSize({ width: 720, height: 560 });
   await page.goto("/tests/frontend/provider-switch.html?list=1");
   const selector = page.getByRole("combobox", {
-    name: "OpenCode 模型连接",
+    name: "OpenCode CLI 模型连接",
     exact: true,
   });
   await expect(selector).toBeEnabled();
@@ -251,20 +252,31 @@ test("pending service notices wrap inside Agent table cells", async ({
 }) => {
   await page.setViewportSize({ width: 720, height: 560 });
   await page.goto("/tests/frontend/provider-switch.html?list=1&pending=1");
-  const notice = page.getByRole("status").filter({ hasText: "有未完成的切换" });
-  await expect(notice).toBeVisible();
   await expect(
-    notice.getByRole("button", { name: "撤销待应用切换", exact: true }),
-  ).toBeVisible();
-  expect(
-    await notice.evaluate(
-      (element) => element.scrollWidth <= element.clientWidth,
-    ),
-  ).toBe(true);
+    page.getByRole("status").filter({ hasText: "有未完成的切换" }),
+  ).toHaveCount(2);
+  for (const name of ["OpenCode CLI", "OpenCode Desktop"]) {
+    const row = page.getByRole("row").filter({
+      has: page.getByRole("link", { name: `详情 ${name}`, exact: true }),
+    });
+    const notice = row
+      .getByRole("status")
+      .filter({ hasText: "有未完成的切换" });
+    await expect(notice).toBeVisible();
+    await expect(
+      notice.getByRole("button", { name: "撤销待应用切换", exact: true }),
+    ).toBeVisible();
+    expect(
+      await notice.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    ).toBe(true);
+  }
 });
 
 for (const agent of [
-  "opencode",
+  "opencode-cli",
+  "opencode-desktop",
   "claude-code-desktop",
   "codex-cli",
   "codex-desktop",
@@ -289,7 +301,7 @@ for (const agent of [
     await expect(dialog).toContainText("目标模型验证未完成");
     await expect(
       dialog.getByRole("button", {
-        name: agent === "codex-cli" ? "已退出，应用配置" : "确认重启并生效",
+        name: agent.endsWith("-cli") ? "已退出，应用配置" : "确认重启并生效",
       }),
     ).toBeDisabled();
     expect(
@@ -302,7 +314,7 @@ for (const agent of [
     await expect(dialog).toContainText("已验证 2 个模型");
     await expect(
       dialog.getByRole("button", {
-        name: agent === "codex-cli" ? "已退出，应用配置" : "确认重启并生效",
+        name: agent.endsWith("-cli") ? "已退出，应用配置" : "确认重启并生效",
       }),
     ).toBeEnabled();
     expect(
@@ -426,7 +438,8 @@ for (const agent of [
   "claude-code-desktop",
   "codex-cli",
   "codex-desktop",
-  "opencode",
+  "opencode-cli",
+  "opencode-desktop",
 ]) {
   test(`${agent} can defer without writing; pending status is shown`, async ({
     page,

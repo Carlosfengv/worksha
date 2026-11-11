@@ -12,7 +12,8 @@ test("上传来源与系统 Agent 共用列表，详情只展示已声明能力"
   for (const name of [
     "Codex CLI",
     "Claude Code CLI",
-    "OpenCode",
+    "OpenCode CLI",
+    "OpenCode Desktop",
     "DeepSeek Harness 桌面端",
   ])
     await expect(table.getByRole("row").filter({ hasText: name })).toHaveCount(
@@ -46,7 +47,9 @@ test("Agent 接入场景同时展示系统自带与用户上传的接入", async
   for (const name of [
     "Claude 接入",
     "Codex 接入",
-    "OpenCode 接入",
+    "OpenCode 共享会话",
+    "OpenCode CLI",
+    "OpenCode Desktop",
     "DSH 桌面端",
   ]) {
     const row = table.getByRole("row").filter({ hasText: name });

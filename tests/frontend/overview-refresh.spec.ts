@@ -3,32 +3,43 @@ import type {} from "./activity-fixture";
 import { openAgentHistory } from "./overview-helpers";
 
 const url =
-  "/tests/frontend/tables.html?mode=activity&connection=official#/overview";
+  "/tests/frontend/tables.html?mode=activity&connection=official&opencodeProduct=opencode-cli#/overview";
 
-test("gateway idle cards retain friendly historical models and do not expose configuration aliases", async ({
-  page,
-}) => {
-  await page.goto(
-    "/tests/frontend/tables.html?mode=activity&activity=completed#/overview",
-  );
-  await openAgentHistory(page);
-  for (const name of ["Claude Code 桌面端", "OpenCode"]) {
-    const card = page.getByRole("article", {
-      name: `${name}实时活动`,
-      exact: true,
-    });
-    await expect(card).toContainText("最近网关 · MyDeepSeek · deepseek-flash");
-    await expect(card).not.toContainText("local-agent-");
-    await expect(card).not.toContainText("local_agent_");
-    await expect(card.locator("dl")).toContainText("35.0 Token/s");
-  }
-});
+for (const [product, name] of [
+  ["opencode-cli", "OpenCode CLI"],
+  ["opencode-desktop", "OpenCode Desktop"],
+]) {
+  test(`${name} gateway idle cards retain friendly historical models and do not expose configuration aliases`, async ({
+    page,
+  }) => {
+    await page.goto(
+      `/tests/frontend/tables.html?mode=activity&activity=completed&opencodeProduct=${product}#/overview`,
+    );
+    await openAgentHistory(page);
+    for (const label of ["Claude Code 桌面端", name]) {
+      const card = page.getByRole("article", {
+        name: `${label}实时活动`,
+        exact: true,
+      });
+      await expect(card).toContainText(
+        "最近网关 · MyDeepSeek · deepseek-flash",
+      );
+      await expect(card).not.toContainText("local-agent-");
+      await expect(card).not.toContainText("local_agent_");
+      await expect(card.locator("dl")).toContainText("35.0 Token/s");
+    }
+    const other = name === "OpenCode CLI" ? "OpenCode Desktop" : "OpenCode CLI";
+    await expect(
+      page.getByRole("article", { name: `${other}实时活动`, exact: true }),
+    ).not.toContainText("最近网关 · MyDeepSeek");
+  });
+}
 
 test("idle official cards show the configured default, keeping historical gateway timings explicitly separate", async ({
   page,
 }) => {
   await page.goto(
-    "/tests/frontend/tables.html?mode=activity&connection=official&activity=completed#/overview",
+    "/tests/frontend/tables.html?mode=activity&connection=official&activity=completed&opencodeProduct=opencode-cli#/overview",
   );
   await openAgentHistory(page);
   for (const name of [
@@ -36,7 +47,8 @@ test("idle official cards show the configured default, keeping historical gatewa
     "Claude Code 桌面端",
     "Codex CLI",
     "Codex 桌面端",
-    "OpenCode",
+    "OpenCode CLI",
+    "OpenCode Desktop",
   ]) {
     const card = page.getByRole("article", {
       name: `${name}实时活动`,
@@ -49,10 +61,12 @@ test("idle official cards show the configured default, keeping historical gatewa
     );
     await expect(card).not.toContainText("MyDeepSeek");
     const time = card.locator("time");
-    if (name !== "Codex 桌面端") {
+    if (name !== "Codex 桌面端" && name !== "OpenCode Desktop") {
       await expect(card).toContainText("最近请求 TTFT");
       await expect(time).toHaveAttribute("title", /最近网关请求 · MyDeepSeek/);
       await expect(time).toHaveText(/\d+ (秒|分钟|小时)前请求/);
+    } else {
+      await expect(card).not.toContainText("最近请求 TTFT");
     }
   }
 });
@@ -80,7 +94,7 @@ test("activity cards preserve their order and contain long content as membership
   await page.goto(url);
   await openAgentHistory(page);
   const cards = page.getByRole("article", { name: /实时活动$/ });
-  await expect(cards).toHaveCount(5);
+  await expect(cards).toHaveCount(6);
   const order = () => cards.getByRole("heading").allTextContents();
   const contained = () =>
     cards.evaluateAll((elements) =>
@@ -98,7 +112,8 @@ test("activity cards preserve their order and contain long content as membership
     "Claude Code 桌面端",
     "Codex CLI",
     "Codex 桌面端",
-    "OpenCode",
+    "OpenCode CLI",
+    "OpenCode Desktop",
   ]);
   for (const mode of [
     "completed",
@@ -308,9 +323,9 @@ test("a slow previous Agent response cannot replace the selected Agent or its an
     .toBe("function");
   await expect(page.getByRole("listbox", { includeHidden: true })).toBeHidden();
   await select.click();
-  await page.getByRole("option", { name: "OpenCode", exact: true }).click();
+  await page.getByRole("option", { name: "OpenCode CLI", exact: true }).click();
   const card = page.getByRole("article", {
-    name: "OpenCode实时活动",
+    name: "OpenCode CLI实时活动",
     exact: true,
   });
   await expect(card).toContainText("3 个活动进行中");

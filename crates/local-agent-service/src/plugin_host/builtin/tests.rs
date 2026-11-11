@@ -357,6 +357,12 @@ fn profiles_select_one_shared_graph_and_registration_never_grants_source_access(
             super::super::features::mounted(&runtime.host, "builtin.providers"),
             profile != Profile::Recovery
         );
+        let iam = catalog
+            .plugins
+            .iter()
+            .find(|plugin| plugin.id == local_agent_core::iam::PLUGIN_ID)
+            .expect("IAM is registered in every profile");
+        assert!(iam.opt_in && !iam.runtime_active);
         match profile {
             Profile::Desktop => {
                 let projects = crate::projects::PLUGIN_ID;
@@ -366,7 +372,12 @@ fn profiles_select_one_shared_graph_and_registration_never_grants_source_access(
                             .requires
                             .iter()
                             .any(|requirement| requirement.instance == projects);
-                    assert_eq!(plugin.runtime_active, !project_scope, "{}", plugin.id);
+                    assert_eq!(
+                        plugin.runtime_active,
+                        !project_scope && plugin.id != iam.id,
+                        "{}",
+                        plugin.id
+                    );
                 }
             }
             Profile::Background => {

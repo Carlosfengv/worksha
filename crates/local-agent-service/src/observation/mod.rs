@@ -185,6 +185,16 @@ impl Observation {
     pub(crate) fn history_query_partial(&self) -> bool {
         self.hub.error().is_some()
     }
+    pub(crate) fn gateway_sessions(
+        &self,
+    ) -> Result<(Vec<local_agent_core::sessions::SessionSummary>, bool), String> {
+        self.sql_query(|history| {
+            let inputs = local_agent_core::sessions::activity_input_cache::InputCache::open(
+                self.directory.join("gateway-activity-inputs.json"),
+            );
+            history.gateway_sessions(&inputs)
+        })
+    }
     pub(crate) fn sql_query_now<T>(
         &self,
         read: impl FnOnce(

@@ -20,7 +20,7 @@ fn desktop(product: &str) -> Result<(&'static str, &'static str), String> {
     match product {
         "claude-code-desktop" => Ok(("claude-desktop", "com.anthropic.claudefordesktop")),
         "codex-desktop" => Ok(("codex", "com.openai.codex")),
-        "opencode" => Ok(("opencode", "ai.opencode.desktop")),
+        "opencode" | "opencode-desktop" => Ok(("opencode", "ai.opencode.desktop")),
         _ => Err("CLI 请在原终端退出，确认应用后再使用原启动方式启动。".into()),
     }
 }
@@ -282,9 +282,14 @@ mod tests {
         assert_eq!(desktop("claude-code-desktop").unwrap().0, "claude-desktop");
         assert_eq!(desktop("codex-desktop").unwrap().0, "codex");
         assert_eq!(desktop("opencode").unwrap().0, "opencode");
+        assert_eq!(
+            desktop("opencode-desktop").unwrap(),
+            ("opencode", "ai.opencode.desktop")
+        );
         for product in [
             "claude-code-cli",
             "codex-cli",
+            "opencode-cli",
             "../Applications/Terminal.app",
             "",
         ] {

@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { PageActions, PageHeader } from "@/components/ui/page-layout";
 import { TabItem, Tabs, TabsList } from "@/components/ui/tabs";
 import { PluginDetailSlots } from "@/features/plugins/detail-slots";
 import { ObjectContributionSlots } from "@/features/plugins/object-detail-slots";
@@ -24,6 +25,7 @@ export function AgentDetailLayout({
   canConfigure,
   activation,
   status,
+  refresh,
   children,
 }: {
   agent: AgentDiscovery;
@@ -33,27 +35,59 @@ export function AgentDetailLayout({
   canConfigure: boolean;
   activation?: ReactNode;
   status?: ReactNode;
+  refresh: () => Promise<void>;
   children: ReactNode;
 }) {
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState("");
+  const refreshDetail = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    setRefreshError("");
+    try {
+      await refresh();
+    } catch (reason) {
+      setRefreshError(
+        reason instanceof Error ? reason.message : String(reason),
+      );
+    } finally {
+      setRefreshing(false);
+    }
+  };
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-heading font-medium">{agent.name}</h2>
-          <p className="mt-1 text-body text-fg-muted">{description}</p>
+    <div className="min-w-0 space-y-4">
+      <PageHeader className="px-0">
+        <div className="min-w-0 space-y-1">
+          <h2 className="break-words text-title font-medium">{agent.name}</h2>
+          <p className="text-label text-fg-muted">{description}</p>
         </div>
-        {activation}
-        {value !== "connection" && (
-          <Button asChild variant="neutral" size="sm">
-            <a href={agentDetailHref(agent.id, "connection")}>
-              {canConfigure ? "模型连接" : "连接与观测"}
-            </a>
+        <PageActions>
+          <Button asChild variant="tertiary">
+            <a href="#/agents">返回 Agents</a>
           </Button>
-        )}
-        <Button asChild variant="tertiary" size="sm">
-          <a href="#/agents">返回 Agents</a>
-        </Button>
-      </div>
+          <Button
+            variant="tertiary"
+            loading={refreshing}
+            disabled={refreshing}
+            onClick={() => void refreshDetail()}
+          >
+            刷新
+          </Button>
+          {value !== "connection" && (
+            <Button asChild variant="neutral">
+              <a href={agentDetailHref(agent.id, "connection")}>
+                {canConfigure ? "模型连接" : "连接与观测"}
+              </a>
+            </Button>
+          )}
+        </PageActions>
+      </PageHeader>
+      {refreshError && (
+        <p role="alert" className="wrap-anywhere text-label text-fg-danger">
+          刷新未完成。{refreshError}
+        </p>
+      )}
+      {activation}
       {status}
       <Tabs
         value={value}

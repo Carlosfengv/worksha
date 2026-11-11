@@ -473,7 +473,7 @@ try {
   );
   const directory = await api("/api/domain/directory");
   assert.equal(directory.catalog.sources.length, 3);
-  assert.equal(directory.catalog.products.length, 5);
+  assert.equal(directory.catalog.products.length, 6);
   assert(
     directory.catalog.sources.every(
       (s) => s.status.authorization === "required",

@@ -295,7 +295,7 @@ fn partial_unread_and_revoked_catalog_states_do_not_claim_current_data() {
     let native = NativeSessions::new(home.path().into(), &[]);
     let initial = native.domain_catalog().unwrap();
     assert_eq!(initial.providers.len(), 3);
-    assert_eq!(initial.products.len(), 5);
+    assert_eq!(initial.products.len(), 6);
     assert_eq!(
         initial
             .sources

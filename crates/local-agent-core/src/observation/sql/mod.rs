@@ -685,16 +685,19 @@ impl History {
         dashboard::insert_fragments(&self.db, version, row)?;
         Ok(version)
     }
-    /// Only the session identity and request metadata observed by this gateway.
+    /// A gateway-only title may use the existing excerpt for the first request.
     /// Native response enrichment is authorized separately by the session reader.
-    pub fn gateway_sessions(&self) -> Result<(Vec<crate::sessions::SessionSummary>, bool), String> {
-        use crate::sessions::{SessionSummary, Usage};
+    pub fn gateway_sessions(
+        &self,
+        inputs: &crate::sessions::activity_input_cache::InputCache,
+    ) -> Result<(Vec<crate::sessions::SessionSummary>, bool), String> {
+        use crate::sessions::{SessionSummary, Usage, sanitize_label};
         const LIMIT: usize = 10_000;
         let mut query = self
             .db
             .prepare_cached(
                 "SELECT session,family,json_group_array(DISTINCT product),
-                    min(json_extract(raw,'$.startedAt')),max(json_extract(raw,'$.startedAt')),
+                    min(json_extract(raw,'$.startedAt') || ' ' || id),max(json_extract(raw,'$.startedAt')),
                     count(DISTINCT logical)
              FROM attempts
              WHERE session IS NOT NULL AND session LIKE family || ':%'
@@ -720,7 +723,7 @@ impl History {
             if sessions.len() == LIMIT {
                 return Ok((sessions, true));
             }
-            let (id, agent_id, products, created_at, updated_at, model_calls) =
+            let (id, agent_id, products, first_request, updated_at, model_calls) =
                 row.map_err(fail)?;
             let Some(native_id) = id.strip_prefix(&format!("{agent_id}:")) else {
                 continue;
@@ -731,7 +734,34 @@ impl History {
             agent_products.sort();
             let agent_product_id = (!has_unknown_client && agent_products.len() == 1)
                 .then(|| agent_products[0].clone());
-            let title = format!("会话 {}", native_id.chars().take(8).collect::<String>());
+            // Request timestamps are RFC3339. The ID breaks ties and pins the
+            // title to the exact attempt, even after its excerpt ages out.
+            let (created_at, first_id) = first_request
+                .as_deref()
+                .and_then(|key| key.split_once(' '))
+                .unzip();
+            let excerpt = first_id.and_then(|id| inputs.get(id)).filter(|saved| {
+                saved.agent == agent_id
+                    && saved.session_id.as_deref() == Some(id.as_str())
+                    && saved.native.is_none()
+                    && Some(saved.input.at.as_str()) == created_at
+            });
+            let title = excerpt.and_then(|saved| {
+                let mut text = saved.input.text.as_str();
+                // OpenCode 1.x can send its title-generation request before
+                // the first chat request, with the user text in the same prompt.
+                if agent_id == "opencode" {
+                    text = text
+                        .strip_prefix("Generate a title for this conversation:")
+                        .unwrap_or(text)
+                        .trim_start();
+                }
+                (!text.is_empty()).then(|| sanitize_label(text, 100))
+            });
+            let (title, title_source) = title.map_or_else(
+                || ("未命名会话".into(), "fallback"),
+                |title| (title, "first_user_message"),
+            );
             sessions.push(SessionSummary {
                 project_hidden: false,
                 native_id: native_id.to_owned(),
@@ -742,13 +772,13 @@ impl History {
                 has_unknown_client,
                 agent_version: None,
                 title,
-                title_source: "fallback".into(),
+                title_source: title_source.into(),
                 project_path: None,
                 project_name: None,
                 project_id: None,
                 project_root: None,
                 git_remote: None,
-                created_at,
+                created_at: created_at.map(str::to_owned),
                 updated_at,
                 status: "observed",
                 message_count: 0,

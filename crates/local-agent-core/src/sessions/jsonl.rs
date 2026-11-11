@@ -218,6 +218,7 @@ impl ReadOnlySessionSource for JsonlSource {
         let catalog = Catalog {
             sources: vec![],
             files,
+            route_projects: Default::default(),
             revision: 0,
             as_of: String::new(),
         };
@@ -243,6 +244,7 @@ impl ReadOnlySessionSource for JsonlSource {
             }),
             versions,
             revision_delta,
+            verified_route_projects: None,
         })
     }
 

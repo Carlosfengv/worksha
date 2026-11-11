@@ -120,7 +120,7 @@ export function SessionSourceControl({
           </DialogHeader>
           <div className="space-y-3 text-body text-fg-muted">
             <p>只读以下原生会话及关联来源；可随时停止读取。</p>
-            {shared && (
+            {shared && source.agentId !== "opencode" && (
               <p>
                 此来源由 CLI
                 与桌面端共用。启用会读取两端及来源未知的本机记录；停止读取会同时影响两端。共享会话只索引一次，来源不明的用量不会分配给任一端。
@@ -128,8 +128,9 @@ export function SessionSourceControl({
             )}
             {source.agentId === "opencode" && (
               <p>
-                同时只读本机及会话项目的 opencode.json / jsonc、.opencode
-                配置中的 MCP
+                CLI 和 Desktop 共用一份读取授权。目前读取 OpenCode 1.x 会话库，
+                历史记录按 OpenCode 共享来源显示。 同时只读本机及会话项目的
+                opencode.json / jsonc、.opencode 配置中的 MCP
                 服务定义，用于关联工具来源；不会启动服务或读取配置引用的文件。
                 同时读取当前 opencode.log 末尾最多 2 MiB 中明确关联 Session
                 的模型错误，补充尚未写入消息的连接异常；不展示其他日志内容或读取凭据文件。

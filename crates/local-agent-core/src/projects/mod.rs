@@ -4,6 +4,7 @@ pub mod listeners;
 pub mod ports;
 mod query_cache;
 pub mod readers;
+pub mod routing;
 #[cfg(test)]
 mod tests;
 pub mod visibility;

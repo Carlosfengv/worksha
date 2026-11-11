@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable, useDataTable } from "@/components/ui/data-table";
+import { PageActions, PageHeader } from "@/components/ui/page-layout";
 import { useIcon } from "@/lib/icon-context";
 import { connectionView } from "@/features/agents/connection-display";
 import { activationLabel } from "@/features/providers/components/provider-activation-status";
@@ -48,7 +49,7 @@ const columns: ColumnDef<AgentRow>[] = [
   {
     id: "agent",
     header: "Agent",
-    size: 640,
+    size: 384,
     cell: function AgentCell({ row: { original: item } }) {
       const { agent, data, status } = item;
       const AgentIcon = useIcon("brain");
@@ -63,9 +64,10 @@ const columns: ColumnDef<AgentRow>[] = [
       const activation = status
         ? activationLabel(status, agent.configId)
         : null;
-      const version = status?.runtimes.find(
-        (r) => r.agentId === agent.configId,
-      )?.version;
+      const version =
+        agent.id === "opencode-desktop"
+          ? undefined
+          : status?.runtimes.find((r) => r.agentId === agent.configId)?.version;
       return (
         <div className="flex min-w-64 items-center gap-3 py-2 whitespace-normal">
           {agentLogos[agent.family] ? (
@@ -87,7 +89,20 @@ const columns: ColumnDef<AgentRow>[] = [
           )}
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <h2 className="text-body font-medium">{agent.name}</h2>
+              <Button
+                asChild
+                variant="link"
+                size="sm"
+                className="max-w-56 justify-start px-0"
+              >
+                <a
+                  href={agentDetailHref(agent.id)}
+                  aria-label={`详情 ${agent.name}`}
+                  title={agent.name}
+                >
+                  <span className="truncate">{agent.name}</span>
+                </a>
+              </Button>
               {version && (
                 <span className="text-label text-fg-subtle">{version}</span>
               )}
@@ -107,6 +122,7 @@ const columns: ColumnDef<AgentRow>[] = [
               ) : (
                 <>
                   {connection.label} · {connection.title} ·{" "}
+                  {agent.family === "opencode" ? "默认模型配置共享 · " : ""}
                   {sourceLabel(source)}
                 </>
               )}
@@ -171,22 +187,6 @@ const columns: ColumnDef<AgentRow>[] = [
         </div>
       ),
   },
-  {
-    id: "actions",
-    size: 72,
-    header: () => <span className="sr-only">操作</span>,
-    cell: ({
-      row: {
-        original: { agent },
-      },
-    }) => (
-      <Button variant="tertiary" size="sm" asChild>
-        <a href={agentDetailHref(agent.id)}>
-          详情<span className="sr-only"> {agent.name}</span>
-        </a>
-      </Button>
-    ),
-  },
 ];
 
 function AgentTable({
@@ -245,6 +245,7 @@ function AgentTable({
   return (
     <DataTable
       table={table}
+      role="region"
       showPagination={false}
       aria-label="Agent 列表"
       emptyMessage="尚未发现 Agent"
@@ -258,9 +259,11 @@ function AgentTable({
 export function AgentList({
   data,
   agents = data.agents,
+  refresh,
 }: {
   data: Snapshot;
   agents?: AgentDiscovery[];
+  refresh?: () => Promise<void>;
 }) {
   const status = useSharedRead(providerStatusResource);
   const services = useSharedRead(modelServicesResource);
@@ -275,6 +278,27 @@ export function AgentList({
     reloadServiceCatalog();
   }, [reloadProviderStatus, reloadServiceCatalog]);
   const [active, setActive] = useState<AgentDiscovery | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState("");
+  const refreshList = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    setRefreshError("");
+    try {
+      await Promise.all([
+        refresh?.(),
+        status.reload(),
+        services.reload(),
+        sources.reload(),
+      ]);
+    } catch (reason) {
+      setRefreshError(
+        reason instanceof Error ? reason.message : String(reason),
+      );
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const renderTable = (
     openSwitch: (config: NativeConfig, providerId: string) => void,
     busy = false,
@@ -296,25 +320,28 @@ export function AgentList({
     />
   );
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-body text-fg-muted">
-          {agents.length} 个 Agent · 查看连接与观测
-        </p>
-        <Button
-          variant="tertiary"
-          size="sm"
-          loading={status.loading}
-          onClick={status.reload}
-        >
-          重新读取配置
-        </Button>
-      </div>
-      {status.error && (
+    <div className="min-w-0 space-y-4">
+      <PageHeader className="px-0">
+        <h2 className="text-title font-medium">Agents</h2>
+        <PageActions>
+          <Button
+            variant="tertiary"
+            loading={refreshing}
+            disabled={refreshing}
+            onClick={() => void refreshList()}
+          >
+            重新读取配置
+          </Button>
+        </PageActions>
+      </PageHeader>
+      <p className="text-label text-fg-muted">{agents.length} 个 Agent</p>
+      {(refreshError || status.error) && (
         <Alert status="warning" role="alert">
-          <AlertTitle>Provider 配置读取未完成</AlertTitle>
+          <AlertTitle>
+            {refreshError ? "列表更新未完成" : "Provider 配置读取未完成"}
+          </AlertTitle>
           <AlertDescription>
-            {status.error}。重新读取后再切换。
+            {refreshError || `${status.error}。重新读取后再切换。`}
           </AlertDescription>
         </Alert>
       )}

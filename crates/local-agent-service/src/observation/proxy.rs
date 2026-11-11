@@ -90,6 +90,13 @@ fn native_session(agent: &str, headers: &HeaderMap, body: &serde_json::Value) ->
                 .map(|id| format!("{agent}:{id}"))
         }
     };
+    // OpenCode 2.x sends the real session separately from cache affinity,
+    // which can refer to a parent when the request is made in a fork.
+    if agent == "opencode" && headers.contains_key("x-opencode-session-id") {
+        let mut values = headers.get_all("x-opencode-session-id").iter();
+        let session = normalize(values.next()?.to_str().ok()?)?;
+        return values.next().is_none().then_some(session);
+    }
     let mut session = None;
     for name in names {
         if headers.get_all(*name).iter().count() > 1 {
@@ -238,6 +245,8 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                     .and_then(|v| v.to_str().ok()),
             )
         }
+    } else if agent == "opencode" {
+        crate::plugin_host::opencode::request_product(&state.readonly.host, &parts.headers)
     } else {
         binding.agent_product_id.clone()
     };

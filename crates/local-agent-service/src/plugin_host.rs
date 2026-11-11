@@ -12,6 +12,7 @@ pub(crate) mod builtin;
 pub(crate) mod external;
 pub(crate) mod features;
 pub(crate) mod intake;
+pub(crate) mod opencode;
 
 pub(crate) struct RuntimeConfiguration {
     pub(crate) default_profile: Profile,
@@ -36,6 +37,7 @@ impl ReadonlyRuntime {
         let sources = NativeSourcePlugins::definitions();
         let collectors = crate::tasks::CollectorScheduler::definitions();
         let mut factories = sources.registrations();
+        factories.extend(opencode::registrations());
         factories.extend(crate::billing::sources::AccountSources::registrations());
         factories.extend(
             collectors

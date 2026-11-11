@@ -109,8 +109,9 @@ test("activity history sorts by message start, keeps that order on later steps a
   await page
     .getByRole("option", { name: "客户端来源未知", exact: true })
     .click();
-  await expect(feed(page).getByRole("row")).toHaveCount(2);
-  await expect(feed(page)).toContainText("较早原生活动");
+  await expect
+    .poll(() => titles(page))
+    .toEqual(["模型请求 · recent-f", "较早原生活动"]);
   await expect(feed(page)).not.toContainText("持续任务");
 });
 

@@ -2,13 +2,14 @@
   "sources": [
     { "id": "claude", "name": "Claude", "shared": true },
     { "id": "codex", "name": "Codex", "shared": true },
-    { "id": "opencode", "name": "OpenCode", "shared": false }
+    { "id": "opencode", "name": "OpenCode", "shared": true }
   ],
   "products": [
     { "id": "claude-code-cli", "name": "Claude Code CLI", "family": "claude", "configId": "claude", "locations": ["~/.claude"] },
     { "id": "claude-code-desktop", "name": "Claude Code 桌面端", "family": "claude", "configId": "claude-desktop", "locations": ["/Applications/Claude.app"] },
     { "id": "codex-cli", "name": "Codex CLI", "family": "codex", "configId": "codex", "locations": ["~/.codex"] },
     { "id": "codex-desktop", "name": "Codex 桌面端", "family": "codex", "configId": "codex", "locations": ["/Applications/Codex.app", "/Applications/ChatGPT.app"] },
-    { "id": "opencode", "name": "OpenCode", "family": "opencode", "configId": "opencode", "locations": ["~/.local/share/opencode"] }
+    { "id": "opencode-cli", "name": "OpenCode CLI", "family": "opencode", "configId": "opencode", "locations": ["~/.opencode/bin/opencode", "~/.local/bin/opencode", "/opt/homebrew/bin/opencode", "/usr/local/bin/opencode"] },
+    { "id": "opencode-desktop", "name": "OpenCode Desktop", "family": "opencode", "configId": "opencode", "locations": ["/Applications/OpenCode.app", "~/Applications/OpenCode.app"] }
   ]
 }

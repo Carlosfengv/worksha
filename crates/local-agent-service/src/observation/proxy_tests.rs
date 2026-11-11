@@ -64,6 +64,24 @@ fn conflicting_duplicate_invalid_and_parent_headers_stay_unlinked() {
     );
 }
 #[test]
+fn opencode_v2_fork_uses_session_id_and_not_cache_affinity() {
+    let h = headers(&[
+        ("x-opencode-session-id", OC),
+        ("x-opencode-parent-session-id", "ses_parent"),
+        ("x-session-id", "ses_parent"),
+        ("x-opencode-session", "ses_parent"),
+    ]);
+    assert_eq!(
+        native_session("opencode", &h, &json!({})),
+        Some(format!("opencode:{OC}"))
+    );
+    for invalid in ["bad", OC] {
+        let mut h = h.clone();
+        h.append("x-opencode-session-id", invalid.parse().unwrap());
+        assert!(native_session("opencode", &h, &json!({})).is_none());
+    }
+}
+#[test]
 fn claude_metadata_must_agree_with_headers_and_be_structured() {
     let body = json!({"metadata":{"user_id":json!({"session_id":ONE,"account_uuid":"not retained"}).to_string()}});
     assert_eq!(

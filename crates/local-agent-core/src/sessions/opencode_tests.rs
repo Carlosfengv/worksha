@@ -42,6 +42,426 @@ fn query(service: &NativeSessions) -> Page<SessionSummary, SessionQuery> {
         .unwrap()
 }
 
+fn create_v2(db: &Connection, home: &Path, fork: Option<&str>) {
+    db.execute_batch(
+        "CREATE TABLE session_v2(id TEXT PRIMARY KEY,title TEXT,directory TEXT,version TEXT,
+            time_created INTEGER,time_updated INTEGER,fork_session_id TEXT);
+         CREATE TABLE session_message(id TEXT PRIMARY KEY,session_id TEXT,type TEXT,seq INTEGER,
+            time_created INTEGER,time_updated INTEGER,data TEXT);
+         CREATE TABLE session_part(message_id TEXT,session_id TEXT,ordinal INTEGER,type TEXT,
+            time_created INTEGER,time_updated INTEGER,data TEXT,PRIMARY KEY(message_id,ordinal));",
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO session_v2 VALUES('ses_test',NULL,?1,'2.2.7',2000,5000,?2)",
+        params![home.to_string_lossy(), fork],
+    )
+    .unwrap();
+}
+
+fn v2_message(db: &Connection, id: &str, kind: &str, seq: i64, created: i64, data: Value) {
+    db.execute(
+        "INSERT INTO session_message VALUES(?1,'ses_test',?2,?3,?4,?4,?5)",
+        params![id, kind, seq, created, data.to_string()],
+    )
+    .unwrap();
+}
+
+#[test]
+fn opencode_v2_activity_tracks_tools_and_idle_without_reactivating_old_turns() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let db = fixture(home);
+    create_v2(&db, home, None);
+    let now = chrono::Utc::now();
+    let at = now.timestamp_millis();
+    db.execute("UPDATE session SET time_updated=?1", [at])
+        .unwrap();
+    db.execute(
+        "UPDATE session_v2 SET time_created=?1,time_updated=?2",
+        params![at - 4000, at],
+    )
+    .unwrap();
+    message(&db, "legacy_copy", at - 400, json!({"role":"user"}));
+    part(
+        &db,
+        "legacy_part",
+        "legacy_copy",
+        at - 400,
+        json!({"type":"text","text":"legacy duplicate"}),
+    );
+    v2_message(
+        &db,
+        "msg_user",
+        "user",
+        1,
+        at - 3300,
+        json!({"text":"hello api_key=fixture-private-key"}),
+    );
+    let assistant = |status, end: Option<i64>| {
+        let mut tool = json!({"type":"tool","name":"shell","id":"native-call","time":{"created":at-2500,"ran":at-2300},
+            "state":{"status":status,"input":{"command":"private-command"}}});
+        if let Some(end) = end {
+            tool["time"]["completed"] = end.into();
+        }
+        json!({"model":{"id":"model-2"},"content":[tool]})
+    };
+    v2_message(
+        &db,
+        "msg_assistant",
+        "assistant",
+        2,
+        at - 3000,
+        assistant("running", None),
+    );
+    db.execute(
+        "INSERT INTO session_part VALUES('msg_assistant','ses_test',0,'tool',?1,?1,?2)",
+        params![
+            at - 2600,
+            json!({"id":"parallel-call","name":"read","time":{"created":at-2600},
+            "state":{"status":"streaming","input":"private-tool-arguments"}})
+            .to_string()
+        ],
+    )
+    .unwrap();
+    let (rows, limited) = opencode_live::messages(home, now).unwrap();
+    assert!(!limited);
+    assert_eq!(rows.len(), 1);
+    let running = &rows[0];
+    assert_eq!(running.turn_id.as_deref(), Some("msg_user"));
+    assert_eq!(running.call_id.as_deref(), Some("msg_assistant_part_1"));
+    assert_eq!(running.phase, "tool_requested");
+    assert_eq!(running.tool_names, ["read", "shell"]);
+    assert!(!running.stale);
+    assert_eq!(running.title, "hello [已隐藏凭据]");
+    let json = serde_json::to_string(running).unwrap();
+    for private in [
+        "fixture-private-key",
+        "private-command",
+        "private-tool-arguments",
+        "legacy duplicate",
+    ] {
+        assert!(!json.contains(private));
+    }
+    let (expired, _) = opencode_live::messages(home, now + chrono::Duration::seconds(31)).unwrap();
+    assert_eq!(expired[0].phase, "processing");
+    assert!(expired[0].stale);
+
+    db.execute("DELETE FROM session_part", []).unwrap();
+    db.execute(
+        "UPDATE session_message SET data=?1 WHERE id='msg_assistant'",
+        [assistant("completed", Some(at - 1600)).to_string()],
+    )
+    .unwrap();
+    let (returned, _) = opencode_live::messages(home, now).unwrap();
+    assert_eq!(returned[0].phase, "tool_returned");
+    assert_eq!(returned[0].tool_names, ["shell"]);
+    db.execute(
+        "UPDATE session_message SET data=?1 WHERE id='msg_assistant'",
+        [assistant("running", None).to_string()],
+    )
+    .unwrap();
+    v2_message(
+        &db,
+        "msg_idle",
+        "idle",
+        3,
+        at - 1000,
+        json!({"outcome":"interrupted"}),
+    );
+    v2_message(
+        &db,
+        "msg_next",
+        "user",
+        4,
+        at - 500,
+        json!({"text":"new turn"}),
+    );
+    let (interrupted, _) = opencode_live::messages(home, now).unwrap();
+    assert_eq!(interrupted[0].turn_id.as_deref(), Some("msg_next"));
+    assert_eq!(interrupted[1].phase, "cancelled");
+    assert!(interrupted.iter().all(|row| row.tool_names.is_empty()));
+
+    db.execute(
+        "UPDATE session_message SET data=?1 WHERE id='msg_idle'",
+        [json!({"outcome":"failed"}).to_string()],
+    )
+    .unwrap();
+    let (failed, _) = opencode_live::messages(home, now).unwrap();
+    assert_eq!(failed[1].phase, "error");
+    assert!(failed[1].tool_names.is_empty());
+
+    db.execute("DELETE FROM session_message WHERE id='msg_idle'", [])
+        .unwrap();
+    let (superseded, _) = opencode_live::messages(home, now).unwrap();
+    assert_eq!(superseded[1].phase, "processing");
+    assert!(superseded[1].stale);
+    assert!(superseded.iter().all(|row| row.tool_names.is_empty()));
+}
+
+#[test]
+fn opencode_v2_history_uses_current_rows_inline_and_split_parts_and_measured_usage() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let db = fixture(home);
+    db.execute(
+        "INSERT INTO session VALUES('ses_legacy','仅旧库会话',?1,'1.18.15',1000,4000)",
+        [home.to_string_lossy()],
+    )
+    .unwrap();
+    create_v2(&db, home, None);
+    v2_message(
+        &db,
+        "msg_user",
+        "user",
+        1,
+        2100,
+        json!({
+            "text":"hello","files":[{"name":"private-filename","uri":"media:private-blob-reference"}]
+        }),
+    );
+    v2_message(
+        &db,
+        "msg_assistant",
+        "assistant",
+        2,
+        2200,
+        json!({
+            "model":{"id":"model-2","providerID":"gateway"},"time":{"completed":2500},"finish":"stop",
+            "content":[{"type":"text","text":"inline reply","native":{"private":"hidden-provider-state"}}],
+            "tokens":{"input":11,"output":7,"reasoning":2,"cache":{"read":5,"write":1}}
+        }),
+    );
+    for (ordinal, kind, data) in [
+        (0, "text", json!({"text":"split reply"})),
+        (
+            1,
+            "tool",
+            json!({"id":"call_native","name":"read","time":{"created":2250,"ran":2260,"completed":2280},
+            "state":{"status":"completed","input":{"filePath":"/tmp/example"},"content":[
+                {"type":"text","text":"tool answer"},{"type":"file","uri":"media:private-tool-reference"}]}}),
+        ),
+    ] {
+        db.execute(
+            "INSERT INTO session_part VALUES('msg_assistant','ses_test',?1,?2,2250,2280,?3)",
+            params![ordinal, kind, data.to_string()],
+        )
+        .unwrap();
+    }
+    v2_message(
+        &db,
+        "msg_idle",
+        "idle",
+        3,
+        2500,
+        json!({"outcome":"succeeded"}),
+    );
+    let main_before = fs::read(opencode::path(home)).unwrap();
+    let sessions = NativeSessions::new(home.into(), &["opencode".into()]);
+    sessions.refresh().unwrap();
+    let list = query(&sessions);
+    assert_eq!(list.total, 2);
+    let row = list
+        .items
+        .iter()
+        .find(|row| row.native_id == "ses_test")
+        .unwrap();
+    assert_eq!(row.title, "hello");
+    assert_eq!(row.title_source, "first_user_message");
+    assert_eq!(row.agent_version.as_deref(), Some("2.2.7"));
+    assert_eq!(row.usage.input_tokens, Some(17));
+    assert_eq!(row.usage.output_tokens, Some(9));
+    assert_eq!(row.usage.total_tokens, Some(26));
+    assert_eq!(row.model_calls, 1);
+    let conversation = sessions.conversation(&row.id, None, None).unwrap();
+    assert_eq!(conversation.coverage, "native_history");
+    let text: Vec<_> = conversation
+        .items
+        .iter()
+        .filter(|event| event.kind == "message")
+        .filter_map(|event| event.text.as_deref())
+        .collect();
+    assert_eq!(text, ["hello", "split reply", "inline reply"]);
+    let tool = conversation
+        .items
+        .iter()
+        .find(|event| event.call_id.as_deref() == Some("call_native"))
+        .unwrap();
+    assert_eq!(tool.output.as_deref(), Some("tool answer"));
+    assert_eq!(tool.duration_ms, Some(20));
+    let transcript = serde_json::to_string(&conversation).unwrap();
+    for private in [
+        "private-filename",
+        "private-blob-reference",
+        "private-tool-reference",
+        "hidden-provider-state",
+    ] {
+        assert!(!transcript.contains(private));
+    }
+    assert_eq!(fs::read(opencode::path(home)).unwrap(), main_before);
+    let legacy_project = sessions.cached_route_project("opencode", "ses_legacy");
+    assert!(legacy_project.is_some());
+    db.execute(
+        "INSERT INTO session_message VALUES('msg_broken','ses_test','assistant',4,2600,2600,'{')",
+        [],
+    )
+    .unwrap();
+    sessions.refresh().unwrap();
+    let partial = sessions.conversation(&row.id, None, None).unwrap();
+    assert_eq!(partial.coverage, "partial");
+    assert_eq!(partial.session.usage.total_tokens, Some(26));
+    assert_eq!(
+        sessions.cached_route_project("opencode", "ses_legacy"),
+        legacy_project
+    );
+    sessions.set_enabled("opencode", false).unwrap();
+    assert_eq!(query(&sessions).total, 0);
+    assert!(sessions.conversation(&row.id, None, None).is_err());
+}
+
+#[test]
+fn opencode_v2_fork_history_keeps_text_without_counting_inherited_calls_and_invalidates_pages() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let db = fixture(home);
+    create_v2(&db, home, Some("ses_parent"));
+    db.execute("DROP TABLE session_part", []).unwrap();
+    v2_message(
+        &db,
+        "msg_old",
+        "assistant",
+        1,
+        1500,
+        json!({
+            "model":{"id":"old-model"},"finish":"stop","tokens":{"input":99,"output":99},
+            "content":[{"type":"text","text":"inherited reply"}]
+        }),
+    );
+    for i in 0..42 {
+        v2_message(
+            &db,
+            &format!("msg_{i:03}"),
+            "user",
+            2 + i,
+            2100 + i,
+            json!({"text":format!("v2 body-{i}")}),
+        );
+    }
+    v2_message(
+        &db,
+        "msg_new",
+        "assistant",
+        44,
+        2300,
+        json!({
+            "model":{"id":"new-model"},"finish":"stop","tokens":{"input":10,"output":4},
+            "content":[{"type":"text","text":"new reply"}]
+        }),
+    );
+    let service = NativeSessions::new(home.into(), &["opencode".into()]);
+    service.refresh().unwrap();
+    let row = query(&service).items.remove(0);
+    assert_eq!(row.model_calls, 1);
+    assert_eq!(row.usage.total_tokens, Some(14));
+    let first = service.conversation(&row.id, None, None).unwrap();
+    assert_eq!(first.items[0].text.as_deref(), Some("inherited reply"));
+    let cursor = first.next_cursor.unwrap();
+    let tail = service.conversation(&row.id, Some(&cursor), None).unwrap();
+    assert!(
+        tail.items
+            .iter()
+            .any(|event| event.text.as_deref() == Some("new reply"))
+    );
+    db.execute(
+        "UPDATE session_message SET data=?1,time_updated=6000 WHERE id='msg_000'",
+        [json!({"text":"v2 new text"}).to_string()],
+    )
+    .unwrap();
+    assert_eq!(
+        service
+            .conversation(&row.id, Some(&cursor), None)
+            .unwrap_err()
+            .code,
+        "stale_snapshot"
+    );
+    service.refresh().unwrap();
+    assert_eq!(query(&service).items[0].title, "v2 new text");
+}
+
+#[test]
+fn opencode_title_uses_first_user_text_until_a_native_title_is_saved() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path();
+    let db = fixture(home);
+    db.execute(
+        "UPDATE session SET title='New session - 2026-11-10T11:35:37.519Z'",
+        [],
+    )
+    .unwrap();
+    let sessions = NativeSessions::new(home.into(), &["opencode".into()]);
+    sessions.refresh().unwrap();
+    assert_eq!(query(&sessions).items[0].title, "未命名会话");
+
+    message(&db, "user_first", 1100, json!({"role":"user"}));
+    part(
+        &db,
+        "synthetic",
+        "user_first",
+        1101,
+        json!({
+            "type":"text", "synthetic":true, "text":"private instructions"
+        }),
+    );
+    part(
+        &db,
+        "ignored",
+        "user_first",
+        1102,
+        json!({
+            "type":"text", "ignored":true, "text":"ignored text"
+        }),
+    );
+    part(
+        &db,
+        "context",
+        "user_first",
+        1103,
+        json!({
+            "type":"text", "text":"<environment_context>fixture</environment_context>"
+        }),
+    );
+    part(
+        &db,
+        "prompt",
+        "user_first",
+        1104,
+        json!({
+            "type":"text", "text":"修复会话标题 api_key=fixture-secret"
+        }),
+    );
+    message(&db, "user_later", 1200, json!({"role":"user"}));
+    part(
+        &db,
+        "later",
+        "user_later",
+        1201,
+        json!({"type":"text","text":"后续问题"}),
+    );
+    sessions.refresh().unwrap();
+    let item = query(&sessions).items.remove(0);
+    assert_eq!(item.title, "修复会话标题 [已隐藏凭据]");
+    assert_eq!(item.title_source, "first_user_message");
+    let conversation = sessions.conversation(&item.id, None, None).unwrap();
+    assert_eq!(conversation.session.title, item.title);
+
+    db.execute("UPDATE session SET title='会话标题已生成'", [])
+        .unwrap();
+    sessions.refresh().unwrap();
+    let item = query(&sessions).items.remove(0);
+    assert_eq!(item.title, "会话标题已生成");
+    assert_eq!(item.title_source, "native_title");
+}
+
 fn live_tool(db: &Connection, time: i64, state: Value) {
     db.execute("UPDATE session SET time_updated=?1", [time])
         .unwrap();
@@ -152,8 +572,8 @@ fn live_opencode_tool_uses_fresh_wal_metadata_without_index_or_bodies() {
     let mut watch = live::NativeWatch::default();
     let a = watch.poll(&sessions).remove(0);
     assert_eq!(a.session_id, "opencode:ses_test");
-    assert_eq!(a.agent_product_id.as_deref(), Some("opencode"));
-    assert_eq!(a.agent_attribution.as_deref(), Some("native_record"));
+    assert!(a.agent_product_id.is_none());
+    assert!(a.agent_attribution.is_none());
     assert_eq!(a.model.as_deref(), Some("actual-model"));
     assert_eq!(a.phase, "tool_requested");
     assert!(a.step.contains("正在执行工具"));
@@ -307,7 +727,7 @@ fn recent_opencode_message_reads_have_an_explicit_row_budget() {
         );
     }
     db.execute_batch("COMMIT").unwrap();
-    let (rows, limited) = opencode_messages::recent(&db, now).unwrap();
+    let (rows, limited) = opencode_messages::recent(&db, now, false).unwrap();
     assert_eq!(rows.len(), 128);
     assert!(limited);
 }
@@ -449,7 +869,7 @@ fn overview_context_uses_opencode_index_metadata_without_conversation_body() {
     assert_eq!(context.input_tokens, Some(60));
     assert!(context.window_tokens.is_none());
     assert!(context.used_percentage.is_none());
-    assert_eq!(context.sample_agent_product_id.as_deref(), Some("opencode"));
+    assert!(context.sample_agent_product_id.is_none());
 }
 
 #[test]
@@ -1036,6 +1456,7 @@ fn sqlite_wal_consent_messages_usage_calls_writes_and_redaction() {
 fn sqlite_pagination_anchor_refresh_and_in_place_update() {
     let dir = tempfile::tempdir().unwrap();
     let db = fixture(dir.path());
+    db.execute("UPDATE session SET title=''", []).unwrap();
     for i in 0..45 {
         let id = format!("msg_{i:03}");
         message(&db, &id, 1000 + i, json!({"role":"user"}));
@@ -1059,10 +1480,12 @@ fn sqlite_pagination_anchor_refresh_and_in_place_update() {
     assert_eq!(tail.items.len(), 5);
     assert!(tail.next_cursor.is_none());
     let anchor = &tail.items[4].id;
+    let anchored = service
+        .conversation(&session.id, None, Some(anchor))
+        .unwrap();
+    assert_eq!(anchored.session.title, "body-0");
     assert!(
-        service
-            .conversation(&session.id, None, Some(anchor))
-            .unwrap()
+        anchored
             .items
             .iter()
             .any(|e| &e.id == anchor && e.text.is_some())

@@ -16,6 +16,7 @@ test("registered pages retain all detail and return parameters", async ({
     "sessions",
     "requests",
     "projects",
+    "iam",
     "plugins",
     "settings",
   ]);
@@ -105,12 +106,12 @@ test("registry rejects conflicts and keeps navigation and scroll ownership", asy
     navigation
       .filter((item: { ownsBody: boolean }) => item.ownsBody)
       .map((item: { id: string }) => item.id),
-  ).toEqual(["sessions"]);
+  ).toEqual(["mcp", "sessions", "requests"]);
   expect(
     navigation
       .filter(
         (item: { resetScrollOnObject: boolean }) => item.resetScrollOnObject,
       )
       .map((item: { id: string }) => item.id),
-  ).toEqual(["providers"]);
+  ).toEqual(["agents", "providers", "model-services"]);
 });

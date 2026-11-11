@@ -221,6 +221,7 @@ export function ProviderConfigControl({
     "claude-code-desktop",
     "codex-desktop",
     "opencode",
+    "opencode-desktop",
   ].includes(agentProductId);
   const [feedback, setFeedback] = useState<{
     transactionId: string;

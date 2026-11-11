@@ -174,9 +174,6 @@ fn codex_request_builtin(
 /// Only explicit native client metadata is used, never prompt text or file paths.
 /// `Some(None)` distinguishes an explicit but unrecognised client from absent metadata.
 fn native_builtin(family: &str, row: &serde_json::Value) -> Option<Option<String>> {
-    if family == "opencode" {
-        return Some(Some("opencode".into()));
-    }
     if family == "claude" {
         let value = row.get("entrypoint").or_else(|| row.get("entryPoint"))?;
         let product = if claude_client_conflict(row) {

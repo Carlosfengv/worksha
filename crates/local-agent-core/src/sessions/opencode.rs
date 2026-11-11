@@ -1,7 +1,10 @@
-//! OpenCode 1.x SQLite history. Read transactions include uncheckpointed WAL data;
+//! OpenCode SQLite history. Read transactions include uncheckpointed WAL data;
 //! Credentials, snapshots and external tool-output files are never opened.
 //! Explicit session-linked errors are supplemented from the bounded current diagnostic log.
-use super::{IndexedFile, NativeError, NativeResult, opencode_mcp, parser, safe_path};
+use super::{
+    IndexedFile, NativeError, NativeResult, opencode_mcp, parser, safe_path,
+    source_plugins::RouteProjects,
+};
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -11,10 +14,19 @@ use std::{
     time::Duration,
 };
 
+#[path = "opencode_v2.rs"]
+pub(super) mod v2;
+
 const MAX_RECORD: usize = 8 * 1024 * 1024;
 const MAX_SESSION: u64 = 64 * 1024 * 1024;
 const MAX_ROWS: usize = 100_000;
 const MAX_SESSIONS: usize = 5000;
+
+#[derive(Clone, Copy)]
+enum Format {
+    Legacy,
+    V2 { part_rows: bool },
+}
 
 pub(super) fn path(home: &Path) -> PathBuf {
     home.join(".local/share/opencode/opencode.db")
@@ -25,7 +37,16 @@ fn unavailable() -> NativeError {
         "OpenCode 会话数据库无法读取、正忙或结构不受支持；请检查来源后重试",
     )
 }
+#[cfg(test)]
 pub(super) fn open(home: &Path) -> NativeResult<Connection> {
+    let connection = open_database(home)?;
+    if !has_legacy_tables(&connection)? {
+        return Err(unavailable());
+    }
+    Ok(connection)
+}
+
+pub(super) fn open_database(home: &Path) -> NativeResult<Connection> {
     let path = path(home);
     if !safe_path(home, &path) {
         return Err(NativeError::new(
@@ -81,19 +102,26 @@ pub(super) fn open(home: &Path) -> NativeResult<Connection> {
     connection
         .execute_batch("PRAGMA query_only=ON; PRAGMA trusted_schema=OFF; BEGIN DEFERRED;")
         .map_err(|_| unavailable())?;
+    Ok(connection)
+}
+
+pub(super) fn has_table(connection: &Connection, table: &str) -> NativeResult<bool> {
+    connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name=?1 AND type='table')",
+            [table],
+            |row| row.get(0),
+        )
+        .map_err(|_| unavailable())
+}
+
+pub(super) fn has_legacy_tables(connection: &Connection) -> NativeResult<bool> {
     for table in ["session", "message", "part"] {
-        let table_type: String = connection
-            .query_row(
-                "SELECT type FROM sqlite_master WHERE name=?1",
-                [table],
-                |row| row.get(0),
-            )
-            .map_err(|_| unavailable())?;
-        if table_type != "table" {
-            return Err(unavailable());
+        if !has_table(connection, table)? {
+            return Ok(false);
         }
     }
-    Ok(connection)
+    Ok(true)
 }
 
 pub(super) struct Record {
@@ -104,6 +132,7 @@ pub(super) struct Record {
 }
 pub(super) struct History {
     pub info: Value,
+    pub first_user_title: Option<String>,
     pub messages: Vec<Record>,
     pub parts: Vec<Record>,
     pub bytes: u64,
@@ -122,8 +151,18 @@ pub(super) fn valid_id(id: &str) -> bool {
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
-fn sessions(connection: &Connection) -> NativeResult<Vec<Value>> {
-    let mut statement = connection.prepare("SELECT id,title,directory,version,time_created,time_updated FROM session ORDER BY time_updated DESC,id LIMIT 5001").map_err(|_| unavailable())?;
+fn sessions(connection: &Connection, exclude_migrated: bool) -> NativeResult<Vec<Value>> {
+    let predicate = if exclude_migrated {
+        "WHERE NOT EXISTS (SELECT 1 FROM session_v2 WHERE session_v2.id=session.id)"
+    } else {
+        ""
+    };
+    let mut statement = connection
+        .prepare(&format!(
+            "SELECT id,title,directory,version,time_created,time_updated FROM session {predicate}
+         ORDER BY time_updated DESC,id LIMIT 5001"
+        ))
+        .map_err(|_| unavailable())?;
     statement
         .query_map([], |row| {
             Ok(json!({
@@ -136,18 +175,66 @@ fn sessions(connection: &Connection) -> NativeResult<Vec<Value>> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|_| unavailable())
 }
+
+pub(super) fn native_title(info: &Value) -> Option<&str> {
+    let title = info["title"].as_str()?.trim();
+    let generated = title
+        .strip_prefix("New session - ")
+        .or_else(|| title.strip_prefix("Child session - "))
+        .is_some_and(|timestamp| {
+            timestamp.len() == 24
+                && timestamp.ends_with('Z')
+                && chrono::DateTime::parse_from_rfc3339(timestamp).is_ok()
+        });
+    (!title.is_empty() && !generated).then_some(title)
+}
+
+fn first_user_title(connection: &Connection, id: &str) -> NativeResult<Option<String>> {
+    let mut query = connection
+        .prepare_cached(
+            "SELECT substr(json_extract(p.data,'$.text'),1,16384)
+         FROM part p JOIN message m ON m.id=p.message_id AND m.session_id=p.session_id
+         WHERE p.session_id=?1
+           AND CASE WHEN length(CAST(m.data AS BLOB))<=?2 AND json_valid(m.data)
+               THEN json_extract(m.data,'$.role')='user'
+                AND coalesce(json_extract(m.data,'$.summary'),0)!=1 ELSE 0 END
+           AND CASE WHEN length(CAST(p.data AS BLOB))<=?2 AND json_valid(p.data)
+               THEN json_extract(p.data,'$.type')='text'
+                AND json_type(p.data,'$.text')='text'
+                AND coalesce(json_extract(p.data,'$.synthetic'),0)!=1
+                AND coalesce(json_extract(p.data,'$.ignored'),0)!=1 ELSE 0 END
+         ORDER BY m.time_created,m.id,p.time_created,p.id LIMIT 64",
+        )
+        .map_err(|_| unavailable())?;
+    let mut rows = query
+        .query(rusqlite::params![id, MAX_RECORD as i64])
+        .map_err(|_| unavailable())?;
+    while let Some(row) = rows.next().map_err(|_| unavailable())? {
+        let text: String = row.get(0).map_err(|_| unavailable())?;
+        if let Some(preview) = super::activity_input::preview(&Value::String(text)) {
+            return Ok(Some(preview));
+        }
+    }
+    Ok(None)
+}
+
 // Check each row's native update marker and size, including older rows edited in
 // place. Unchanged sessions keep only the existing in-memory metadata index.
-fn revision(connection: &Connection, info: &Value) -> NativeResult<(String, u64)> {
+fn revision(connection: &Connection, info: &Value, format: Format) -> NativeResult<(String, u64)> {
     let mut hash = Sha256::new();
     hash.update(info.to_string());
     let mut bytes = info.to_string().len() as u64;
-    for table in ["message", "part"] {
-        hash.update(table);
-        let sql = format!(
-            "SELECT id,time_created,time_updated,length(CAST(data AS BLOB)) FROM {table} WHERE session_id=?1 ORDER BY id LIMIT 100001"
-        );
-        let mut statement = connection.prepare(&sql).map_err(|_| unavailable())?;
+    let queries: &[&str] = match format {
+        Format::Legacy => &[
+            "SELECT id,time_created,time_updated,length(CAST(data AS BLOB)) FROM message WHERE session_id=?1 ORDER BY id LIMIT 100001",
+            "SELECT id,time_created,time_updated,length(CAST(data AS BLOB)) FROM part WHERE session_id=?1 ORDER BY id LIMIT 100001",
+        ],
+        Format::V2 { part_rows: true } => &v2::REVISION,
+        Format::V2 { part_rows: false } => &v2::REVISION[..1],
+    };
+    for &sql in queries {
+        hash.update(sql);
+        let mut statement = connection.prepare_cached(sql).map_err(|_| unavailable())?;
         let mut rows = statement
             .query([info["id"].as_str().unwrap_or("")])
             .map_err(|_| unavailable())?;
@@ -189,13 +276,24 @@ fn history(
     connection: &Connection,
     info: Value,
     bodies: bool,
-    bytes: u64,
+    size: (Format, u64),
     mcp: opencode_mcp::Context,
     diagnostics: Vec<super::opencode_log::Diagnostic>,
     log_warnings: &[String],
 ) -> NativeResult<History> {
+    let (format, bytes) = size;
+    let first_user_title = if native_title(&info).is_none() {
+        let id = info["id"].as_str().unwrap_or("");
+        match format {
+            Format::Legacy => first_user_title(connection, id)?,
+            Format::V2 { .. } => v2::first_user_title(connection, id)?,
+        }
+    } else {
+        None
+    };
     let mut result = History {
         info,
+        first_user_title,
         messages: vec![],
         parts: vec![],
         bytes,
@@ -208,9 +306,19 @@ fn history(
     result.coverage_warnings.extend_from_slice(log_warnings);
     let mut hash = Sha256::new();
     hash.update(result.info.to_string());
+    if let Some(title) = &result.first_user_title {
+        hash.update(title);
+    }
     hash.update(&result.mcp.fingerprint);
     hash.update(super::opencode_log::fingerprint(&result.diagnostics));
     hash.update(serde_json::to_vec(&result.coverage_warnings).map_err(|_| unavailable())?);
+    if let Format::V2 { part_rows } = format {
+        v2::populate(connection, &mut result, bodies, part_rows, &mut hash)?;
+        result.fingerprint = format!("{:x}", hash.finalize());
+        result.warnings.sort();
+        result.warnings.dedup();
+        return Ok(result);
+    }
     for table in ["message", "part"] {
         hash.update(table);
         let data = if bodies {
@@ -294,10 +402,18 @@ fn history(
     Ok(result)
 }
 
+#[derive(Default)]
 pub(super) struct Scan {
     pub files: HashMap<PathBuf, IndexedFile>,
     pub total: usize,
     pub skipped: usize,
+    legacy_incomplete: bool,
+}
+impl Scan {
+    fn skip(&mut self, format: Format) {
+        self.skipped += 1;
+        self.legacy_incomplete |= matches!(format, Format::Legacy);
+    }
 }
 pub(super) struct OpenCodeSource;
 impl crate::plugin::BuiltinPlugin for OpenCodeSource {
@@ -355,7 +471,42 @@ impl super::source_plugins::ReadOnlySessionSource for OpenCodeSource {
             .values()
             .map(|f| (f.summary.native_id.clone(), f.clone()))
             .collect();
-        let result = scan_checked(context.home, &by_id, &|| context.check())?;
+        context.check()?;
+        let connection = open_database(context.home)?;
+        let has_v2 = has_table(&connection, "session_v2")?;
+        let has_legacy = has_legacy_tables(&connection)?;
+        if !has_legacy && !has_v2 {
+            return Err(unavailable());
+        }
+        let current = v2::format(&connection)?;
+        let mut infos = if has_legacy {
+            sessions(&connection, current.is_some())?
+                .into_iter()
+                .map(|info| (Format::Legacy, info))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let v2_projects = has_v2.then(|| v2_routing_projects(&connection, &|| context.check()));
+        let mut v2_error =
+            (has_v2 && current.is_none()).then(|| "OpenCode 2.x 的会话历史表暂不可读取。".into());
+        if let Some(format) = current {
+            match v2::infos(&connection, None) {
+                Ok(current) => {
+                    infos.extend(current.into_iter().map(|info| (format, info)));
+                    infos.sort_by(|(_, a), (_, b)| {
+                        b["updated"]
+                            .as_i64()
+                            .cmp(&a["updated"].as_i64())
+                            .then_with(|| a["id"].as_str().cmp(&b["id"].as_str()))
+                    });
+                }
+                Err(error) => v2_error = Some(error.message),
+            }
+        }
+        let result = scan_checked(context.home, &connection, &by_id, infos, &|| {
+            context.check()
+        })?;
         let mut scan = super::source_plugins::SourceScan::database(
             result.files,
             result.total,
@@ -372,6 +523,31 @@ impl super::source_plugins::ReadOnlySessionSource for OpenCodeSource {
             .collect();
         scan.versions.sort();
         scan.versions.dedup();
+        if let Some(projects) = v2_projects {
+            match projects {
+                Ok(projects) if !projects.by_session.is_empty() || !has_legacy => {
+                    let mut verified = if result.legacy_incomplete {
+                        RouteProjects::default()
+                    } else {
+                        RouteProjects::indexed(scan.files.values().filter_map(|file| {
+                            (!projects.by_session.contains_key(&file.summary.native_id))
+                                .then_some(&file.summary)
+                        }))
+                    };
+                    // A migrated session uses its current 2.x directory, including an unknown one.
+                    verified.by_session.extend(projects.by_session);
+                    verified.choices.extend(projects.choices);
+                    scan.verified_route_projects = Some(verified);
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    // An unreadable 2.x index cannot authorize an older copy of a migrated session.
+                    scan.verified_route_projects = Some(RouteProjects::default());
+                    scan.error.get_or_insert(error.message);
+                }
+            }
+        }
+        scan.error = scan.error.or(v2_error);
         Ok(scan)
     }
     fn conversation(
@@ -385,18 +561,73 @@ impl super::source_plugins::ReadOnlySessionSource for OpenCodeSource {
         conversation(context.home, &indexed.summary.native_id, cursor, anchor)
     }
 }
+
+fn v2_routing_projects(
+    connection: &Connection,
+    check: &dyn Fn() -> NativeResult<()>,
+) -> NativeResult<RouteProjects> {
+    let mut statement = connection
+        .prepare(
+            "SELECT CASE WHEN length(CAST(id AS BLOB))<=256 THEN id END,
+                    CASE WHEN length(CAST(directory AS BLOB))<=2048 THEN directory END
+             FROM session_v2 LIMIT ?1",
+        )
+        .map_err(|_| unavailable())?;
+    let rows = statement
+        .query_map([(MAX_SESSIONS + 1) as i64], |row| {
+            Ok((
+                row.get::<_, Option<String>>(0)?,
+                row.get::<_, Option<String>>(1)?,
+            ))
+        })
+        .map_err(|_| unavailable())?;
+    let mut projects = RouteProjects::default();
+    let mut paths = parser::ProjectCache::default();
+    for (index, row) in rows.enumerate() {
+        check()?;
+        if index >= MAX_SESSIONS {
+            return Err(NativeError::new(
+                "unsupported",
+                "OpenCode 2.x 项目索引超过读取限制",
+            ));
+        }
+        let (id, directory) = row.map_err(|_| unavailable())?;
+        let Some(id) = id.filter(|id| valid_id(id)) else {
+            continue;
+        };
+        let project = directory
+            .as_deref()
+            .filter(|path| !path.chars().any(char::is_control))
+            .and_then(|path| paths.identity(path));
+        let project_id = project.as_ref().map(|project| project.id.clone());
+        if let Some(project) = project {
+            projects
+                .choices
+                .entry(project.id.clone())
+                .or_insert_with(|| project.into());
+        }
+        if projects.by_session.insert(id, project_id).is_some() {
+            return Err(unavailable());
+        }
+    }
+    Ok(projects)
+}
+
 fn scan_checked(
     home: &Path,
+    connection: &Connection,
     previous: &HashMap<String, IndexedFile>,
+    infos: Vec<(Format, Value)>,
     check: &dyn Fn() -> NativeResult<()>,
 ) -> NativeResult<Scan> {
     check()?;
-    let connection = open(home)?;
-    let infos = sessions(&connection)?;
     let mut result = Scan {
-        files: HashMap::new(),
         total: infos.len(),
-        skipped: 0,
+        legacy_incomplete: infos
+            .iter()
+            .skip(MAX_SESSIONS)
+            .any(|(format, _)| matches!(format, Format::Legacy)),
+        ..Default::default()
     };
     if infos.len() > MAX_SESSIONS {
         result.skipped += 1;
@@ -404,11 +635,11 @@ fn scan_checked(
     let mut contexts = HashMap::new();
     let mut projects = parser::ProjectCache::default();
     let logs = super::opencode_log::load(home);
-    for info in infos.into_iter().take(MAX_SESSIONS) {
+    for (format, info) in infos.into_iter().take(MAX_SESSIONS) {
         check()?;
         let id = info["id"].as_str().unwrap_or("").to_string();
         if !valid_id(&id) {
-            result.skipped += 1;
+            result.skip(format);
             continue;
         }
         let directory = info["directory"].as_str().unwrap_or("");
@@ -416,8 +647,8 @@ fn scan_checked(
             .entry(directory.to_owned())
             .or_insert_with(|| opencode_mcp::load(home, directory))
             .clone();
-        let Ok((database_revision, bytes)) = revision(&connection, &info) else {
-            result.skipped += 1;
+        let Ok((database_revision, bytes)) = revision(connection, &info, format) else {
+            result.skip(format);
             continue;
         };
         let diagnostics = logs.sessions.get(&id).cloned().unwrap_or_default();
@@ -434,16 +665,16 @@ fn scan_checked(
             old.clone()
         } else {
             let Ok(mut parsed) = history(
-                &connection,
+                connection,
                 info,
                 false,
-                bytes,
+                (format, bytes),
                 mcp,
                 diagnostics,
                 &logs.warnings,
             )
             .and_then(|h| parser::opencode_index(&path(home), h, &mut projects)) else {
-                result.skipped += 1;
+                result.skip(format);
                 continue;
             };
             if let Some(old) = previous
@@ -474,7 +705,7 @@ fn scan_checked(
             }
         };
         if indexed.summary.partial {
-            result.skipped += 1;
+            result.skip(format);
         }
         result.files.insert(
             path(home).with_file_name(format!("opencode-session-{id}")),
@@ -486,7 +717,12 @@ fn scan_checked(
 
 #[cfg(test)]
 pub(super) fn scan(home: &Path, previous: &HashMap<String, IndexedFile>) -> NativeResult<Scan> {
-    scan_checked(home, previous, &|| Ok(()))
+    let connection = open(home)?;
+    let infos = sessions(&connection, false)?
+        .into_iter()
+        .map(|info| (Format::Legacy, info))
+        .collect();
+    scan_checked(home, &connection, previous, infos, &|| Ok(()))
 }
 
 pub(super) fn conversation(
@@ -495,19 +731,38 @@ pub(super) fn conversation(
     page_cursor: Option<&str>,
     anchor: Option<&str>,
 ) -> NativeResult<super::Conversation> {
-    let connection = open(home)?;
-    let info = sessions(&connection)?
-        .into_iter()
-        .find(|v| v["id"].as_str() == Some(id))
-        .ok_or_else(|| NativeError::new("not_found", "OpenCode 会话已删除或不在读取范围内"))?;
-    let (_, bytes) = revision(&connection, &info)?;
+    let connection = open_database(home)?;
+    let current = if let Some(format) = v2::format(&connection)?
+        && v2::contains(&connection, id)?
+    {
+        v2::infos(&connection, Some(id))?
+            .pop()
+            .map(|info| (format, info))
+    } else {
+        None
+    };
+    let (format, info) = if let Some(current) = current {
+        current
+    } else if has_legacy_tables(&connection)?
+        && let Some(info) = sessions(&connection, false)?
+            .into_iter()
+            .find(|v| v["id"].as_str() == Some(id))
+    {
+        (Format::Legacy, info)
+    } else {
+        return Err(NativeError::new(
+            "not_found",
+            "OpenCode 会话已删除或不在读取范围内",
+        ));
+    };
+    let (_, bytes) = revision(&connection, &info, format)?;
     let mcp = opencode_mcp::load(home, info["directory"].as_str().unwrap_or(""));
     let mut logs = super::opencode_log::load(home);
     let history = history(
         &connection,
         info,
         true,
-        bytes,
+        (format, bytes),
         mcp,
         logs.sessions.remove(id).unwrap_or_default(),
         &logs.warnings,

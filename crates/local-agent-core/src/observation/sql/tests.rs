@@ -14,6 +14,69 @@ mod provider_model_tests;
 mod request_cells_tests;
 
 #[test]
+fn gateway_session_title_uses_only_the_first_matching_local_request_excerpt() {
+    use crate::sessions::{
+        activity_input::UserInput,
+        activity_input_cache::{CachedInput, InputCache},
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let store = ObservationStore::open(dir.path()).unwrap();
+    let session = "opencode:ses_e3acfixture";
+    let observed = |n| ModelObservation {
+        agent_id: "opencode".into(),
+        agent_product_id: Some("opencode-cli".into()),
+        session_id: Some(session.into()),
+        ..row(n)
+    };
+    let first = observed(2);
+    let later = observed(3);
+    let lan = ModelObservation {
+        client: Some(crate::observation::GatewayClient {
+            id: "lan".into(),
+            name: "LAN".into(),
+            peer: "10.0.0.2".into(),
+        }),
+        ..observed(1)
+    };
+    let mut inputs = InputCache::default();
+    let cached = |request: &ModelObservation, text: &str| CachedInput {
+        key: request.id.clone(),
+        agent: request.agent_id.clone(),
+        session_id: request.session_id.clone(),
+        started_at: None,
+        source_stamp: None,
+        native: None,
+        input: UserInput {
+            text: text.into(),
+            at: request.started_at.clone(),
+        },
+    };
+    inputs.insert(cached(&later, "后续问题"));
+    inputs.insert(cached(&lan, "LAN 客户端内容"));
+    inputs.insert(CachedInput {
+        session_id: Some("opencode:ses_other".into()),
+        ..cached(&first, "其他会话的内容")
+    });
+    store.save_batch(&[lan, first.clone(), later]).unwrap();
+    let mut history = History::open(dir.path()).unwrap();
+    history.refresh(&[]).unwrap();
+    let unnamed = history.gateway_sessions(&inputs).unwrap().0.remove(0);
+    assert_eq!(unnamed.title, "未命名会话");
+    assert_eq!(unnamed.title_source, "fallback");
+    assert_eq!(unnamed.model_calls, 2);
+
+    inputs.insert(cached(
+        &first,
+        "Generate a title for this conversation: 修复会话标题 api_key=fixture-secret",
+    ));
+    let named = history.gateway_sessions(&inputs).unwrap().0.remove(0);
+    assert_eq!(named.id, session);
+    assert_eq!(named.created_at, Some(first.started_at));
+    assert_eq!(named.title, "修复会话标题 [已隐藏凭据]");
+    assert_eq!(named.title_source, "first_user_message");
+}
+
+#[test]
 fn custom_directory_updates_both_sql_matchers_and_preserves_unknown_semantics() {
     use crate::agents::{AgentDirectory, ProductDescriptor, SourceDescriptor};
     let data = tempfile::tempdir().unwrap();

@@ -101,7 +101,7 @@ impl AgentDirectory {
         if filter.is_none() || filter == Some(family) {
             return true;
         }
-        let product = product.or_else(|| self.single_product(family));
+        let product = self.record_product(family, product);
         match filter {
             None => true,
             Some("unknown") => product.is_none(),
@@ -111,8 +111,7 @@ impl AgentDirectory {
         }
     }
     pub fn group(&self, family: &str, product: Option<&str>) -> String {
-        product
-            .or_else(|| self.single_product(family))
+        self.record_product(family, product)
             .map(str::to_owned)
             .unwrap_or_else(|| format!("{family}-unknown"))
     }
@@ -141,6 +140,13 @@ impl AgentDirectory {
                     .map(|p| p.id.as_str())
             })
             .flatten()
+    }
+
+    fn record_product<'a>(&'a self, family: &str, product: Option<&'a str>) -> Option<&'a str> {
+        // Older OpenCode records used the family as their product ID.
+        product
+            .filter(|id| !(family == "opencode" && *id == family))
+            .or_else(|| self.single_product(family))
     }
 }
 

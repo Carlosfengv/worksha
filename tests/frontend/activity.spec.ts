@@ -214,19 +214,28 @@ test("Agent attribution, native measurement gaps, real zero and ambiguous links 
   await expect(native).toContainText("2 个活动进行中");
   await expect(native.locator("dl")).toContainText("未采集");
   await expect(native.locator("dl")).not.toContainText("999");
-  const open = page.getByRole("article", {
-    name: "OpenCode实时活动",
+  const open = page.getByRole("region", {
+    name: "OpenCode · 客户端来源未知实时活动",
     exact: true,
   });
   await expect(open).toContainText("3 个活动进行中");
-  await expect(open.locator("dl")).toContainText("0.0 Token/s");
-  await expect(open.locator("dl")).toContainText("0.000 秒");
   await open
-    .getByRole("button", { name: /^OpenCode，.*个活动进行中，查看明细$/ })
+    .getByRole("button", {
+      name: /^OpenCode · 客户端来源未知，.*个活动进行中，查看明细$/,
+    })
     .press("Enter");
-  await expect(page.getByRole("dialog")).toContainText(
-    "速度 1 个样本，TTFT 1 个样本",
-  );
+  const openDetails = page.getByRole("dialog", {
+    name: "OpenCode · 客户端来源未知活动明细",
+  });
+  await expect(openDetails).toContainText("速度 1 个样本，TTFT 1 个样本");
+  const measured = openDetails.getByRole("link", { name: /检查工具/ });
+  await expect(measured).toContainText("0.0 Token/s");
+  await expect(measured).toContainText("TTFT 0.000 秒");
+  for (const client of ["OpenCode CLI", "OpenCode Desktop"]) {
+    await expect(
+      page.getByRole("article", { name: `${client}实时活动`, exact: true }),
+    ).not.toContainText("检查工具");
+  }
   await page.keyboard.press("Escape");
   const cli = page.getByRole("article", {
     name: "Codex CLI实时活动",

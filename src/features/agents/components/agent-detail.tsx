@@ -127,6 +127,7 @@ export function AgentDetail({
         tabs={tabs}
         value={value}
         canConfigure={canConfigure}
+        refresh={refresh}
         activation={
           canConfigure && <ProviderActivationStatus agentId={agent.configId} />
         }
@@ -310,6 +311,12 @@ export function AgentDetail({
                 providers={data.providers}
                 refresh={refresh}
               />
+              {agent.family === "opencode" && (
+                <p className="mt-3 text-label text-fg-muted">
+                  OpenCode CLI 和 Desktop 共用本机默认模型配置。从任一入口切换，
+                  都会更新这份配置。模型服务可按请求报告的客户端设置路由规则。
+                </p>
+              )}
             </div>
           ) : (
             <ConnectionEmpty
@@ -319,6 +326,11 @@ export function AgentDetail({
             />
           )}
           <div className="space-y-4">
+            {agent.family === "opencode" && (
+              <Button asChild variant="tertiary" size="sm">
+                <a href="#/sessions?agent=opencode">查看 OpenCode 共享会话</a>
+              </Button>
+            )}
             {agent.id.endsWith("cli") &&
               ["claude", "codex"].includes(agent.family) && (
                 <ObservationConnection

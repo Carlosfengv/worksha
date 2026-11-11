@@ -231,9 +231,25 @@ struct IndexedFile {
 struct Catalog {
     sources: Vec<SourceStatus>,
     files: HashMap<PathBuf, IndexedFile>,
+    route_projects: HashMap<String, source_plugins::RouteProjects>,
     revision: u64,
     as_of: String,
 }
+
+impl Catalog {
+    fn route_project_index(&self, agent: &str) -> Option<&source_plugins::RouteProjects> {
+        let index = self.route_projects.get(agent)?;
+        self.sources
+            .iter()
+            .any(|source| {
+                source.agent_id == agent
+                    && source.enabled
+                    && matches!(source.status.as_str(), "ready" | "scanning" | "partial")
+            })
+            .then_some(index)
+    }
+}
+
 pub struct NativeSessions {
     source_plugins: NativeSourcePlugins,
     index_cache: Mutex<parser::IndexCache>,
@@ -329,6 +345,35 @@ impl NativeSessions {
     pub fn project_catalog(&self) -> NativeResult<crate::projects::ProjectCatalog> {
         let state = self.lock()?;
         Ok(self.project_catalog_locked(&state))
+    }
+    /// Looks up an exact native session in the last authorized index. This does
+    /// not touch the filesystem or wait for a scan to finish.
+    pub fn cached_route_project(&self, agent: &str, native_id: &str) -> Option<String> {
+        let lease = self.source_plugins.lease(agent)?;
+        let state = self.catalog.try_lock().ok()?;
+        let index = state.route_project_index(agent)?;
+        lease.ensure_active().ok()?;
+        index.by_session.get(native_id)?.clone()
+    }
+    pub fn routing_project_choices(
+        &self,
+        authorized: &[String],
+    ) -> NativeResult<Vec<crate::projects::routing::RoutingProject>> {
+        let state = self.lock()?;
+        let mut choices = HashMap::new();
+        for agent in authorized {
+            if let Some(lease) = self.source_plugins.lease(agent)
+                && let Some(index) = state.route_project_index(agent)
+            {
+                lease
+                    .ensure_active()
+                    .map_err(|error| NativeError::new(error.code, &error.message))?;
+                for (id, choice) in &index.choices {
+                    choices.entry(id).or_insert(choice);
+                }
+            }
+        }
+        Ok(choices.into_values().cloned().collect())
     }
     fn project_catalog_locked(&self, state: &Catalog) -> crate::projects::ProjectCatalog {
         let files = unique_files(state);
@@ -433,6 +478,7 @@ impl NativeSessions {
             catalog: Mutex::new(Catalog {
                 sources,
                 files: HashMap::new(),
+                route_projects: HashMap::new(),
                 revision: 1,
                 as_of: now(),
             }),
@@ -479,6 +525,7 @@ impl NativeSessions {
                 source.session_count = 0;
                 source.client_attribution = None;
                 state.files.retain(|_, f| f.agent != agent);
+                state.route_projects.remove(agent);
             }
             state.revision += 1;
             state.as_of = now();
@@ -706,14 +753,16 @@ impl NativeSessions {
                 .collect();
             for observed in gateway {
                 if let Some(&index) = native_positions.get(&observed.id) {
-                    if observed.updated_at > items[index].updated_at {
-                        items[index].updated_at = observed.updated_at;
-                    }
+                    merge_gateway_summary(&mut items[index], observed);
                     continue;
                 }
+                let native = by_id.get(observed.id.as_str());
+                let title = native
+                    .filter(|file| file.summary.title_source != "fallback")
+                    .map_or(observed.title.as_str(), |file| file.summary.title.as_str());
                 if session_matches(query.agent.as_deref(), &observed)
                     && (needle.is_empty()
-                        || observed.title.to_lowercase().contains(&needle)
+                        || title.to_lowercase().contains(&needle)
                         || observed.native_id.to_lowercase().contains(&needle))
                     && start.is_none_or(|cutoff| {
                         observed
@@ -723,9 +772,9 @@ impl NativeSessions {
                             .is_some_and(|t| t.timestamp() >= cutoff)
                     })
                 {
-                    if let Some(native) = by_id.get(observed.id.as_str()) {
+                    if let Some(native) = native {
                         let mut session = native.summary.clone();
-                        session.updated_at = session.updated_at.max(observed.updated_at);
+                        merge_gateway_summary(&mut session, observed);
                         items.push(session);
                     } else {
                         items.push(observed);
@@ -745,7 +794,7 @@ impl NativeSessions {
             use std::hash::{Hash, Hasher};
             let mut hash = std::hash::DefaultHasher::new();
             for s in &items {
-                (&s.id, &s.updated_at).hash(&mut hash);
+                (&s.id, &s.updated_at, &s.title).hash(&mut hash);
             }
             revision = format!("{}-{:x}", revision, hash.finish());
         }
@@ -918,6 +967,16 @@ pub(crate) fn session_matches(filter: Option<&str>, session: &SessionSummary) ->
         Some(id) if id == session.agent_id => true,
         Some(id) => session.agent_products.iter().any(|product| product == id),
         None => true,
+    }
+}
+
+fn merge_gateway_summary(native: &mut SessionSummary, observed: SessionSummary) {
+    if observed.updated_at > native.updated_at {
+        native.updated_at = observed.updated_at;
+    }
+    if native.title_source == "fallback" && observed.title_source != "fallback" {
+        native.title = observed.title;
+        native.title_source = observed.title_source;
     }
 }
 

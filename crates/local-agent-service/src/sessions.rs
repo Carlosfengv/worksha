@@ -60,7 +60,7 @@ pub(crate) async fn query_sessions(
         if query.include_gateway == Some(true) {
             let (gateway, partial) = state
                 .observation
-                .sql_query(|history| history.gateway_sessions())
+                .gateway_sessions()
                 .unwrap_or_else(|_| (Vec::new(), true));
             let mut page = state
                 .sessions

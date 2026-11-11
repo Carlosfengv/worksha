@@ -7,7 +7,7 @@ test("Agent list and details confirm a configured gateway while describing idle 
 }) => {
   await page.goto("/tests/frontend/tables.html?mode=activity#/agents");
   const cli = page.getByRole("row").filter({
-    has: page.getByRole("heading", { name: "Claude Code CLI", exact: true }),
+    has: page.getByRole("link", { name: "详情 Claude Code CLI", exact: true }),
   });
   await expect(cli).toContainText("本地网关 · 默认");
   await expect(cli).toContainText("网关路由已确认");

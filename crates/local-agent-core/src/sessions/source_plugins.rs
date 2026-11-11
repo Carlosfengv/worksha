@@ -5,7 +5,12 @@ mod domain_tests;
 mod test_fixture;
 use super::{Conversation, IndexedFile, NativeError, NativeResult, NativeSessions};
 use crate::plugin::{BuiltinPlugin, CapabilityKey, PluginHost, PluginLease};
-use std::{collections::BTreeMap, collections::HashMap, path::Path, path::PathBuf, sync::Arc};
+use crate::projects::routing::RoutingProject;
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 pub(super) fn capability(agent: &'static str) -> CapabilityKey {
     CapabilityKey {
@@ -64,6 +69,37 @@ impl SourceContext<'_> {
     }
 }
 
+#[derive(Default)]
+pub(super) struct RouteProjects {
+    pub by_session: HashMap<String, Option<String>>,
+    pub choices: HashMap<String, RoutingProject>,
+}
+
+impl RouteProjects {
+    pub(super) fn indexed<'a>(sessions: impl Iterator<Item = &'a super::SessionSummary>) -> Self {
+        let mut projects = Self::default();
+        for summary in sessions {
+            let project = summary.project_id.as_ref().filter(|_| !summary.partial);
+            if let Some(id) = project
+                && !projects.choices.contains_key(id)
+                && let Some(choice) = RoutingProject::from_session(summary)
+            {
+                projects.choices.insert(id.clone(), choice);
+            }
+            projects
+                .by_session
+                .entry(summary.native_id.clone())
+                .and_modify(|previous| {
+                    if previous.as_ref() != project {
+                        *previous = None;
+                    }
+                })
+                .or_insert_with(|| project.cloned());
+        }
+        projects
+    }
+}
+
 pub(super) struct SourceScan {
     pub files: HashMap<PathBuf, IndexedFile>,
     pub total: usize,
@@ -73,6 +109,8 @@ pub(super) struct SourceScan {
     pub count: usize,
     pub versions: Vec<String>,
     pub revision_delta: u64,
+    // A source can verify project directories independently of transcript coverage.
+    pub verified_route_projects: Option<RouteProjects>,
 }
 impl SourceScan {
     pub fn database(
@@ -97,6 +135,15 @@ impl SourceScan {
             error,
             versions: vec![],
             revision_delta: u64::from(changed),
+            verified_route_projects: None,
+        }
+    }
+
+    pub(super) fn indexed_route_projects(&self) -> RouteProjects {
+        if self.error.is_none() && self.skipped == 0 {
+            RouteProjects::indexed(self.files.values().map(|file| &file.summary))
+        } else {
+            RouteProjects::default()
         }
     }
 }
@@ -371,6 +418,7 @@ impl NativeSessions {
     }
     pub fn pause_background_scan(&self) -> NativeResult<()> {
         let mut state = self.lock()?;
+        state.route_projects.clear();
         let mut changed = false;
         for source in state
             .sources
@@ -548,7 +596,16 @@ impl NativeSessions {
             };
             let result = context
                 .check()
-                .and_then(|()| plugin.scan(&context, &previous));
+                .and_then(|()| plugin.scan(&context, &previous))
+                .map(|mut scan| {
+                    let mut projects = scan
+                        .verified_route_projects
+                        .take()
+                        .unwrap_or_else(|| scan.indexed_route_projects());
+                    let confirmed: HashSet<_> = projects.by_session.values().flatten().collect();
+                    projects.choices.retain(|id, _| confirmed.contains(id));
+                    (scan, projects)
+                });
             // Final bounded publication belongs to the original activation. A
             // stopped read cannot mark a new scan partial or revoke its cache.
             let publication = context.lease.publish(|| -> NativeResult<()> {
@@ -562,9 +619,10 @@ impl NativeSessions {
                 {
                     return Ok(());
                 }
-                let result = match result {
+                let (result, projects) = match result {
                     Ok(result) => result,
                     Err(error) => {
+                        state.route_projects.remove(agent);
                         let source = state
                             .sources
                             .iter_mut()
@@ -581,6 +639,7 @@ impl NativeSessions {
                 };
                 state.files.retain(|_, file| file.agent != agent);
                 state.files.extend(result.files);
+                state.route_projects.insert(agent.into(), projects);
                 state.revision += result.revision_delta;
                 let source = state
                     .sources
@@ -673,6 +732,9 @@ impl NativeSessions {
         state
             .files
             .retain(|_, file| self.source_active(&file.agent));
+        state
+            .route_projects
+            .retain(|agent, _| self.source_active(agent));
         let mut changed = before != state.files.len();
         for source in &mut state.sources {
             if source.enabled && !self.source_active(&source.agent_id) {

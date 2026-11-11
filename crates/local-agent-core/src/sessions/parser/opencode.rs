@@ -36,16 +36,15 @@ fn opencode_inner(
     b.version = history.info["version"]
         .as_str()
         .map(|s| safe_text(s, 100).0);
-    b.title = history.info["title"]
-        .as_str()
-        .filter(|s| !s.trim().is_empty())
-        .map(|s| safe_text(s, 200).0);
-    b.title_source = if b.title.is_some() {
-        "native_title"
-    } else {
-        "fallback"
+    if let Some(title) = crate::sessions::opencode::native_title(&history.info) {
+        b.title = Some(safe_text(title, 200).0);
+        b.title_source = "native_title".into();
+    } else if let Some(title) = &history.first_user_title {
+        b.title_from(title);
     }
-    .into();
+    if b.title.is_none() {
+        b.title = Some("未命名会话".into());
+    }
     b.project = history.info["directory"]
         .as_str()
         .filter(|s| Path::new(s).is_absolute())
@@ -64,7 +63,7 @@ fn opencode_inner(
     let mut line = 0;
     for message in &history.messages {
         let role = message.data["role"].as_str().unwrap_or("");
-        if !["user", "assistant"].contains(&role) {
+        if !["user", "assistant", "event"].contains(&role) {
             warnings.push("存在未识别角色的消息，未计入模型调用。".into());
         }
         b.turn = if role == "user" {
@@ -84,13 +83,18 @@ fn opencode_inner(
             .or_else(|| message.data["model"]["providerID"].as_str())
             .map(|s| safe_text(s, 300).0);
         let timestamp = time(Some(message.created));
-        b.context
-            .opencode_message(&message.data, timestamp.as_deref(), line);
+        let inherited = message.data["inherited"] == true;
+        if !inherited {
+            b.context
+                .opencode_message(&message.data, timestamp.as_deref(), line);
+        }
         for part in parts.remove(message.id.as_str()).unwrap_or_default() {
             line += 1;
             let v = &part.data;
             let ts = time(v["time"]["start"].as_i64().or(Some(part.created)));
-            b.context.opencode_part(v, ts.as_deref(), line);
+            if !inherited {
+                b.context.opencode_part(v, ts.as_deref(), line);
+            }
             if message.data["summary"] == true
                 && v["type"] == "text"
                 && let Some(text) = v["text"].as_str()
@@ -125,6 +129,18 @@ fn opencode_inner(
                     b.events[index].model = b.model.clone();
                     if let Some(text) = v["text"].as_str() {
                         b.write_text(index, "text", text);
+                    }
+                }
+                "tool" if inherited => {
+                    let index = b.event(
+                        &format!("part:{}", part.id),
+                        "event",
+                        "继承的工具记录",
+                        ts.as_deref(),
+                        line,
+                    );
+                    if let Some(name) = v["tool"].as_str() {
+                        b.write_text(index, "text", name);
                     }
                 }
                 "tool" => {
@@ -216,7 +232,7 @@ fn opencode_inner(
                 }
             }
         }
-        if role == "assistant" {
+        if role == "assistant" && !inherited {
             line += 1;
             let index = b.event(
                 &format!("model:{}", message.id),
@@ -364,6 +380,7 @@ fn opencode_inner(
         return opencode(
             path,
             crate::sessions::opencode::History {
+                first_user_title: history.first_user_title,
                 info: history.info,
                 messages: history.messages,
                 parts: history.parts,

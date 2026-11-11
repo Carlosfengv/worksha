@@ -1283,6 +1283,22 @@ export function activityOverview(query: OverviewQuery): Overview {
       for (const a of gateways) a.stale = true;
     }
   }
+  const opencodeProduct = new URLSearchParams(location.search).get(
+    "opencodeProduct",
+  );
+  if (
+    opencodeProduct === "opencode-cli" ||
+    opencodeProduct === "opencode-desktop"
+  ) {
+    for (const activity of gateways) {
+      if (activity.request.agentId === "opencode")
+        activity.request.agentProductId = opencodeProduct;
+    }
+    for (const activity of natives) {
+      if (activity.agentId === "opencode")
+        activity.agentProductId = opencodeProduct;
+    }
+  }
   const sessionContexts = [
     ...new Set([
       ...natives.map((a) => a.sessionId),

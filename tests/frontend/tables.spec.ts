@@ -8,43 +8,55 @@ test("Agent source state distinguishes partial transcripts from read failure wit
     ["partial", "部分会话可读"],
     ["failed", "会话读取异常"],
   ]) {
-    await page.goto(
-      `/tests/frontend/tables.html?mode=agents&sourceState=${state}#/agents`,
-    );
-    const sourceRow = page.getByRole("row").filter({
-      has: page.getByRole("heading", { name: "OpenCode", exact: true }),
-    });
-    await expect(sourceRow).toContainText(label);
-    if (state === "partial")
-      await expect(sourceRow).not.toContainText("会话读取异常");
-    await sourceRow.getByRole("link", { name: "详情 OpenCode" }).click();
-    await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+    for (const name of ["OpenCode CLI", "OpenCode Desktop"]) {
+      await page.goto(
+        `/tests/frontend/tables.html?mode=agents&sourceState=${state}#/agents`,
+      );
+      const sourceRow = page.getByRole("row").filter({
+        has: page.getByRole("link", { name: `详情 ${name}`, exact: true }),
+      });
+      await expect(sourceRow).toContainText(label);
+      if (state === "partial")
+        await expect(sourceRow).not.toContainText("会话读取异常");
+      await sourceRow
+        .getByRole("link", { name: `详情 ${name}`, exact: true })
+        .click();
+      await expect(
+        page.getByText(label, { exact: true }).first(),
+      ).toBeVisible();
+    }
   }
 });
 
 test("native Agent rows navigate to their own details alongside bundled DSH", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 720, height: 560 });
   await page.goto("/tests/frontend/tables.html?mode=agents#/agents");
   const names = [
     "Claude Code CLI",
     "Claude Code 桌面端",
     "Codex CLI",
     "Codex 桌面端",
-    "OpenCode",
+    "OpenCode CLI",
+    "OpenCode Desktop",
   ];
   const ids = [
     "claude-code-cli",
     "claude-code-desktop",
     "codex-cli",
     "codex-desktop",
-    "opencode",
+    "opencode-cli",
+    "opencode-desktop",
   ];
   for (const name of names)
     await expect(
-      page.getByRole("heading", { name, exact: true }),
+      page.getByRole("link", { name: `详情 ${name}`, exact: true }),
     ).toBeVisible();
-  await expect(page.getByRole("link", { name: /^详情 / })).toHaveCount(6);
+  await expect(
+    page.getByRole("link", { name: "详情 Claude Code CLI", exact: true }),
+  ).toBeInViewport();
+  await expect(page.getByRole("link", { name: /^详情 / })).toHaveCount(7);
   await expect(
     page.getByRole("link", { name: "详情 DeepSeek Harness 桌面端" }),
   ).toBeVisible();
@@ -78,7 +90,8 @@ test("MCP independent Agent filters retain configuration-only groups and scope d
     "Claude Code 桌面端",
     "Codex CLI",
     "Codex 桌面端",
-    "OpenCode",
+    "OpenCode CLI",
+    "OpenCode Desktop",
     "客户端未知",
   ])
     await expect(page.getByRole("option", { name, exact: true })).toBeVisible();

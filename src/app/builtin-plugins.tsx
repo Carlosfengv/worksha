@@ -88,8 +88,8 @@ export const builtinPlugins: readonly UiPlugin[] = [
         icon: "brain",
         footer: false,
         ownsBody: false,
-        refreshInHeader: true,
-        resetScrollOnObject: false,
+        refreshInHeader: false,
+        resetScrollOnObject: true,
         render: ({ data, refresh, route }) => (
           <AgentsPage
             data={data}
