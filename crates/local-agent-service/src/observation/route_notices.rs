@@ -210,11 +210,7 @@ pub(super) fn apply(
         selected,
         allowed: !output_contract(&request),
     };
-    let sse = response
-        .headers()
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.starts_with("text/event-stream"));
+    let sse = super::stream::is_event_stream(response.headers());
     let (mut parts, body) = response.into_parts();
     parts.headers.remove("content-length");
     let mut input = body.into_data_stream();

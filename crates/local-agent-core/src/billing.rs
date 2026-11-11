@@ -1,4 +1,5 @@
 //! Account snapshots come from billing sources, never from local transcript token totals.
+use chrono::{DateTime, Datelike, Days, Months, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -11,6 +12,230 @@ pub struct QuotaWindow {
     pub remaining_percent: Option<f64>,
     pub resets_at: Option<i64>,
     pub duration_mins: Option<u64>,
+}
+
+pub const OPENROUTER_KEY_BUDGET: &str = "openrouter-key-budget";
+const MAX_OPENROUTER_BUDGET_LAYERS: usize = 32;
+pub const MINIMAX_PLAN_WINDOWS: [&str; 2] = ["minimax-plan-interval", "minimax-plan-weekly"];
+
+fn minimax_plan(value: &Value, observed: DateTime<Utc>) -> Result<AccountSnapshot, &'static str> {
+    match value["base_resp"]["status_code"].as_i64() {
+        Some(0) => (),
+        Some(2062) => return Err("未确认有效的 MiniMax M Plan 订阅，或额度接口暂时限流"),
+        _ => return Err("MiniMax 额度接口未确认成功，请检查订阅 Key"),
+    }
+    let buckets = value["model_remains"]
+        .as_array()
+        .ok_or("MiniMax 额度响应结构不完整")?;
+    let mut text_buckets = buckets.iter().filter(|bucket| {
+        matches!(
+            bucket["model_name"].as_str(),
+            Some("general" | "MiniMax-M*")
+        )
+    });
+    let bucket = text_buckets
+        .next()
+        .ok_or("MiniMax 未返回文本模型的订阅额度")?;
+    if text_buckets.next().is_some() {
+        return Err("MiniMax 返回了多个文本额度范围，未合并");
+    }
+    let mut snapshot = AccountSnapshot::new("subscription", "MiniMax M Plan 官方额度接口");
+    snapshot.as_of = observed.to_rfc3339();
+    for (index, (prefix, start, end, label)) in [
+        ("current_interval", "start_time", "end_time", "5 小时用量"),
+        (
+            "current_weekly",
+            "weekly_start_time",
+            "weekly_end_time",
+            "7 天用量",
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let status = bucket[format!("{prefix}_status")].as_i64();
+        let remaining = match status {
+            Some(2) => Some(0.0),
+            Some(1) | None => percentage(&bucket[format!("{prefix}_remaining_percent")]),
+            _ => None,
+        };
+        let Some(remaining) = remaining else { continue };
+        let time = |field: &str| {
+            let raw = bucket[field].as_i64()?;
+            let secs = if raw >= 1_000_000_000_000 {
+                raw / 1000
+            } else {
+                raw
+            };
+            (0 < secs && secs < 32_503_680_000).then_some(secs)
+        };
+        let resets_at = time(end);
+        let duration_mins = time(start).zip(resets_at).and_then(|(start, end)| {
+            let minutes = (end - start) / 60;
+            (1..=10_080).contains(&minutes).then_some(minutes as u64)
+        });
+        snapshot.windows.push(QuotaWindow {
+            id: MINIMAX_PLAN_WINDOWS[index].into(),
+            label: label.into(),
+            used_percent: Some(100.0 - remaining),
+            remaining_percent: Some(remaining),
+            resets_at,
+            duration_mins,
+        });
+    }
+    if snapshot.windows.is_empty() {
+        return Err("MiniMax 未返回可读取的文本用量比例");
+    }
+    snapshot
+        .notes
+        .push("此处显示文本模型的订阅内用量，购买的积分可能仍可使用。".into());
+    Ok(snapshot)
+}
+
+fn openrouter_key_budget(data: &Value, observed: DateTime<Utc>) -> Option<QuotaWindow> {
+    let limit = data["limit"].as_f64()?;
+    let remaining = data["limit_remaining"].as_f64()?;
+    if limit < 0.0 || remaining > limit {
+        return None;
+    }
+    let remaining_percent = if remaining <= 0.0 {
+        0.0
+    } else {
+        (100.0 * (remaining / limit)).max(f64::MIN_POSITIVE)
+    };
+    let day = observed.date_naive();
+    let period = match data.get("limit_reset")? {
+        Value::Null => None,
+        Value::String(cadence) => Some(match cadence.as_str() {
+            "daily" => (day, day.succ_opt()?),
+            "weekly" => {
+                let start =
+                    day.checked_sub_days(Days::new(day.weekday().num_days_from_monday().into()))?;
+                (start, start.checked_add_days(Days::new(7))?)
+            }
+            "monthly" => {
+                let start = day.with_day(1)?;
+                (start, start.checked_add_months(Months::new(1))?)
+            }
+            _ => return None,
+        }),
+        _ => return None,
+    };
+    Some(QuotaWindow {
+        id: OPENROUTER_KEY_BUDGET.into(),
+        label: "密钥支出预算".into(),
+        used_percent: Some(100.0 - remaining_percent),
+        remaining_percent: Some(remaining_percent),
+        resets_at: period.and_then(|(_, end)| {
+            end.and_hms_opt(0, 0, 0)
+                .map(|time| time.and_utc().timestamp())
+        }),
+        duration_mins: period
+            .map(|(start, end)| end.signed_duration_since(start).num_minutes() as u64),
+    })
+}
+
+#[derive(Clone, Debug)]
+pub struct OpenRouterBudgetLayer {
+    pub id: String,
+    pub shared: bool,
+    pub window: QuotaWindow,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct OpenRouterBudgetCoverage {
+    pub key_unlimited: bool,
+    pub layers_complete: bool,
+}
+
+fn openrouter_budget_layer(data: &Value, layer: &Value) -> Option<OpenRouterBudgetLayer> {
+    let scope = layer["scope"].as_str()?;
+    let label = match scope {
+        "workspace_default_member" | "member" => "成员支出预算",
+        "workspace_default_key" | "api_key" | "key_limit" => "密钥支出预算",
+        "workspace" => "工作区支出预算",
+        _ => return None,
+    };
+    let limit = layer["limit_usd"].as_f64()?;
+    let remaining = layer["remaining_usd"].as_f64()?;
+    if limit < 0.0 || remaining > limit {
+        return None;
+    }
+    let (reset, duration_mins) = match layer.get("reset_interval")? {
+        Value::Null if layer.get("resets_at").is_some_and(Value::is_null) => (None, None),
+        Value::String(cadence) => {
+            let reset = DateTime::parse_from_rfc3339(layer["resets_at"].as_str()?).ok()?;
+            let end = reset.with_timezone(&Utc).date_naive();
+            let duration = match cadence.as_str() {
+                "daily" => 1440,
+                "weekly" => 10080,
+                "monthly" => {
+                    let start = end.pred_opt()?.with_day(1)?;
+                    u64::try_from(end.signed_duration_since(start).num_minutes()).ok()?
+                }
+                _ => return None,
+            };
+            (Some(reset.timestamp()), Some(duration))
+        }
+        _ => return None,
+    };
+    let identity = |value: &Value| {
+        value
+            .as_str()
+            .filter(|id| {
+                !id.is_empty()
+                    && id.len() <= 128
+                    && id
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+            })
+            .map(str::to_owned)
+    };
+    let workspace = identity(&data["workspace_id"]);
+    let member = identity(&data["creator_user_id"]);
+    let guardrail = identity(&layer["guardrail_id"]);
+    let budget = identity(&layer["budget_id"]);
+    let shared = workspace.is_some()
+        && match scope {
+            "workspace" => budget.is_some(),
+            "workspace_default_member" | "member" => member.is_some() && guardrail.is_some(),
+            _ => false,
+        };
+    let id = crate::providers::files::hash(
+        &serde_json::to_vec(&(
+            scope,
+            identity(&data["organization_id"]),
+            workspace,
+            (shared && scope != "workspace").then_some(member).flatten(),
+            guardrail,
+            budget,
+            &layer["reset_interval"],
+            layer["include_byok"].as_bool()?,
+        ))
+        .ok()?,
+    );
+    let remaining_percent = if remaining <= 0.0 {
+        0.0
+    } else {
+        (100.0 * (remaining / limit)).max(f64::MIN_POSITIVE)
+    };
+    Some(OpenRouterBudgetLayer {
+        id,
+        shared,
+        window: QuotaWindow {
+            id: if scope == "key_limit" {
+                OPENROUTER_KEY_BUDGET
+            } else {
+                scope
+            }
+            .into(),
+            label: label.into(),
+            used_percent: Some(100.0 - remaining_percent),
+            remaining_percent: Some(remaining_percent),
+            resets_at: reset,
+            duration_mins,
+        },
+    })
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -44,6 +269,12 @@ pub struct AccountSnapshot {
     pub valid_for_seconds: u64,
     pub source: String,
     pub notes: Vec<String>,
+    #[serde(skip)]
+    pub openrouter_budget_layers: Vec<OpenRouterBudgetLayer>,
+    #[serde(skip)]
+    pub openrouter_budget_coverage: Option<OpenRouterBudgetCoverage>,
+    #[serde(skip)]
+    pub inference_available: Option<bool>,
 }
 impl AccountSnapshot {
     pub fn new(kind: &str, source: &str) -> Self {
@@ -64,6 +295,9 @@ impl AccountSnapshot {
             valid_for_seconds: 300,
             source: source.into(),
             notes: vec![],
+            openrouter_budget_layers: vec![],
+            openrouter_budget_coverage: None,
+            inference_available: None,
         }
     }
 }
@@ -215,6 +449,17 @@ fn money(label: &str, v: &Value, currency: &str, kind: &str, period: Option<&str
     }
 }
 pub fn api(adapter: &str, v: &Value) -> Result<AccountSnapshot, &'static str> {
+    api_at(adapter, v, Utc::now())
+}
+
+pub fn api_at(
+    adapter: &str,
+    v: &Value,
+    observed: DateTime<Utc>,
+) -> Result<AccountSnapshot, &'static str> {
+    if adapter == crate::providers::subscription::MINIMAX_PLAN {
+        return minimax_plan(v, observed);
+    }
     let name = match adapter {
         "deepseek" => "DeepSeek",
         "openrouter" => "OpenRouter",
@@ -223,11 +468,13 @@ pub fn api(adapter: &str, v: &Value) -> Result<AccountSnapshot, &'static str> {
         _ => adapter,
     };
     let mut s = AccountSnapshot::new("api", &format!("{name} 官方账户接口"));
+    s.as_of = observed.to_rfc3339();
     match adapter {
         "deepseek" => {
+            s.inference_available = v["is_available"].as_bool();
             let rows = v["balance_infos"]
                 .as_array()
-                .filter(|a| !a.is_empty())
+                .filter(|a| !a.is_empty() || s.inference_available.is_some())
                 .ok_or("余额响应结构不完整")?;
             for row in rows.iter().take(8) {
                 let c = row["currency"]
@@ -244,6 +491,10 @@ pub fn api(adapter: &str, v: &Value) -> Result<AccountSnapshot, &'static str> {
             if v["status"] != true || v["code"] != 0 {
                 return Err("余额接口未确认成功");
             }
+            s.inference_available = v["data"]["available_balance"]
+                .as_f64()
+                .filter(|value| value.is_finite())
+                .map(|value| value > 0.0);
             s.money.push(money(
                 "可用余额",
                 &v["data"]["available_balance"],
@@ -258,6 +509,61 @@ pub fn api(adapter: &str, v: &Value) -> Result<AccountSnapshot, &'static str> {
             let d = &v["data"];
             if !d.is_object() {
                 return Err("用量响应结构不完整");
+            }
+            // The full list carries the independent constraints. The effective
+            // entry also supports responses that omit the list.
+            let listed_budgets = d["budgets"].as_array();
+            let bounded =
+                listed_budgets.is_none_or(|layers| layers.len() <= MAX_OPENROUTER_BUDGET_LAYERS);
+            let mut layers_complete = listed_budgets.is_some() && bounded;
+            let mut key_budget = None;
+            let mut key_entry_present = false;
+            let layers = listed_budgets
+                .into_iter()
+                .flatten()
+                .take(MAX_OPENROUTER_BUDGET_LAYERS)
+                .map(|entry| (true, entry))
+                .chain(
+                    d.get("effective_budget")
+                        .filter(|entry| !entry.is_null())
+                        .map(|entry| (false, entry)),
+                );
+            for (listed, entry) in layers {
+                key_entry_present |= entry["scope"] == "key_limit";
+                let Some(layer) = openrouter_budget_layer(d, entry) else {
+                    layers_complete = false;
+                    continue;
+                };
+                if layer.window.id == OPENROUTER_KEY_BUDGET {
+                    layers_complete &= listed || key_budget.is_some();
+                    key_budget.get_or_insert(layer.window);
+                } else {
+                    let present = s
+                        .openrouter_budget_layers
+                        .iter()
+                        .any(|prior| prior.id == layer.id);
+                    layers_complete &= listed || present;
+                    if !present {
+                        s.openrouter_budget_layers.push(layer);
+                    }
+                }
+            }
+            let key_fields = [d.get("limit"), d.get("limit_remaining")];
+            let key_unlimited = bounded
+                && !key_entry_present
+                && key_fields
+                    .iter()
+                    .all(|field| field.is_none_or(Value::is_null))
+                && (layers_complete
+                    || key_fields
+                        .iter()
+                        .all(|field| field.is_some_and(Value::is_null)));
+            s.openrouter_budget_coverage = Some(OpenRouterBudgetCoverage {
+                key_unlimited,
+                layers_complete,
+            });
+            if let Some(window) = key_budget.or_else(|| openrouter_key_budget(d, observed)) {
+                s.windows.push(window);
             }
             s.money.push(money(
                 "本月已用",
@@ -300,7 +606,14 @@ pub fn api(adapter: &str, v: &Value) -> Result<AccountSnapshot, &'static str> {
         }
         _ => return Err("该服务商尚无已接入的账户查询接口"),
     }
-    if !s.money.iter().any(|m| m.amount.is_some()) {
+    if !s.money.iter().any(|m| m.amount.is_some())
+        && s.inference_available.is_none()
+        && s.windows.is_empty()
+        && s.openrouter_budget_layers.is_empty()
+        && !s
+            .openrouter_budget_coverage
+            .is_some_and(|coverage| coverage.key_unlimited || coverage.layers_complete)
+    {
         return Err("服务商未提供可读取的金额");
     }
     Ok(s)
@@ -310,6 +623,151 @@ pub fn api(adapter: &str, v: &Value) -> Result<AccountSnapshot, &'static str> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn minimax_windows_only_use_the_text_bucket_and_explicit_percentages() {
+        let observed = "2026-11-08T16:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let end = observed.timestamp() + 3600;
+        let value = json!({"base_resp":{"status_code":0},"model_remains":[
+            {"model_name":"general","start_time":(end-18000)*1000,"end_time":end*1000,"current_interval_status":1,"current_interval_remaining_percent":74,
+             "weekly_end_time":end+86400,"current_weekly_status":2,"current_weekly_remaining_percent":100},
+            {"model_name":"video","current_interval_status":2,"current_interval_remaining_percent":0}
+        ]});
+        let plan = api_at("minimax-plan", &value, observed).unwrap();
+        assert_eq!(plan.account_type, "subscription");
+        assert_eq!(plan.windows.len(), 2);
+        assert_eq!(plan.windows[0].remaining_percent, Some(74.));
+        assert_eq!(plan.windows[0].resets_at, Some(end));
+        assert_eq!(plan.windows[0].duration_mins, Some(300));
+        assert_eq!(plan.windows[1].remaining_percent, Some(0.));
+        assert!(api_at("minimax-plan", &json!({"base_resp":{"status_code":0},"model_remains":[{"model_name":"general","current_interval_usage_count":80,"current_interval_total_count":100}]}), observed).is_err());
+        assert!(api_at("minimax-plan", &json!({"base_resp":{"status_code":2062,"status_msg":"fixture secret"},"model_remains":value["model_remains"]}), observed).unwrap_err().contains("订阅"));
+    }
+
+    #[test]
+    fn openrouter_budget_layers_remain_independent_and_identity_is_host_only() {
+        let observed = "2026-11-08T16:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let layer = |scope, guardrail, budget, remaining| {
+            json!({
+                "scope":scope, "guardrail_id":guardrail, "budget_id":budget,
+                "limit_usd":100, "remaining_usd":remaining, "include_byok":false,
+                "reset_interval":"daily", "resets_at":"2026-11-09T00:00:00Z"
+            })
+        };
+        let member = layer("member", Some("member-guardrail"), None, -1);
+        let mut value = json!({"data":{
+            "organization_id":"organization-fixture", "workspace_id":"workspace-fixture",
+            "creator_user_id":"member-alice", "limit":null, "limit_remaining":null, "limit_reset":null,
+            "budgets":[
+                member.clone(),
+                layer("workspace", None, Some("workspace-budget"), 80),
+                layer("api_key", Some("key-guardrail"), None, 20),
+                layer("key_limit", None, None, 90)
+            ],
+            "effective_budget":member
+        }});
+        let read = |value: &Value| api_at("openrouter", value, observed).unwrap();
+        let alice = read(&value);
+        let layers = &alice.openrouter_budget_layers;
+        assert_eq!(
+            layers.len(),
+            3,
+            "effective budget does not duplicate a layer"
+        );
+        assert_eq!(alice.windows[0].remaining_percent, Some(90.0));
+        assert_eq!(layers[0].window.remaining_percent, Some(0.0));
+        assert!(layers[0].shared && layers[1].shared && !layers[2].shared);
+        let wire = serde_json::to_string(&alice).unwrap();
+        assert!(!wire.contains("member-alice") && !wire.contains(&layers[0].id));
+
+        value["data"]["creator_user_id"] = json!("member-bob");
+        let bob = read(&value);
+        assert_ne!(layers[0].id, bob.openrouter_budget_layers[0].id);
+        assert_eq!(layers[1].id, bob.openrouter_budget_layers[1].id);
+
+        value["data"]["creator_user_id"] = Value::Null;
+        value["data"]["budgets"] = Value::Null;
+        let unproven = read(&value);
+        assert_eq!(unproven.openrouter_budget_layers.len(), 1);
+        assert!(!unproven.openrouter_budget_layers[0].shared);
+        assert_eq!(
+            unproven.openrouter_budget_layers[0]
+                .window
+                .remaining_percent,
+            Some(0.0)
+        );
+
+        value["data"]["effective_budget"]["resets_at"] = json!("bad reset");
+        assert!(read(&value).openrouter_budget_layers.is_empty());
+    }
+
+    #[test]
+    fn openrouter_budget_uses_key_scope_and_utc_calendar_windows() {
+        let now = "2026-12-31T23:59:00Z".parse::<DateTime<Utc>>().unwrap();
+        let data = json!({"limit":80,"limit_remaining":20,"limit_reset":"monthly","effective_budget":{"remaining_usd":0}});
+        let key = openrouter_key_budget(&data, now).unwrap();
+        assert_eq!(key.remaining_percent, Some(25.));
+        assert_eq!(
+            key.resets_at,
+            Some(
+                "2027-01-01T00:00:00Z"
+                    .parse::<DateTime<Utc>>()
+                    .unwrap()
+                    .timestamp()
+            )
+        );
+        assert_eq!(key.duration_mins, Some(31 * 1440));
+        let weekly = openrouter_key_budget(
+            &json!({"limit":20,"limit_remaining":-1,"limit_reset":"weekly"}),
+            now,
+        )
+        .unwrap();
+        assert_eq!(weekly.remaining_percent, Some(0.));
+        assert_eq!(
+            weekly.resets_at,
+            Some(
+                "2027-01-04T00:00:00Z"
+                    .parse::<DateTime<Utc>>()
+                    .unwrap()
+                    .timestamp()
+            )
+        );
+        assert!(
+            openrouter_key_budget(
+                &json!({"limit":null,"limit_remaining":null,"limit_reset":null}),
+                now
+            )
+            .is_none()
+        );
+        assert!(
+            openrouter_key_budget(
+                &json!({"limit":0,"limit_remaining":1,"limit_reset":"daily"}),
+                now
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn openrouter_distinguishes_missing_budget_fields_from_confirmed_removal() {
+        let read = |data| {
+            api("openrouter", &json!({"data":data}))
+                .unwrap()
+                .openrouter_budget_coverage
+                .unwrap()
+        };
+        let usage_only = read(json!({"usage":1.25}));
+        assert!(!usage_only.key_unlimited && !usage_only.layers_complete);
+        let explicit_key = read(json!({"limit":null,"limit_remaining":null}));
+        assert!(explicit_key.key_unlimited && !explicit_key.layers_complete);
+        let no_budgets = read(json!({"budgets":[],"effective_budget":null}));
+        assert!(no_budgets.key_unlimited && no_budgets.layers_complete);
+        let incomplete = read(json!({"usage":0,"budgets":[{"scope":"key_limit"}]}));
+        assert!(!incomplete.key_unlimited && !incomplete.layers_complete);
+        let contradictory = read(json!({"usage":0,"limit":100,"budgets":[]}));
+        assert!(!contradictory.key_unlimited && contradictory.layers_complete);
+    }
+
     #[test]
     fn codex_multi_bucket_count_and_unknowns() {
         let s=codex(&json!({"type":"chatgpt","planType":"pro"}),&json!({"rateLimits":{"primary":{"usedPercent":99}},"rateLimitsByLimitId":{"codex":{"primary":{"usedPercent":0,"windowDurationMins":300,"resetsAt":2000000000}},"other":{"secondary":{"usedPercent":35}}},"rateLimitResetCredits":{"availableCount":3,"credits":[{"expiresAt":null}]}})).unwrap();

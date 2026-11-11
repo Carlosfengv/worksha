@@ -102,6 +102,15 @@ pub(crate) fn management(state: AppState) -> Router {
             get(crate::model_services::operation),
         )
         .route(
+            "/api/model-services/preview",
+            axum::routing::post(crate::model_services::preview::read)
+                .layer(axum::extract::DefaultBodyLimit::max(65_536)),
+        )
+        .route(
+            "/api/model-services/routing-projects",
+            get(crate::model_services::routing_projects),
+        )
+        .route(
             "/api/model-service-members/verify",
             axum::routing::post(crate::model_services::verify_member),
         )
@@ -165,6 +174,10 @@ pub(crate) fn management(state: AppState) -> Router {
             axum::routing::put(providers::save_provider),
         )
         .route("/api/provider-status", get(providers::status))
+        .route(
+            "/api/provider-upstream-accounts/{id}",
+            axum::routing::post(providers::upstream_accounts::action),
+        )
         .route(
             "/api/provider-credentials/legacy-policy",
             get(providers::credential_scope::legacy_policy),

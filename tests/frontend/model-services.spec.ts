@@ -1,5 +1,321 @@
 import { expect, test } from "@playwright/test";
 
+test("publishes explicit access fallback and restores it in the editor", async ({
+  page,
+}) => {
+  await page.goto("/tests/frontend/model-services.html");
+  const edit = page.getByRole("button", { name: "编辑 编程服务", exact: true });
+  await edit.click();
+  await page.getByRole("switch", { name: "启用优先级与自动回退" }).click();
+  const access = page.getByRole("switch", {
+    name: "上游明确拒绝凭据或模型权限时回退",
+  });
+  await expect(access).not.toBeChecked();
+  await access.click();
+  await page.getByRole("button", { name: "验证并发布", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () =>
+        window.modelServiceFixture.catalog.services[0].routingPolicy
+          ?.fallbackOnAccessDenied,
+    ),
+  ).toBe(true);
+  await edit.click();
+  await expect(access).toBeChecked();
+  await access.click();
+  await page.getByRole("button", { name: "验证并发布", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await edit.click();
+  await expect(access).not.toBeChecked();
+});
+
+test("publishes and reopens a child service pinned to its chosen version", async ({
+  page,
+}) => {
+  await page.goto("/tests/frontend/model-services.html?nested=1");
+  await page.getByRole("button", { name: "创建模型服务", exact: true }).click();
+  await page.getByRole("textbox", { name: "服务名称" }).fill("父服务");
+  await page.getByRole("button", { name: "添加子服务", exact: true }).click();
+  const publish = page.getByRole("button", { name: "验证并发布" });
+  await expect(publish).toBeDisabled();
+  const child = page.getByRole("combobox", { name: "子服务版本" });
+  await child.click();
+  await page.getByRole("option", { name: "编程服务 · 第 1 版" }).click();
+  await expect(
+    page.getByRole("spinbutton", { name: "上下文窗口（Token）" }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("switch", { name: "启用优先级与自动回退" }),
+  ).toBeChecked();
+  await expect(
+    page.getByRole("combobox", { name: "添加上游账号" }),
+  ).toHaveCount(0);
+  await publish.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const saved = await page.evaluate(() => ({
+    actions: window.modelServiceFixture.actions,
+    child: window.modelServiceFixture.catalog.services.find(
+      (service) => service.name === "父服务",
+    )?.models[0].child,
+  }));
+  expect(saved.actions).toEqual(["save"]);
+  expect(saved.child).toEqual({
+    serviceId: "620d7132-b3f3-4e56-8f5a-2c06c8282a01",
+    versionId: "70130e70-ef47-4cd7-9b01-2da76b6101d5",
+  });
+  await page.getByRole("button", { name: "编辑 父服务", exact: true }).click();
+  await expect(child).toHaveValue("编程服务 · 第 1 版");
+});
+
+test("publishes an opted-in intent rule with a fixed classifier account", async ({
+  page,
+}) => {
+  await page.goto("/tests/frontend/model-services.html?upstream-accounts=1");
+  await page
+    .getByRole("button", { name: "编辑 编程服务", exact: true })
+    .click();
+  await page.getByRole("switch", { name: "启用优先级与自动回退" }).click();
+  const classifier = page.getByRole("switch", { name: "启用意图分类" });
+  await expect(classifier).not.toBeChecked();
+  await page.getByRole("combobox", { name: "添加上游账号" }).click();
+  await page.getByRole("option", { name: "主账号", exact: true }).click();
+  await classifier.click();
+  await page.getByRole("combobox", { name: "分类模型" }).click();
+  await page.getByRole("option", { name: "Pro", exact: true }).click();
+  const publish = page.getByRole("button", { name: "验证并发布", exact: true });
+  await expect(publish).toBeDisabled();
+  await page.getByRole("combobox", { name: "分类账号" }).click();
+  await page.getByRole("option", { name: "主账号", exact: true }).click();
+  await page.getByRole("button", { name: "添加规则" }).click();
+  await page.getByRole("combobox", { name: "规则目标模型" }).click();
+  await page.getByRole("option", { name: "Flash", exact: true }).click();
+  await page.getByRole("textbox", { name: "请求意图" }).press("End");
+  await page.keyboard.insertText("排查错误");
+  await publish.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const policy = await page.evaluate(
+    () => window.modelServiceFixture.catalog.services[0].routingPolicy,
+  );
+  expect(policy?.intentClassifier).toMatchObject({
+    modelId: "model-pro",
+    account: { id: "a8259fd0-66d1-493f-ac6f-12abc5437890", revision: 1 },
+  });
+  expect(policy?.rules?.[0]).toMatchObject({
+    modelId: "model-flash",
+    intent: "排查错误",
+  });
+  await page
+    .getByRole("button", { name: "编辑 编程服务", exact: true })
+    .click();
+  await expect(page.getByRole("combobox", { name: "分类账号" })).toContainText(
+    "主账号",
+  );
+  await classifier.click();
+  await publish.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const disabledPolicy = await page.evaluate(
+    () => window.modelServiceFixture.catalog.services[0].routingPolicy,
+  );
+  expect(disabledPolicy?.intentClassifier).toBeUndefined();
+  expect(disabledPolicy?.rules?.[0].intent).toBe("排查错误");
+});
+
+test("publishes ordered conditions and restores them in the editor", async ({
+  page,
+}) => {
+  await page.goto("/tests/frontend/model-services.html");
+  await page
+    .getByRole("button", { name: "编辑 编程服务", exact: true })
+    .click();
+  await page.getByRole("switch", { name: "启用优先级与自动回退" }).click();
+  await page.getByRole("button", { name: "添加规则" }).click();
+  const name = page.getByRole("textbox", { name: "规则名称" });
+  await expect(name).toBeFocused();
+  await name.press("ControlOrMeta+a");
+  await page.keyboard.insertText("OpenCode 工具");
+  await page.getByRole("combobox", { name: "规则目标模型" }).click();
+  await page.getByRole("option", { name: "Flash", exact: true }).click();
+  const publish = page.getByRole("button", { name: "验证并发布", exact: true });
+  await expect(publish).toBeDisabled();
+  await page.getByRole("combobox", { name: "客户端条件" }).click();
+  await expect(
+    page.getByRole("option", { name: "OpenCode · 全部客户端", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("option", { name: "OpenCode Desktop", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("option", { name: "OpenCode CLI", exact: true }).click();
+  await page.getByRole("combobox", { name: "工具定义" }).click();
+  await page.getByRole("option", { name: "包含可用工具", exact: true }).click();
+  const tokens = page.getByRole("spinbutton", { name: /最低输入 Token 数/ });
+  await tokens.press("2");
+  await page.keyboard.insertText("048");
+  await page.getByRole("button", { name: "添加规则" }).click();
+  await expect(name).toBeFocused();
+  await name.press("ControlOrMeta+a");
+  await page.keyboard.insertText("流式聊天");
+  await page.getByRole("combobox", { name: "规则目标模型" }).click();
+  await page.getByRole("option", { name: "Pro", exact: true }).click();
+  await page.getByRole("combobox", { name: "响应方式" }).click();
+  await page.getByRole("option", { name: "流式", exact: true }).click();
+  await page.getByRole("button", { name: "上移规则" }).click();
+  await publish.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const rules = await page.evaluate(
+    () => window.modelServiceFixture.catalog.services[0].routingPolicy?.rules,
+  );
+  expect(rules).toMatchObject([
+    { name: "流式聊天", modelId: "model-pro", stream: true },
+    {
+      name: "OpenCode 工具",
+      modelId: "model-flash",
+      agent: "opencode-cli",
+      tools: true,
+      minInputTokens: 2048,
+    },
+  ]);
+  await page
+    .getByRole("button", { name: "编辑 编程服务", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "OpenCode 工具", exact: true })
+    .click();
+  await expect(
+    page.getByRole("spinbutton", { name: /最低输入 Token 数/ }),
+  ).toHaveValue("2048");
+  await expect(
+    page.getByRole("combobox", { name: "客户端条件" }),
+  ).toContainText("OpenCode CLI");
+});
+
+test("selects and republishes a project available only to routing", async ({
+  page,
+}) => {
+  await page.goto("/tests/frontend/model-services.html");
+  const edit = page.getByRole("button", { name: "编辑 编程服务", exact: true });
+  await edit.click();
+  await page.getByRole("switch", { name: "启用优先级与自动回退" }).click();
+  await page.getByRole("button", { name: "添加规则" }).click();
+  const ruleName = page.getByRole("textbox", { name: "规则名称" });
+  await ruleName.fill("OpenCode 2.x 项目规则");
+  await page.getByRole("combobox", { name: "规则目标模型" }).click();
+  await page.getByRole("option", { name: "Flash", exact: true }).click();
+  await page.getByRole("button", { name: "选择项目", exact: true }).click();
+  const project = page.getByRole("combobox", { name: "项目条件" });
+  await project.fill("opencode-v2");
+  await page.getByRole("option", { name: /OpenCode 2.x 项目/ }).click();
+  await page.getByRole("button", { name: "验证并发布", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () =>
+        window.modelServiceFixture.catalog.services[0].routingPolicy?.rules?.[0]
+          ?.projectId,
+    ),
+  ).toBe(`project:${"2".repeat(64)}`);
+  await edit.click();
+  await page
+    .getByRole("button", { name: "OpenCode 2.x 项目规则", exact: true })
+    .click();
+  await expect(project).toHaveValue(/OpenCode 2.x 项目/);
+  await page.evaluate(() => window.modelServiceFixture.revokeRoutingProject());
+  await expect(project).toHaveValue("所选项目暂不可用");
+});
+
+test("publish upstream account order, weights and affinity", async ({
+  page,
+}) => {
+  await page.goto("/tests/frontend/model-services.html?upstream-accounts=1");
+  await page
+    .getByRole("button", { name: "编辑 编程服务", exact: true })
+    .click();
+  await page.getByRole("switch", { name: "启用优先级与自动回退" }).click();
+  const picker = page.getByRole("combobox", { name: "添加上游账号" });
+  await picker.click();
+  await expect(page.getByRole("option", { name: "暂停账号" })).toHaveCount(0);
+  await page.getByRole("option", { name: "主账号" }).click();
+  await picker.click();
+  await page.getByRole("option", { name: "备用账号" }).click();
+  await page.getByRole("button", { name: "上移 备用账号" }).click();
+  await page.getByRole("combobox", { name: "账号选择策略" }).click();
+  await page.getByRole("option", { name: "按权重分配" }).click();
+  const weight = page.getByRole("spinbutton", { name: "备用账号 权重" });
+  await weight.fill("0");
+  await expect(page.getByRole("button", { name: "验证并发布" })).toBeDisabled();
+  await weight.fill("3");
+  await page.getByRole("combobox", { name: "同会话后续轮次" }).click();
+  await page.getByRole("option", { name: "优先沿用" }).click();
+  await expect(
+    page.getByRole("switch", { name: "账号池耗尽后允许跨模型回退" }),
+  ).not.toBeChecked();
+  await page.getByRole("button", { name: "验证并发布" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const state = await page.evaluate(() => ({
+    actions: window.modelServiceFixture.actions,
+    pool: window.modelServiceFixture.catalog.services[0].routingPolicy
+      ?.accountPools?.[0],
+  }));
+  expect(state.actions).toEqual([
+    "account:b8259fd0-66d1-493f-ac6f-12abc5437890",
+    "verify:source-Alpha:a",
+    "account:a8259fd0-66d1-493f-ac6f-12abc5437890",
+    "verify:source-Alpha:a",
+    "save",
+  ]);
+  expect(state.pool?.accounts.map((a) => a.id)).toEqual([
+    "b8259fd0-66d1-493f-ac6f-12abc5437890",
+    "a8259fd0-66d1-493f-ac6f-12abc5437890",
+  ]);
+  expect(state.pool).toMatchObject({
+    strategy: "weighted",
+    affinity: "prefer",
+    weights: { "b8259fd0-66d1-493f-ac6f-12abc5437890": 3 },
+  });
+  await page
+    .getByRole("button", { name: "编辑 编程服务", exact: true })
+    .click();
+  await page.getByRole("combobox", { name: "账号选择策略" }).click();
+  await page
+    .getByRole("option", { name: "优先用每小时剩余额度比例高的账号" })
+    .click();
+  await expect(page.getByText(/额度排序当前使用 OpenRouter/)).toBeVisible();
+  await expect(page.getByText(/按到重置前的剩余时间折算/)).toBeVisible();
+  await page.getByRole("button", { name: "验证并发布" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const quotaPool = await page.evaluate(
+    () =>
+      window.modelServiceFixture.catalog.services[0].routingPolicy
+        ?.accountPools?.[0],
+  );
+  expect(quotaPool?.strategy).toBe("quota-pace");
+  expect(quotaPool?.weights).toBeUndefined();
+});
+
+test("model service list is the default and routing controls are a secondary workspace", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 560 });
+  await page.goto("/tests/frontend/model-services.html");
+  const list = page.getByRole("region", { name: "模型服务列表", exact: true });
+  const routing = page.getByRole("region", {
+    name: "外部路由策略",
+    exact: true,
+  });
+  const create = page.getByRole("button", {
+    name: "创建模型服务",
+    exact: true,
+  });
+  await expect(list.getByRole("table")).toBeInViewport();
+  await expect(routing).toHaveCount(0);
+  await page.getByRole("tab", { name: "外部路由策略", exact: true }).click();
+  await expect(routing).toBeVisible();
+  await expect(list).toHaveCount(0);
+  await expect(create).toBeInViewport();
+  await page.getByRole("tab", { name: "服务列表", exact: true }).click();
+  await expect(list.getByRole("table")).toBeVisible();
+});
+
 test("create a cross-provider model service and publish capability metadata", async ({
   page,
 }) => {
@@ -45,6 +361,87 @@ test("create a cross-provider model service and publish capability metadata", as
   ]);
   expect(await page.evaluate(() => window.modelServiceFixture.actions)).toEqual(
     ["verify:source-Alpha:a", "verify:source-Beta:b", "save"],
+  );
+});
+
+test("previews enrollment using only the model's published upstream accounts", async ({
+  page,
+}) => {
+  await page.goto(
+    "/tests/frontend/model-services.html?agent=opencode&upstream-accounts=1&require-account=1",
+  );
+  await page
+    .getByRole("combobox", { name: "OpenCode 模型连接", exact: true })
+    .click();
+  await page.getByRole("option", { name: "编程服务", exact: true }).click();
+  await page.getByRole("button", { name: "验证并生成预览" }).click();
+  await expect(
+    page.getByRole("button", { name: "写入配置", exact: true }),
+  ).toBeEnabled();
+  const actions = await page.evaluate(() => window.modelServiceFixture.actions);
+  expect(actions.filter((action) => /^(account|verify):/.test(action))).toEqual(
+    [
+      "account:a8259fd0-66d1-493f-ac6f-12abc5437890",
+      "verify:source-Alpha:a",
+      "account:b8259fd0-66d1-493f-ac6f-12abc5437890",
+      "verify:source-Alpha:a",
+      "verify:source-Beta:b",
+    ],
+  );
+});
+
+test("publication preview shows account status and invalidates edited scope", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 560 });
+  await page.goto(
+    "/tests/frontend/model-services.html?require-account=1&upstream-accounts=1",
+  );
+  await page
+    .getByRole("button", { name: "编辑 编程服务", exact: true })
+    .click();
+  const preview = page.getByRole("region", { name: "发布前路由预览" });
+  expect(await page.evaluate(() => window.modelServiceFixture.actions)).toEqual(
+    [],
+  );
+  await preview.getByRole("button", { name: "读取预览", exact: true }).click();
+  await expect(preview).toContainText("核对时间");
+  await expect(preview).toContainText("验证已过期");
+  await expect(preview).toContainText("发布时将验证");
+  await expect(preview).toContainText("上游限流");
+  await expect(preview).toContainText("正在探测额度恢复");
+  await expect(preview).toContainText("账号已暂停");
+  await expect(preview).toContainText("跨模型回退未开启");
+
+  const entry = preview.getByRole("combobox", { name: "预览入口" });
+  await entry.click();
+  await page.getByRole("option", { name: "指定模型 · Flash" }).click();
+  await expect(preview).toContainText("能力与此入口不匹配");
+  await expect(entry).toHaveAttribute("aria-expanded", "false");
+  await entry.click();
+  await page.getByRole("option", { name: "默认入口 · 未命中规则" }).click();
+  await expect(preview).toContainText("跨模型回退未开启");
+
+  await page
+    .getByRole("switch", { name: "账号池耗尽后允许跨模型回退" })
+    .click();
+  await expect(preview).toContainText("请重新读取预览");
+  await expect(preview.getByText("账号已暂停")).toHaveCount(0);
+  await page.evaluate(() => {
+    window.modelServiceFixture.previewQuota = "recovered";
+    window.modelServiceFixture.previewRecovery = "probing";
+  });
+  await preview.getByRole("button", { name: "重新读取预览" }).click();
+  await expect(preview).toContainText("允许回退");
+  await expect(preview).toContainText("额度恢复探测通过");
+  await expect(preview).toContainText("上游限流，账号恢复探测中");
+  expect(await page.evaluate(() => window.modelServiceFixture.actions)).toEqual(
+    [
+      "preview:default",
+      "preview:specified",
+      "preview:default",
+      "preview:default",
+    ],
   );
 });
 
@@ -262,6 +659,20 @@ test("cooldown state remains distinct from unavailable status metadata", async (
   await expect(
     page.getByRole("row").filter({ hasText: "编程服务" }),
   ).toContainText("1 个模型来源冷却中");
+  for (const [state, label] of [
+    ["waitingForProbe", "1 个模型来源待恢复探测"],
+    ["probing", "1 个模型来源恢复探测中"],
+  ] as const) {
+    await page.evaluate((phase) => {
+      const [primary] = window.modelServiceFixture.catalog.routingHealth!;
+      primary.status.state = phase;
+      primary.status.untilMs = Date.now() - 1000;
+    }, state);
+    await page.getByRole("button", { name: "重新读取", exact: true }).click();
+    const row = page.getByRole("row").filter({ hasText: "编程服务" });
+    await expect(row).toContainText(label);
+    await expect(row).not.toContainText("来源无冷却记录");
+  }
 });
 
 test("dismissed service previews resume without preparing or verifying a second time", async ({

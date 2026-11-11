@@ -31,12 +31,22 @@ export interface AccountSnapshot {
   notes: string[];
 }
 
+export type RoutingQuotaStatus =
+  | "exhausted"
+  | "recovery"
+  | "recovering"
+  | "recoveryCooling"
+  | "recovered"
+  | "unknown";
+
 export interface BillingAccount {
   id: string;
   name: string;
   accountType: "subscription" | "api";
   scope: string;
   providerId: string | null;
+  upstreamAccount?: { id: string; revision: number };
+  routingQuota?: RoutingQuotaStatus;
   declaredFor: string[];
   sourceRevision: string;
   readable: boolean;

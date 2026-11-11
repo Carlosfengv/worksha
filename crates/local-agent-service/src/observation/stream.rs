@@ -3,6 +3,14 @@ use local_agent_core::sessions::activity_input::tool_name;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+pub(super) fn is_event_stream(headers: &axum::http::HeaderMap) -> bool {
+    headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("text/event-stream"))
+}
+
 #[derive(Default)]
 pub struct Update {
     pub tool_names: Vec<String>,
@@ -255,13 +263,14 @@ pub(crate) fn decode_builtin(bytes: &[u8], protocol: &str) -> Update {
             .filter(|n| n.is_finite() && *n >= 0.0),
         ..Default::default()
     };
-    if kind == "error" || v.get("error").is_some_and(|error| !error.is_null()) {
+    if kind != "response.failed" && crate::gateway::protocol::reply_error(&v).is_some() {
         u.terminal = Some("error");
+        u.model = v["model"].as_str().map(str::to_owned);
         if v["usage"].is_object() {
             let raw = &v["usage"];
             u.usage = Some(if protocol == "chat-completions" {
                 usage(
-                    &serde_json::json!({"input_tokens":raw["prompt_tokens"],"output_tokens":raw["completion_tokens"],"input_tokens_details":raw["prompt_tokens_details"],"output_tokens_details":raw["completion_tokens_details"]}),
+                    &serde_json::json!({"input_tokens":raw["prompt_tokens"],"output_tokens":raw["completion_tokens"],"cached_input_tokens":raw["prompt_cache_hit_tokens"],"input_tokens_details":raw["prompt_tokens_details"],"output_tokens_details":raw["completion_tokens_details"]}),
                     false,
                 )
             } else {

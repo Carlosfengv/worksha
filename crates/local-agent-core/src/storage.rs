@@ -119,6 +119,7 @@ impl Store {
         crate::routing::initialize(&connection).map_err(|e| e.message)?;
         crate::model_services::initialize(&connection).map_err(|e| e.message)?;
         crate::model_services::policy::initialize(&connection).map_err(|e| e.message)?;
+        crate::providers::upstream_accounts::initialize(&connection).map_err(|e| e.message)?;
         crate::model_services::notices::initialize(&connection).map_err(|e| e.message)?;
         crate::settings::initialize(&connection)?;
         crate::model_services::operations::initialize(&connection).map_err(|e| e.message)?;
@@ -504,7 +505,7 @@ mod tests {
         provider.model = "chosen-model".into();
         store.save_provider(provider.clone()).unwrap();
         let providers = store.providers().unwrap();
-        assert_eq!(providers.len(), 7);
+        assert_eq!(providers.len(), default_providers().len());
         assert_eq!(providers[0].model, "chosen-model");
         assert!(providers[0].configured);
         provider.endpoint = "https://user:secret@example.com".into();
@@ -526,6 +527,7 @@ mod tests {
                 "OpenRouter",
                 "DeepSeek",
                 "Kimi",
+                "MiniMax M Plan",
                 "Ollama",
                 "vLLM"
             ]
@@ -549,7 +551,7 @@ mod tests {
         assert_eq!(old.vendor, "openai");
         assert_eq!(old.endpoint, "https://existing-gateway.invalid/v1");
 
-        let mut p = defaults[5].clone();
+        let mut p = defaults.iter().find(|p| p.id == "ollama").unwrap().clone();
         p.id = format!("custom-{}", uuid::Uuid::new_v4());
         p.vendor = "ollama".into();
         p.name = "工作站推理".into();

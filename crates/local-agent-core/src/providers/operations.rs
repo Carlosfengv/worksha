@@ -445,6 +445,7 @@ impl Store {
         let provider = self.write_provider(detected)?;
         let verification = Verification {
             provider_id: provider.id.clone(),
+            account_revision: None,
             model: Some(provider.model.clone()),
             fingerprint: super::fingerprint(&provider),
             state: "verified".into(),

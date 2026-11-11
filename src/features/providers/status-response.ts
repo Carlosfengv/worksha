@@ -103,6 +103,7 @@ const transaction: Decoder<ProviderTransaction> = shape({
 });
 const verification: Decoder<ProviderVerification> = shape({
   providerId: nonempty(),
+  accountRevision: optional(count),
   model: optional(nullable(text(800))),
   fingerprint: text(),
   state: nonempty(),

@@ -53,6 +53,10 @@ fn turn_continuations_old_retries_and_restarts_keep_their_versions() {
             .id,
         b_version.id
     );
+    store
+        .connection
+        .execute_batch("ALTER TABLE gateway_route_leases DROP COLUMN output_validated")
+        .unwrap();
     drop(store);
     let store = Store::open(dir.path()).unwrap();
     assert_eq!(
@@ -125,6 +129,131 @@ fn compacted_and_unidentified_sessions_never_silently_switch() {
             .id,
         old
     );
+}
+
+#[test]
+fn opencode_upgrade_requires_both_histories_and_reuses_exact_legacy_leases() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path()).unwrap();
+    let binding = store
+        .dynamic_create(
+            "opencode",
+            "scope",
+            &uuid::Uuid::new_v4().to_string(),
+            &provider(&store, "a"),
+        )
+        .unwrap();
+    let route = &binding.id;
+    for (session, tail) in [
+        ("restored", &["unknown-one", "unknown-two"][..]),
+        ("different", &["other-one", "other-two"][..]),
+    ] {
+        let first = turn(session, &["legacy-one"], false, true);
+        assert!(store.dynamic_admit(route, &first).unwrap().fresh);
+        let pinned = store
+            .dynamic_admit(route, &turn(session, tail, false, true))
+            .unwrap();
+        assert_eq!(pinned.reason, "session_boundary_unconfirmed");
+    }
+    let current = change(&store, &binding, &provider(&store, "b"))
+        .published
+        .unwrap();
+    for session in ["restored", "different"] {
+        let primary = turn(
+            session,
+            &["legacy-one", "legacy-two", "legacy-three"],
+            false,
+            true,
+        );
+        let alternate = turn(
+            session,
+            &["unknown-one", "unknown-two", "unknown-three"],
+            false,
+            true,
+        );
+        let (selected, effective) = store
+            .gateway_admit(route, &primary, &[alternate], None, None, None)
+            .map(|(selection, effective)| (selection, effective.digest.clone()))
+            .unwrap();
+        assert_eq!(effective, primary.digest);
+        assert_eq!(selected.fresh, session == "restored");
+        if selected.fresh {
+            assert_eq!(selected.reason, "new_user_turn");
+            assert_eq!(selected.version.id, current.id);
+        } else {
+            assert_eq!(selected.reason, "session_boundary_unconfirmed");
+            assert_eq!(selected.version.id, binding.target.id);
+        }
+    }
+
+    let retry = turn("restored", &["legacy-one", "legacy-two"], true, true);
+    let alternate = [turn(
+        "restored",
+        &["unknown-one", "unknown-two"],
+        true,
+        true,
+    )];
+    let (selected, effective) = store
+        .gateway_admit(route, &retry, &alternate, None, None, None)
+        .unwrap();
+    assert_eq!(effective.digest, alternate[0].digest);
+    assert!(!selected.fresh);
+    assert_eq!(selected.reason, "session_boundary_unconfirmed");
+}
+
+#[test]
+fn opencode_can_reselect_after_native_user_boundaries_were_merged() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path()).unwrap();
+    let binding = store
+        .dynamic_create(
+            "opencode",
+            "scope",
+            &uuid::Uuid::new_v4().to_string(),
+            &provider(&store, "a"),
+        )
+        .unwrap();
+    for session in ["verified", "missing_anchor", "tool", "signed"] {
+        let first = turn(session, &["first", "old"], false, true);
+        assert!(store.dynamic_admit(&binding.id, &first).unwrap().fresh);
+        let untrusted = turn(session, &["first", "old+new"], false, true);
+        assert_eq!(
+            store.dynamic_admit(&binding.id, &untrusted).unwrap().reason,
+            "session_boundary_unconfirmed"
+        );
+    }
+    let current = change(&store, &binding, &provider(&store, "b"))
+        .published
+        .unwrap();
+    for session in ["verified", "missing_anchor", "tool", "signed"] {
+        let candidate = turn(
+            session,
+            &["first", "old+new+next"],
+            session == "tool",
+            session != "signed",
+        );
+        let mut proof = OpenCodeRouteProof {
+            prefixes: HashMap::from([("first:old+new".into(), 3)]),
+            ..Default::default()
+        };
+        if session != "missing_anchor" {
+            proof.prefixes.insert("first:old".into(), 2);
+        }
+        let (selected, _) = store
+            .gateway_admit(&binding.id, &candidate, &[], Some(&proof), None, None)
+            .unwrap();
+        assert_eq!(selected.fresh, session == "verified");
+        if session == "verified" {
+            assert_eq!(selected.version.id, current.id);
+            let (retry, _) = store
+                .gateway_admit(&binding.id, &candidate, &[], Some(&proof), None, None)
+                .unwrap();
+            assert!(!retry.fresh);
+            assert_eq!(retry.version.id, current.id);
+        } else {
+            assert_eq!(selected.version.id, binding.target.id);
+        }
+    }
 }
 #[test]
 fn thinking_history_stays_on_original_and_orphan_continuations_are_rejected() {

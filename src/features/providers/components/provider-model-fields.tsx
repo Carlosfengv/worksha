@@ -138,9 +138,8 @@ export function ProviderModelFields({
                     </ComboboxContent>
                   </Combobox>
                   <FieldDescription>
-                    {modelOptions.size} 个已登记模型；输入名称或 ID
-                    搜索，每次最多显示 200
-                    项。选择停用模型作为默认值会同时启用该模型。
+                    {modelOptions.size}{" "}
+                    个已登记模型。选择停用模型为默认值时会同时启用。
                   </FieldDescription>
                 </>
               )}
@@ -156,9 +155,7 @@ export function ProviderModelFields({
                 />
               )}
               <FieldDescription>
-                获取当前 Endpoint
-                的模型目录，不发送推理请求。模型可见不代表已验证调用权限；保存后可验证并切换
-                Agent。
+                仅获取目录。调用权限需单独验证。
                 {activeCatalog &&
                   ` 已获取 ${activeCatalog.models.length} 个模型 · ${date(activeCatalog.fetchedAt)}。`}
                 {activeCatalog?.truncated &&
@@ -194,12 +191,6 @@ export function ProviderModelFields({
             </Field>
           )}
         </>
-      )}
-      {automatic && (
-        <p className="text-label text-fg-muted">
-          连接时会发送短验证请求，最多尝试 6 次、每次最多 16 个输出
-          Token，可能产生少量费用。实际工具与完整容量需分别验证。
-        </p>
       )}
     </>
   );

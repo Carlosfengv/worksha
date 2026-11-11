@@ -62,6 +62,9 @@ export function overviewAccountState(
   if (!account) return "未关联计费账户";
   if (account.state === "unsupported") return "读取能力未接入";
   if (account.state === "not_available") return "来源未提供额度";
+  if (account.state === "subscription_authorization_failed")
+    return "订阅授权未通过";
+  if (account.state === "subscription_unconfirmed") return "订阅状态待确认";
   if (account.error || account.state === "refresh_failed")
     return account.snapshot ? "刷新失败 · 上次快照" : "读取失败";
   const snapshot = account.snapshot;

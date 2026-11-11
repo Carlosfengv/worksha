@@ -39,6 +39,31 @@ const advice: PresetAdvice = {
   model: "starter",
   documents: null,
 };
+test("MiniMax M Plan uses the official endpoint and its own credential", () => {
+  const plan = builtinPresetAdvice.find(
+    (preset) =>
+      preset.origin.kind === "builtin" &&
+      preset.origin.presetId === "minimax-plan",
+  )!;
+  const state = providerEditorDraft({
+    ...provider,
+    endpoint: "https://custom.invalid/v1",
+    credentialRef: "db01d992-bdc7-4af5-968e-e465f968871c",
+  });
+  const selected = reduceProviderDraft(state, { type: "preset", value: plan });
+  expect(selected.provider).toMatchObject({
+    vendor: "minimax-plan",
+    protocol: "messages",
+    endpoint: "https://api.minimax.io/anthropic",
+    model: "MiniMax-M3.1-Flash",
+    credentialRef: null,
+  });
+  const changed = reduceProviderDraft(selected, {
+    type: "protocol",
+    value: "responses",
+  });
+  expect(changed.provider.endpoint).toBe("https://api.minimax.io/v1");
+});
 test("static template fills a blank draft without changing its identity, revision or verification state", () => {
   const before = providerEditorDraft(provider),
     after = reduceProviderDraft(before, { type: "preset", value: advice });

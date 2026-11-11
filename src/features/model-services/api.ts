@@ -6,6 +6,10 @@ import {
   type ServiceRequest,
 } from "./operation-receipt";
 import type { ProviderTransaction } from "@/features/providers/types";
+import type {
+  RoutingProjectPage,
+  RoutingProjectQuery,
+} from "@/features/projects/types";
 import {
   acceptLocalTokenPreview,
   LocalTokenPreparationError,
@@ -17,8 +21,23 @@ import type {
   ModelService,
   ModelServiceCatalog,
   ModelServiceDraft,
+  ServicePreview,
+  ServicePreviewRequest,
 } from "./types";
 export const modelServicesApi = {
+  async preview(input: ServicePreviewRequest): Promise<ServicePreview> {
+    const result = await command<ServicePreview>("preview_model_service", {
+      input,
+    });
+    if (
+      result?.storeId !== input.storeId ||
+      !Array.isArray(result.models) ||
+      !Number.isFinite(Date.parse(result.checkedAt))
+    ) {
+      throw Error("发布预览无法核查，请重新读取原数据库。");
+    }
+    return result;
+  },
   async requireWriteProtocol(expectedStoreId?: string): Promise<string> {
     const catalog = await modelServicesApi.catalog();
     if (
@@ -46,6 +65,7 @@ export const modelServicesApi = {
     providerId: string;
     expectedRevision: number;
     model: string;
+    upstreamAccount?: import("@/features/providers/types").UpstreamAccountRef;
   }) {
     return command<import("@/features/providers/types").ProviderVerification>(
       "verify_model_service_member",
@@ -69,6 +89,9 @@ export const modelServicesApi = {
   },
   catalog(): Promise<ModelServiceCatalog> {
     return command("get_model_services");
+  },
+  routingProjects(query: RoutingProjectQuery): Promise<RoutingProjectPage> {
+    return command("query_model_service_routing_projects", { query });
   },
   save(draft: ModelServiceDraft): Promise<ModelService> {
     return command("save_model_service", { draft });

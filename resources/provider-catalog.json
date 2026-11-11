@@ -51,6 +51,18 @@
     "documents": "https://platform.kimi.ai/docs/overview"
   },
   {
+    "id": "minimax-plan",
+    "name": "MiniMax M Plan",
+    "protocol": "messages",
+    "model": "MiniMax-M3.1-Flash",
+    "endpoints": {
+      "messages": "https://api.minimax.io/anthropic",
+      "chat-completions": "https://api.minimax.io/v1",
+      "responses": "https://api.minimax.io/v1"
+    },
+    "documents": "https://platform.minimax.io/docs/m-plan/other-tools"
+  },
+  {
     "id": "ollama",
     "name": "Ollama",
     "protocol": "responses",

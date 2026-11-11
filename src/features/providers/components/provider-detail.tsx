@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/detail-list";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PageActions, PageHeader } from "@/components/ui/page-layout";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabPanel, TabsList, TabItem } from "@/components/ui/tabs";
 import { AccountQuota } from "@/features/accounts/components/account-quota";
@@ -42,6 +43,7 @@ import { message, protocolName, verificationName } from "../display";
 import { ProviderHistory } from "./provider-history";
 import type { UsageFilters } from "./provider-usage-filters";
 import { ProviderOverview } from "./provider-overview";
+import { UpstreamAccounts } from "./upstream-accounts";
 type ModelRow = {
   id: string;
   provider: Provider;
@@ -153,6 +155,8 @@ export function ProviderDetail({
   onEdit,
   onVerify,
   onUpdated,
+  onRefresh,
+  refreshing,
   historyFilters,
   onHistoryFiltersChange,
   storeId,
@@ -163,6 +167,8 @@ export function ProviderDetail({
   onEdit: (p: Provider) => void;
   onVerify: (p: Provider) => void;
   onUpdated: () => Promise<void>;
+  onRefresh?: () => void;
+  refreshing?: boolean;
   historyFilters?: UsageFilters;
   onHistoryFiltersChange?: (filters: UsageFilters) => void;
   storeId?: string;
@@ -250,11 +256,8 @@ export function ProviderDetail({
       ? catalog
       : null;
   return (
-    <div className="space-y-6">
-      <Button variant="tertiary" asChild>
-        <a href="#/providers">返回供应商列表</a>
-      </Button>
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="min-w-0 space-y-4">
+      <PageHeader className="px-0">
         <div className="min-w-0 space-y-1">
           <p className="text-label text-fg-subtle">
             {vendor?.name ?? "自定义供应商"} · 连接详情
@@ -276,7 +279,20 @@ export function ProviderDetail({
                 : "验证状态未读取"}
           </Badge>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <PageActions>
+          <Button variant="tertiary" asChild>
+            <a href="#/providers">返回供应商列表</a>
+          </Button>
+          {onRefresh && (
+            <Button
+              variant="tertiary"
+              loading={refreshing}
+              disabled={refreshing}
+              onClick={onRefresh}
+            >
+              刷新配置
+            </Button>
+          )}
           <Button
             variant="secondary"
             disabled={!!savingModel}
@@ -295,8 +311,8 @@ export function ProviderDetail({
           >
             验证默认模型
           </Button>
-        </div>
-      </div>
+        </PageActions>
+      </PageHeader>
       <Tabs
         value={detailTab}
         onValueChange={setDetailTab}
@@ -308,6 +324,7 @@ export function ProviderDetail({
           <TabItem value="history" label="调用与用量" />
           <TabItem value="models" label="模型" />
           <TabItem value="connection" label="连接与额度" />
+          <TabItem value="accounts" label="上游账号" />
         </TabsList>
         <TabPanel value="overview">
           <ProviderOverview providers={[provider]} providerId={provider.id} />
@@ -368,6 +385,13 @@ export function ProviderDetail({
               官方接口文档
             </a>
           )}
+        </TabPanel>
+        <TabPanel value="accounts">
+          <UpstreamAccounts
+            key={provider.id}
+            provider={provider}
+            storeId={storeId}
+          />
         </TabPanel>
         <TabPanel value="models">
           <section

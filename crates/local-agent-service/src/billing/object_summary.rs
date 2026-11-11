@@ -2,6 +2,24 @@
 use super::*;
 use local_agent_core::domain::{self as d, object_summary as o};
 
+pub(crate) fn upstream_summary(
+    state: &AppState,
+    id: &str,
+    fields: &[o::SummaryField],
+) -> d::Result<o::ObjectSummaryRead> {
+    let unavailable = || d::Failure::new(d::ErrorCode::Unavailable);
+    let account = {
+        let store = state.store.lock().map_err(|_| unavailable())?;
+        upstream::by_id(&store, id).map_err(|_| unavailable())?
+    }
+    .ok_or_else(|| d::Failure::new(d::ErrorCode::NotFound))?;
+    state
+        .billing
+        .lock()
+        .map_err(|_| unavailable())?
+        .summary(id, &[], &[], vec![account], fields)
+}
+
 impl Billing {
     pub(crate) fn object_summary(
         &self,
@@ -10,11 +28,22 @@ impl Billing {
         configs: &[NativeConfig],
         fields: &[o::SummaryField],
     ) -> d::Result<o::ObjectSummaryRead> {
+        self.summary(id, providers, configs, vec![], fields)
+    }
+
+    fn summary(
+        &self,
+        id: &str,
+        providers: &[Provider],
+        configs: &[NativeConfig],
+        upstream: Vec<Account>,
+        fields: &[o::SummaryField],
+    ) -> d::Result<o::ObjectSummaryRead> {
         let selector = o::ObjectSelector::Account { id: id.into() };
         selector.validate()?;
         o::validate_fields(o::ObjectTarget::Account, fields)?;
         let account = self
-            .catalog(providers, configs)
+            .catalog(None, providers, configs, upstream)
             .into_iter()
             .find(|a| a.id == id)
             .ok_or_else(|| d::Failure::new(d::ErrorCode::NotFound))?;
@@ -88,6 +117,8 @@ mod tests {
         billing.cache.insert(
             "native-codex".into(),
             Cached {
+                source_epoch: Some(billing.sources.lease("codex").unwrap().epoch),
+                current_read_scope: None,
                 revision: String::new(),
                 snapshot: AccountSnapshot::new("subscription", "owned-fixture"),
                 error: None,

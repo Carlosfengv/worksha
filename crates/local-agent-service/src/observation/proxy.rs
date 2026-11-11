@@ -1,26 +1,38 @@
 use super::{Observation, label, stream::decode};
 use crate::AppState;
 use axum::{
-    body::to_bytes,
+    body::{Body, to_bytes},
     extract::{Path, Request, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
 use futures_util::StreamExt;
 use local_agent_core::Provider;
-use local_agent_core::domain::protocol::{Finished, Open, Opened, ProtocolAdapter};
-use local_agent_core::{observation::ModelObservation, sessions::Usage};
-use std::{sync::Arc, time::Duration};
+use local_agent_core::domain::protocol::{Finished, Open, Opened, Output, ProtocolAdapter};
+use local_agent_core::{
+    model_services::policy::QuotaProbeClaim, observation::ModelObservation, providers::ConfigError,
+    sessions::Usage,
+};
+use std::{
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 use zeroize::Zeroizing;
 
 struct Guard {
     observation: Arc<Observation>,
     id: String,
     done: bool,
+    mismatched_reply: bool,
 }
 impl Guard {
     fn finish(&mut self, status: &str, issue: Option<&str>) {
         if !self.done {
+            let (status, issue) = if self.mismatched_reply && status != "error" {
+                ("interrupted", Some("上游响应的流式格式与请求不符"))
+            } else {
+                (status, issue)
+            };
             self.observation.hub.finish(&self.id, status, issue);
             self.done = true;
         }
@@ -35,6 +47,10 @@ impl Drop for Guard {
 pub(super) struct LocalCapacity;
 #[derive(Clone)]
 pub(super) struct UncertainSend;
+#[derive(Clone)]
+pub(super) struct ObservedHttpFailure;
+#[derive(Clone, Default)]
+pub(super) struct ConvertedStreamRejection(pub Arc<OnceLock<serde_json::Value>>);
 fn reject(status: StatusCode, message: &str) -> Response {
     (
         status,
@@ -43,6 +59,14 @@ fn reject(status: StatusCode, message: &str) -> Response {
         ),
     )
         .into_response()
+}
+pub(super) fn uncertain_response(message: &str) -> Response {
+    let mut response = super::policy::rejection(
+        StatusCode::BAD_GATEWAY,
+        &format!("{message}，上游结果未确认"),
+    );
+    response.extensions_mut().insert(UncertainSend);
+    response
 }
 fn secret_eq(a: &str, b: &str) -> bool {
     if a.len() != b.len() {
@@ -226,6 +250,10 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
     let client = admission.as_ref().map(|a| a.client.clone());
     let permit = (local_permit, admission);
     let (mut parts, body) = request.into_parts();
+    let classifier = parts
+        .extensions
+        .get::<super::policy::intent::ClassifyRequest>()
+        .cloned();
     let agent_product_id = if agent == "codex" {
         if ["originator", "user-agent"].into_iter().any(|name| {
             parts.headers.get_all(name).iter().count() > 1
@@ -280,12 +308,16 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
     if parsed["background"] == true {
         return reject(StatusCode::BAD_REQUEST, "当前观测入口不支持后台响应模式");
     }
-    let user_input = local_agent_core::sessions::activity_input::request(&parsed).map(|text| {
-        local_agent_core::sessions::activity_input::UserInput {
-            text,
-            at: started_at.clone(),
-        }
-    });
+    let user_input = classifier
+        .is_none()
+        .then(|| local_agent_core::sessions::activity_input::request(&parsed))
+        .flatten()
+        .map(
+            |text| local_agent_core::sessions::activity_input::UserInput {
+                text,
+                at: started_at.clone(),
+            },
+        );
     let requested_model = parsed["model"].as_str().map(label);
     if binding.managed && !binding.models.is_empty() {
         let Some(model) = parsed["model"].as_str().and_then(|requested| {
@@ -352,41 +384,145 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         } else {
             None
         };
-        let turn = match evidence(
+        let (turn, compatible) = match evidence(
             &state.observation.hub,
             projection.as_ref().unwrap_or(&parsed),
             session_id.clone(),
+            &agent,
             agent_product_id.as_deref(),
         ) {
             Ok(turn) => turn,
             Err(message) => return reject(StatusCode::BAD_REQUEST, message),
         };
-        let policy_turn = turn.clone();
+        let dispatch_service =
+            context.service.is_some() && parts.extensions.get::<super::policy::Attempt>().is_none();
         let selection = if let Some(overridden) = parts.extensions.get::<super::policy::Selected>()
         {
-            Ok(Ok(overridden.0.clone()))
+            Ok(Ok((overridden.0.clone(), None, turn, None)))
         } else {
             let state = state.clone();
             let id = context.binding.id.clone();
             let model = context.service.as_ref().map(|_| alias);
+            let requested_output = (model.is_some() && !responses)
+                .then(|| parsed["max_tokens"].as_u64().unwrap_or_default());
+            let groups = dispatch_service
+                .then(|| {
+                    super::dynamic_turn::opencode_text_groups(
+                        projection.as_ref().unwrap_or(&parsed),
+                        &turn,
+                    )
+                })
+                .flatten();
             crate::blocking::run(move || {
+                let history = groups.as_ref().and_then(|groups| {
+                    let coalesced = groups.iter().any(|group| group.len() > 1);
+                    let needs_proof = coalesced
+                        || (groups.len() > 1
+                            && turn.session.as_deref().is_some_and(|session| {
+                                state.store.lock().ok().is_some_and(|store| {
+                                    store
+                                        .opencode_boundary_needs_proof(&id, session)
+                                        .unwrap_or(false)
+                                })
+                            }));
+                    if !needs_proof {
+                        return None;
+                    }
+                    super::dynamic_turn::opencode_history(
+                        &state.observation.hub,
+                        &state.sessions,
+                        groups,
+                        &turn,
+                        &compatible,
+                    )
+                });
                 let store = state
                     .store
                     .lock()
-                    .map_err(|_| "动态路由存储不可用".to_string())?;
-                if let Some(model) = model {
-                    store.model_service_admit(&id, &turn, &model)
-                } else {
-                    store.dynamic_admit(&id, &turn)
-                }
-                .map_err(|e| e.message)
+                    .map_err(|_| ConfigError::new("unavailable", "动态路由存储不可用"))?;
+                let history = history.filter(|proof| {
+                    state.sessions.opencode_routing_authorized(proof.authority)
+                        && store
+                            .native_sources()
+                            .is_ok_and(|sources| sources.iter().any(|source| source == "opencode"))
+                });
+                let (selected, effective) = store.gateway_admit(
+                    &id,
+                    &turn,
+                    &compatible,
+                    history.as_ref().map(|h| &h.route),
+                    model.as_deref(),
+                    requested_output,
+                )?;
+                // Reserve the turn before releasing the store lock. A duplicate
+                // cannot overtake admission while the first request checks its input.
+                let guard =
+                    dispatch_service.then(|| state.observation.policy.reserve_turn(&id, effective));
+                Ok::<_, ConfigError>((
+                    selected,
+                    guard,
+                    effective.clone(),
+                    history.map(|h| h.intent),
+                ))
             })
             .await
         };
-        let mut selected = match selection {
+        let (mut selected, guard, policy_turn, native_intent) = match selection {
             Ok(Ok(s)) => s,
-            Ok(Err(message)) => return reject(StatusCode::CONFLICT, &message),
+            Ok(Err(error)) => {
+                let status = if error.code == "invalid_output_limit" {
+                    StatusCode::BAD_REQUEST
+                } else {
+                    StatusCode::CONFLICT
+                };
+                return reject(status, &error.message);
+            }
             Err(_) => return reject(StatusCode::SERVICE_UNAVAILABLE, "动态路由选择未完成"),
+        };
+        let journal_for = |selected: &local_agent_core::routing::Selection| {
+            let mut service = selected.service.clone();
+            if let Some(service) = &mut service {
+                service.upstream_account = None;
+                service.upstream_account_label = None;
+            }
+            super::policy::trace::Journal::new(
+                state.observation.clone(),
+                ModelObservation {
+                    agent_id: agent.clone(),
+                    agent_product_id: agent_product_id.clone(),
+                    session_id: session_id.clone(),
+                    client: client.clone(),
+                    model: service.as_ref().map(|s| s.model_name.clone()),
+                    provider: service
+                        .as_ref()
+                        .map_or_else(|| "模型服务".into(), |s| label(&s.service_name)),
+                    provider_id: service
+                        .as_ref()
+                        .map(|s| format!("model-service-{}", s.service_id)),
+                    started_at: started_at.clone(),
+                    routing: Some(local_agent_core::observation::RouteEvidence {
+                        binding_id: context.binding.id.clone(),
+                        route_version_id: selected.version.id.clone(),
+                        provider_revision: selected.version.provider.revision,
+                        boundary: selected.reason.clone(),
+                        service,
+                        trace: None,
+                    }),
+                    ..ModelObservation::default()
+                },
+            )
+        };
+        let turn_guard = match guard {
+            Some(Ok(guard)) => Some(guard),
+            Some(Err(message)) => {
+                let (mut journal, _) = journal_for(&selected);
+                journal.duplicate(&selected);
+                return super::policy::rejection(StatusCode::CONFLICT, message);
+            }
+            None if dispatch_service => {
+                return reject(StatusCode::SERVICE_UNAVAILABLE, "本轮路由保护不可用");
+            }
+            None => None,
         };
         if !responses
             && context.service.is_some()
@@ -413,6 +549,7 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             .as_ref()
             .map(|s| s.capabilities.clone())
             .unwrap_or_default();
+        let request_stream = parsed["stream"] == true;
         let analysis = projection.as_mut().unwrap_or(&mut parsed);
         if responses && analysis.get("max_tokens").is_none() {
             analysis["max_tokens"] = serde_json::json!(caps.max_output_tokens);
@@ -420,7 +557,22 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         if let Err(message) = super::dynamic_turn::prepare(analysis, &caps) {
             return reject(StatusCode::BAD_REQUEST, message);
         }
+        let request_tools = analysis["tools"].as_array().is_some_and(|t| !t.is_empty());
         let input = analysis.clone();
+        if selected.fresh
+            && client.is_none()
+            && selected
+                .service
+                .as_ref()
+                .is_some_and(|s| s.mode == "default")
+            && let Some(text) = native_intent.unwrap_or_else(|| {
+                local_agent_core::sessions::activity_input::intent_excerpt(&input)
+            })
+        {
+            parts
+                .extensions
+                .insert(super::policy::intent::IntentInput(text));
+        }
         let max_output_tokens = input["max_tokens"].clone();
         let provider = selected.version.provider.clone();
         let counter_caps = caps.clone();
@@ -439,20 +591,44 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         {
             return super::context_budget::rejection(&budget);
         }
+        let input_tokens = budget.input_tokens;
         if let Some(service) = &mut selected.service {
             service.budget = Some(budget);
         }
-        if context.service.is_some() && parts.extensions.get::<super::policy::Attempt>().is_none() {
+        if let Some(turn_guard) = turn_guard {
             drop(permit);
-            return Box::pin(super::policy::dispatch(
+            let (mut journal, attempt) = journal_for(&selected);
+            parts.extensions.insert(attempt);
+            let response = Box::pin(super::policy::dispatch(
                 state,
                 binding,
                 parts,
                 body,
                 selected,
-                policy_turn,
+                super::policy::DispatchInputs {
+                    turn: policy_turn,
+                    turn_guard,
+                    facts: local_agent_core::model_services::policy::RuleFacts {
+                        agent: context.binding.agent_id,
+                        agent_product_id,
+                        stream: request_stream,
+                        tools: request_tools,
+                        input_tokens,
+                        ..Default::default()
+                    },
+                    journal: &mut journal,
+                },
             ))
             .await;
+            journal.finish(response.status());
+            return response;
+        }
+        if selected
+            .service
+            .as_ref()
+            .is_some_and(|service| service.pending_child.is_some())
+        {
+            return reject(StatusCode::CONFLICT, "子服务路由尚未选定可发送的模型");
         }
         if responses {
             parsed["max_output_tokens"] = max_output_tokens;
@@ -468,13 +644,39 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         if !caps.thinking && (!responses || selected.version.provider.protocol != "responses") {
             parsed["thinking"] = serde_json::json!({"type":"disabled"});
         }
-        binding.provider = selected.version.provider;
+        let account = selected
+            .service
+            .as_ref()
+            .and_then(|s| s.upstream_account.clone());
+        binding.provider = if let Some(account) = account {
+            let provider = selected.version.provider;
+            match crate::blocking::store(state.store.clone(), move |store| {
+                store
+                    .upstream_account_target(&provider, &account)
+                    .map(|(target, _)| target)
+            })
+            .await
+            {
+                Ok(provider) => provider,
+                Err(error) => {
+                    let mut response = reject(StatusCode::SERVICE_UNAVAILABLE, &error.message);
+                    response.extensions_mut().insert(LocalCapacity);
+                    if error.code == "account_unavailable" {
+                        response.extensions_mut().insert(local_agent_core::model_services::policy::RouteDecisionReason::AccountUnavailable);
+                    }
+                    return response;
+                }
+            }
+        } else {
+            selected.version.provider
+        };
         binding.revision = u64::from_str_radix(
             &local_agent_core::providers::files::hash(selected.version.id.as_bytes())[..13],
             16,
         )
         .unwrap_or(1);
         routing = Some(local_agent_core::observation::RouteEvidence {
+            trace: None,
             binding_id: context.binding.id.clone(),
             route_version_id: selected.version.id,
             provider_revision: binding.provider.revision,
@@ -491,22 +693,51 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             None => None,
         };
     }
-    let tool_calls_allowed = routing
-        .as_ref()
-        .and_then(|route| route.service.as_ref())
-        .is_none_or(|service| service.capabilities.tools);
+    let minimax_plan = binding.managed
+        && local_agent_core::providers::subscription::minimax_plan(&binding.provider);
+    if minimax_plan {
+        if client.is_some() {
+            return reject(
+                StatusCode::FORBIDDEN,
+                "MiniMax M Plan 订阅连接仅供本机 Agent 使用",
+            );
+        }
+        if let Err(error) = local_agent_core::providers::subscription::validate_key(
+            &binding.provider,
+            binding.credential.as_deref().map(Vec::as_slice),
+        ) {
+            return reject(StatusCode::UNAUTHORIZED, &error.message);
+        }
+    }
+    let tool_calls_allowed = classifier.is_none()
+        && routing
+            .as_ref()
+            .and_then(|route| route.service.as_ref())
+            .is_none_or(|service| service.capabilities.tools);
     let codex_client = agent == "codex";
+    let hide_intrinsic_reasoning = (classifier.is_some()
+        || routing
+            .as_ref()
+            .is_some_and(|route| route.service.is_some()))
+        && local_agent_core::providers::subscription::intrinsic_reasoning(&binding.provider);
     // Decode text-only replies even on the same protocol: a client can still
     // have tools registered, so unexpected upstream tool calls must not reach it.
-    let converted = binding.client_protocol != binding.provider.protocol || !tool_calls_allowed;
-    let activity_message = state
-        .observation
-        .hub
-        .message_identity(&parsed, session_id.as_deref(), agent_product_id.as_deref())
-        .map(|id| local_agent_core::observation::ActivityMessage {
-            id,
-            started_at: started_at.clone(),
-        });
+    let converted = binding.client_protocol != binding.provider.protocol
+        || !tool_calls_allowed
+        || hide_intrinsic_reasoning;
+    let activity_message = classifier
+        .is_none()
+        .then(|| {
+            state
+                .observation
+                .hub
+                .message_identity(&parsed, session_id.as_deref(), agent_product_id.as_deref())
+                .map(|id| local_agent_core::observation::ActivityMessage {
+                    id,
+                    started_at: started_at.clone(),
+                })
+        })
+        .flatten();
     let (tools, parsed) = if converted {
         match crate::gateway::tools::Tools::prepare(&binding.client_protocol, &parsed) {
             Ok(v) => v,
@@ -521,7 +752,8 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         tools,
         tool_calls_allowed,
         binding.managed,
-    );
+    )
+    .hide_intrinsic_reasoning(hide_intrinsic_reasoning);
     let parsed = match native_protocol
         .open(Open {
             stream: parsed["stream"] == true,
@@ -599,6 +831,118 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         upstream = protocol.url.to_string();
         outgoing = std::mem::take(&mut protocol.body);
     }
+    // Keychain and protocol workers can wait. Recheck the account and routing
+    // authority after that work and before admitting the HTTP send.
+    let account = routing
+        .as_ref()
+        .and_then(|r| r.service.as_ref())
+        .and_then(|s| s.upstream_account.clone());
+    let authority = parts.extensions.remove::<super::policy::SendAuthority>();
+    let send_evidence = parts.extensions.get::<super::policy::trace::SendEvidence>();
+    let check_http_cooldown = send_evidence.is_some();
+    let check_access = send_evidence.is_some_and(|evidence| evidence.check_access);
+    let pinned_attempt = send_evidence.is_some_and(|evidence| evidence.pending.is_none());
+    let pending = send_evidence.and_then(|evidence| evidence.pending.clone());
+    let recovery_probe = parts
+        .extensions
+        .get::<Arc<super::policy::CooldownProbe>>()
+        .cloned();
+    let check_quota = parts
+        .extensions
+        .get::<super::policy::CheckAccountQuota>()
+        .cloned();
+    if account.is_some()
+        || pending.is_some()
+        || authority.is_some()
+        || recovery_probe.is_some()
+        || check_quota.is_some()
+        || check_http_cooldown
+    {
+        let provider = binding.provider.clone();
+        let state_copy = state.clone();
+        match crate::blocking::store(state.store.clone(), move |store| {
+            if authority.is_some_and(|authority| !authority.valid(&state_copy.plugins)) {
+                let mut response = super::policy::rejection(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "原路由策略授权已变更，本次候选未发送",
+                );
+                response.extensions_mut().insert(LocalCapacity);
+                response.extensions_mut().insert(local_agent_core::model_services::policy::RouteDecisionReason::PolicyUnavailable);
+                return Ok(Err(Box::new(response)));
+            }
+            let target = match &account {
+                Some(account) => store.upstream_account_target(&provider, account)?.0,
+                None => provider,
+            };
+            if check_http_cooldown
+                && let Some(response) = super::policy::CooldownProbe::check_http(
+                    store, &target, recovery_probe.as_deref(), check_access,
+                )?
+            {
+                return Ok(Err(Box::new(response)));
+            }
+            let begin_send = |quota: Option<QuotaProbeClaim<'_>>| {
+                super::policy::CooldownProbe::begin_send(
+                    store, recovery_probe.as_deref(),
+                    pending.as_ref().map(|(plan, id)| (plan.as_ref(), *id)),
+                    quota,
+                )
+                .map_err(|_| {
+                    let mut response = reject(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "发送状态未能保存，本次候选未发送",
+                    );
+                    response.extensions_mut().insert(LocalCapacity);
+                    Box::new(response)
+                })
+            };
+            let admitted = if let Some(check) = check_quota {
+                let budget = state_copy
+                    .billing
+                    .lock()
+                    .ok()
+                    .map_or_else(crate::billing::UpstreamBudget::unavailable, |billing| {
+                        billing.route_budget(store, &target, chrono::Utc::now())
+                    });
+                check.admit(
+                    store,
+                    local_agent_core::model_services::policy::scopes(&target).0,
+                    budget,
+                    begin_send,
+                )
+            } else {
+                begin_send(None)
+            };
+            Ok(admitted)
+        })
+        .await
+        {
+            Ok(Err(response)) => return *response,
+            Ok(Ok(())) => (),
+            Err(_) => {
+                let mut response =
+                    reject(StatusCode::SERVICE_UNAVAILABLE, "上游账号在发送前已变更");
+                response.extensions_mut().insert(LocalCapacity);
+                response.extensions_mut().insert(local_agent_core::model_services::policy::RouteDecisionReason::AccountUnavailable);
+                return response;
+            }
+        }
+    }
+    if let Some(classifier) = classifier {
+        let store = state.store.clone();
+        let state = state.clone();
+        let provider = binding.provider.clone();
+        let admitted = crate::blocking::store(store, move |store| {
+            classifier.admit(&state, store, &provider)
+        })
+        .await
+        .is_ok_and(|admitted| admitted);
+        if !admitted {
+            let mut response = reject(StatusCode::SERVICE_UNAVAILABLE, "意图分类连接已变更");
+            response.extensions_mut().insert(LocalCapacity);
+            return response;
+        }
+    }
     let id = uuid::Uuid::new_v4().to_string();
     state.observation.hub.start(
         ModelObservation {
@@ -658,11 +1002,15 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         observation: state.observation.clone(),
         id: id.clone(),
         done: false,
+        mismatched_reply: false,
     };
     let request_client = external_protocol
         .as_ref()
         .map(|p| &p.client)
         .unwrap_or(&state.observation.client);
+    let builtin_upstream = external_protocol.is_none();
+    let openrouter_reply =
+        builtin_upstream && local_agent_core::provider_cost::openrouter_endpoint(&upstream);
     let mut call = request_client
         .post(upstream)
         .header("content-type", "application/json")
@@ -695,7 +1043,7 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                 return reject(StatusCode::BAD_GATEWAY, "上游凭据不可读取");
             };
             call = call.bearer_auth(key);
-            if upstream_wire.api_key_header() {
+            if upstream_wire.api_key_header() && !minimax_plan {
                 call = call.header("x-api-key", key);
             }
         }
@@ -703,7 +1051,17 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             call = call.header(*name, *value);
         }
     }
+    if let Some(slots) = parts.extensions.get::<super::policy::SendSlots>()
+        && let Err(error) = slots.mark_sent()
+    {
+        let mut response = reject(StatusCode::SERVICE_UNAVAILABLE, error);
+        response.extensions_mut().insert(LocalCapacity);
+        return response;
+    }
     state.observation.hub.sent(&id);
+    if let Some(evidence) = send_evidence {
+        evidence.mark_sent();
+    }
     let response = match tokio::time::timeout(Duration::from_secs(120), call.send()).await {
         Ok(Ok(r)) => r,
         Ok(Err(reason)) => {
@@ -715,38 +1073,19 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                     "上游连接失败，未收到 HTTP 响应"
                 }),
             );
-            let mut response = reject(StatusCode::BAD_GATEWAY, "目标模型服务连接失败或超时");
-            if !reason.is_connect() {
-                response.extensions_mut().insert(UncertainSend);
+            if reason.is_connect() {
+                return reject(StatusCode::BAD_GATEWAY, "目标模型服务连接失败或超时");
             }
-            return response;
+            return uncertain_response("未收到目标模型服务响应");
         }
         Err(_) => {
             guard.finish("error", Some("上游响应头等待超时"));
-            let mut response = reject(StatusCode::BAD_GATEWAY, "目标模型服务响应超时");
-            response.extensions_mut().insert(UncertainSend);
-            return response;
+            return uncertain_response("目标模型服务响应超时");
         }
-    };
-    let response = if let Some(protocol) = external_protocol {
-        match protocol
-            .response(response, binding.credential.as_deref().map(Vec::as_slice))
-            .await
-        {
-            Ok(response) => response,
-            Err(_) => {
-                guard.finish("error", Some("外部协议适配失败"));
-                return reject(
-                    StatusCode::BAD_GATEWAY,
-                    "外部协议适配失败，未重新发送模型请求",
-                );
-            }
-        }
-    } else {
-        response
     };
     let status = response.status();
-    let retry_after = response.headers().get("retry-after").cloned();
+    let observed_at = chrono::Utc::now();
+    let retry_after = super::policy::single_retry_after(response.headers()).cloned();
     state.observation.hub.upstream_id(
         &id,
         response
@@ -756,50 +1095,142 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             .and_then(|v| v.to_str().ok()),
     );
     state.observation.hub.status(&id, status.as_u16());
+    let response = if let Some(protocol) = external_protocol {
+        match protocol
+            .response(response, binding.credential.as_deref().map(Vec::as_slice))
+            .await
+        {
+            Ok(response) => response,
+            Err(_) => {
+                let issue = "外部协议适配失败";
+                guard.finish("error", Some(issue));
+                return uncertain_response(issue);
+            }
+        }
+    } else {
+        response
+    };
     let compressed = response
         .headers()
         .get("content-encoding")
         .is_some_and(|h| h != "identity");
-    let sse = !compressed
-        && response
-            .headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|v| v.starts_with("text/event-stream"));
+    let sse = !compressed && super::stream::is_event_stream(response.headers());
     let recovery = Arc::new(super::delivery::Recovery::default());
     let delivery_recovery = recovery.clone();
     let codex_upstream_502 = codex_client && status == StatusCode::BAD_GATEWAY;
-    if !status.is_success() && (converted || codex_upstream_502) {
+    let service_attempt = parts.extensions.get::<super::policy::Attempt>().is_some();
+    let classifier_attempt = parts
+        .extensions
+        .get::<super::policy::intent::ClassifyRequest>()
+        .is_some();
+    let quota_request = service_attempt || classifier_attempt;
+    let service_access_error =
+        quota_request && matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN);
+    let budget_credential = (quota_request
+        && openrouter_reply
+        && matches!(status, StatusCode::FORBIDDEN | StatusCode::PAYMENT_REQUIRED))
+    .then(|| crate::billing::openrouter_scope(&binding.provider))
+    .flatten();
+    let balance_target = (quota_request
+        && builtin_upstream
+        && matches!(
+            status,
+            StatusCode::PAYMENT_REQUIRED | StatusCode::TOO_MANY_REQUESTS
+        ))
+    .then(|| crate::billing::balance_target(&binding.provider))
+    .flatten()
+    .filter(|(provider, _)| super::policy::balance_rejection::matches_status(*provider, status));
+    let observed_http_failure = (pinned_attempt || classifier_attempt)
+        && matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504 | 529);
+    if !status.is_success()
+        && (converted
+            || codex_upstream_502
+            || service_access_error
+            || budget_credential.is_some()
+            || balance_target.is_some()
+            || observed_http_failure)
+    {
         let deadline = tokio::time::Instant::now() + super::delivery::RECOVERY_LIMIT;
         let mut input = response.bytes_stream();
         let mut bytes = Vec::new();
-        while let Ok(Some(Ok(chunk))) = tokio::time::timeout_at(deadline, input.next()).await {
-            if bytes.len() + chunk.len() > 64 * 1024 {
-                break;
+        let complete = loop {
+            match tokio::time::timeout_at(deadline, input.next()).await {
+                Ok(Some(Ok(chunk))) if bytes.len() + chunk.len() <= 64 * 1024 => {
+                    bytes.extend_from_slice(&chunk);
+                }
+                Ok(None) => break true,
+                _ => break false,
             }
-            bytes.extend_from_slice(&chunk);
+        };
+        // A bounded prefix can parse as JSON even when the response did not
+        // finish. Only the complete error body is accounting evidence.
+        if complete {
+            let mut update = decode(&bytes, &binding.provider.protocol);
+            update.generated = false;
+            update.text = false;
+            update.estimated_tokens = 0.0;
+            state.observation.hub.update(&id, update);
         }
-        let mut update = decode(&bytes, &binding.provider.protocol);
-        update.generated = false;
-        update.text = false;
-        update.estimated_tokens = 0.0;
-        state.observation.hub.update(&id, update);
         if super::context_budget::is_context_error(&bytes) {
             guard.finish("error", Some("上游上下文超限"));
             return super::context_budget::upstream_rejection();
         }
-        let issue = if codex_upstream_502 {
+        let budget = budget_credential
+            .filter(|_| complete && !compressed)
+            .and_then(|credential| {
+                super::policy::openrouter_budget::parse(
+                    status,
+                    &bytes,
+                    retry_after.as_ref(),
+                    credential,
+                    observed_at,
+                )
+            });
+        let balance = balance_target
+            .filter(|_| complete && !compressed)
+            .and_then(|target| {
+                super::policy::balance_rejection::parse(target, status, &bytes, observed_at)
+            });
+        let issue = if balance.is_some() {
+            "上游确认此凭据的余额或调用额度不可用"
+        } else if let Some(budget) = &budget {
+            budget.message()
+        } else if status == StatusCode::UNAUTHORIZED {
+            "上游拒绝鉴权，请检查账号凭据"
+        } else if status == StatusCode::FORBIDDEN {
+            "上游拒绝访问，请检查账号权限"
+        } else if codex_upstream_502 {
             "请求已到达 Local Agent，但上游模型接口返回 502。请在 Local Agent 的「请求」查看对应记录。"
         } else {
             upstream_rejection(&bytes)
         };
-        guard.finish("error", Some(issue));
         let mut result = reject(status, issue);
-        if super::policy::permanent_error(&bytes) {
+        if observed_http_failure {
+            result.extensions_mut().insert(ObservedHttpFailure);
+        }
+        if let Some(balance) = balance {
             result
                 .extensions_mut()
-                .insert(super::policy::PermanentReject);
+                .insert(super::policy::ConfirmedQuota::Balance(balance));
+        } else {
+            super::policy::mark_upstream_rejection(
+                if complete {
+                    status
+                } else {
+                    StatusCode::BAD_GATEWAY
+                },
+                &bytes,
+                result.extensions_mut(),
+            );
         }
+        if let Some(budget) = budget {
+            budget.mark(result.extensions_mut());
+        }
+        if let Some(access) = result.extensions().get::<super::policy::AccessRejection>() {
+            guard.finish("error", Some(access.message()));
+            return access.response();
+        }
+        guard.finish("error", Some(issue));
         if let Some(value) = retry_after {
             result.headers_mut().insert("retry-after", value);
         }
@@ -808,7 +1239,7 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
     if converted {
         if compressed || (streamed && !sse) || (!streamed && sse) {
             guard.finish("error", Some("上游流式 / 编码类型与请求不符"));
-            return reject(StatusCode::BAD_GATEWAY, "上游返回的流式或编码类型无法转换");
+            return uncertain_response("上游返回的流式或编码类型无法转换");
         }
         if !streamed {
             let mut response = response;
@@ -825,13 +1256,13 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                     {
                         if native_protocol.feed(&chunk).await.is_err() {
                             guard.finish("interrupted", Some("转换响应超限、中断或超时"));
-                            return reject(StatusCode::BAD_GATEWAY, "上游响应超限、中断或超时");
+                            return uncertain_response("上游响应超限、中断或超时");
                         }
                     }
                     Ok(Ok(None)) => break,
                     _ => {
                         guard.finish("interrupted", Some("转换响应超限、中断或超时"));
-                        return reject(StatusCode::BAD_GATEWAY, "上游响应超限、中断或超时");
+                        return uncertain_response("上游响应超限、中断或超时");
                     }
                 }
             }
@@ -866,11 +1297,21 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                 }
                 Ok(Finished::Stream(_)) => {
                     guard.finish("error", Some("协议转换返回了不匹配的结果"));
-                    reject(StatusCode::BAD_GATEWAY, "协议转换返回了不匹配的结果")
+                    uncertain_response("协议转换返回了不匹配的结果")
                 }
                 Err(message) => {
                     guard.finish("error", Some(message));
-                    reject(StatusCode::BAD_GATEWAY, message)
+                    serde_json::from_slice(native_protocol.json_bytes())
+                        .ok()
+                        .as_ref()
+                        .and_then(|value| {
+                            super::policy::reply_rejection(
+                                value,
+                                openrouter_reply,
+                                retry_after.as_ref(),
+                            )
+                        })
+                        .unwrap_or_else(|| uncertain_response(message))
                 }
             };
         }
@@ -879,11 +1320,13 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             Ok(start) => start,
             Err(message) => {
                 guard.finish("error", Some(message));
-                return reject(StatusCode::BAD_GATEWAY, message);
+                return uncertain_response(message);
             }
         };
         let delivery_id = id.clone();
         let delivery_observation = observation.clone();
+        let stream_rejection = ConvertedStreamRejection::default();
+        let recorded_rejection = stream_rejection.clone();
         let stream = async_stream::stream! {
             let _permit=permit;let mut guard=guard;
             let deadline=tokio::time::Instant::now()+super::delivery::REQUEST_LIMIT;
@@ -896,15 +1339,18 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                     Ok(Some(Ok(chunk)))=>{
                         if !recovery.allows(chunk.len()) { break; }
                         let received_at=std::time::Instant::now();observation.hub.touch(&id);for update in metrics.feed(&chunk){observation.hub.update_at(&id,update,received_at);}
-                        let output=native_protocol.feed(&chunk).await;
-                        match output {Ok(output)=>{
-                            // A client may close immediately after the protocol terminal event.
-                            // Finalize from validated upstream completion, before yielding it.
-                            if output.complete{guard.finish(native_protocol.end_status(),None);}
-                            for part in output.chunks {if !part.is_empty(){yield Ok(axum::body::Bytes::from(part));}}
-                            if output.complete{break;}
-                        },Err(message)=>{
+                        let mut output=Output::default();
+                        let converted=native_protocol.feed_stream(&chunk,&mut output);
+                        if let Err(message)=converted {
                             guard.finish("error",Some(message));
+                            if let Some(rejection)=native_protocol.take_rejection(){let _=recorded_rejection.0.set(rejection);}
+                        } else if output.complete {
+                            // A client may close as soon as it receives the terminal event.
+                            guard.finish(native_protocol.end_status(),None);
+                        }
+                        for part in output.chunks {if !part.is_empty(){yield Ok(axum::body::Bytes::from(part));}}
+                        if output.complete{break;}
+                        if converted.is_err() {
                             yield Ok(axum::body::Bytes::from(native_protocol.error()));
                             let recovery_deadline=deadline.min(tokio::time::Instant::now()+super::delivery::RECOVERY_LIMIT);
                             let mut bytes=0usize;
@@ -920,7 +1366,7 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                                 }
                             }
                             break;
-                        }}
+                        }
                     },
                     Ok(None)=>{
                         for update in metrics.end(){observation.hub.update(&id,update);}
@@ -938,7 +1384,7 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                 }
             }
         };
-        return (
+        let mut result = (
             [
                 ("content-type", "text/event-stream"),
                 ("cache-control", "no-cache"),
@@ -947,7 +1393,19 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             super::delivery::body(stream, delivery_observation, delivery_id, delivery_recovery),
         )
             .into_response();
+        result.extensions_mut().insert(stream_rejection);
+        if openrouter_reply {
+            result
+                .extensions_mut()
+                .insert(super::policy::OpenRouterReply);
+        }
+        if let Some(value) = retry_after {
+            result.headers_mut().insert("retry-after", value);
+        }
+        return result;
     }
+    let mismatched_reply = service_attempt && status.is_success() && streamed != sse;
+    guard.mismatched_reply = mismatched_reply;
     let mut headers = HeaderMap::new();
     for (name, value) in response.headers() {
         let key = name.as_str();
@@ -1000,15 +1458,27 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         }
     };
     let stream = stream.map(|item: Result<axum::body::Bytes, std::io::Error>| item);
-    let mut result = Response::new(super::delivery::body(
-        stream,
-        delivery_observation,
-        delivery_id,
-        delivery_recovery,
-    ));
+    let mut result = Response::new(if mismatched_reply {
+        // Nothing from this wire format can be delivered as a successful reply.
+        // Preflight reads a bounded prefix directly for errors and accounting.
+        Body::from_stream(stream)
+    } else {
+        super::delivery::body(stream, delivery_observation, delivery_id, delivery_recovery)
+    });
     *result.status_mut() = status;
     *result.headers_mut() = headers;
-    result
+    if openrouter_reply {
+        result
+            .extensions_mut()
+            .insert(super::policy::OpenRouterReply);
+    }
+    if mismatched_reply {
+        match super::policy::preflight(result, &binding.client_protocol, streamed).await {
+            Ok(response) | Err(response) => response,
+        }
+    } else {
+        result
+    }
 }
 
 fn upstream_rejection(bytes: &[u8]) -> &'static str {

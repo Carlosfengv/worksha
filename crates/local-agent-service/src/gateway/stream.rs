@@ -16,26 +16,49 @@ pub enum Delta {
 pub struct Decoder {
     protocol: String,
     reasoning_scope: Option<String>,
+    hide_intrinsic_reasoning: bool,
     pending: Vec<u8>,
     data: Vec<u8>,
     ended: bool,
+    rejection: Option<Value>,
 }
 impl Decoder {
     pub fn new(protocol: &str) -> Self {
         Self {
             protocol: protocol.into(),
             reasoning_scope: None,
+            hide_intrinsic_reasoning: false,
             pending: vec![],
             data: vec![],
             ended: false,
+            rejection: None,
         }
     }
     pub fn with_provider(mut self, provider: &local_agent_core::Provider) -> Self {
         self.reasoning_scope = super::deepseek::scope(provider);
         self
     }
+    pub(super) fn hide_intrinsic_reasoning(mut self, hide: bool) -> Self {
+        self.hide_intrinsic_reasoning = hide;
+        self
+    }
+    pub(crate) fn take_rejection(&mut self) -> Option<Value> {
+        self.rejection.take()
+    }
     pub fn feed(&mut self, bytes: &[u8]) -> Result<Vec<Delta>> {
         let mut out = vec![];
+        self.feed_each(bytes, |delta| {
+            out.push(delta);
+            Ok(())
+        })?;
+        Ok(out)
+    }
+    /// Deliver each decoded event in wire order even if a later event fails.
+    pub(crate) fn feed_each(
+        &mut self,
+        bytes: &[u8],
+        mut emit: impl FnMut(Delta) -> Result<()>,
+    ) -> Result<()> {
         for byte in bytes {
             if *byte == b'\n' {
                 let line = std::mem::take(&mut self.pending);
@@ -51,15 +74,23 @@ impl Decoder {
                                 return Err("上游结束标记不匹配");
                             };
                             self.ended = true;
-                            out.push(Delta::End);
+                            emit(Delta::End)?;
                         } else {
                             let v: Value =
                                 serde_json::from_slice(&data).map_err(|_| "上游流不是有效 JSON")?;
+                            if super::protocol::reply_error(&v).is_some()
+                                || v["type"] == "response.failed"
+                            {
+                                self.rejection = Some(v);
+                                return Err("上游返回协议错误，转换流已停止");
+                            }
                             let next = self.event(&v)?;
                             if next.iter().any(|d| matches!(d, Delta::End)) {
                                 self.ended = true;
                             }
-                            out.extend(next);
+                            for delta in next {
+                                emit(delta)?;
+                            }
                         }
                     }
                 } else if let Some(data) = line.strip_prefix(b"data:") {
@@ -76,18 +107,12 @@ impl Decoder {
                 return Err("上游单个流事件超过 8 MiB");
             }
         }
-        Ok(out)
+        Ok(())
     }
     pub fn end(&mut self) -> Result<Vec<Delta>> {
         self.feed(b"\n\n")
     }
     fn event(&self, v: &Value) -> Result<Vec<Delta>> {
-        if v.get("error").is_some_and(|e| !e.is_null())
-            || v["type"] == "error"
-            || v["type"] == "response.failed"
-        {
-            return Err("上游返回协议错误，转换流已停止");
-        }
         let mut out = vec![];
         if self.protocol == "chat-completions" {
             if let Some(usage) = v.get("usage").filter(|x| !x.is_null()) {
@@ -104,7 +129,9 @@ impl Decoder {
             }
             if let Some(choice) = v["choices"].as_array().and_then(|c| c.first()) {
                 let d = &choice["delta"];
-                if let Some(reasoning) = d.get("reasoning_content").filter(|v| !v.is_null()) {
+                if !self.hide_intrinsic_reasoning
+                    && let Some(reasoning) = d.get("reasoning_content").filter(|v| !v.is_null())
+                {
                     let text = reasoning.as_str().ok_or("上游思考增量需要字符串")?;
                     if !text.is_empty() || self.reasoning_scope.is_some() {
                         if self.reasoning_scope.is_none() {
@@ -169,6 +196,8 @@ impl Decoder {
                                 },
                             ));
                         }
+                        Some("thinking" | "redacted_thinking") if self.hide_intrinsic_reasoning => {
+                        }
                         _ => return Err("上游内容块尚不能跨协议转换"),
                     }
                 }
@@ -185,6 +214,8 @@ impl Decoder {
                             .ok_or("工具参数增量无效")?
                             .into(),
                     )),
+                    Some("thinking_delta" | "signature_delta") if self.hide_intrinsic_reasoning => {
+                    }
                     _ => return Err("思考签名与此增量类型尚不能跨协议转换"),
                 },
                 Some("message_delta") => {
@@ -233,13 +264,22 @@ impl Decoder {
                     v["arguments"].as_str().ok_or("工具参数无效")?.into(),
                 )),
                 Some("response.completed" | "response.incomplete") => {
-                    out.push(Delta::Snapshot(Answer::parse("responses", &v["response"])?));
+                    let answer = if self.hide_intrinsic_reasoning {
+                        let mut response = v["response"].clone();
+                        super::protocol::remove_intrinsic_reasoning("responses", &mut response);
+                        Answer::parse("responses", &response)?
+                    } else {
+                        Answer::parse("responses", &v["response"])?
+                    };
+                    out.push(Delta::Snapshot(answer));
                     out.push(Delta::End);
                 }
                 Some("response.refusal.delta") => out.push(Delta::Refusal(
                     v["delta"].as_str().ok_or("上游拒绝增量需要字符串")?.into(),
                 )),
-                Some("response.reasoning_summary_text.delta" | "response.reasoning_text.delta") => {
+                Some("response.reasoning_summary_text.delta" | "response.reasoning_text.delta")
+                    if !self.hide_intrinsic_reasoning =>
+                {
                     return Err("思考增量尚不能跨协议转换");
                 }
                 _ => {}

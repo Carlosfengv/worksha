@@ -116,7 +116,7 @@ async fn pooled_checks_reuse_connections_without_sharing_credentials_or_billing_
     let accounts = crate::billing::sources::AccountSources::builtin().unwrap();
     for key in ["billing-first-fixture", "billing-second-fixture"] {
         accounts
-            .api("openrouter", &format!("{base}/billing"), key)
+            .api("openrouter", &format!("{base}/billing"), key, None)
             .await
             .unwrap();
     }
@@ -199,7 +199,12 @@ async fn pooled_checks_reuse_connections_without_sharing_credentials_or_billing_
     );
     assert!(
         accounts
-            .api("openrouter", &format!("{base}/redirect"), "billing-fixture")
+            .api(
+                "openrouter",
+                &format!("{base}/redirect"),
+                "billing-fixture",
+                None
+            )
             .await
             .is_err()
     );

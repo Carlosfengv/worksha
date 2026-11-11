@@ -1,7 +1,8 @@
 //! Recent user-message boundaries, including completed messages. Only bounded
 //! metadata and redacted user excerpts are read; tool bodies are never selected.
 use super::{
-    NativeError, NativeResult, activity_input, live::NativeActivity, opencode, parser::safe_text,
+    NativeError, NativeResult, NativeSessions, activity_input, live::NativeActivity, opencode,
+    parser::safe_text,
 };
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, params};
@@ -10,6 +11,180 @@ use std::{collections::HashSet, path::Path};
 
 fn unavailable() -> NativeError {
     NativeError::new("unavailable", "OpenCode 消息活动暂不可读取")
+}
+
+pub struct RoutingBoundaries {
+    pub ends: Vec<Vec<usize>>,
+    pub v2: bool,
+    pub authority: (u64, u64),
+}
+
+impl NativeSessions {
+    /// Locate native user boundaries inside the Messages transport's text groups.
+    /// Only partition positions and the verified source format leave the reader.
+    pub fn opencode_routing_boundaries(
+        &self,
+        session: &str,
+        groups: &[Vec<String>],
+    ) -> NativeResult<Option<RoutingBoundaries>> {
+        if !session.starts_with("ses_") || !opencode::valid_id(session) {
+            return Ok(None);
+        }
+        self.with_source_context("opencode", None, true, |_, context| {
+            let authority = context.authorization_identity();
+            let db = opencode::open_database(context.home)?;
+            if opencode::has_table(&db, "session_v2")?
+                && db
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM session_v2 WHERE id=?1)",
+                        [session],
+                        |row| row.get::<_, bool>(0),
+                    )
+                    .map_err(|_| unavailable())?
+            {
+                if !opencode::has_table(&db, "session_message")? {
+                    return Ok(None);
+                }
+                return v2_routing_boundaries(&db, session, groups).map(|proof| {
+                    proof.map(|ends| RoutingBoundaries {
+                        ends,
+                        v2: true,
+                        authority,
+                    })
+                });
+            }
+            if !groups.iter().any(|group| group.len() > 1) || !opencode::has_legacy_tables(&db)? {
+                return Ok(None);
+            }
+            routing_boundaries(&db, session, groups).map(|proof| {
+                proof.map(|ends| RoutingBoundaries {
+                    ends,
+                    v2: false,
+                    authority,
+                })
+            })
+        })
+    }
+
+    pub fn opencode_routing_authorized(&self, authority: (u64, u64)) -> bool {
+        self.with_source_context("opencode", Some(authority.0), true, |_, context| {
+            Ok(context.authorization_identity() == authority)
+        })
+        .unwrap_or(false)
+    }
+}
+
+fn v2_routing_boundaries(
+    db: &Connection,
+    session: &str,
+    groups: &[Vec<String>],
+) -> NativeResult<Option<Vec<Vec<usize>>>> {
+    let mut query = db.prepare(
+        "SELECT CASE WHEN length(CAST(data AS BLOB))<=524288 AND json_valid(data) THEN
+          CASE WHEN json_type(data,'$.text')='text'
+            AND (json_type(data,'$.files') IS NULL OR (json_type(data,'$.files')='array' AND json_array_length(data,'$.files')=0))
+            AND (json_type(data,'$.agents') IS NULL OR (json_type(data,'$.agents')='array' AND json_array_length(data,'$.agents')=0))
+            AND (json_type(data,'$.skills') IS NULL OR (json_type(data,'$.skills')='array' AND json_array_length(data,'$.skills')=0))
+          THEN json_extract(data,'$.text') END END
+         FROM session_message WHERE session_id=?1 AND type='user' ORDER BY seq LIMIT 257"
+    ).map_err(|_| unavailable())?;
+    let mut rows = query.query([session]).map_err(|_| unavailable())?;
+    for (index, text) in groups.iter().flatten().enumerate() {
+        if index >= 256 || text.is_empty() {
+            return Ok(None);
+        }
+        let Some(row) = rows.next().map_err(|_| unavailable())? else {
+            return Ok(None);
+        };
+        let native: Option<String> = row.get(0).map_err(|_| unavailable())?;
+        if native.as_deref() != Some(text.as_str()) {
+            return Ok(None);
+        }
+    }
+    if rows.next().map_err(|_| unavailable())?.is_some() {
+        return Ok(None);
+    }
+    Ok(Some(
+        groups
+            .iter()
+            .map(|group| (1..=group.len()).collect())
+            .collect(),
+    ))
+}
+
+fn routing_boundaries(
+    db: &Connection,
+    session: &str,
+    groups: &[Vec<String>],
+) -> NativeResult<Option<Vec<Vec<usize>>>> {
+    let mut users = db
+        .prepare(
+            "SELECT id FROM message WHERE session_id=?1 AND
+        CASE WHEN length(CAST(data AS BLOB))<=524288 AND json_valid(data)
+        THEN json_extract(data,'$.role')='user' ELSE 0 END ORDER BY time_created,id LIMIT 257",
+        )
+        .map_err(|_| unavailable())?;
+    let users = users
+        .query_map([session], |r| r.get::<_, String>(0))
+        .map_err(|_| unavailable())?;
+    let mut parts = db
+        .prepare(
+            "SELECT CASE WHEN length(CAST(data AS BLOB))<=524288
+        THEN data END FROM part WHERE session_id=?1 AND message_id=?2
+        ORDER BY time_created,id LIMIT 65",
+        )
+        .map_err(|_| unavailable())?;
+    let mut boundaries = vec![Vec::new(); groups.len()];
+    let (mut group, mut offset) = (0, 0);
+    let mut bytes = 0;
+    for (user_index, id) in users.enumerate() {
+        if user_index >= 256 {
+            return Ok(None);
+        }
+        let id = id.map_err(|_| unavailable())?;
+        let mut rows = parts
+            .query(params![session, id])
+            .map_err(|_| unavailable())?;
+        let mut count = 0;
+        let start = offset;
+        while let Some(row) = rows.next().map_err(|_| unavailable())? {
+            count += 1;
+            let Some(raw): Option<String> = row.get(0).map_err(|_| unavailable())? else {
+                return Ok(None);
+            };
+            bytes += raw.len();
+            if count > 64 || bytes > 1024 * 1024 {
+                return Ok(None);
+            }
+            let part: Value = serde_json::from_str(&raw).map_err(|_| unavailable())?;
+            if part["type"] != "text" {
+                return Ok(None);
+            }
+            let Some(text) = part["text"].as_str() else {
+                return Ok(None);
+            };
+            if text.is_empty() || part["ignored"] == true {
+                continue;
+            }
+            if groups
+                .get(group)
+                .and_then(|g| g.get(offset))
+                .map(String::as_str)
+                != Some(text)
+            {
+                return Ok(None);
+            }
+            offset += 1;
+        }
+        if offset != start {
+            boundaries[group].push(offset);
+            if offset == groups[group].len() {
+                group += 1;
+                offset = 0;
+            }
+        }
+    }
+    Ok((group == groups.len()).then_some(boundaries))
 }
 
 pub(super) fn recent(

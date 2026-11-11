@@ -8,7 +8,7 @@ mod store;
 pub(crate) use store::{Host, Presence};
 
 mod dispatch;
-pub(crate) use dispatch::Choice;
+pub(crate) use dispatch::{Choice, ChoiceProof};
 
 #[cfg(test)]
 mod tests;

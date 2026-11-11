@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const MAX_PRESETS: usize = 8 + 64 * 16;
+pub const MAX_PRESETS: usize = 9 + 64 * 16;
 pub const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
@@ -133,7 +133,7 @@ impl PresetAdapter for BuiltinPresets {
                 name: p.name.clone(),
                 protocol: p.protocol.clone(),
                 endpoints: p.endpoints.clone(),
-                model: String::new(),
+                model: p.model.clone(),
                 documents: p.documents.clone(),
             })
             .collect())
@@ -211,7 +211,7 @@ mod tests {
     fn builtin_advice_retains_every_original_preset_and_external_identity_cannot_collide() {
         let builtin = checked_presets(&BuiltinPresets).unwrap();
         let original = crate::providers::catalog::builtin().presets();
-        assert_eq!(builtin.len(), 8);
+        assert_eq!(builtin.len(), 9);
         for (advice, old) in builtin.iter().zip(original) {
             assert_eq!(
                 advice.origin,
@@ -228,11 +228,11 @@ mod tests {
                 ),
                 (&old.name, &old.protocol, &old.endpoints, &old.documents)
             );
-            assert!(advice.model.is_empty());
+            assert_eq!(advice.model, old.model);
         }
         let mut combined = builtin;
         combined.push(external());
-        assert_eq!(checked_presets(&Fixture(combined)).unwrap().len(), 9);
+        assert_eq!(checked_presets(&Fixture(combined)).unwrap().len(), 10);
     }
     #[test]
     fn invalid_and_duplicate_advice_is_refused_without_normalizing_or_running_an_adapter() {

@@ -14,10 +14,33 @@ pub const MAX_REQUEST_BYTES: usize = 65_536;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VerifyMemberRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_account: Option<crate::providers::upstream_accounts::AccountRef>,
     pub store_id: String,
     pub provider_id: String,
     pub expected_revision: u64,
     pub model: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum PreviewEntry {
+    Default,
+    Specified { model_id: String },
+    Rule { rule_id: String },
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PreviewRequest {
+    pub store_id: String,
+    pub draft: ServiceDraft,
+    pub entry: PreviewEntry,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -35,7 +58,7 @@ pub struct OperationRequest {
 )]
 pub enum OperationAction {
     Save {
-        draft: ServiceDraft,
+        draft: Box<ServiceDraft>,
     },
     Delete {
         service_id: String,
@@ -282,7 +305,7 @@ impl Store {
         let active = validate_change(&request.action)?;
         let service = match &request.action {
             OperationAction::Save { draft } => {
-                Some(self.write_model_service(&tx, draft.clone(), creator)?)
+                Some(self.write_model_service(&tx, draft.as_ref().clone(), creator)?)
             }
             OperationAction::Delete {
                 service_id,
@@ -340,7 +363,7 @@ mod tests {
             store_id: store.model_service_operation_store_id().unwrap(),
             operation_id: uuid::Uuid::new_v4().to_string(),
             action: OperationAction::Save {
-                draft: super::super::tests::draft(store),
+                draft: Box::new(super::super::tests::draft(store)),
             },
         }
     }

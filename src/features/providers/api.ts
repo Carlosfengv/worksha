@@ -1,4 +1,5 @@
 import { invalidateCapabilityAccess } from "@/shared/lib/capability-access";
+import { routingQuotaLabels } from "@/features/accounts/display";
 import type {
   PresetAction,
   PresetReply,
@@ -156,6 +157,65 @@ async function credentialNamespacePreflight(
 }
 
 export const providersApi = {
+  async upstreamAccount(
+    providerId: string,
+    input: import("./types").UpstreamAccountAction,
+  ) {
+    const reply = await command<{
+      storeId: string;
+      accounts: import("./types").UpstreamAccount[];
+    }>("perform_upstream_account", { providerId, input });
+    if (
+      !isCredentialOperationId(reply?.storeId) ||
+      ("storeId" in input && reply.storeId !== input.storeId) ||
+      !Array.isArray(reply.accounts) ||
+      reply.accounts.length > 32 ||
+      reply.accounts.some(
+        (a) =>
+          !a ||
+          a.providerId !== providerId ||
+          !isCredentialOperationId(a.id) ||
+          !Number.isSafeInteger(a.revision) ||
+          a.revision < 1 ||
+          typeof a.label !== "string" ||
+          !["enabled", "paused", "revoked"].includes(a.state) ||
+          (a.routingQuota !== undefined &&
+            !Object.hasOwn(routingQuotaLabels, a.routingQuota)) ||
+          (a.verifications != null &&
+            (!Array.isArray(a.verifications) ||
+              a.verifications.some(
+                (entry) =>
+                  !entry ||
+                  typeof entry.model !== "string" ||
+                  !entry.model ||
+                  ![
+                    "verified",
+                    "expired",
+                    "failed",
+                    "outdated",
+                    "unknown",
+                  ].includes(entry.state) ||
+                  (entry.checkedAt !== null &&
+                    (typeof entry.checkedAt !== "string" ||
+                      !Number.isFinite(Date.parse(entry.checkedAt)))),
+              ))) ||
+          (a.cooldowns != null &&
+            (!Array.isArray(a.cooldowns) ||
+              a.cooldowns.some(
+                (entry) =>
+                  !entry ||
+                  (entry.model !== null && typeof entry.model !== "string") ||
+                  !Number.isSafeInteger(entry.untilMs) ||
+                  entry.untilMs <= 0 ||
+                  typeof entry.reason !== "string",
+              ))),
+      )
+    )
+      throw Error("上游账号响应无法核查，请刷新原后台。");
+    if (input.kind !== "list")
+      window.dispatchEvent(new Event("upstream-accounts-changed"));
+    return reply;
+  },
   async localTokenProtocol() {
     return localTokenProtocol(
       await command<unknown>("get_local_token_protocol"),
@@ -1121,7 +1181,7 @@ async function performPresetQuery(input: PresetAction) {
       if (input.kind === "list") {
         if (
           reply.kind !== "listed" ||
-          reply.items.length > 1032 ||
+          reply.items.length > builtinPresetAdvice.length + 64 * 16 ||
           reply.issues.length > 64
         )
           throw Error("预设列表不完整或超出容量。");

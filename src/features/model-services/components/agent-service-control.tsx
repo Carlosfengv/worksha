@@ -186,7 +186,21 @@ export function AgentServiceControl({
       const defaultProvider = choice.models.find(
         (model) => model.id === choice.defaultModelId,
       )?.provider;
-      await verifyServiceModels(serviceDraft(choice), providers, setProgress);
+      await verifyServiceModels(
+        serviceDraft(choice),
+        providers,
+        setProgress,
+        (providerId, expectedRevision, model, upstreamAccount) =>
+          upstreamAccount
+            ? modelServicesApi.verifyMember({
+                storeId: source.identity.storeId,
+                providerId,
+                expectedRevision,
+                model,
+                upstreamAccount,
+              })
+            : providersApi.verifyProvider(providerId, expectedRevision, model),
+      );
       setProgress("正在生成配置预览与加密备份…");
       setTransaction(
         await modelServicesApi.prepareConnection(

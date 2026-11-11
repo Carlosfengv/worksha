@@ -8,17 +8,22 @@ import type { BillingAccount } from "@/features/accounts/types";
 import type {
   ProviderUsage,
   ProviderUsageTotals,
+  UpstreamAccount,
 } from "@/features/providers/types";
 import { pluginsApi } from "@/features/plugins/api";
 import "@/styles/globals.css";
 
 const params = new URLSearchParams(location.search);
 const mode = params.get("mode");
+const upstreamQuota = mode === "upstream-quota";
+const accountDirectoryId = "upstream-quota-a";
+const subscriptionFailure =
+  mode === "subscription-authorization" || mode === "subscription-unconfirmed";
 const now = Date.now();
 const provider = {
   id: "api-a",
-  name: "MyDeepSeek",
-  vendor: "deepseek",
+  name: subscriptionFailure ? "MiniMax M Plan 验收" : "MyDeepSeek",
+  vendor: subscriptionFailure ? "minimax-plan" : "deepseek",
   endpoint: "https://api.deepseek.com",
   protocol: "chat-completions" as const,
   configured: true,
@@ -125,6 +130,19 @@ if (mode === "unread") {
   subscription.snapshot = null;
   subscription.state = "not_loaded";
 }
+if (subscriptionFailure) {
+  const denied = mode === "subscription-authorization";
+  apiAccount.accountType = "subscription";
+  apiAccount.upstreamAccount = { id: "mini-fixture", revision: 1 };
+  apiAccount.state = denied
+    ? "subscription_authorization_failed"
+    : "subscription_unconfirmed";
+  apiAccount.error = denied
+    ? "MiniMax 未授权读取 M Plan 额度。"
+    : "请核对订阅状态后稍后刷新。";
+  apiAccount.officialUrl = "https://platform.minimax.io/console/plan";
+  apiAccount.snapshot = null;
+}
 if (mode === "expires") subscription.snapshot!.validForSeconds = 2;
 if (mode === "quota-unknown") {
   subscription.snapshot!.windows[0].remainingPercent = null;
@@ -142,6 +160,9 @@ declare global {
       usageQueries: ProviderUsage["query"][];
       finishAccounts: (() => void) | null;
       finishUsage: (() => void) | null;
+      upstreamRevision: number;
+      quotaDirectoryRevision: number;
+      quotaReads: [string, string][];
     };
   }
 }
@@ -152,7 +173,41 @@ const fixture = (window.providerOverviewFixture = {
   usageQueries: [] as ProviderUsage["query"][],
   finishAccounts: null as (() => void) | null,
   finishUsage: null as (() => void) | null,
+  upstreamRevision: 1,
+  quotaDirectoryRevision: 1,
+  quotaReads: [] as [string, string][],
 });
+function billingRows(): BillingAccount[] {
+  const rows = [apiAccount, otherAccount, subscription];
+  if (!upstreamQuota) return rows;
+  const revision = fixture.quotaDirectoryRevision;
+  const ready =
+    revision === 1 ||
+    fixture.quotaReads.some(([, rev]) => rev === `quota-${revision}`);
+  const scoped: BillingAccount = {
+    ...structuredClone(subscription),
+    id: accountDirectoryId,
+    name: "当前订阅账号",
+    providerId: provider.id,
+    upstreamAccount: { id: "quota-a", revision },
+    sourceRevision: `quota-${revision}`,
+    snapshot: ready ? structuredClone(subscription.snapshot) : null,
+    state: ready ? "ready" : "not_loaded",
+  };
+  if (scoped.snapshot)
+    scoped.snapshot.windows[0].label =
+      revision === 1 ? "原版本 5 小时窗口" : "当前版本 5 小时窗口";
+  return [
+    ...rows,
+    scoped,
+    {
+      ...scoped,
+      id: "foreign-quota",
+      providerId: other.id,
+      name: "其他供应商额度",
+    },
+  ];
+}
 accountsApi.accounts = async () => {
   if (mode === "loading")
     await new Promise<void>((resolve) => {
@@ -160,12 +215,16 @@ accountsApi.accounts = async () => {
     });
   if (fixture.directoryFailed) throw Error("账户目录读取失败");
   return {
-    accounts: [apiAccount, otherAccount, subscription],
+    accounts: billingRows(),
     asOf: new Date().toISOString(),
   };
 };
-accountsApi.refreshAccount = async (id) => {
+accountsApi.refreshAccount = async (id, revision) => {
   fixture.refreshes++;
+  if (upstreamQuota) {
+    fixture.quotaReads.push([id, revision]);
+    return { accounts: billingRows(), asOf: new Date().toISOString() };
+  }
   if (id === apiAccount.id) {
     apiAccount.state = "ready";
     apiAccount.snapshot = structuredClone(otherAccount.snapshot);
@@ -182,6 +241,68 @@ providersApi.providerStatus = async () => ({
   runtimes: [],
   backupProtection: "测试",
 });
+const recoveryStore = "fixture-recovery";
+if (upstreamQuota) {
+  providersApi.upstreamAccount = async () => ({
+    storeId: recoveryStore,
+    accounts: [
+      {
+        id: "quota-a",
+        label: "额度主账号",
+        providerId: provider.id,
+        state: "enabled",
+        revision: fixture.upstreamRevision,
+      },
+      {
+        id: "quota-b",
+        label: "未接入账号",
+        providerId: provider.id,
+        state: "enabled",
+        revision: 1,
+      },
+    ],
+  });
+}
+if (mode === "routing-recovery") {
+  const accounts: UpstreamAccount[] = [
+    {
+      id: "waiting-account",
+      providerId: provider.id,
+      label: "等待账号",
+      revision: 1,
+      state: "enabled",
+      cooldowns: [],
+      recoveries: [
+        {
+          model: null,
+          state: "waitingForProbe",
+          untilMs: now - 1000,
+          reason: "upstream_rate_limit",
+        },
+      ],
+    },
+    {
+      id: "probing-account",
+      providerId: provider.id,
+      label: "探测账号",
+      revision: 1,
+      state: "enabled",
+      cooldowns: [],
+      recoveries: [
+        {
+          model: provider.model,
+          state: "probing",
+          untilMs: now - 1000,
+          reason: "upstream_failure",
+        },
+      ],
+    },
+  ];
+  providersApi.upstreamAccount = async () => ({
+    storeId: recoveryStore,
+    accounts,
+  });
+}
 function usageTotals(b: boolean): ProviderUsageTotals {
   const totals: ProviderUsageTotals = {
     calls: b ? 1 : 291,
@@ -294,6 +415,18 @@ const data: Snapshot = {
   gatewayStatus: "ready",
   agents: [],
   providers: [provider, other],
+  providerWriteProtocol:
+    mode === "routing-recovery" || upstreamQuota
+      ? {
+          version: 1,
+          storeId: recoveryStore,
+          sequence: 0,
+          receiptLimit: 32,
+          receiptBytes: 1024,
+          pendingLimit: 4,
+          pendingOperationIds: [],
+        }
+      : undefined,
   settings: { captureContent: false, retentionDays: 30 },
   sessionSources: [],
   observationBindings: [],

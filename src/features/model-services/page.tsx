@@ -8,6 +8,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable, useDataTable } from "@/components/ui/data-table";
+import { PageActions, PageHeader } from "@/components/ui/page-layout";
+import { TabItem, TabPanel, Tabs, TabsList } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -22,40 +24,83 @@ import { modelServicesResource } from "./queries";
 import { useIam } from "@/features/iam/context";
 import { IamResourceDetail } from "@/features/iam/resource-detail";
 import { ServiceEditor } from "./components/service-editor";
-import { commonCapabilities, type ModelService } from "./types";
+import {
+  commonCapabilities,
+  type ModelService,
+  type ModelServiceCatalog,
+} from "./types";
 
 type Row = {
   service: ModelService;
   connections: number;
-  cooling: number;
-  healthUnknown: boolean;
+  routingStatus: string[];
   configurationUnknown: boolean;
   disabled: boolean;
   edit: () => void;
   detail?: () => void;
   remove: () => void;
 };
+
+function routingStatus(
+  service: ModelService,
+  health: ModelServiceCatalog["routingHealth"],
+) {
+  const counts = {
+    ready: 0,
+    cooling: 0,
+    unknown: 0,
+    waitingForProbe: 0,
+    probing: 0,
+  };
+  const entries =
+    health?.filter((entry) => entry.serviceId === service.id) ?? [];
+  for (const entry of entries) counts[entry.status.state]++;
+  return [
+    counts.cooling ? `${counts.cooling} 个模型来源冷却中` : "",
+    counts.waitingForProbe
+      ? `${counts.waitingForProbe} 个模型来源待恢复探测`
+      : "",
+    counts.probing ? `${counts.probing} 个模型来源恢复探测中` : "",
+    counts.unknown || entries.length < service.models.length
+      ? "冷却状态未知"
+      : "",
+  ].filter(Boolean);
+}
+
 const columns: ColumnDef<Row>[] = [
   {
     id: "service",
     header: "模型服务",
-    cell: ({ row }) => (
-      <div className="space-y-1">
-        <Button
-          variant="link"
-          size="sm"
-          onClick={row.original.detail ?? row.original.edit}
-          disabled={row.original.disabled}
-        >
-          {row.original.service.name}
-        </Button>
-        <p className="text-label text-fg-muted">
-          版本 {row.original.service.revision} ·{" "}
-          {new Set(row.original.service.models.map((m) => m.provider.id)).size}{" "}
-          个 Provider
-        </p>
-      </div>
-    ),
+    cell: ({ row }) => {
+      const { service, detail, edit, disabled } = row.original;
+      const providers = new Set(
+        service.models.filter((m) => !m.child).map((m) => m.provider.id),
+      ).size;
+      const children = service.models.filter((m) => m.child).length;
+      return (
+        <div className="space-y-1">
+          <Button
+            variant="link"
+            size="sm"
+            className="max-w-56 justify-start px-0"
+            title={service.name}
+            onClick={detail ?? edit}
+            disabled={disabled}
+          >
+            <span className="truncate">{service.name}</span>
+          </Button>
+          <p className="text-label text-fg-muted">
+            {[
+              `版本 ${service.revision}`,
+              providers ? `${providers} 个 Provider` : "",
+              children ? `${children} 个子服务` : "",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        </div>
+      );
+    },
   },
   {
     id: "models",
@@ -86,7 +131,7 @@ const columns: ColumnDef<Row>[] = [
         <div className="space-y-1 text-label">
           <p>{c.contextWindow.toLocaleString()} Token 上下文</p>
           <p className="text-fg-muted">
-            文本{c.tools ? " / 标准工具" : ""} · 关闭思考
+            文本{c.tools ? " / 标准工具" : ""} · 思考控制关闭
           </p>
         </div>
       );
@@ -97,17 +142,15 @@ const columns: ColumnDef<Row>[] = [
     header: "路由策略",
     cell: ({ row }) => (
       <div className="space-y-1 text-label">
-        <Badge status={row.original.cooling ? "warning" : "neutral"}>
+        <Badge
+          status={row.original.routingStatus.length ? "warning" : "neutral"}
+        >
           {row.original.service.routingPolicy?.enabled
             ? "优先级与回退"
             : "仅首选目标"}
         </Badge>
         <p className="text-fg-muted">
-          {row.original.healthUnknown
-            ? "冷却状态未知"
-            : row.original.cooling
-              ? `${row.original.cooling} 个模型来源冷却中`
-              : "来源无冷却记录"}
+          {row.original.routingStatus.join(" · ") || "来源无冷却记录"}
         </p>
       </div>
     ),
@@ -151,6 +194,7 @@ const columns: ColumnDef<Row>[] = [
 export function ModelServicesPage({ providers }: { providers: Provider[] }) {
   const catalog = useSharedRead(modelServicesResource);
   const showDetails = !!useIam().status?.enabled;
+  const [view, setView] = useState("services");
   const [detail, setDetail] = useState("");
   const [editor, setEditor] = useState<ModelService | "new" | null>(null);
   const [removing, setRemoving] = useState<ModelService | null>(null);
@@ -162,15 +206,7 @@ export function ModelServicesPage({ providers }: { providers: Provider[] }) {
       (catalog.data?.services ?? []).map((service) => ({
         service,
         disabled: !!catalog.error || busy,
-        cooling:
-          catalog.data?.routingHealth?.filter(
-            (h) => h.serviceId === service.id && h.status.state === "cooling",
-          ).length ?? 0,
-        healthUnknown:
-          !catalog.data?.routingHealth ||
-          catalog.data.routingHealth.some(
-            (h) => h.serviceId === service.id && h.status.state === "unknown",
-          ),
+        routingStatus: routingStatus(service, catalog.data?.routingHealth),
         connections:
           catalog.data?.attachments.filter(
             (a) => a.serviceId === service.id && a.referenced,
@@ -209,18 +245,33 @@ export function ModelServicesPage({ providers }: { providers: Provider[] }) {
       removingStore.current,
     );
   };
+  const policyStore = catalog.error
+    ? undefined
+    : catalog.data?.writeProtocol?.storeId;
+  const list =
+    !catalog.data && !catalog.error ? (
+      <p role="status" className="text-body text-fg-muted">
+        正在读取模型服务…
+      </p>
+    ) : catalog.data && (!catalog.error || rows.length > 0) ? (
+      <div className="min-w-0 space-y-3">
+        {rows.length > 0 && (
+          <p className="text-label text-fg-muted">{rows.length} 个模型服务</p>
+        )}
+        <DataTable
+          table={table}
+          aria-label="模型服务列表"
+          role="region"
+          showPagination={false}
+          emptyMessage="尚未创建模型服务。先配置 Provider，再创建服务并选择默认模型。"
+        />
+      </div>
+    ) : null;
   return (
-    <div className="space-y-6">
-      <ModelServiceOperationRecovery />
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-2">
-          <h2 className="text-heading-sm font-semibold">模型服务</h2>
-          <p className="max-w-2xl text-body text-fg-muted">
-            把不同 Provider 的模型组织为一个服务。Agent
-            选择服务后，可使用默认目标或指定模型。
-          </p>
-        </div>
-        <div className="flex gap-2">
+    <div className="min-w-0 space-y-4">
+      <PageHeader className="px-0">
+        <h2 className="text-title font-medium">模型服务</h2>
+        <PageActions>
           <Button
             variant="tertiary"
             loading={catalog.loading}
@@ -229,44 +280,50 @@ export function ModelServicesPage({ providers }: { providers: Provider[] }) {
             重新读取
           </Button>
           <Button
-            onClick={() => setEditor("new")}
+            onClick={() => {
+              setView("services");
+              setEditor("new");
+            }}
             disabled={!!catalog.error || !catalog.data}
           >
             创建模型服务
           </Button>
-        </div>
-      </div>
+        </PageActions>
+      </PageHeader>
+      <ModelServiceOperationRecovery />
       {catalog.error && (
         <Alert status="danger" role="alert">
           <AlertTitle>模型服务读取失败</AlertTitle>
           <AlertDescription>
-            {catalog.error}。保留上次数据，重新读取后再修改。
+            {catalog.error}
+            {catalog.data && " 正显示上次读取的服务，刷新后可修改。"}
           </AlertDescription>
         </Alert>
       )}
-      {!catalog.data && !catalog.error ? (
-        <p role="status" className="text-body text-fg-muted">
-          正在读取模型服务…
-        </p>
+      {policyStore && catalog.data ? (
+        <Tabs
+          value={view}
+          onValueChange={setView}
+          variant="underline"
+          color="default"
+        >
+          <TabsList aria-label="模型服务工作区">
+            <TabItem value="services" label="服务列表" />
+            <TabItem value="routing" label="外部路由策略" />
+          </TabsList>
+          <TabPanel value="services" className="pt-3">
+            {list}
+          </TabPanel>
+          <TabPanel value="routing" keepMounted className="pt-3">
+            <ExternalRoutingPolicy
+              key={policyStore}
+              storeId={policyStore}
+              services={catalog.data.services}
+            />
+          </TabPanel>
+        </Tabs>
       ) : (
-        <DataTable
-          table={table}
-          aria-label="模型服务列表"
-          role="region"
-          showPagination={false}
-          emptyMessage="尚未创建模型服务。先配置 Provider，再创建服务并选择默认模型。"
-        />
-      )}
-      <p className="text-label text-fg-muted">
-        Provider 负责模型来源与凭据；模型服务负责对外目录。服务目标调整不改
-        Agent 文件，目录或能力变化需要重新同步。
-      </p>
-      {catalog.data?.writeProtocol?.storeId && !catalog.error && (
-        <ExternalRoutingPolicy
-          key={catalog.data.writeProtocol.storeId}
-          storeId={catalog.data.writeProtocol.storeId}
-          services={catalog.data.services}
-        />
+        list
       )}
       {detail && (
         <IamResourceDetail id={detail} onClose={() => setDetail("")} />
@@ -276,6 +333,7 @@ export function ModelServicesPage({ providers }: { providers: Provider[] }) {
           key={editor === "new" ? "new" : editor.versionId}
           service={editor === "new" ? null : editor}
           providers={providers}
+          services={catalog.data?.services ?? []}
           originStoreId={catalog.data?.writeProtocol?.storeId}
           onClose={() => setEditor(null)}
         />

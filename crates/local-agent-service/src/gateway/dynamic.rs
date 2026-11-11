@@ -90,6 +90,9 @@ pub fn configured_endpoint(state: &AppState, b: &Binding) -> String {
 }
 pub(crate) fn client(state: &AppState, b: &Binding) -> Provider {
     let mut p = b.target.provider.clone();
+    if local_agent_core::providers::subscription::minimax_plan(&p) {
+        p.vendor = "custom".into();
+    }
     p.id = format!("dynamic-{}", b.id);
     p.name = "Local Agent · 动态模型".into();
     p.model = routing::ALIAS.into();
@@ -533,7 +536,6 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
     let (agent, product) = match b.agent_id.as_str() {
         "claude-desktop" => ("claude".into(), Some("claude-code-desktop".into())),
         "claude" => (b.agent_id, Some("claude-code-cli".into())),
-        "opencode" => (b.agent_id, Some("opencode".into())),
         _ if routing::agent_connection_digest(&b.agent_id, &b.scope).is_some() => (
             b.agent_id
                 .split_once(':')

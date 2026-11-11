@@ -480,8 +480,16 @@ impl History {
                     if let Some(raw) = raw {
                         let mut v: Value = serde_json::from_str(&raw).map_err(fail)?;
                         let original = v.clone();
-                        // The raw attempt retains the native Session ID even after context resolution.
-                        let session:Option<String>=self.db.query_row("SELECT session FROM attempts WHERE logical=?1 AND session IS NOT NULL ORDER BY id LIMIT 1",[&id],|r|r.get(0)).optional().map_err(fail)?;
+                        // Resolve from the original observation, never a previously enriched ID.
+                        let session: Option<String> = self.db.query_row(
+                            "SELECT coalesce(
+                                (SELECT session FROM attempts WHERE logical=?1 AND session IS NOT NULL ORDER BY id LIMIT 1),
+                                (SELECT json_extract(raw,'$.sessionId') FROM route_traces
+                                 WHERE logical=?1 AND json_extract(raw,'$.routing.trace.sentUpstream')=0)
+                            )",
+                            [&id],
+                            |row| row.get(0),
+                        ).map_err(fail)?;
                         let session = session.as_deref().unwrap_or("");
                         let family = v["agentId"].as_str().unwrap_or("");
                         let c:Option<String>=self.db.query_row("SELECT value FROM contexts WHERE id=?1 OR id=?2 ORDER BY id=?1 DESC LIMIT 1",params![format!("{family}:{session}"),session],|r|r.get(0)).optional().map_err(fail)?;
@@ -673,6 +681,20 @@ impl History {
     pub fn request_detail(&self, id: &str) -> Result<Option<Value>, String> {
         let raw:Option<String>=self.db.query_row("SELECT r.value FROM current c JOIN records r ON r.v=c.v WHERE c.id=?1 OR (c.kind='gateway' AND c.id=(SELECT logical FROM attempts WHERE id=?1)) ORDER BY c.kind LIMIT 1",[id],|r|r.get(0)).optional().map_err(fail)?;
         raw.map(|v| serde_json::from_str(&v).map_err(fail))
+            .transpose()
+    }
+    pub fn request_route_trace(&self, logical: &str) -> Result<Option<Value>, String> {
+        let trace: Option<String> = self
+            .db
+            .query_row(
+                "SELECT json_extract(raw,'$.routing.trace') FROM route_traces WHERE logical=?1",
+                [logical],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(fail)?;
+        trace
+            .map(|raw| serde_json::from_str(&raw).map_err(fail))
             .transpose()
     }
     pub fn request_page(

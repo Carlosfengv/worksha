@@ -20,7 +20,18 @@ pub fn openrouter_endpoint(endpoint: &str) -> bool {
             && ["openrouter.ai", "eu.openrouter.ai", "us.openrouter.ai"]
                 .contains(&u.host_str().unwrap_or(""))
             && u.port_or_known_default() == Some(443)
-            && u.path().trim_end_matches('/') == "/api/v1"
+            && u.username().is_empty()
+            && u.password().is_none()
+            && u.query().is_none()
+            && u.fragment().is_none()
+            && matches!(
+                u.path().trim_end_matches('/'),
+                "/api"
+                    | "/api/v1"
+                    | "/api/v1/chat/completions"
+                    | "/api/v1/messages"
+                    | "/api/v1/responses"
+            )
     })
 }
 

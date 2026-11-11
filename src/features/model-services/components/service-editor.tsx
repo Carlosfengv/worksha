@@ -33,14 +33,20 @@ import type { Provider } from "@/features/providers/types";
 import { useServiceWrite } from "../hooks/use-service-write";
 import { ServiceWriteFeedback } from "./service-write-feedback";
 import {
+  commonCapabilities,
   defaultCapabilities,
   defaultRoutingPolicy,
   serviceDraft,
+  type AccountPool,
   type ModelService,
   type ModelServiceDraft,
 } from "../types";
 import { RoutingPolicySettings } from "./routing-policy-settings";
+import { classifierReady } from "./intent-classifier-settings";
+import { routeRuleReady } from "./route-rules-editor";
 import { verifyServiceModels } from "../verification";
+import { AccountPoolPicker } from "./account-pool-picker";
+import { PublicationReview } from "./publication-review";
 
 type Member = ModelServiceDraft["models"][number];
 const orderedIds = (d: ModelServiceDraft): string[] =>
@@ -62,6 +68,13 @@ const normalize = (d: ModelServiceDraft): ModelServiceDraft => ({
     limits: (d.routingPolicy?.limits ?? []).filter((l) =>
       d.models.some((m) => m.id === l.modelId),
     ),
+    ...(d.routingPolicy?.accountPools?.length
+      ? {
+          accountPools: d.routingPolicy.accountPools.filter((p) =>
+            d.models.some((m) => m.id === p.modelId),
+          ),
+        }
+      : {}),
   },
 });
 type MemberRow = Member & {
@@ -123,10 +136,10 @@ const memberColumns: ColumnDef<MemberRow>[] = [
   },
   {
     id: "source",
-    header: "来源模型",
+    header: "来源",
     cell: ({ row }) => (
       <span className="block max-w-48 break-words text-label">
-        {row.original.model || "待选择"}
+        {row.original.child ? "子服务" : row.original.model || "待选择"}
       </span>
     ),
   },
@@ -159,11 +172,13 @@ const memberColumns: ColumnDef<MemberRow>[] = [
 export function ServiceEditor({
   service,
   providers,
+  services,
   originStoreId,
   onClose,
 }: {
   service: ModelService | null;
   providers: Provider[];
+  services: ModelService[];
   originStoreId: string | undefined;
   onClose: () => void;
 }) {
@@ -185,9 +200,35 @@ export function ServiceEditor({
   const { busy, progress } = operation;
   const locked = busy || operation.uncertain;
   const member = draft.models.find((m) => m.id === selected);
+  const children = services.filter((child) => child.id !== draft.id);
+  const child = member?.child;
+  const versions = children.map((service) => service.versionId);
+  const pinned = child?.versionId && !versions.includes(child.versionId);
+  const childLabel = (version: string) => {
+    const option = children.find((item) => item.versionId === version);
+    if (option) return `${option.name} · 第 ${option.revision} 版`;
+    const service = children.find((item) => item.id === child?.serviceId);
+    return `${service?.name ?? "子服务"} · 已固定的历史版本`;
+  };
   const source = providers.find((p) => p.id === member?.providerId);
   const sources = providers.filter((p) => p.configured);
   const models = source ? availableProviderModelIds(source) : [];
+  const setPool = (pool?: AccountPool) =>
+    setDraft((d) => {
+      const policy = d.routingPolicy ?? defaultRoutingPolicy();
+      return {
+        ...d,
+        routingPolicy: {
+          ...policy,
+          accountPools: [
+            ...(policy.accountPools ?? []).filter(
+              (p) => p.modelId !== selected,
+            ),
+            ...(pool ? [pool] : []),
+          ],
+        },
+      };
+    });
   const update = (change: Partial<Member>) =>
     setDraft((d) => ({
       ...d,
@@ -246,19 +287,23 @@ export function ServiceEditor({
     enableHiding: false,
     enableRowSelection: false,
   });
-  const add = () => {
+  const add = (nested = false) => {
     const provider = sources[0];
     const id = crypto.randomUUID();
     setDraft((d) => ({
       ...d,
       defaultModelId: d.defaultModelId || id,
+      routingPolicy: nested
+        ? { ...(d.routingPolicy ?? defaultRoutingPolicy()), enabled: true }
+        : d.routingPolicy,
       models: [
         ...d.models,
         {
           id,
           name: "",
-          providerId: provider?.id ?? "",
+          providerId: nested ? "" : (provider?.id ?? ""),
           model: "",
+          ...(nested ? { child: { serviceId: "", versionId: "" } } : {}),
           capabilities: defaultCapabilities(),
         },
       ],
@@ -267,6 +312,7 @@ export function ServiceEditor({
   };
   const policy = draft.routingPolicy ?? defaultRoutingPolicy();
   const validPolicy =
+    (policy.enabled || !draft.models.some((m) => m.child)) &&
     Number.isInteger(policy.maxAttempts) &&
     policy.maxAttempts >= 1 &&
     policy.maxAttempts <= 5 &&
@@ -277,6 +323,13 @@ export function ServiceEditor({
     policy.cooldownSeconds >= 1 &&
     policy.cooldownSeconds <= 3600 &&
     policy.disabledModels.length < draft.models.length &&
+    (policy.rules ?? []).every((rule) => routeRuleReady(rule, draft.models)) &&
+    classifierReady(policy, draft.models) &&
+    (policy.accountPools ?? []).every((pool) =>
+      Object.values(pool.weights ?? {}).every(
+        (weight) => Number.isInteger(weight) && weight >= 1 && weight <= 1000,
+      ),
+    ) &&
     policy.limits.every(
       (l) =>
         Number.isInteger(l.maxConcurrent) &&
@@ -293,8 +346,9 @@ export function ServiceEditor({
     draft.models.every(
       (m) =>
         m.name.trim() &&
-        m.providerId &&
-        m.model &&
+        (m.child
+          ? m.child.serviceId && m.child.versionId
+          : m.providerId && m.model) &&
         Number.isInteger(m.capabilities.contextWindow) &&
         Number.isInteger(m.capabilities.maxOutputTokens) &&
         m.capabilities.maxOutputTokens < m.capabilities.contextWindow,
@@ -310,15 +364,16 @@ export function ServiceEditor({
           publication,
           providers,
           progress,
-          service,
-          isCurrent,
-          (providerId, expectedRevision, model) =>
+          (providerId, expectedRevision, model, upstreamAccount) =>
             modelServicesApi.verifyMember({
               storeId,
               providerId,
               expectedRevision,
               model,
+              upstreamAccount,
             }),
+          service,
+          isCurrent,
         ),
     );
   };
@@ -334,7 +389,7 @@ export function ServiceEditor({
           <DialogTitle>{service ? "编辑模型服务" : "创建模型服务"}</DialogTitle>
           <DialogDescription>
             统一组织不同 Provider
-            的模型。发布后，已接入的默认入口在兼容的新轮次跟随服务默认值。
+            的模型和已发布的子服务。已接入的默认入口在兼容的新轮次跟随服务默认值。
           </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 space-y-5 overflow-y-auto px-1">
@@ -353,6 +408,8 @@ export function ServiceEditor({
           </Field>
           <RoutingPolicySettings
             value={draft.routingPolicy}
+            models={draft.models}
+            storeId={origin}
             disabled={locked}
             onChange={(routingPolicy) =>
               setDraft((d) => ({ ...d, routingPolicy }))
@@ -360,16 +417,30 @@ export function ServiceEditor({
           />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-body font-medium">服务模型</h3>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={locked || draft.models.length >= 32 || !sources.length}
-              onClick={add}
-            >
-              添加模型
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={
+                  locked || draft.models.length >= 32 || !sources.length
+                }
+                onClick={() => add()}
+              >
+                添加模型
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={
+                  locked || draft.models.length >= 32 || !children.length
+                }
+                onClick={() => add(true)}
+              >
+                添加子服务
+              </Button>
+            </div>
           </div>
-          {!sources.length && (
+          {!sources.length && !children.length && (
             <p className="text-body text-fg-muted">
               先在 Providers 中配置模型来源，再添加服务模型。
             </p>
@@ -379,7 +450,7 @@ export function ServiceEditor({
             showPagination={false}
             aria-label="模型服务成员"
             role="region"
-            emptyMessage="添加一个模型开始，模型来源可以跨 Provider。"
+            emptyMessage="添加一个模型或已发布的子服务。"
             onRowActivate={(row) => {
               if (!busy) setSelected(row.original.id);
             }}
@@ -415,8 +486,14 @@ export function ServiceEditor({
                   <div className="grid gap-4 md:grid-cols-2">
                     {(
                       [
-                        ["maxConcurrent", "来源模型最大并发"],
-                        ["requestsPerMinute", "来源模型每分钟请求数"],
+                        [
+                          "maxConcurrent",
+                          child ? "子服务最大并发" : "来源模型最大并发",
+                        ],
+                        [
+                          "requestsPerMinute",
+                          child ? "子服务每分钟请求数" : "来源模型每分钟请求数",
+                        ],
                       ] as const
                     ).map(([key, label]) => (
                       <Field key={key}>
@@ -461,7 +538,9 @@ export function ServiceEditor({
                           }
                         />
                         <FieldDescription>
-                          0 表示不设置本机额度；同一来源模型共享计数。
+                          {child
+                            ? "0 表示不限额。此条目下的所有模型共享这项限制。"
+                            : "0 表示不设置本机额度。同一来源模型共享计数。"}
                         </FieldDescription>
                       </Field>
                     ))}
@@ -478,64 +557,129 @@ export function ServiceEditor({
                   onChange={(e) => update({ name: e.target.value })}
                 />
               </Field>
-              <div className="grid gap-4 md:grid-cols-2">
+              {child ? (
                 <Field>
-                  <FieldLabel>Provider 来源</FieldLabel>
+                  <FieldLabel>子服务版本</FieldLabel>
                   <Combobox<string>
-                    items={sources.map((p) => p.id)}
-                    value={member.providerId}
-                    onValueChange={(value) => {
-                      if (value) update({ providerId: value, model: "" });
+                    items={pinned ? [child.versionId, ...versions] : versions}
+                    value={child.versionId || null}
+                    itemToStringLabel={childLabel}
+                    onValueChange={(version) => {
+                      const next = children.find(
+                        (item) => item.versionId === version,
+                      );
+                      if (!next || version === child.versionId) return;
+                      update({
+                        name: member.name || next.name,
+                        child: {
+                          serviceId: next.id,
+                          versionId: next.versionId,
+                        },
+                        capabilities: commonCapabilities(next),
+                      });
                     }}
-                    itemToStringLabel={(id) =>
-                      sources.find((p) => p.id === id)?.name ?? id
-                    }
                     disabled={locked}
                   >
                     <ComboboxInput
-                      aria-label="Provider 来源"
-                      placeholder="搜索 Provider"
+                      aria-label="子服务版本"
+                      placeholder="搜索已发布的服务"
                     />
                     <ComboboxContent>
-                      <ComboboxEmpty>没有已配置来源</ComboboxEmpty>
+                      <ComboboxEmpty>没有匹配的已发布服务</ComboboxEmpty>
                       <ComboboxList>
-                        {(id) => (
-                          <ComboboxItem key={id} value={id}>
-                            {sources.find((p) => p.id === id)?.name ?? id}
+                        {(version) => (
+                          <ComboboxItem key={version} value={version}>
+                            {childLabel(version)}
                           </ComboboxItem>
                         )}
                       </ComboboxList>
                     </ComboboxContent>
                   </Combobox>
+                  <FieldDescription>
+                    此条目固定到所选版本。子服务更新后，可在这里选择新版并重新发布。
+                  </FieldDescription>
                 </Field>
-                <Field>
-                  <FieldLabel>来源模型</FieldLabel>
-                  <Combobox<string>
-                    items={models}
-                    value={member.model || null}
-                    onValueChange={(value) => {
-                      if (value)
-                        update({ model: value, name: member.name || value });
-                    }}
-                    disabled={locked || !source}
-                  >
-                    <ComboboxInput
-                      aria-label="来源模型"
-                      placeholder="搜索已启用模型"
-                    />
-                    <ComboboxContent>
-                      <ComboboxEmpty>请先在 Provider 中启用模型</ComboboxEmpty>
-                      <ComboboxList>
-                        {(id) => (
-                          <ComboboxItem key={id} value={id}>
-                            {id}
-                          </ComboboxItem>
-                        )}
-                      </ComboboxList>
-                    </ComboboxContent>
-                  </Combobox>
-                </Field>
-              </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field>
+                    <FieldLabel>Provider 来源</FieldLabel>
+                    <Combobox<string>
+                      items={sources.map((p) => p.id)}
+                      value={member.providerId}
+                      onValueChange={(value) => {
+                        if (value && value !== member.providerId) {
+                          setPool();
+                          update({ providerId: value, model: "" });
+                        }
+                      }}
+                      itemToStringLabel={(id) =>
+                        sources.find((p) => p.id === id)?.name ?? id
+                      }
+                      disabled={locked}
+                    >
+                      <ComboboxInput
+                        aria-label="Provider 来源"
+                        placeholder="搜索 Provider"
+                      />
+                      <ComboboxContent>
+                        <ComboboxEmpty>没有已配置来源</ComboboxEmpty>
+                        <ComboboxList>
+                          {(id) => (
+                            <ComboboxItem key={id} value={id}>
+                              {sources.find((p) => p.id === id)?.name ?? id}
+                            </ComboboxItem>
+                          )}
+                        </ComboboxList>
+                      </ComboboxContent>
+                    </Combobox>
+                  </Field>
+                  <Field>
+                    <FieldLabel>来源模型</FieldLabel>
+                    <Combobox<string>
+                      items={models}
+                      value={member.model || null}
+                      onValueChange={(value) => {
+                        if (value)
+                          update({ model: value, name: member.name || value });
+                      }}
+                      disabled={locked || !source}
+                    >
+                      <ComboboxInput
+                        aria-label="来源模型"
+                        placeholder="搜索已启用模型"
+                      />
+                      <ComboboxContent>
+                        <ComboboxEmpty>
+                          请先在 Provider 中启用模型
+                        </ComboboxEmpty>
+                        <ComboboxList>
+                          {(id) => (
+                            <ComboboxItem key={id} value={id}>
+                              {id}
+                            </ComboboxItem>
+                          )}
+                        </ComboboxList>
+                      </ComboboxContent>
+                    </Combobox>
+                  </Field>
+                </div>
+              )}
+              {source &&
+                (draft.routingPolicy?.enabled ||
+                  draft.routingPolicy?.accountPools?.some(
+                    (p) => p.modelId === member.id,
+                  )) && (
+                  <AccountPoolPicker
+                    modelId={member.id}
+                    providerId={source.id}
+                    storeId={origin}
+                    pool={draft.routingPolicy?.accountPools?.find(
+                      (p) => p.modelId === member.id,
+                    )}
+                    onChange={setPool}
+                    disabled={locked}
+                  />
+                )}
               <div className="grid gap-4 md:grid-cols-2">
                 <Field>
                   <FieldLabel htmlFor="service-context">
@@ -547,7 +691,7 @@ export function ServiceEditor({
                     min={2048}
                     max={2000000}
                     value={member.capabilities.contextWindow}
-                    disabled={locked}
+                    disabled={locked || !!child}
                     onChange={(e) =>
                       update({
                         capabilities: {
@@ -568,7 +712,7 @@ export function ServiceEditor({
                     min={16}
                     max={65536}
                     value={member.capabilities.maxOutputTokens}
-                    disabled={locked}
+                    disabled={locked || !!child}
                     onChange={(e) =>
                       update({
                         capabilities: {
@@ -583,7 +727,7 @@ export function ServiceEditor({
               <Switch
                 label="支持标准工具调用"
                 checked={member.capabilities.tools}
-                disabled={locked}
+                disabled={locked || !!child}
                 onCheckedChange={(tools) =>
                   update({ capabilities: { ...member.capabilities, tools } })
                 }
@@ -609,8 +753,19 @@ export function ServiceEditor({
                   </Button>
                 )}
               <p className="text-label text-fg-muted">
-                能力与上限为服务维护者声明，请依据来源模型填写。首批发布文本与标准工具，关闭思考，不发布图片或文件能力；短请求验证不代表完整能力验收。
+                {child
+                  ? "此条目继承所选子服务版本的共同能力。子服务自行管理账号池和回退顺序。"
+                  : "能力与上限为服务维护者声明，请依据来源模型填写。模型服务发布文本与标准工具。客户端思考控制关闭。短请求验证只覆盖所选连接。"}
               </p>
+              {source?.vendor === "minimax-plan" &&
+                ["MiniMax-M3.1-Flash", "MiniMax-M3.1-Flash-Preview"].includes(
+                  member.model,
+                ) && (
+                  <p className="text-label text-fg-muted">
+                    Flash
+                    会运行内置推理并占用输出预算。客户端接收文本和工具调用。
+                  </p>
+                )}
             </section>
           )}
           {!!draft.models.length && (
@@ -642,6 +797,11 @@ export function ServiceEditor({
               </FieldDescription>
             </Field>
           )}
+          <PublicationReview
+            draft={normalize(draft)}
+            storeId={origin}
+            disabled={locked}
+          />
           <p className="text-label text-fg-muted" role="status">
             {progress ||
               "来源或能力变化会发送短请求验证；仅调整策略时沿用已发布的来源快照。"}

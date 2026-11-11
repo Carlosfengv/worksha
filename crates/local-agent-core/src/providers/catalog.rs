@@ -12,6 +12,8 @@ pub struct ProviderPreset {
     pub id: String,
     pub name: String,
     pub protocol: String,
+    #[serde(default)]
+    pub model: String,
     pub endpoints: BTreeMap<String, String>,
     pub documents: Option<String>,
 }
@@ -45,6 +47,8 @@ impl ProviderCatalogue {
         for preset in &presets {
             if preset.id.is_empty()
                 || preset.name.is_empty()
+                || preset.model.chars().count() > 200
+                || preset.model.chars().any(char::is_control)
                 || !ids.insert(&preset.id)
                 || !["messages", "responses", "chat-completions"]
                     .contains(&preset.protocol.as_str())
@@ -94,6 +98,7 @@ mod tests {
                 "openrouter",
                 "deepseek",
                 "kimi",
+                "minimax-plan",
                 "ollama",
                 "vllm",
                 "custom"

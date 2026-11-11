@@ -16,6 +16,7 @@ pub(crate) struct Native {
     source: String,
     tools: Tools,
     tool_calls_allowed: bool,
+    hide_intrinsic_reasoning: bool,
     managed: bool,
     opened: bool,
     finished: bool,
@@ -38,6 +39,7 @@ impl Native {
             source: source.into(),
             tools,
             tool_calls_allowed,
+            hide_intrinsic_reasoning: false,
             managed,
             opened: false,
             finished: false,
@@ -47,6 +49,10 @@ impl Native {
             response_id: None,
             end_status: "success",
         }
+    }
+    pub(crate) fn hide_intrinsic_reasoning(mut self, hide: bool) -> Self {
+        self.hide_intrinsic_reasoning = hide;
+        self
     }
     // Called only after the host has accepted status, encoding and content type.
     // Starting client output before this point would change the existing error behavior.
@@ -58,7 +64,10 @@ impl Native {
         if !self.opened || !self.streamed || self.stream.is_some() {
             return Err("协议转换尚未就绪");
         }
-        let decoder = upstream.decoder().with_provider(&self.provider);
+        let decoder = upstream
+            .decoder()
+            .with_provider(&self.provider)
+            .hide_intrinsic_reasoning(self.hide_intrinsic_reasoning);
         let mut encoder = client
             .encoder(&self.provider.model, std::mem::take(&mut self.tools))
             .with_provider(&self.provider)
@@ -84,6 +93,31 @@ impl Native {
             .as_mut()
             .map_or_else(Vec::new, |(_, e)| e.error().into_bytes())
     }
+    pub(crate) fn take_rejection(&mut self) -> Option<Value> {
+        self.stream.as_mut()?.0.take_rejection()
+    }
+    pub(crate) fn feed_stream(&mut self, bytes: &[u8], output: &mut Output) -> Result<()> {
+        if self.finished {
+            return Err("协议转换尚未就绪");
+        }
+        let (decoder, encoder) = self.stream.as_mut().ok_or("协议转换尚未就绪")?;
+        let mut terminal = None;
+        decoder.feed_each(bytes, |delta| {
+            let chunk = encoder.push(delta)?.into_bytes();
+            if encoder.is_finished() {
+                terminal = Some(chunk);
+            } else {
+                output.chunks.push(chunk);
+            }
+            Ok(())
+        })?;
+        // An invalid suffix cannot turn a partial answer into a complete reply.
+        if let Some(chunk) = terminal {
+            output.chunks.push(chunk);
+            output.complete = true;
+        }
+        Ok(())
+    }
     fn encode(&mut self, deltas: Vec<super::stream::Delta>) -> Result<Output> {
         let (_, encoder) = self.stream.as_mut().ok_or("协议转换尚未就绪")?;
         let chunks = deltas
@@ -102,11 +136,14 @@ impl ProtocolAdapter for Native {
         if self.opened {
             return Err("协议转换已开始");
         }
-        let request = if self.managed {
+        let mut request = if self.managed {
             protocol::provider_request(&self.source, &self.provider, &input.request)?
         } else {
             input.request
         };
+        if self.hide_intrinsic_reasoning {
+            protocol::use_intrinsic_reasoning(&self.provider.protocol, &mut request);
+        }
         self.streamed = input.stream;
         self.opened = true;
         Ok(Opened::Json(request))
@@ -116,9 +153,9 @@ impl ProtocolAdapter for Native {
             return Err("协议转换尚未就绪");
         }
         if self.streamed {
-            let (decoder, _) = self.stream.as_mut().ok_or("协议转换尚未就绪")?;
-            let deltas = decoder.feed(bytes)?;
-            self.encode(deltas)
+            let mut output = Output::default();
+            self.feed_stream(bytes, &mut output)?;
+            Ok(output)
         } else {
             if self.json.len().saturating_add(bytes.len()) > 8 * 1024 * 1024 {
                 return Err("上游响应超限、中断或超时");
@@ -138,8 +175,11 @@ impl ProtocolAdapter for Native {
             self.encode(deltas).map(Finished::Stream)
         } else {
             let id = format!("resp_{}", uuid::Uuid::new_v4().simple());
-            let v: Value =
+            let mut v: Value =
                 serde_json::from_slice(&self.json).map_err(|_| "上游响应不是有效 JSON")?;
+            if self.hide_intrinsic_reasoning {
+                protocol::remove_intrinsic_reasoning(&self.provider.protocol, &mut v);
+            }
             let answer = Answer::parse_provider(&self.provider, &v)?;
             if !self.tool_calls_allowed
                 && (!answer.tools.is_empty() || answer.finish == "tool_calls")

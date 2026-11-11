@@ -40,6 +40,13 @@ fn question_answers(text: &str) -> Option<String> {
     )
 }
 
+fn request_text(text: &str) -> &str {
+    text.split_once("## My request (for Codex):")
+        .or_else(|| text.split_once("## My request:"))
+        .map_or(text, |(_, request)| request)
+        .trim()
+}
+
 pub fn preview(content: &Value) -> Option<String> {
     let mut texts = Vec::new();
     match content {
@@ -74,10 +81,7 @@ pub fn preview(content: &Value) -> Option<String> {
             None
         };
         let text = answer.as_deref().unwrap_or(text);
-        let text = text
-            .split_once("## My request:")
-            .map_or(text, |(_, request)| request)
-            .trim();
+        let text = request_text(text);
         if text.is_empty()
             || super::parser::is_context(text)
             || text.starts_with("[Request interrupted")
@@ -127,6 +131,78 @@ pub fn request(request: &Value) -> Option<String> {
             .then(|| preview(&request["input"]))
             .flatten()
     }
+}
+
+/// Routes only on the current user turn, never on client or tool context.
+pub fn intent_excerpt(request: &Value) -> Option<String> {
+    let content = request["messages"]
+        .as_array()?
+        .iter()
+        .rev()
+        .take(256)
+        .filter(|message| message["role"] == "user")
+        .map(|message| &message["content"])
+        .find(|content| {
+            !content
+                .as_array()
+                .is_some_and(|parts| parts.iter().any(|p| p["type"] == "tool_result"))
+                && preview(content).is_some()
+        })?;
+    let strings: Vec<&str> = match content {
+        Value::String(text) => vec![text],
+        Value::Array(parts) => parts
+            .iter()
+            .take(64)
+            .filter(|part| matches!(part["type"].as_str(), Some("text" | "input_text")))
+            .filter_map(|part| part["text"].as_str())
+            .collect(),
+        _ => return None,
+    };
+    let mut excerpt = String::new();
+    for text in strings {
+        if text.len() > 16 * 1024 {
+            continue;
+        }
+        let text = request_text(text);
+        if text.is_empty()
+            || super::parser::is_context(text)
+            || [
+                "<system-reminder",
+                "<environment_context",
+                "<user_instructions",
+                "<task-notification",
+                "<subagent-notification",
+                "<subagent_notification",
+                "<local-command-",
+                "<command-name>",
+                "<user_shell_command",
+                "<turn_aborted>",
+                "<plugin_reference",
+                "<send_user_message_question_reply",
+                "<in-app-browser-context",
+                "<external_codex_apps_open_page",
+                "<app-context",
+                "<recommended_plugins",
+                "<skills_instructions",
+                "<codex_internal_context",
+                "# AGENTS.md instructions",
+                "-----BEGIN ",
+            ]
+            .iter()
+            .any(|marker| text.contains(marker))
+        {
+            continue;
+        }
+        if excerpt.len() + text.len() > 16 * 1024 {
+            break;
+        }
+        if !excerpt.is_empty() {
+            excerpt.push('\n');
+        }
+        excerpt.push_str(text);
+    }
+    let (text, _) = super::parser::safe_text(&excerpt, 1600);
+    (!text.trim().is_empty()).then_some(text)
 }
 
 /// Native desktop task inputs use a dedicated envelope, not arbitrary tool text.
@@ -348,5 +424,28 @@ mod tests {
         ] {
             assert!(preview(&json!(text)).is_none());
         }
+    }
+
+    #[test]
+    fn intent_excerpt_uses_only_current_filtered_text() {
+        let request = serde_json::json!({"messages":[
+            {"role":"user","content":"private earlier turn"},
+            {"role":"assistant","content":"private answer"},
+            {"role":"user","content":[
+                {"type":"text","text":"<environment_context>private path</environment_context>"},
+                {"type":"text","text":"<in-app-browser-context>private tab</in-app-browser-context>\n## My request (for Codex):\nDebug the issue password=private-password"},
+                {"type":"text","text":"text with <app-context>private app context</app-context>"},
+                {"type":"image","source":{"data":"private picture"}}
+            ]}
+        ]});
+        assert_eq!(
+            intent_excerpt(&request).as_deref(),
+            Some("Debug the issue [已隐藏凭据]")
+        );
+        let unsafe_current = serde_json::json!({"messages":[
+            {"role":"user","content":"private earlier turn"},
+            {"role":"user","content":"text with <app-context>private app context</app-context>"}
+        ]});
+        assert_eq!(intent_excerpt(&unsafe_current), None);
     }
 }

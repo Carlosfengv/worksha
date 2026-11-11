@@ -45,6 +45,38 @@ test("Provider detail isolates linked accounts, keeps unknown and zero, and sele
   await expect(quota).not.toContainText("已关联账户 A");
 });
 
+test("default and pooled accounts display quota admission separately from the snapshot and enabled state", async ({
+  page,
+}) => {
+  await openConnection(page, "?mode=routing-quota");
+  const quota = page.getByRole("region", {
+    name: "账户用量与额度",
+    exact: true,
+  });
+  await expect(quota).toContainText("已读取");
+  await expect(quota).toContainText("模型服务 · 已知额度已用尽");
+  await page.getByRole("tab", { name: "上游账号", exact: true }).click();
+  const row = page.getByRole("row").filter({ hasText: "验收账号" });
+  await expect(row).toContainText("已启用");
+  await expect(row).toContainText("已知额度已用尽");
+  await expect(row).not.toContainText("无活跃冷却");
+  await row.getByRole("button", { name: "验证与状态 验收账号" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("region", { name: "冷却记录" })).toContainText(
+    "已知额度已用尽",
+  );
+  await dialog.getByRole("tab", { name: "用量与额度", exact: true }).click();
+  await expect(dialog).toContainText("模型服务 · 已知额度已用尽");
+  await dialog.getByRole("tab", { name: "验证与冷却", exact: true }).click();
+  await page.evaluate(() => {
+    window.accountForecastFixture.routingQuota = "recovery";
+    window.dispatchEvent(new Event("account-quota-changed"));
+  });
+  await expect(dialog.getByRole("region", { name: "冷却记录" })).toContainText(
+    "待额度恢复探测",
+  );
+});
+
 test("snapshot expiry and directory read failures keep observed values and suppress forecasts", async ({
   page,
 }) => {

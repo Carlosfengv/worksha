@@ -367,6 +367,7 @@ fn apply_inner(
                     config.default_profile,
                     &revoked,
                     bootstrap,
+                    retained.contains("openrouter"),
                 )?);
                 if bootstrap.is_some() {
                     state.iam.mark_enabled();

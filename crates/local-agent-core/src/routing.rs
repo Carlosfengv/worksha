@@ -6,6 +6,7 @@ use crate::{
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 pub const ALIAS: &str = "local-agent-default";
 pub const AGENT_CONNECTION_SCOPE: &str = "agent-connection@1:";
@@ -39,16 +40,27 @@ fn decode<T: for<'a> Deserialize<'a>>(value: &str) -> Result<T, ConfigError> {
     serde_json::from_str(value).map_err(db)
 }
 pub(crate) fn initialize(db: &Connection) -> Result<(), ConfigError> {
-    db.execute_batch("BEGIN IMMEDIATE;
+    let tx = rusqlite::Transaction::new_unchecked(db, rusqlite::TransactionBehavior::Immediate)
+        .map_err(db_error)?;
+    tx.execute_batch("
       CREATE TABLE IF NOT EXISTS gateway_bindings(id TEXT PRIMARY KEY,agent TEXT NOT NULL,scope TEXT NOT NULL,credential TEXT NOT NULL,target TEXT NOT NULL REFERENCES gateway_route_versions(id) DEFERRABLE INITIALLY DEFERRED,generation INTEGER NOT NULL CHECK(generation>0),created TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS gateway_route_versions(id TEXT PRIMARY KEY,binding TEXT NOT NULL REFERENCES gateway_bindings(id) DEFERRABLE INITIALLY DEFERRED,value TEXT NOT NULL CHECK(json_valid(value)),UNIQUE(id,binding));
       CREATE INDEX IF NOT EXISTS gateway_versions_binding ON gateway_route_versions(binding);
       CREATE TABLE IF NOT EXISTS gateway_route_changes(id TEXT PRIMARY KEY,binding TEXT NOT NULL REFERENCES gateway_bindings(id),state TEXT NOT NULL CHECK(state IN ('pending','applied','cancelled')),value TEXT NOT NULL CHECK(json_valid(value)));
       CREATE UNIQUE INDEX IF NOT EXISTS gateway_pending_change ON gateway_route_changes(binding) WHERE state='pending';
-      CREATE TABLE IF NOT EXISTS gateway_route_leases(seq INTEGER PRIMARY KEY,binding TEXT NOT NULL REFERENCES gateway_bindings(id),session TEXT NOT NULL,turn TEXT NOT NULL,version TEXT NOT NULL,chain TEXT NOT NULL CHECK(json_valid(chain)),trusted INTEGER NOT NULL CHECK(trusted IN (0,1)),reason TEXT NOT NULL,UNIQUE(binding,session,turn),FOREIGN KEY(version,binding) REFERENCES gateway_route_versions(id,binding));
-      CREATE INDEX IF NOT EXISTS gateway_session_leases ON gateway_route_leases(binding,session,seq DESC);
-      COMMIT;").map_err(db_error)?;
-    Ok(())
+      CREATE TABLE IF NOT EXISTS gateway_route_leases(seq INTEGER PRIMARY KEY,binding TEXT NOT NULL REFERENCES gateway_bindings(id),session TEXT NOT NULL,turn TEXT NOT NULL,version TEXT NOT NULL,chain TEXT NOT NULL CHECK(json_valid(chain)),trusted INTEGER NOT NULL CHECK(trusted IN (0,1)),reason TEXT NOT NULL,output_validated INTEGER NOT NULL DEFAULT 1 CHECK(output_validated IN (0,1)),UNIQUE(binding,session,turn),FOREIGN KEY(version,binding) REFERENCES gateway_route_versions(id,binding));
+      CREATE INDEX IF NOT EXISTS gateway_session_leases ON gateway_route_leases(binding,session,seq DESC);").map_err(db_error)?;
+    let has_output_validated = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('gateway_route_leases') WHERE name='output_validated')",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(db_error)?;
+    if !has_output_validated {
+        tx.execute_batch("ALTER TABLE gateway_route_leases ADD COLUMN output_validated INTEGER NOT NULL DEFAULT 1 CHECK(output_validated IN (0,1));").map_err(db_error)?;
+    }
+    tx.commit().map_err(db_error)
 }
 fn db_error(error: rusqlite::Error) -> ConfigError {
     db(error)
@@ -100,6 +112,79 @@ pub struct Turn {
     pub continuation: bool,
     pub portable: bool,
 }
+
+#[derive(Default)]
+pub struct OpenCodeRouteProof {
+    pub prefixes: HashMap<String, usize>,
+    pub legacy_title_turns: Vec<String>,
+}
+
+struct PriorLease {
+    seq: i64,
+    version: String,
+    chain: String,
+    trusted: bool,
+    selection: Option<String>,
+    reason: String,
+    turn: String,
+}
+
+fn previous_lease(
+    db: &Connection,
+    binding: &str,
+    session: &str,
+    before: Option<i64>,
+) -> Result<Option<PriorLease>, ConfigError> {
+    db.query_row(
+        "SELECT seq,version,chain,trusted,service_selection,reason,turn FROM gateway_route_leases
+         WHERE binding=?1 AND session=?2 AND output_validated=1 AND (?3 IS NULL OR seq<?3)
+         ORDER BY seq DESC LIMIT 1",
+        params![binding, session, before],
+        |r| {
+            Ok(PriorLease {
+                seq: r.get(0)?,
+                version: r.get(1)?,
+                chain: r.get(2)?,
+                trusted: r.get(3)?,
+                selection: r.get(4)?,
+                reason: r.get(5)?,
+                turn: r.get(6)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(db_error)
+}
+
+fn before_rejected_opencode_title(
+    db: &Connection,
+    binding: &str,
+    session: &str,
+    latest: &PriorLease,
+    proof: &OpenCodeRouteProof,
+) -> Result<Option<PriorLease>, ConfigError> {
+    if latest.trusted
+        || latest.reason != "session_boundary_unconfirmed"
+        || !proof.legacy_title_turns.contains(&latest.turn)
+    {
+        return Ok(None);
+    }
+    let Some(snapshot) = latest.selection.as_deref() else {
+        return Ok(None);
+    };
+    let selected: crate::model_services::ServiceSelection = decode(snapshot)?;
+    // OpenCode 2.x's initial title request uses the 32,000-token Messages default.
+    if selected.capabilities.max_output_tokens >= 32_000 {
+        return Ok(None);
+    }
+    Ok(previous_lease(db, binding, session, Some(latest.seq))?
+        .filter(|previous| proof.prefixes.contains_key(&previous.turn)))
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UncommittedDispatch {
+    Pending,
+    NoCommittedTarget,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Selection {
     #[serde(skip)]
@@ -107,7 +192,129 @@ pub struct Selection {
     pub version: Version,
     pub reason: String,
     pub service: Option<crate::model_services::ServiceSelection>,
+    #[serde(skip)]
+    pub uncommitted_dispatch: Option<UncommittedDispatch>,
 }
+fn inherits_route(reason: &str) -> bool {
+    matches!(
+        reason,
+        "history_requires_original_route" | "session_boundary_unconfirmed"
+    )
+}
+
+const SESSION_DISPATCH: &str = "new_session_requires_dispatch";
+const TURN_DISPATCH: &str = "new_user_turn_requires_dispatch";
+
+fn dispatch_boundary(saved: &str) -> Option<&'static str> {
+    match saved {
+        SESSION_DISPATCH => Some("new_session"),
+        TURN_DISPATCH => Some("new_user_turn"),
+        _ => None,
+    }
+}
+
+fn output_valid(
+    requested: Option<u64>,
+    service: Option<&crate::model_services::ServiceSelection>,
+) -> bool {
+    requested.zip(service).is_none_or(|(requested, service)| {
+        (1..=u64::from(service.capabilities.max_output_tokens)).contains(&requested)
+    })
+}
+
+fn output_limit_error() -> ConfigError {
+    ConfigError::new(
+        "invalid_output_limit",
+        "请求输出量超过此模型入口已声明的上限",
+    )
+}
+
+fn legacy_dispatch_required(
+    db: &Connection,
+    trusted: bool,
+    boundary: &str,
+    service: &crate::model_services::ServiceSelection,
+) -> Result<bool, ConfigError> {
+    Ok(trusted
+        && matches!(boundary, "new_session" | "new_user_turn")
+        && crate::model_services::version(db, &service.service_version_id)?
+            .routing_policy
+            .enabled)
+}
+
+fn inherited_service_route(
+    db: &Connection,
+    binding: &str,
+    session: &str,
+    sequence: i64,
+    snapshot: (&str, &str),
+    reason: String,
+) -> Result<Selection, ConfigError> {
+    // Historical inherited leases may already contain a provisional candidate.
+    // Resolve the original lease at the inherited lease's position in history.
+    let (version_id, trusted, original_reason, service, dispatch) = db
+        .query_row(
+            "SELECT l.version,l.trusted,l.reason,l.service_selection,d.state
+         FROM gateway_route_leases l
+         LEFT JOIN service_route_dispatch d
+           ON d.binding=l.binding AND d.session=l.session AND d.turn=l.turn
+         WHERE l.binding=?1 AND l.session=?2 AND l.seq<=?3
+           AND l.output_validated=1
+           AND l.reason NOT IN ('history_requires_original_route','session_boundary_unconfirmed')
+         ORDER BY l.seq DESC LIMIT 1",
+            params![binding, session, sequence],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, bool>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                ))
+            },
+        )
+        .map_err(db_error)?;
+    let service: Option<crate::model_services::ServiceSelection> =
+        service.as_deref().map(decode).transpose()?;
+    let mut uncommitted_dispatch = match (dispatch.as_deref(), service.as_ref()) {
+        (Some("pending"), _) => Some(UncommittedDispatch::Pending),
+        (Some("failed"), _) => Some(UncommittedDispatch::NoCommittedTarget),
+        (None, Some(service)) => (dispatch_boundary(&original_reason).is_some()
+            || legacy_dispatch_required(db, trusted, &original_reason, service)?)
+        .then_some(UncommittedDispatch::NoCommittedTarget),
+        _ => None,
+    };
+    if uncommitted_dispatch.is_none() {
+        let saved: crate::model_services::ServiceSelection = decode(snapshot.1)?;
+        let same_target = snapshot.0 == version_id
+            && service.as_ref().is_some_and(|current| {
+                saved.service_version_id == current.service_version_id
+                    && saved.model_id == current.model_id
+                    && saved.upstream_account == current.upstream_account
+                    && saved
+                        .nested_route
+                        .iter()
+                        .map(|hop| (&hop.version_id, &hop.model_id))
+                        .eq(current
+                            .nested_route
+                            .iter()
+                            .map(|hop| (&hop.version_id, &hop.model_id)))
+            });
+        if !same_target {
+            // Older versions may have sent on the inherited candidate before
+            // the original committed. A conflicting history cannot switch targets.
+            uncommitted_dispatch = Some(UncommittedDispatch::NoCommittedTarget);
+        }
+    }
+    Ok(Selection {
+        fresh: false,
+        version: version(db, &version_id)?,
+        reason,
+        service,
+        uncommitted_dispatch,
+    })
+}
+
 pub(crate) fn version(db: &Connection, id: &str) -> Result<Version, ConfigError> {
     let value: String = db
         .query_row(
@@ -587,7 +794,7 @@ impl Store {
         Ok(c)
     }
     pub fn dynamic_lease_summary(&self) -> Result<Vec<LeaseSummary>, ConfigError> {
-        let mut s=self.connection.prepare("SELECT binding,version,count(*) FROM gateway_route_leases GROUP BY binding,version").map_err(db_error)?;
+        let mut s=self.connection.prepare("SELECT binding,version,count(*) FROM gateway_route_leases WHERE output_validated=1 GROUP BY binding,version").map_err(db_error)?;
         s.query_map([], |r| {
             Ok(LeaseSummary {
                 binding_id: r.get(0)?,
@@ -600,7 +807,8 @@ impl Store {
         .map_err(db_error)
     }
     pub fn dynamic_admit(&self, id: &str, turn: &Turn) -> Result<Selection, ConfigError> {
-        self.admit(id, turn, None)
+        self.gateway_admit(id, turn, &[], None, None, None)
+            .map(|(selected, _)| selected)
     }
     pub fn model_service_admit(
         &self,
@@ -608,9 +816,36 @@ impl Store {
         turn: &Turn,
         model: &str,
     ) -> Result<Selection, ConfigError> {
-        self.admit(id, turn, Some(model))
+        self.gateway_admit(id, turn, &[], None, Some(model), None)
+            .map(|(selected, _)| selected)
     }
-    fn admit(&self, id: &str, turn: &Turn, model: Option<&str>) -> Result<Selection, ConfigError> {
+    pub fn opencode_boundary_needs_proof(
+        &self,
+        binding: &str,
+        session: &str,
+    ) -> Result<bool, ConfigError> {
+        self.connection
+            .query_row(
+                "SELECT reason='session_boundary_unconfirmed' FROM gateway_route_leases
+             WHERE binding=?1 AND session=?2 AND output_validated=1 ORDER BY seq DESC LIMIT 1",
+                params![binding, session],
+                |row| row.get::<_, bool>(0),
+            )
+            .optional()
+            .map(|value| value.unwrap_or(false))
+            .map_err(db_error)
+    }
+    /// The returned turn names the actual lease, including a retry written
+    /// under an older OpenCode identity. New leases use the primary identity.
+    pub fn gateway_admit<'a>(
+        &self,
+        id: &str,
+        turn: &'a Turn,
+        compatible: &'a [Turn],
+        opencode_proof: Option<&OpenCodeRouteProof>,
+        model: Option<&str>,
+        requested_output: Option<u64>,
+    ) -> Result<(Selection, &'a Turn), ConfigError> {
         let tx = self.connection.unchecked_transaction().map_err(db_error)?;
         let b = required(&tx, id)?;
         let attachment = crate::model_services::attachment(&tx, id)?;
@@ -620,30 +855,191 @@ impl Store {
             return fail("invalid_model", "请选择此模型服务已注入的模型");
         }
         let session = turn.session.as_deref().unwrap_or("unknown");
+        let compatible = if b.agent_id == "opencode" && turn.session.is_some() {
+            compatible
+        } else {
+            &[]
+        };
+        let identities = || std::iter::once(turn).chain(compatible);
         let digest = if turn.session.is_some() {
             turn.digest.as_str()
         } else {
             "unknown"
         };
-        if let Some((v,reason,service))=tx.query_row("SELECT version,reason,service_selection FROM gateway_route_leases WHERE binding=?1 AND session=?2 AND turn=?3",params![id,session,digest],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,Option<String>>(2)?))).optional().map_err(db_error)?{
-            return Ok(Selection{fresh:false,version:version(&tx,&v)?,reason,service:service.as_deref().map(decode).transpose()?});
+        let exact = tx
+            .query_row(
+                "SELECT l.seq,l.version,l.reason,l.service_selection,l.trusted,d.state,l.turn,l.output_validated
+             FROM gateway_route_leases l
+             LEFT JOIN service_route_dispatch d
+               ON d.binding=l.binding AND d.session=l.session AND d.turn=l.turn
+             WHERE l.binding=?1 AND l.session=?2 AND l.turn IN (SELECT value FROM json_each(?3))
+             ORDER BY (d.state IS NOT NULL) DESC,l.output_validated DESC,l.trusted DESC,l.seq DESC LIMIT 1",
+                params![
+                    id,
+                    session,
+                    encode(
+                        &std::iter::once(digest)
+                            .chain(compatible.iter().map(|turn| turn.digest.as_str()))
+                            .collect::<Vec<_>>()
+                    )?
+                ],
+                |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, Option<String>>(3)?,
+                        r.get::<_, bool>(4)?,
+                        r.get::<_, Option<String>>(5)?,
+                        r.get::<_, String>(6)?,
+                        r.get::<_, bool>(7)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(db_error)?;
+        if let Some((seq, version_id, reason, snapshot, trusted, state, saved_digest, validated)) =
+            exact
+        {
+            let effective = identities()
+                .find(|turn| turn.digest == saved_digest)
+                .unwrap_or(turn);
+            let service: Option<crate::model_services::ServiceSelection> =
+                snapshot.as_deref().map(decode).transpose()?;
+            if !output_valid(requested_output, service.as_ref()) {
+                return Err(output_limit_error());
+            }
+            let selected = if model.is_some()
+                && inherits_route(&reason)
+                && let Some(snapshot) = &snapshot
+            {
+                inherited_service_route(&tx, id, session, seq, (&version_id, snapshot), reason)?
+            } else {
+                let boundary = dispatch_boundary(&reason);
+                let mut fresh = false;
+                let mut uncommitted_dispatch = None;
+                if model.is_some()
+                    && let Some(service) = &service
+                {
+                    let ordinary_turn = !turn.continuation && turn.portable;
+                    match state.as_deref() {
+                        None if boundary.is_some() && ordinary_turn => fresh = true,
+                        None if boundary.is_some()
+                            || legacy_dispatch_required(&tx, trusted, &reason, service)? =>
+                        {
+                            uncommitted_dispatch = Some(UncommittedDispatch::NoCommittedTarget)
+                        }
+                        Some("failed") if !ordinary_turn => {
+                            uncommitted_dispatch = Some(UncommittedDispatch::NoCommittedTarget)
+                        }
+                        _ => (),
+                    }
+                }
+                Selection {
+                    fresh,
+                    version: version(&tx, &version_id)?,
+                    reason: boundary.map_or(reason, str::to_owned),
+                    service,
+                    uncommitted_dispatch,
+                }
+            };
+            if !validated {
+                tx.execute(
+                    "UPDATE gateway_route_leases SET output_validated=1 WHERE seq=?1",
+                    [seq],
+                )
+                .map_err(db_error)?;
+                tx.commit().map_err(db_error)?;
+            }
+            return Ok((selected, effective));
         }
-        let old=tx.query_row("SELECT version,chain,trusted,service_selection FROM gateway_route_leases WHERE binding=?1 AND session=?2 ORDER BY seq DESC LIMIT 1",params![id,session],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,bool>(2)?,r.get::<_,Option<String>>(3)?))).optional().map_err(db_error)?;
+        let proof = opencode_proof.filter(|_| {
+            b.agent_id == "opencode"
+                && turn.session.is_some()
+                && turn.portable
+                && !turn.continuation
+        });
+        let proof = if let Some(proof) = proof
+            && !proof.legacy_title_turns.is_empty()
+            && tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM service_route_dispatch WHERE binding=?1 AND session=?2
+                    AND turn IN (SELECT value FROM json_each(?3)))",
+                params![id, session, encode(&proof.legacy_title_turns)?],
+                |row| row.get::<_, bool>(0),
+            ).map_err(db_error)?
+        {
+            // A title with a dispatch record cannot be treated as a local
+            // rejection, even if a newer user lease now sits in front of it.
+            None
+        } else {
+            proof
+        };
+        let mut old = previous_lease(&tx, id, session, None)?;
+        if model.is_some()
+            && let (Some(proof), Some(latest)) = (proof, old.as_ref())
+            && let Some(previous) = before_rejected_opencode_title(&tx, id, session, latest, proof)?
+        {
+            old = Some(previous);
+        }
         let mut selected = b.target;
         let mut service = None;
         let mut pinned = false;
         let mut trusted = turn.session.is_some() && !turn.chain.is_empty();
         let mut reason = "new_session".to_string();
-        if let Some((old_id, chain, was_trusted, old_service)) = old {
+        if let Some(PriorLease {
+            seq,
+            version: old_id,
+            chain,
+            trusted: was_trusted,
+            selection: old_service,
+            reason: old_reason,
+            turn: old_turn,
+        }) = old
+        {
             let chain: Vec<String> = decode(&chain)?;
-            let boundary = was_trusted
-                && !turn.continuation
-                && turn.chain.len() > chain.len()
-                && turn.chain.starts_with(&chain);
-            trusted = was_trusted && (boundary || turn.chain == chain);
+            let matching_identity =
+                |saved: &[String]| identities().position(|turn| turn.chain.starts_with(saved));
+            let matched = matching_identity(&chain);
+            let appended = !turn.continuation && turn.chain.len() > chain.len();
+            let mut confirmed = was_trusted;
+            let prefixes = proof.map(|proof| &proof.prefixes);
+            let native_position = prefixes.and_then(|p| p.get(&old_turn));
+            let mut native_confirmed = was_trusted;
+            if !confirmed
+                && turn.portable
+                && old_reason == "session_boundary_unconfirmed"
+                && ((!compatible.is_empty() && appended && matched.is_some())
+                    || native_position.is_some())
+            {
+                // Affected versions saved an untrusted lease after changing
+                // the OpenCode hash namespace. Require both that lease and an
+                // earlier trusted anchor to match the complete current history.
+                let anchor: Option<(String, String)> = tx.query_row(
+                    "SELECT chain,turn FROM gateway_route_leases WHERE binding=?1 AND session=?2 AND seq<?3 AND trusted=1 AND output_validated=1 ORDER BY seq DESC LIMIT 1",
+                    params![id, session, seq],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                ).optional().map_err(db_error)?;
+                if let Some((anchor, anchor_turn)) = anchor {
+                    let anchor: Vec<String> = decode(&anchor)?;
+                    confirmed = appended
+                        && !compatible.is_empty()
+                        && !anchor.is_empty()
+                        && anchor.len() <= chain.len()
+                        && matched.is_some_and(|matched| {
+                            matching_identity(&anchor).is_some_and(|index| index != matched)
+                        });
+                    // OpenCode can combine adjacent native user messages after
+                    // empty replies. The source reader must prove both prefixes.
+                    native_confirmed = native_position
+                        .zip(prefixes.and_then(|p| p.get(&anchor_turn)))
+                        .is_some_and(|(previous, anchor)| anchor <= previous);
+                }
+            }
+            let boundary = (confirmed && matched.is_some() && appended)
+                || (native_confirmed && native_position.is_some());
+            trusted =
+                boundary || (confirmed && matched.is_some() && turn.chain.len() == chain.len());
             if !boundary || !turn.portable {
-                selected = version(&tx, &old_id)?;
-                service = old_service.as_deref().map(decode).transpose()?;
                 pinned = true;
                 reason = if !turn.portable {
                     "history_requires_original_route"
@@ -651,6 +1047,26 @@ impl Store {
                     "session_boundary_unconfirmed"
                 }
                 .into();
+                if model.is_some()
+                    && let Some(snapshot) = &old_service
+                {
+                    let inherited = inherited_service_route(
+                        &tx,
+                        id,
+                        session,
+                        seq,
+                        (&old_id, snapshot),
+                        reason.clone(),
+                    )?;
+                    if inherited.uncommitted_dispatch.is_some() {
+                        return Ok((inherited, turn));
+                    }
+                    selected = inherited.version;
+                    service = inherited.service;
+                } else {
+                    selected = version(&tx, &old_id)?;
+                    service = old_service.as_deref().map(decode).transpose()?;
+                }
             } else {
                 reason = "new_user_turn".into();
             }
@@ -660,8 +1076,21 @@ impl Store {
                 "工具续调缺少已保存的原路由，请开启新会话",
             );
         }
+        let fresh = trusted && !pinned && !turn.continuation && turn.portable;
+        let mut saved_reason = reason.as_str();
+        let mut classifiable = false;
         if !pinned && let (Some(attachment), Some(model)) = (attachment, model) {
             let (published, target, selection) = attachment.resolve(&tx, model)?;
+            if fresh && published.routing_policy.enabled {
+                classifiable = selection.mode == "default"
+                    && (published.routing_policy.intent_classifier.is_some()
+                        || published.models.iter().any(|model| model.child.is_some()));
+                saved_reason = if reason == "new_session" {
+                    SESSION_DISPATCH
+                } else {
+                    TURN_DISPATCH
+                };
+            }
             let route: Option<String> = tx.query_row("SELECT route FROM model_service_targets WHERE binding=?1 AND version=?2 AND model=?3",params![id,published.version_id,target.id],|r|r.get(0)).optional().map_err(db_error)?;
             selected = if let Some(route) = route {
                 version(&tx, &route)?
@@ -676,6 +1105,8 @@ impl Store {
             };
             service = Some(selection);
         }
+        // Preserve the publication for a corrected exact retry, without anchoring later turns.
+        let output_validated = output_valid(requested_output, service.as_ref());
         let count: i64 = tx
             .query_row("SELECT count(*) FROM gateway_route_leases", [], |r| {
                 r.get(0)
@@ -684,14 +1115,28 @@ impl Store {
         if count >= MAX_LEASES {
             return fail("capacity", "轮次路由记录已达上限；不会驱逐旧工具续调");
         }
-        tx.execute("INSERT INTO gateway_route_leases(binding,session,turn,version,chain,trusted,reason,service_selection) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![id,session,digest,selected.id,encode(&turn.chain)?,trusted,reason,service.as_ref().map(encode).transpose()?]).map_err(db_error)?;
+        tx.execute("INSERT INTO gateway_route_leases(binding,session,turn,version,chain,trusted,reason,service_selection,output_validated) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",params![id,session,digest,selected.id,encode(&turn.chain)?,trusted,saved_reason,service.as_ref().map(encode).transpose()?,output_validated]).map_err(db_error)?;
+        if classifiable {
+            tx.execute(
+                "INSERT INTO service_route_intents(binding,session,turn) VALUES(?1,?2,?3)",
+                params![id, session, digest],
+            )
+            .map_err(db_error)?;
+        }
         tx.commit().map_err(db_error)?;
-        Ok(Selection {
-            fresh: trusted && !pinned && !turn.continuation && turn.portable,
-            version: selected,
-            reason,
-            service,
-        })
+        if !output_validated {
+            return Err(output_limit_error());
+        }
+        Ok((
+            Selection {
+                fresh,
+                version: selected,
+                reason,
+                service,
+                uncommitted_dispatch: None,
+            },
+            turn,
+        ))
     }
 }
 

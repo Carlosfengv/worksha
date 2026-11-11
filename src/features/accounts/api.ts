@@ -4,11 +4,16 @@ export const accountsApi = {
   accounts(): Promise<Accounts> {
     return command("get_accounts");
   },
-  refreshAccount(
+  async refreshAccount(
     accountRef: string,
     expectedRevision: string,
   ): Promise<Accounts> {
-    return command("refresh_account", { accountRef, expectedRevision });
+    const reply = await command<Accounts>("refresh_account", {
+      accountRef,
+      expectedRevision,
+    });
+    window.dispatchEvent(new Event("account-quota-changed"));
+    return reply;
   },
   createClaudeQuotaLauncher(): Promise<{
     launcherPath: string;

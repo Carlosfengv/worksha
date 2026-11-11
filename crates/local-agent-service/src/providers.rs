@@ -9,6 +9,7 @@ pub(crate) mod operations;
 pub(crate) mod presets;
 mod process;
 pub(crate) mod source_operation;
+pub(crate) mod upstream_accounts;
 
 use self::{installation::Compatibility, process::output};
 use crate::{ApiResult, AppState, json_value};
@@ -732,30 +733,40 @@ async fn switch(state: AppState, id: String, commit: bool) -> ApiResult {
             require_supported(&t.agent_id).map_err(error)?;
         }
         let m = state.providers.lock().map_err(|_| error(unavailable()))?;
+        // Hold the store through the verification and config commit so a
+        // concurrent publication cannot replace the checked enrollment.
+        let store = state.store.lock().map_err(|_| error(unavailable()))?;
         if t.state == "pending"
             && t.restore_of.is_none()
             && let Some(p) = &current
         {
             let selected = select_model(p, t.model.as_deref()).map_err(error)?;
-            if t.routing
+            let binding = t
+                .routing
                 .as_ref()
-                .is_some_and(|route| !route.models.is_empty())
-            {
-                m.require_model_verifications(p, p.enabled_model_ids())
-                    .map_err(error)?;
-            } else {
-                m.require_verification(&selected).map_err(error)?;
+                .map(|route| store.dynamic_binding(&route.id))
+                .transpose()
+                .map_err(error)?
+                .flatten();
+            let service_verified = match &binding {
+                Some(b) => {
+                    crate::model_services::ensure_enrollment(&store, &m, &b.id).map_err(error)?
+                }
+                None => false,
+            };
+            if !service_verified {
+                if t.routing
+                    .as_ref()
+                    .is_some_and(|route| !route.models.is_empty())
+                {
+                    m.require_model_verifications(p, p.enabled_model_ids())
+                        .map_err(error)?;
+                } else {
+                    m.require_verification(&selected).map_err(error)?;
+                }
             }
             if commit && let Some(route) = &t.routing {
-                let binding = state
-                    .store
-                    .lock()
-                    .map_err(|_| error(unavailable()))?
-                    .dynamic_binding(&route.id)
-                    .map_err(error)?;
                 if let Some(b) = binding {
-                    let store = state.store.lock().map_err(|_| error(unavailable()))?;
-                    crate::model_services::ensure_enrollment(&store, &m, &b.id).map_err(error)?;
                     crate::gateway::dynamic::ensure(&b, route, &selected, &t.before.path)
                         .map_err(error)?;
                 } else {
@@ -763,8 +774,6 @@ async fn switch(state: AppState, id: String, commit: bool) -> ApiResult {
                 }
             }
         }
-        // Re-check the full provider fingerprint while holding the store lock through the commit.
-        let store = state.store.lock().map_err(|_| error(unavailable()))?;
         if !commit {
             return json_value(m.check_switch(&id, current.as_ref()).map_err(error)?);
         }
@@ -799,6 +808,8 @@ pub struct Verify {
     pub(crate) expected_revision: u64,
     #[serde(default)]
     pub(crate) model: Option<String>,
+    #[serde(default)]
+    pub(crate) upstream_account: Option<providers::upstream_accounts::AccountRef>,
 }
 pub async fn verify(
     State(state): State<AppState>,
@@ -810,9 +821,11 @@ pub async fn verify(
         .clone()
         .try_acquire_owned()
         .map_err(|_| error(ConfigError::new("busy", "已有连接验证正在进行，请稍后重试")))?;
+    let account = input.upstream_account;
     let p = {
         let state = state.clone();
         let id = id.clone();
+        let account = account.clone();
         crate::blocking::run(move || {
             let p = provider(&state, &id)?;
             if p.revision != input.expected_revision {
@@ -822,6 +835,7 @@ pub async fn verify(
                 )));
             }
             let p = select_model(&p, input.model.as_deref()).map_err(error)?;
+            let p = verification_target(&state, p, account.as_ref()).map_err(error)?;
             providers::validate_source(&p).map_err(error)?;
             Ok(p)
         })
@@ -840,7 +854,10 @@ pub async fn verify(
     let result = probe_with(&state.provider_adapters, &state.provider_client, &p, secret).await;
     let now = chrono::Utc::now().to_rfc3339();
     let v = Verification {
-        provider_id: id.clone(),
+        provider_id: account
+            .as_ref()
+            .map_or_else(|| id.clone(), |a| a.id.clone()),
+        account_revision: account.as_ref().map(|a| a.revision),
         model: Some(p.model.clone()),
         fingerprint: fingerprint(&p),
         state: if result.is_ok() { "verified" } else { "failed" }.into(),
@@ -849,6 +866,7 @@ pub async fn verify(
     };
     crate::blocking::run(move || {
         let current = select_model(&provider(&state, &id)?, v.model.as_deref()).map_err(error)?;
+        let current = verification_target(&state, current, account.as_ref()).map_err(error)?;
         if fingerprint(&current) != v.fingerprint {
             return Err(error(ConfigError::new(
                 "conflict",
@@ -865,6 +883,22 @@ pub async fn verify(
     })
     .await
     .map_err(|e| error(crate::blocking::config_error(e)))?
+}
+
+fn verification_target(
+    state: &AppState,
+    provider: Provider,
+    account: Option<&providers::upstream_accounts::AccountRef>,
+) -> Result<Provider, ConfigError> {
+    let Some(account) = account else {
+        return Ok(provider);
+    };
+    state
+        .store
+        .lock()
+        .map_err(|_| unavailable())?
+        .upstream_account_target(&provider, account)
+        .map(|(target, _)| target)
 }
 #[cfg(test)]
 pub(crate) async fn probe(
@@ -916,6 +950,7 @@ pub(crate) async fn probe_detailed_with(
     p: &Provider,
     secret: Option<Zeroizing<Vec<u8>>>,
 ) -> Result<String, ConfigError> {
+    providers::subscription::validate_key(p, secret.as_deref().map(Vec::as_slice))?;
     let wire = crate::gateway::capabilities::builtin()
         .resolve(&p.protocol)
         .map_err(|message| ConfigError::new("incompatible", message))?;
@@ -928,16 +963,29 @@ pub(crate) async fn probe_detailed_with(
             "Provider 验证规则与所选协议不匹配",
         ));
     }
-    let body = wire.verification_body(&p.model);
+    let mut body = wire.verification_body(&p.model);
+    let intrinsic_reasoning = providers::subscription::intrinsic_reasoning(p);
+    if intrinsic_reasoning {
+        body[if p.protocol == "responses" {
+            "max_output_tokens"
+        } else {
+            "max_tokens"
+        }] = json!(256);
+        crate::gateway::protocol::use_intrinsic_reasoning(&p.protocol, &mut body);
+    }
     let mut request = client
         .post(wire.endpoint(&p.endpoint))
-        .timeout(Duration::from_secs(6))
+        .timeout(Duration::from_secs(if intrinsic_reasoning {
+            15
+        } else {
+            6
+        }))
         .json(&body);
     if let Some(key) = secret.as_deref() {
         let key = std::str::from_utf8(key)
             .map_err(|_| ConfigError::new("invalid_credential", "凭据不是有效的 API Key"))?;
         request = request.bearer_auth(key);
-        if wire.api_key_header() {
+        if wire.api_key_header() && !providers::subscription::minimax_plan(p) {
             request = request.header("x-api-key", key);
         }
     }
@@ -985,9 +1033,14 @@ pub(crate) async fn probe_detailed_with(
         }
         bytes.extend_from_slice(&chunk);
     }
-    let body: Value = serde_json::from_slice(&bytes)
+    let mut body: Value = serde_json::from_slice(&bytes)
         .map_err(|_| ConfigError::new("probe_shape", "响应不是该协议的 JSON 结果"))?;
-    let valid = wire.verification_valid(&body);
+    let valid = wire.verification_valid(&body)
+        && (!intrinsic_reasoning || {
+            crate::gateway::protocol::remove_intrinsic_reasoning(&p.protocol, &mut body);
+            crate::gateway::protocol::Answer::parse(&p.protocol, &body)
+                .is_ok_and(|answer| !answer.text.trim().is_empty())
+        });
     adapter
         .ensure_active()
         .map_err(|e| ConfigError::new("incompatible", &e.message))?;

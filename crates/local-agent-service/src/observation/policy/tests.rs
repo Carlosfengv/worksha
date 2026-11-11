@@ -1,4 +1,274 @@
 use super::*;
+
+#[tokio::test]
+async fn stream_preflight_respects_event_order_across_transport_chunks() {
+    let output = "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"partial\"}}\n\n";
+    let rejection = "data: {\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\"}}\n\n";
+    let ordered = [output, rejection].concat();
+    let make = |chunks: Vec<Bytes>| {
+        let body = Body::from_stream(futures_util::stream::iter(
+            chunks.into_iter().map(Ok::<_, std::convert::Infallible>),
+        ));
+        ([("content-type", "text/event-stream")], body).into_response()
+    };
+    for chunks in [
+        vec![Bytes::copy_from_slice(ordered.as_bytes())],
+        vec![
+            Bytes::from_static(output.as_bytes()),
+            Bytes::from_static(rejection.as_bytes()),
+        ],
+    ] {
+        let response = preflight(make(chunks), "messages", true).await.unwrap();
+        let bytes = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        assert_eq!(bytes, ordered.as_bytes());
+    }
+    let reversed = [rejection, output].concat();
+    let error = preflight(make(vec![Bytes::from(reversed)]), "messages", true)
+        .await
+        .unwrap_err();
+    assert_eq!(error.status(), StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn mismatched_stream_format_preserves_a_complete_upstream_rejection() {
+    for (retry, expected) in [
+        (["12"].as_slice(), 12),
+        (["12", "3600"].as_slice(), 60),
+        (["12, 3600"].as_slice(), 60),
+        ([].as_slice(), 60),
+    ] {
+        let mut response = axum::Json(serde_json::json!({
+            "type": "error",
+            "error": {"type": "rate_limit_error", "message": "fixture rate limit"}
+        }))
+        .into_response();
+        for value in retry {
+            response
+                .headers_mut()
+                .append("retry-after", HeaderValue::from_static(value));
+        }
+        assert_eq!(
+            retry_seconds(&response, 60),
+            expected,
+            "Retry-After {retry:?}"
+        );
+        let error = preflight(response, "messages", true).await.unwrap_err();
+        assert_eq!(error.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert!(matches!(failure(error.status(), &error), Failure::Rate));
+        assert_eq!(retry_seconds(&error, 60), expected, "Retry-After {retry:?}");
+    }
+}
+
+#[test]
+fn rate_reservations_release_before_send_and_count_once_after_send() {
+    let runtime = Arc::new(Runtime::default());
+    let limit = ModelLimit {
+        max_concurrent: 0,
+        requests_per_minute: 2,
+        ..Default::default()
+    };
+    let reserve = || runtime.slot("shared model".into(), &limit);
+    let first = reserve().unwrap();
+    let cancelled = reserve().unwrap();
+    assert!(reserve().is_err());
+    drop(cancelled);
+    let other = reserve().unwrap();
+    let send = SendSlots(vec![first]);
+    send.mark_sent().unwrap();
+    send.mark_sent().unwrap();
+    drop(send);
+    assert!(reserve().is_err());
+    drop(other);
+    let last = SendSlots(vec![reserve().unwrap()]);
+    last.mark_sent().unwrap();
+    drop(last);
+    assert!(reserve().is_err());
+}
+
+#[test]
+fn access_rejection_requires_unambiguous_wire_status_and_code() {
+    for (status, bytes, expected) in [
+        (
+            401,
+            br#"{"error":{"type":"authentication_error","code":"invalid_api_key"}}"#.as_slice(),
+            Some("upstream_credential_rejected"),
+        ),
+        (
+            403,
+            br#"{"error":{"type":"invalid_request_error","code":"model_not_found"}}"#.as_slice(),
+            Some("upstream_model_access_denied"),
+        ),
+        (
+            401,
+            br#"{"error":{"type":"authentication_error","message":"invalid_api_key"}}"#.as_slice(),
+            None,
+        ),
+        (
+            403,
+            br#"{"error":{"type":"permission_error","code":"permission_denied"}}"#.as_slice(),
+            None,
+        ),
+        (
+            403,
+            br#"{"error":{"code":"permission_denied","code":"model_access_denied"}}"#.as_slice(),
+            None,
+        ),
+        (
+            401,
+            br#"{"error":{"type":"permission_error","code":"invalid_api_key"}}"#.as_slice(),
+            None,
+        ),
+        (
+            403,
+            br#"{"error":{"type":"authentication_error","code":"model_access_denied"}}"#.as_slice(),
+            None,
+        ),
+        (
+            401,
+            br#"{"error":{"type":3,"code":"invalid_api_key"}}"#.as_slice(),
+            None,
+        ),
+        (
+            404,
+            br#"{"error":{"code":"model_not_found"}}"#.as_slice(),
+            None,
+        ),
+    ] {
+        let mut extensions = Extensions::new();
+        mark_upstream_rejection(
+            StatusCode::from_u16(status).unwrap(),
+            bytes,
+            &mut extensions,
+        );
+        assert_eq!(
+            extensions
+                .get::<AccessRejection>()
+                .copied()
+                .map(AccessRejection::reason),
+            expected
+        );
+    }
+    for error in [
+        r#"{"type":"error","code":"invalid_api_key"}"#,
+        r#"{"type":"error","error":{"type":"content_policy_violation","code":"provider_error"}}"#,
+    ] {
+        let response = reply_rejection(&serde_json::from_str(error).unwrap(), false, None).unwrap();
+        assert!(matches!(
+            failure(response.status(), &response),
+            Failure::Stop
+        ));
+    }
+}
+
+#[test]
+fn official_openrouter_reply_uses_the_error_shape_of_each_wire_protocol() {
+    for (value, status, retryable) in [
+        (
+            json!({"error":{"code":429,"message":"throttled"}}),
+            429,
+            true,
+        ),
+        (
+            json!({"error":{"code":402,"message":"credits"}}),
+            402,
+            false,
+        ),
+        (
+            json!({"error":{"code":403,"metadata":{"error_type":"rate_limit_exceeded"}}}),
+            403,
+            false,
+        ),
+        (
+            json!({"type":"error","error":{"type":"api_error","error_type":"payment_required"}}),
+            402,
+            false,
+        ),
+        (
+            json!({"type":"error","error":{"type":"permission_error","error_type":"rate_limit_exceeded"}}),
+            403,
+            false,
+        ),
+        (
+            json!({"type":"response.failed","response":{"error":{"code":"server_error"},"error_type":"authentication"}}),
+            401,
+            false,
+        ),
+        (
+            json!({"type":"response.failed","response":{"error":{"code":"invalid_prompt"},"error_type":"context_length_exceeded"}}),
+            400,
+            false,
+        ),
+        (
+            json!({"object":"response","status":"failed","error":{"code":"server_error"},"error_type":"provider_overloaded"}),
+            503,
+            true,
+        ),
+    ] {
+        let response = reply_rejection(&value, true, None).unwrap();
+        assert_eq!(response.status().as_u16(), status, "{value}");
+        assert_eq!(
+            matches!(
+                failure(response.status(), &response),
+                Failure::Rate | Failure::Transient
+            ),
+            retryable,
+            "{value}"
+        );
+    }
+    let empty = json!({"error":{}});
+    assert!(reply_rejection(&empty, true, None).is_none());
+    let foreign = json!({"error":{"code":429,"message":"foreign error code"}});
+    assert_eq!(
+        reply_rejection(&foreign, false, None).unwrap().status(),
+        StatusCode::BAD_GATEWAY,
+    );
+}
+
+#[tokio::test]
+async fn access_cooldowns_distinguish_models_and_connection_identity() {
+    let fixture = Fixture::new(Arc::new(MemoryVault::default())).await;
+    let provider = fixture.provider();
+    let (account, model) = access_scopes(&provider);
+    let mut sibling_model = provider.clone();
+    sibling_model.model = "another-model".into();
+    let (same_account, sibling) = access_scopes(&sibling_model);
+    assert_eq!(account, same_account);
+    let mut sibling_path = provider.clone();
+    sibling_path.endpoint.push_str("/tenant");
+    let (other_account, other_model) = access_scopes(&sibling_path);
+    let mut rotated = provider;
+    rotated.credential_ref = Some(uuid::Uuid::new_v4().to_string());
+    let (new_key, new_model) = access_scopes(&rotated);
+    let store = fixture.state.store.lock().unwrap();
+    let active = |account, model| AccessRejection::active(&store, account, model).unwrap();
+    let now = chrono::Utc::now().timestamp_millis();
+    store
+        .service_set_cooldown(&model, now + 60_000, AccessRejection::Model.reason())
+        .unwrap();
+    assert!(matches!(
+        active(&account, &model),
+        Some(AccessRejection::Model)
+    ));
+    assert!(active(&account, &sibling).is_none());
+    store
+        .service_set_cooldown(&account, now + 60_000, AccessRejection::Credential.reason())
+        .unwrap();
+    assert!(matches!(
+        active(&account, &sibling),
+        Some(AccessRejection::Credential)
+    ));
+    assert!(active(&other_account, &other_model).is_none());
+    assert!(active(&new_key, &new_model).is_none());
+    store
+        .service_set_cooldown(&new_key, now - 1, AccessRejection::Credential.reason())
+        .unwrap();
+    assert!(active(&new_key, &new_model).is_none());
+    assert!(store.service_cooldown_probe(&new_key).unwrap());
+    store.service_recovered(&new_key).unwrap();
+    assert!(!store.service_cooldown_probe(&new_key).unwrap());
+}
 use local_agent_core::{
     Store,
     providers::{
@@ -12,6 +282,13 @@ use std::sync::{
     mpsc,
 };
 use zeroize::Zeroizing;
+
+mod accounting;
+mod deadline;
+mod minimax;
+mod openrouter_rejections;
+mod provider_balance;
+mod quota_reset;
 
 /// Every gate has a timeout and releases on unwind; a regression cannot strand
 /// a worker or hold a test database lock indefinitely.
@@ -46,14 +323,27 @@ fn hold(
 #[derive(Default)]
 struct SlowVault {
     inner: MemoryVault,
-    gate: Mutex<Option<(tokio::sync::oneshot::Sender<()>, mpsc::Receiver<()>)>>,
+    gate: Mutex<Option<VaultGate>>,
     reads: AtomicUsize,
+}
+struct VaultGate {
+    account: Option<String>,
+    ready: tokio::sync::oneshot::Sender<()>,
+    wait: mpsc::Receiver<()>,
 }
 impl SlowVault {
     fn pause_next(&self) -> (Gate, tokio::sync::oneshot::Receiver<()>) {
+        self.pause(None)
+    }
+
+    fn pause(&self, account: Option<String>) -> (Gate, tokio::sync::oneshot::Receiver<()>) {
         let (ready, entered) = tokio::sync::oneshot::channel();
         let (release, wait) = mpsc::channel();
-        *self.gate.lock().unwrap() = Some((ready, wait));
+        *self.gate.lock().unwrap() = Some(VaultGate {
+            account,
+            ready,
+            wait,
+        });
         (
             Gate {
                 release: Some(release),
@@ -66,10 +356,20 @@ impl SlowVault {
 impl Vault for SlowVault {
     fn get(&self, account: &str) -> Result<Zeroizing<Vec<u8>>, ConfigError> {
         self.reads.fetch_add(1, Ordering::SeqCst);
-        let gate = self.gate.lock().unwrap().take();
-        if let Some((ready, wait)) = gate {
+        let gate = {
+            let mut gate = self.gate.lock().unwrap();
+            if gate
+                .as_ref()
+                .is_some_and(|gate| gate.account.as_deref().is_none_or(|id| id == account))
+            {
+                gate.take()
+            } else {
+                None
+            }
+        };
+        if let Some(VaultGate { ready, wait, .. }) = gate {
             let _ = ready.send(());
-            wait.recv_timeout(Duration::from_secs(4)).unwrap();
+            wait.recv_timeout(Duration::from_secs(9)).unwrap();
         }
         self.inner.get(account)
     }
@@ -146,7 +446,7 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
             "id":uuid::Uuid::new_v4().to_string(), "revision":0,"name":"Fixture service","defaultModelId":first,
             "models":[{"id":first,"name":"One","providerId":provider.id,"model":"one","capabilities":caps},
                       {"id":second,"name":"Two","providerId":provider.id,"model":"two","capabilities":caps}],
-            "routingPolicy":{"enabled":true}
+            "routingPolicy":{"enabled":true,"cooldownSeconds":1}
         })).unwrap()).unwrap();
         let make = |agent| {
             store
@@ -282,11 +582,32 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
         local_agent_core::routing::ALIAS,
     );
     assert_eq!(catalog["data"][0]["id"], desktop_default);
-    let response: serde_json::Value = fixture.client.post(format!("{desktop}/messages"))
-        .bearer_auth("model-service-fixture-key")
-        .header("session_id", uuid::Uuid::new_v4().to_string())
-        .json(&json!({"model":desktop_default,"max_tokens":30,"messages":[{"role":"user","content":"offline fixture"}]}))
-        .send().await.unwrap().error_for_status().unwrap().json().await.unwrap();
+    let call_desktop = async || {
+        fixture.client.post(format!("{desktop}/messages"))
+            .bearer_auth("model-service-fixture-key")
+            .header("session_id", uuid::Uuid::new_v4().to_string())
+            .json(&json!({"model":desktop_default,"max_tokens":30,"messages":[{"role":"user","content":"offline fixture"}]}))
+            .send().await.unwrap().error_for_status().unwrap().json::<serde_json::Value>().await.unwrap()
+    };
+    let (until, reason) = fixture
+        .state
+        .store
+        .lock()
+        .unwrap()
+        .service_cooldown(&scopes(&provider).1)
+        .unwrap()
+        .unwrap();
+    assert_eq!(reason, "upstream_failure", "The fixed Codex 502 is shared");
+    let response = call_desktop().await;
+    assert_eq!(
+        response["content"].as_array().unwrap().last().unwrap()["text"],
+        "two"
+    );
+    tokio::time::sleep(Duration::from_millis(
+        (until - chrono::Utc::now().timestamp_millis()).max(0) as u64 + 25,
+    ))
+    .await;
+    let response = call_desktop().await;
     assert_eq!(response["content"][0]["text"], "one");
 
     let session = uuid::Uuid::new_v4().to_string();
@@ -326,6 +647,7 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
     .unwrap();
     assert_eq!(continuation["output"][0]["content"][0]["text"], "two");
 
+    fixture.state.observation.flush().unwrap();
     let session_id = format!("codex:{session}");
     let read_sessions = || {
         fixture
@@ -349,6 +671,8 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
     assert_eq!(page["total"], 1);
     assert_eq!(page["items"][0]["id"], session_id);
     assert_eq!(page["items"][0]["status"], "observed");
+    assert_eq!(page["items"][0]["title"], "fallback fixture");
+    assert_eq!(page["items"][0]["titleSource"], "first_user_message");
     assert!(page["items"][0]["modelCalls"].as_u64().unwrap() >= 1);
     assert!(page["items"][0]["projectPath"].is_null());
     let requests: serde_json::Value = fixture
@@ -416,7 +740,7 @@ async fn desktop_and_codex_service_catalogs_route_authenticated_requests() {
         .unwrap();
     assert_eq!(page["total"], 1);
     assert_eq!(page["items"][0]["status"], "observed");
-    assert_ne!(page["items"][0]["title"], "Authorized fixture conversation");
+    assert_eq!(page["items"][0]["title"], "fallback fixture");
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
@@ -427,6 +751,62 @@ impl Drop for Fixture {
 }
 impl Fixture {
     async fn new(vault: Arc<dyn Vault>) -> Self {
+        Self::with_upstream(vault, None).await
+    }
+
+    async fn detail_when(
+        &self,
+        session: &str,
+        ready: impl Fn(&serde_json::Value) -> bool,
+    ) -> serde_json::Value {
+        tokio::time::timeout(Duration::from_secs(3), async {
+            let api = format!("http://{}", self.state.host);
+            let session_id = format!("opencode:{session}");
+            loop {
+                let page: serde_json::Value = self
+                    .client
+                    .get(format!("{api}/api/request-dashboard"))
+                    .bearer_auth(self.state.token.as_str())
+                    .query(&[("agent", "opencode"), ("session", session_id.as_str())])
+                    .send()
+                    .await
+                    .unwrap()
+                    .error_for_status()
+                    .unwrap()
+                    .json()
+                    .await
+                    .unwrap();
+                if let Some(id) = page["items"]
+                    .as_array()
+                    .unwrap()
+                    .first()
+                    .and_then(|row| row["id"].as_str())
+                {
+                    let detail: serde_json::Value = self
+                        .client
+                        .get(format!("{api}/api/request-detail"))
+                        .bearer_auth(self.state.token.as_str())
+                        .query(&[("id", id)])
+                        .send()
+                        .await
+                        .unwrap()
+                        .error_for_status()
+                        .unwrap()
+                        .json()
+                        .await
+                        .unwrap();
+                    if ready(&detail) {
+                        return detail;
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap()
+    }
+
+    async fn with_upstream(vault: Arc<dyn Vault>, client: Option<reqwest::Client>) -> Self {
         let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let home = root.path().join("home");
         let data = root.path().join("data");
@@ -438,6 +818,10 @@ impl Fixture {
         let (gateway, gateway_listener) = crate::gateway::Gateway::bind(&data).await.unwrap();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let host = listener.local_addr().unwrap().to_string();
+        let mut observation = crate::observation::Observation::new(&data, &host).unwrap();
+        if let Some(client) = client {
+            observation.client = client;
+        }
         let state = AppState {
             iam: Default::default(),
             workbench: None,
@@ -459,7 +843,7 @@ impl Fixture {
                 home.clone(),
                 &[],
             )),
-            observation: Arc::new(crate::observation::Observation::new(&data, &host).unwrap()),
+            observation: Arc::new(observation),
             listeners: Arc::new(Mutex::new(Default::default())),
             providers: Arc::new(Mutex::new(manager)),
             verification_capacity: Arc::new(tokio::sync::Semaphore::new(2)),
@@ -646,7 +1030,7 @@ async fn dynamic_authentication_waits_off_runtime_and_does_not_take_the_configur
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn cancelled_dispatch_keeps_its_durable_pending_owner_while_the_store_is_locked() {
+async fn cancelled_dispatch_retains_turn_guard_until_its_unfinished_write_returns() {
     let fixture = Fixture::new(Arc::new(MemoryVault::default())).await;
     let provider = fixture.provider();
     let turn = Turn {
@@ -704,19 +1088,49 @@ async fn cancelled_dispatch_keeps_its_durable_pending_owner_while_the_store_is_l
         wait.recv_timeout(Duration::from_secs(4)).unwrap();
     });
     entered.await.unwrap();
-    let task = tokio::spawn(dispatch(
-        fixture.state.clone(),
-        forward,
-        parts,
-        Bytes::from_static(b"{}"),
-        selected.clone(),
-        turn.clone(),
-    ));
+    let state = fixture.state.clone();
+    let candidate = selected.clone();
+    let dispatch_turn = turn.clone();
+    let turn_guard = state
+        .observation
+        .policy
+        .reserve_turn(&binding.id, &turn)
+        .unwrap();
+    let task = tokio::spawn(async move {
+        let (mut journal, attempt) = trace::Journal::new(
+            state.observation.clone(),
+            local_agent_core::observation::ModelObservation::default(),
+        );
+        let mut parts = parts;
+        parts.extensions.insert(attempt);
+        dispatch(
+            state,
+            forward,
+            parts,
+            Bytes::from_static(b"{}"),
+            candidate,
+            DispatchInputs {
+                turn: dispatch_turn,
+                turn_guard,
+                facts: RuleFacts::default(),
+                journal: &mut journal,
+            },
+        )
+        .await
+    });
     tokio::time::sleep(Duration::from_millis(5)).await;
     fixture.health_samples("store_mutex_locked_dispatch").await;
     assert!(!task.is_finished());
     task.abort();
     assert!(task.await.unwrap_err().is_cancelled());
+    assert!(
+        fixture
+            .state
+            .observation
+            .policy
+            .reserve_turn(&binding.id, &turn)
+            .is_err()
+    );
     drop(writer);
     let path = fixture.root.path().join("data/local-agent.sqlite3");
     tokio::time::timeout(Duration::from_secs(1), async {
@@ -742,16 +1156,37 @@ async fn cancelled_dispatch_keeps_its_durable_pending_owner_while_the_store_is_l
     })
     .await
     .unwrap();
+    let _retry_guard = tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if let Ok(guard) = fixture
+                .state
+                .observation
+                .policy
+                .reserve_turn(&binding.id, &turn)
+            {
+                break guard;
+            }
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    })
+    .await
+    .unwrap();
     let store = fixture.state.store.clone();
     tokio::time::timeout(
         Duration::from_secs(1),
         crate::blocking::store(store, move |store| {
-            // The cancelled caller cannot cancel an already admitted SQLite write.
-            // Its persisted pending owner prevents a second upstream attempt.
-            let error = store
-                .service_dispatch(&binding.id, &turn, &selected)
-                .unwrap_err();
-            assert_eq!(error.code, "dispatch_uncertain");
+            // After the worker finishes, explicit retry can resume the saved plan.
+            let retry = store
+                .service_dispatch(
+                    &binding.id,
+                    &turn,
+                    &selected,
+                    |_| Default::default(),
+                    |_, _, _| Default::default(),
+                )
+                .unwrap()
+                .unwrap();
+            assert_eq!(retry.candidates.len(), 1);
             Ok(())
         }),
     )
@@ -770,8 +1205,11 @@ async fn interrupted_stream_cooldown_waits_off_runtime_and_preserves_the_body_er
     let response = monitor(
         response,
         fixture.state.clone(),
+        "messages",
         "fixture-model-scope".into(),
         30,
+        None,
+        None,
     );
     let reader = tokio::spawn(axum::body::to_bytes(response.into_body(), 1024));
     fixture.wait_for_store_worker().await;
@@ -788,4 +1226,93 @@ async fn interrupted_stream_cooldown_waits_off_runtime_and_preserves_the_body_er
     .unwrap()
     .unwrap();
     assert_eq!(saved.1, "stream_interrupted_after_commit");
+}
+
+#[tokio::test]
+async fn committed_stream_cooldown_requires_an_upstream_failure_or_missing_terminal() {
+    let fixture = Fixture::new(Arc::new(MemoryVault::default())).await;
+    let messages = "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"partial\"}}\n\n";
+    let responses = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n";
+    let cases = [
+        ("messages-eof", "messages", messages, "", true),
+        ("responses-eof", "responses", responses, "", true),
+        (
+            "messages-complete",
+            "messages",
+            messages,
+            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"max_tokens\"}}\n\ndata: {\"type\":\"message_stop\"}",
+            false,
+        ),
+        (
+            "responses-complete",
+            "responses",
+            responses,
+            "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}",
+            false,
+        ),
+        (
+            "responses-error",
+            "responses",
+            responses,
+            "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\"}}\n\n",
+            true,
+        ),
+    ];
+    for (scope, protocol, prefix, suffix, expected) in cases {
+        let body = [prefix, suffix].concat();
+        let response = ([("content-type", "text/event-stream")], body.clone()).into_response();
+        let response = monitor(
+            response,
+            fixture.state.clone(),
+            protocol,
+            scope.into(),
+            30,
+            None,
+            None,
+        );
+        let bytes = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        assert_eq!(bytes, body.as_bytes());
+        let saved = fixture
+            .state
+            .store
+            .lock()
+            .unwrap()
+            .service_cooldown(scope)
+            .unwrap();
+        assert_eq!(
+            saved.as_ref().map(|(_, reason)| reason.as_str()),
+            expected.then_some("stream_interrupted_after_commit"),
+            "{scope}"
+        );
+    }
+
+    let prefix = futures_util::stream::once(async {
+        Ok::<_, std::io::Error>(Bytes::from_static(messages.as_bytes()))
+    });
+    let upstream = Body::from_stream(prefix.chain(futures_util::stream::pending()));
+    let response = ([("content-type", "text/event-stream")], upstream).into_response();
+    let response = monitor(
+        response,
+        fixture.state.clone(),
+        "messages",
+        "client-cancelled".into(),
+        30,
+        None,
+        None,
+    );
+    let mut body = response.into_body().into_data_stream();
+    assert_eq!(body.next().await.unwrap().unwrap(), messages.as_bytes());
+    drop(body);
+    assert!(
+        fixture
+            .state
+            .store
+            .lock()
+            .unwrap()
+            .service_cooldown("client-cancelled")
+            .unwrap()
+            .is_none()
+    );
 }

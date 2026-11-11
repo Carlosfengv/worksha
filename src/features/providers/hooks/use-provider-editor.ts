@@ -62,11 +62,21 @@ export function useProviderEditor({
   const [viewError, setViewError] = useState<string | null>(null);
   const [committed, setCommitted] = useState<Provider | null>(null);
   const [showRecovery, setShowRecovery] = useState(false);
-  const applyPreset = useCallback((advice: PresetAdvice) => {
-    dispatch({ type: "preset", value: advice });
-    setError(null);
-    setModelError(null);
-  }, []);
+  const applyPreset = useCallback(
+    (advice: PresetAdvice) => {
+      const plan =
+        advice.origin.kind === "builtin" &&
+        advice.origin.presetId === "minimax-plan";
+      if (plan !== (draft.vendor === "minimax-plan")) {
+        if (keyInput.current) keyInput.current.value = "";
+        setHasNewKey(false);
+      }
+      dispatch({ type: "preset", value: advice });
+      setError(null);
+      setModelError(null);
+    },
+    [draft.vendor],
+  );
   const presets = useProviderPresets(
     originStoreId === storeId ? storeId : undefined,
     form,
@@ -121,6 +131,12 @@ export function useProviderEditor({
     (preparation.kind === "preparing-save" && current(preparation.source));
   const readSecret = () => {
     const secret = keyInput.current?.value ?? "";
+    if (
+      secret &&
+      draft.vendor === "minimax-plan" &&
+      !/^sk-cp-[!-~]+$/.test(secret)
+    )
+      throw Error("请填写 MiniMax M Plan 的 sk-cp- 订阅 Key。");
     if (secret && draft.endpoint.includes(secret))
       throw Error("请从服务地址中移除 API Key；本次未保存。");
     return secret;

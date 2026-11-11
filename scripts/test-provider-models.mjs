@@ -19,7 +19,7 @@ import {
   providerCatalog,
   registerProviderPresets,
 } from "../src/features/providers/catalog.ts";
-assert.deepEqual(Object.keys(providerCatalog), ["openai", "anthropic", "openrouter", "deepseek", "kimi", "ollama", "vllm", "custom"]);
+assert.deepEqual(Object.keys(providerCatalog), ["openai", "anthropic", "openrouter", "deepseek", "kimi", "minimax-plan", "ollama", "vllm", "custom"]);
 const preset = { name: "Fixture vendor", protocol: "messages", endpoints: { messages: "https://fixture.invalid" } };
 const contributed = registerProviderPresets([["fixture-vendor", preset]]);
 assert.equal(contributed["fixture-vendor"].name, "Fixture vendor");

@@ -166,6 +166,7 @@ impl History {
         db.execute_batch("PRAGMA temp_store=FILE;
           PRAGMA temp.cache_size=-32768;
           CREATE TEMP TABLE attempts(id TEXT PRIMARY KEY,logical TEXT NOT NULL,revision TEXT NOT NULL,raw TEXT NOT NULL,family TEXT,product TEXT,session TEXT,response TEXT,provider_record TEXT,model_record TEXT);
+          CREATE TEMP TABLE route_traces(id TEXT PRIMARY KEY,logical TEXT NOT NULL UNIQUE,raw TEXT NOT NULL);
           CREATE TEMP TABLE attempt_clock(seq INTEGER NOT NULL);INSERT INTO attempt_clock VALUES(0);
           CREATE TEMP TRIGGER attempt_data_insert AFTER INSERT ON attempts BEGIN UPDATE attempt_clock SET seq=seq+1;END;
           CREATE TEMP TRIGGER attempt_data_delete AFTER DELETE ON attempts BEGIN UPDATE attempt_clock SET seq=seq+1;END;
@@ -454,6 +455,15 @@ impl History {
         {
             self.decoded += usize::from(raw.is_some());
         }
+        if id.starts_with(super::ROUTE_TRACE_ID_PREFIX) {
+            execute(
+                &self.db,
+                "INSERT OR IGNORE INTO dirty_groups SELECT logical FROM route_traces WHERE id=?1",
+                [id],
+            )
+            .map_err(fail)?;
+            execute(&self.db, "DELETE FROM route_traces WHERE id=?1", [id]).map_err(fail)?;
+        }
         let old: Option<String> = self
             .db
             .query_row("SELECT logical FROM attempts WHERE id=?1", [id], |r| {
@@ -524,6 +534,16 @@ impl History {
     }
     fn insert_attempt(&self, row: &ModelObservation, dirty: bool) -> Result<(), String> {
         let key = requests::logical_request_key(row);
+        if row.is_route_trace() {
+            self.mark_group(&key)?;
+            execute(
+                &self.db,
+                "INSERT OR REPLACE INTO route_traces VALUES(?1,?2,?3)",
+                params![row.id, key, encode(row)?],
+            )
+            .map_err(fail)?;
+            return Ok(());
+        }
         if dirty {
             self.mark_group(&key)?;
         }
@@ -596,7 +616,7 @@ impl History {
                 break;
             }
             for key in keys {
-                let rows: Vec<ModelObservation> = {
+                let mut rows: Vec<ModelObservation> = {
                     let mut s = self
                         .db
                         .prepare_cached("SELECT raw FROM attempts WHERE logical=?1 ORDER BY id")
@@ -615,6 +635,25 @@ impl History {
                 .map_err(fail)?;
                 self.update_analysis(&key, &rows)?;
                 execute(&self.db,"INSERT OR IGNORE INTO attempt_changes SELECT id FROM attempts WHERE logical=?1",[&key]).map_err(fail)?;
+                if rows.is_empty()
+                    && let Some(trace) = self
+                        .db
+                        .query_row(
+                            "SELECT raw FROM route_traces WHERE logical=?1",
+                            [&key],
+                            |r| r.get::<_, String>(0),
+                        )
+                        .optional()
+                        .map_err(fail)?
+                {
+                    let trace: ModelObservation = serde_json::from_str(&trace).map_err(fail)?;
+                    if trace
+                        .route_trace()
+                        .is_some_and(|trace| !trace.sent_upstream)
+                    {
+                        rows.push(trace);
+                    }
+                }
                 for row in requests::logical_requests(rows, &HashMap::new()) {
                     let row = self.request_projection.project(row)?;
                     self.insert_request(&row)?;

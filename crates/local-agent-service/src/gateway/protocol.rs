@@ -3,6 +3,27 @@
 use serde_json::{Value, json};
 
 pub type Result<T> = std::result::Result<T, &'static str>;
+
+pub(crate) fn reply_error(value: &Value) -> Option<&Value> {
+    let envelope = if value["type"] == "response.failed" {
+        &value["response"]
+    } else {
+        value
+    };
+    envelope
+        .get("error")
+        .filter(|error| !error.is_null())
+        .or_else(|| {
+            let [choice] = value["choices"].as_array()?.as_slice() else {
+                return None;
+            };
+            (choice["finish_reason"] == "error")
+                .then(|| choice.get("error").filter(|error| !error.is_null()))
+                .flatten()
+        })
+        .or_else(|| (value["type"] == "error").then_some(value))
+}
+
 fn list(v: &Value) -> Result<&Vec<Value>> {
     v.as_array().ok_or("协议字段需要数组")
 }
@@ -103,6 +124,53 @@ pub fn provider_request(
     }
     super::deepseek::prepare(&mut out, enabled)?;
     Ok(out)
+}
+
+pub(crate) fn use_intrinsic_reasoning(protocol: &str, body: &mut Value) {
+    let Some(body) = body.as_object_mut() else {
+        return;
+    };
+    body.remove("thinking");
+    match protocol {
+        "messages" => {
+            body.insert("output_config".into(), json!({"effort":"low"}));
+        }
+        "chat-completions" => {
+            body.insert("reasoning_effort".into(), json!("low"));
+            body.insert("reasoning_split".into(), json!(true));
+        }
+        _ => {
+            body.insert("reasoning".into(), json!({"effort":"low"}));
+        }
+    }
+}
+
+pub(crate) fn remove_intrinsic_reasoning(protocol: &str, body: &mut Value) {
+    match protocol {
+        "messages" => {
+            if let Some(content) = body["content"].as_array_mut() {
+                content.retain(|block| {
+                    !matches!(
+                        block["type"].as_str(),
+                        Some("thinking" | "redacted_thinking")
+                    )
+                });
+            }
+        }
+        "chat-completions" => {
+            if let Some(message) = body
+                .pointer_mut("/choices/0/message")
+                .and_then(Value::as_object_mut)
+            {
+                message.remove("reasoning_content");
+            }
+        }
+        _ => {
+            if let Some(output) = body["output"].as_array_mut() {
+                output.retain(|item| item["type"] != "reasoning");
+            }
+        }
+    }
 }
 
 pub fn request(source: &str, target: &str, v: &Value, model: &str) -> Result<Value> {
@@ -528,6 +596,9 @@ impl Answer {
     }
 
     pub(super) fn parse_builtin(protocol: &str, v: &Value) -> Result<Self> {
+        if reply_error(v).is_some() {
+            return Err("上游返回协议错误");
+        }
         let mut a = Self::default();
         let usage = &v["usage"];
         if protocol == "chat-completions" {

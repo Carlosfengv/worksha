@@ -10,6 +10,7 @@ mod source_file;
 pub mod sql;
 mod write;
 pub use write::ObservationWriteError;
+pub const ROUTE_TRACE_ID_PREFIX: &str = "route-trace-";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -33,10 +34,50 @@ pub struct RouteEvidence {
     pub route_version_id: String,
     pub provider_revision: u64,
     pub boundary: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "observed_service"
+    )]
     pub service: Option<crate::model_services::ServiceSelection>,
+    /// An independently persisted routing decision record. It never counts as a send.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace: Option<crate::model_services::policy::RouteTrace>,
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+
+// The router persists its account reference separately. Observation consumers
+// need the display label and routing reasons, including when loading old rows.
+mod observed_service {
+    use crate::model_services::ServiceSelection;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub(super) fn serialize<S: Serializer>(
+        service: &Option<ServiceSelection>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        if let Some(service) = service
+            .as_ref()
+            .filter(|service| service.upstream_account.is_some())
+        {
+            let mut service = service.clone();
+            service.upstream_account = None;
+            return serializer.serialize_some(&service);
+        }
+        service.serialize(serializer)
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<ServiceSelection>, D::Error> {
+        let mut service = Option::<ServiceSelection>::deserialize(deserializer)?;
+        if let Some(service) = &mut service {
+            service.upstream_account = None;
+        }
+        Ok(service)
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelObservation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -106,6 +147,14 @@ pub struct ModelObservation {
     pub revision: u64,
 }
 impl ModelObservation {
+    pub fn is_route_trace(&self) -> bool {
+        self.route_trace().is_some()
+    }
+
+    pub fn route_trace(&self) -> Option<&crate::model_services::policy::RouteTrace> {
+        self.routing.as_ref()?.trace.as_ref()
+    }
+
     /// Legacy responseId named the upstream. It is also the client ID only on
     /// a pass-through protocol; a historical converted ID cannot be invented.
     pub fn native_response_id(&self) -> Option<&str> {
@@ -154,7 +203,7 @@ impl ObservationStore {
         Ok(self.read(None)?.rows)
     }
     pub fn latest_by_agent(&self) -> Result<Vec<ModelObservation>, String> {
-        let mut statement = self.0.prepare("SELECT value FROM (SELECT value, ROW_NUMBER() OVER (PARTITION BY json_extract(value,'$.agentId'),json_extract(value,'$.agentProductId') ORDER BY started_at DESC,id DESC) AS position FROM model_observations WHERE json_valid(value)) WHERE position=1")
+        let mut statement = self.0.prepare("SELECT value FROM (SELECT value, ROW_NUMBER() OVER (PARTITION BY json_extract(value,'$.agentId'),json_extract(value,'$.agentProductId') ORDER BY started_at DESC,id DESC) AS position FROM model_observations WHERE CASE WHEN json_valid(value) THEN json_type(value,'$.routing.trace') IS NULL ELSE 0 END) WHERE position=1")
             .map_err(|_| "无法读取各 Agent 最近观测")?;
         let raw = statement
             .query_map([], |row| row.get::<_, String>(0))
@@ -178,7 +227,9 @@ impl ObservationStore {
         let mut stmt = self
             .0
             .prepare(
-                "SELECT value FROM model_observations ORDER BY started_at DESC,id DESC LIMIT ?1",
+                "SELECT value FROM model_observations
+                 WHERE CASE WHEN json_valid(value) THEN json_type(value,'$.routing.trace') IS NULL ELSE 1 END
+                 ORDER BY started_at DESC,id DESC LIMIT ?1",
             )
             .map_err(|_| "无法读取请求历史")?;
         let mut cursor = stmt

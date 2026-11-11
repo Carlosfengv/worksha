@@ -1,6 +1,9 @@
 import { iamApi } from "@/features/iam/api";
 import { providersApi } from "@/features/providers/api";
-import { installProviderOperationFixture } from "../../provider-operation-fixture";
+import {
+  installProviderOperationFixture,
+  PROVIDER_FIXTURE_STORE_ID,
+} from "../../provider-operation-fixture";
 import { installAssociatedCosts } from "../../associated-cost-fixture";
 import { createTableFixtureContext } from "./context";
 import { installTableShell } from "./shell";
@@ -21,6 +24,7 @@ import { fullPluginsApi } from "@/features/plugins/api";
 import { bundledDshManifest } from "@/features/plugins/bundled-dsh";
 import type { Manifest } from "../../../../contracts/plugins/sources/types";
 import { fixtureProvider } from "./data";
+import type { UpstreamAccount } from "@/features/providers/types";
 
 export const applicationTableModes = new Set([
   "shell",
@@ -182,6 +186,56 @@ export function installTableFixtures() {
   }
   if (context.mode === "plugin-navigation") installPluginNavigation();
   const provider = installTableProviders();
+  if (context.mode === "upstream-account-verification") {
+    const providerId = provider.getProvider().id;
+    const account: UpstreamAccount = {
+      id: "00000000-0000-4000-8000-000000000101",
+      providerId,
+      label: "验证账号",
+      revision: 3,
+      state: "enabled",
+      verifications: [
+        {
+          model: "model-000",
+          state: "expired",
+          checkedAt: "2026-11-01T00:00:00Z",
+        },
+      ],
+      cooldowns: [
+        {
+          model: null,
+          reason: "upstream_rate_limit",
+          untilMs: Date.now() + 60_000,
+        },
+      ],
+    };
+    const paused: UpstreamAccount = {
+      ...account,
+      id: "00000000-0000-4000-8000-000000000102",
+      label: "暂停账号",
+      state: "paused",
+      cooldowns: null,
+    };
+    providersApi.upstreamAccount = async (id, input) => {
+      if (id !== providerId) throw Error("Unexpected provider");
+      if (input.kind === "verify") {
+        window.scopeQueries.push({ feature: "upstream-account", query: input });
+        account.verifications = [
+          {
+            model: input.model,
+            state: "verified",
+            checkedAt: new Date().toISOString(),
+          },
+          ...(account.verifications ?? []),
+        ];
+        window.dispatchEvent(new Event("upstream-accounts-changed"));
+      }
+      return structuredClone({
+        storeId: PROVIDER_FIXTURE_STORE_ID,
+        accounts: [account, paused],
+      });
+    };
+  }
   if (context.mode === "activity") installTableActivity(context);
   if (["mcp-page", "projects-page"].includes(context.mode ?? ""))
     installTableProjects(context);

@@ -968,6 +968,9 @@ impl Hub {
     fn persist(&self, row: ModelObservation) {
         self.writer.enqueue(row);
     }
+    pub(super) fn publish_route_trace(&self, row: ModelObservation) {
+        self.persist(row);
+    }
     pub(super) fn message_identity(
         &self,
         body: &serde_json::Value,

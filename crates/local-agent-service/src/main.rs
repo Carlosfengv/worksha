@@ -134,6 +134,12 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
             .map_err(|e| format!("钥匙串助手初始化失败：{}", e.message))?;
     }
     let store = Store::open(&directory)?;
+    store
+        .interrupt_service_cooldown_probes(chrono::Utc::now().timestamp_millis())
+        .map_err(|e| e.message)?;
+    store
+        .interrupt_service_quota_probes(chrono::Utc::now().timestamp_millis())
+        .map_err(|e| e.message)?;
     gateway.validate_token_owners(&store)?;
     gateway
         .lan
@@ -197,11 +203,10 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
     let readonly = Arc::new(readonly);
-    let billing = Arc::new(Mutex::new(billing::Billing::with_sources(
-        source_home.clone(),
-        &directory,
-        readonly.accounts.clone(),
-    )));
+    let mut billing =
+        billing::Billing::with_sources(source_home.clone(), &directory, readonly.accounts.clone());
+    billing.restore_openrouter(&store);
+    let billing = Arc::new(Mutex::new(billing));
     let workbench = if options.persistent
         || !plugin_host::features::mounted(&readonly.host, "builtin.workbench")
     {

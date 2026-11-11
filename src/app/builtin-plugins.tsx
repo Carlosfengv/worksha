@@ -107,11 +107,11 @@ export const builtinPlugins: readonly UiPlugin[] = [
     pages: [
       {
         id: "providers",
-        label: "Providers",
+        label: "模型供应商",
         icon: "globe",
         footer: false,
         ownsBody: false,
-        refreshInHeader: true,
+        refreshInHeader: false,
         resetScrollOnObject: true,
         render: ({ data, refresh, route }) => (
           <ProvidersPage
@@ -135,7 +135,7 @@ export const builtinPlugins: readonly UiPlugin[] = [
         footer: false,
         ownsBody: false,
         refreshInHeader: false,
-        resetScrollOnObject: false,
+        resetScrollOnObject: true,
         render: ({ data }) => (
           <ModelServicesPage providers={data?.providers ?? []} />
         ),

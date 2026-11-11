@@ -1,5 +1,6 @@
 use super::*;
 use crate::providers::vault::{MemoryVault, Vault};
+use crate::storage::default_providers;
 use std::{fs, path::PathBuf, sync::Arc};
 
 pub(super) struct Fixture {
@@ -103,7 +104,10 @@ fn ambiguous_native_import_write_keeps_a_durable_owner_before_returning_unknown(
         .unwrap();
     println!("native import lost-reply observed code: {}", error.code);
     assert_eq!(error.code, "native_import_result_unknown");
-    assert_eq!(f.store.providers().unwrap().len(), 7);
+    assert_eq!(
+        f.store.providers().unwrap().len(),
+        default_providers().len()
+    );
     let db = rusqlite::Connection::open(f.data.join("local-agent.sqlite3")).unwrap();
     let count: i64 = db
         .query_row(
@@ -145,7 +149,10 @@ fn ambiguous_native_import_write_keeps_a_durable_owner_before_returning_unknown(
         accounts_before,
         "resume must only verify the already written credential"
     );
-    assert_eq!(reopened.providers().unwrap().len(), 8);
+    assert_eq!(
+        reopened.providers().unwrap().len(),
+        default_providers().len() + 1
+    );
     assert_eq!(
         manager
             .native_import_operation(&reopened, &request, false)
@@ -196,7 +203,10 @@ fn claude_import_is_private_idempotent_and_never_changes_source() {
             .unwrap(),
         b"import-secret-sentinel"
     );
-    assert_eq!(f.store.providers().unwrap().len(), 8);
+    assert_eq!(
+        f.store.providers().unwrap().len(),
+        default_providers().len() + 1
+    );
     assert_eq!(
         claude(&f).existing_provider_id.as_deref(),
         Some(result.provider.id.as_str())

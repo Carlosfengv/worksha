@@ -1,5 +1,76 @@
 {
   "$defs": {
+    "AccountAffinity": {
+      "enum": [
+        "off",
+        "prefer",
+        "strict"
+      ],
+      "type": "string"
+    },
+    "AccountPool": {
+      "additionalProperties": false,
+      "properties": {
+        "accounts": {
+          "items": {
+            "$ref": "#/$defs/AccountRef"
+          },
+          "type": "array"
+        },
+        "affinity": {
+          "$ref": "#/$defs/AccountAffinity"
+        },
+        "modelId": {
+          "type": "string"
+        },
+        "strategy": {
+          "$ref": "#/$defs/AccountStrategy"
+        },
+        "weights": {
+          "additionalProperties": {
+            "format": "uint16",
+            "maximum": 65535,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "modelId",
+        "accounts"
+      ],
+      "type": "object"
+    },
+    "AccountRef": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "revision": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "AccountStrategy": {
+      "enum": [
+        "priority",
+        "round-robin",
+        "weighted",
+        "quota-reset",
+        "quota-remaining",
+        "quota-pace"
+      ],
+      "type": "string"
+    },
     "Capabilities": {
       "additionalProperties": false,
       "properties": {
@@ -35,6 +106,22 @@
       ],
       "type": "object"
     },
+    "ChildServiceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "serviceId": {
+          "type": "string"
+        },
+        "versionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "serviceId",
+        "versionId"
+      ],
+      "type": "object"
+    },
     "FailureMode": {
       "enum": [
         "reject",
@@ -42,30 +129,62 @@
       ],
       "type": "string"
     },
+    "IntentClassifier": {
+      "additionalProperties": false,
+      "properties": {
+        "account": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AccountRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "modelId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "modelId"
+      ],
+      "type": "object"
+    },
     "ModelDraft": {
       "additionalProperties": false,
       "properties": {
         "capabilities": {
           "$ref": "#/$defs/Capabilities"
         },
+        "child": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChildServiceRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "id": {
           "type": "string"
         },
         "model": {
+          "default": "",
           "type": "string"
         },
         "name": {
           "type": "string"
         },
         "providerId": {
+          "default": "",
           "type": "string"
         }
       },
       "required": [
         "id",
         "name",
-        "providerId",
-        "model",
         "capabilities"
       ],
       "type": "object"
@@ -172,9 +291,73 @@
       ],
       "type": "object"
     },
+    "RouteRule": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "intent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "minInputTokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "modelId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stream": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "tools": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "modelId"
+      ],
+      "type": "object"
+    },
     "RoutingPolicy": {
       "additionalProperties": false,
       "properties": {
+        "accountPools": {
+          "items": {
+            "$ref": "#/$defs/AccountPool"
+          },
+          "type": "array"
+        },
         "cooldownSeconds": {
           "default": 30,
           "format": "uint64",
@@ -198,6 +381,12 @@
           "default": false,
           "type": "boolean"
         },
+        "fallbackAcrossModels": {
+          "type": "boolean"
+        },
+        "fallbackOnAccessDenied": {
+          "type": "boolean"
+        },
         "fallbackOnFailure": {
           "default": true,
           "type": "boolean"
@@ -205,6 +394,16 @@
         "fallbackOnRateLimit": {
           "default": true,
           "type": "boolean"
+        },
+        "intentClassifier": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IntentClassifier"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "limits": {
           "default": [],
@@ -224,6 +423,12 @@
           "default": [],
           "items": {
             "type": "string"
+          },
+          "type": "array"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/RouteRule"
           },
           "type": "array"
         }

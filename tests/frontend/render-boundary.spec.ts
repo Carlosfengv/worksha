@@ -97,7 +97,7 @@ test("real workspace catches a page render crash and keeps the original navigati
   });
   await page.getByRole("button", { name: "重试页面", exact: true }).click();
   await expect(page.getByText("设置页面已恢复", { exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "Providers", exact: true }).click();
+  await page.getByRole("link", { name: "模型供应商", exact: true }).click();
   await expect(page).toHaveURL(/#\/providers$/);
   await expect(page.getByRole("region", { name: "页面恢复" })).toHaveCount(0);
 });

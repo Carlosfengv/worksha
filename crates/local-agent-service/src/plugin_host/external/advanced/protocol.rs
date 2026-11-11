@@ -31,6 +31,9 @@ impl Manager {
         p: &Provider,
         allow_private: bool,
     ) -> Result<Value> {
+        if local_agent_core::providers::subscription::minimax_plan(p) {
+            return Err(fail("unsupported"));
+        }
         let (_, policy, lease) = self.extension(q)?;
         let spec = policy.protocol.ok_or(fail("unsupported"))?;
         if spec.base_protocol != p.protocol {
@@ -183,10 +186,11 @@ impl Prepared {
         response: reqwest::Response,
         credential: Option<&[u8]>,
     ) -> Result<reqwest::Response> {
-        self.adapter.check().await?;
+        // An HTTP rejection is handled by the host without processing it in the guest.
         if !response.status().is_success() {
             return Ok(response);
         }
+        self.adapter.check().await?;
         if response
             .headers()
             .get("content-encoding")

@@ -744,6 +744,7 @@ fn verification_binds_to_full_provider_version_and_expiry() {
     assert!(f.manager.require_verification(&p).is_err());
     let mut v = Verification {
         provider_id: p.id.clone(),
+        account_revision: None,
         model: None,
         fingerprint: fingerprint(&p),
         state: "verified".into(),
@@ -867,6 +868,7 @@ fn per_agent_model_selection_preserves_provider_default_and_encrypted_backup() {
         assert!(select_model(&source, Some("")).is_err());
         let verification = |p: &Provider| Verification {
             provider_id: p.id.clone(),
+            account_revision: None,
             model: Some(p.model.clone()),
             fingerprint: fingerprint(p),
             state: "verified".into(),

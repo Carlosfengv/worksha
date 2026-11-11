@@ -1,6 +1,134 @@
 import { expect, test } from "@playwright/test";
 import type {} from "./provider-overview-harness";
 
+test("upstream account quota follows the exact provider and account version", async ({
+  page,
+}) => {
+  await page.goto(
+    "/tests/frontend/provider-overview.html?detail&mode=upstream-quota",
+  );
+  await page.getByRole("tab", { name: "上游账号", exact: true }).click();
+  const inspect = page.getByRole("button", {
+    name: "验证与状态 额度主账号",
+    exact: true,
+  });
+  const dialog = page.getByRole("dialog", { name: "验证与状态 · 额度主账号" });
+  const quotaTab = dialog.getByRole("tab", { name: "用量与额度", exact: true });
+  await inspect.click();
+  await quotaTab.click();
+  const quota = dialog.getByRole("region", {
+    name: "账户用量与额度",
+    exact: true,
+  });
+  await expect(quota).toContainText("原版本 5 小时窗口");
+  await expect(quota).toContainText("7 天窗口");
+  await expect(quota).not.toContainText("其他供应商额度");
+  await expect(quota).not.toContainText("8.52");
+  await quota.getByRole("button", { name: "刷新账户用量" }).click();
+  const confirm = page.getByRole("dialog", {
+    name: "读取 当前订阅账号",
+    exact: true,
+  });
+  await expect(confirm).toBeVisible();
+  expect(
+    await page.evaluate(() => window.providerOverviewFixture.quotaReads),
+  ).toEqual([]);
+
+  await page.evaluate(() => {
+    window.providerOverviewFixture.upstreamRevision = 2;
+    window.dispatchEvent(new Event("upstream-accounts-changed"));
+  });
+  await expect(confirm).toHaveCount(0);
+  await expect(dialog).toContainText("当前账号或连接已变化");
+  expect(
+    await page.evaluate(() => window.providerOverviewFixture.quotaReads),
+  ).toEqual([]);
+  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  await inspect.click();
+  await quotaTab.click();
+  await expect(quota).toContainText("额度目录中的账号版本已变化");
+  await expect(quota).not.toContainText("原版本 5 小时窗口");
+  await page.evaluate(() => {
+    window.providerOverviewFixture.quotaDirectoryRevision = 2;
+  });
+  await quota
+    .getByRole("button", { name: "重新读取目录", exact: true })
+    .click();
+  await expect(quota).toContainText("尚未读取账户快照");
+  await quota.getByRole("button", { name: "读取真实账户" }).click();
+  await confirm.getByRole("button", { name: "确认读取", exact: true }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(quota).toContainText("当前版本 5 小时窗口");
+  expect(
+    await page.evaluate(() => window.providerOverviewFixture.quotaReads),
+  ).toEqual([["upstream-quota-a", "quota-2"]]);
+  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  await page.getByRole("button", { name: "验证与状态 未接入账号" }).click();
+  const unsupported = page.getByRole("dialog", {
+    name: "验证与状态 · 未接入账号",
+  });
+  await unsupported
+    .getByRole("tab", { name: "用量与额度", exact: true })
+    .click();
+  await expect(unsupported).toContainText("此账号暂无可关联的额度来源");
+  await expect(
+    unsupported.getByRole("button", { name: "读取真实账户" }),
+  ).toHaveCount(0);
+});
+
+test("upstream account status distinguishes expired cooldown and in-flight recovery", async ({
+  page,
+}) => {
+  await page.goto(
+    "/tests/frontend/provider-overview.html?detail&mode=routing-recovery",
+  );
+  await page.getByRole("tab", { name: "上游账号", exact: true }).click();
+  for (const [account, phase, reason, scope] of [
+    ["等待账号", "待恢复探测", "上游限流", "整个账号"],
+    ["探测账号", "账号恢复探测中", "上游临时故障", "deepseek-v4-pro"],
+  ]) {
+    const row = page.getByRole("row").filter({ hasText: account });
+    await expect(row).toContainText(phase);
+    await expect(row).not.toContainText("无活跃冷却");
+    await row.getByRole("button", { name: `验证与状态 ${account}` }).click();
+    const dialog = page.getByRole("dialog", {
+      name: `验证与状态 · ${account}`,
+    });
+    const record = dialog.getByRole("region", { name: "冷却记录" });
+    await expect(record).toContainText(scope);
+    await expect(record).toContainText(`${reason} · ${phase}`);
+    await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  }
+});
+test("subscription quota distinguishes authorization recovery from an unconfirmed plan", async ({
+  page,
+}) => {
+  for (const [mode, label] of [
+    ["subscription-authorization", "订阅授权未通过"],
+    ["subscription-unconfirmed", "订阅状态待确认"],
+  ]) {
+    await page.goto(
+      `/tests/frontend/provider-overview.html?detail&mode=${mode}`,
+    );
+    await page.getByRole("button", { name: "查看账户与读取用量" }).click();
+    const dialog = page.getByRole("dialog", {
+      name: "账户用量与读取",
+      exact: true,
+    });
+    await expect(dialog.getByText(label, { exact: true })).toBeVisible();
+    await expect(
+      dialog.getByRole("button", { name: "官方用量与账单" }),
+    ).toBeVisible();
+    const recovery = dialog.getByText(/在供应商的「上游账号」更新该账号/);
+    if (mode === "subscription-authorization")
+      await expect(recovery).toBeVisible();
+    else {
+      await expect(dialog.getByText(/请核对订阅状态后稍后刷新/)).toBeVisible();
+      await expect(recovery).toHaveCount(0);
+    }
+  }
+});
+
 test("Provider list shows every account's core statistics before selection with one full aggregate and no external reads", async ({
   page,
 }) => {
@@ -151,9 +279,7 @@ test("directory and usage errors preserve prior values and unknown forecasts; ov
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
     .toBeLessThanOrEqual(390);
   await page.getByRole("tab", { name: "连接与调用", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "已添加 · 2", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("已添加 · 2", { exact: true })).toBeVisible();
 });
 
 test("list keeps loading distinct from unknown, then publishes the complete aggregate", async ({
@@ -222,4 +348,22 @@ test("closing a confirmed account read restores pointer access to other accounts
   await expect(
     page.getByRole("region", { name: "Codex 订阅用量概览", exact: true }),
   ).toBeVisible();
+});
+test("add provider stays in the page header across views in a small window", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 560 });
+  await page.goto("/tests/frontend/provider-overview.html");
+  const add = page.getByRole("button", { name: "添加供应商", exact: true });
+  await expect(add).toBeInViewport();
+  await page.getByRole("tab", { name: "全部模型", exact: true }).click();
+  await expect(add).toBeInViewport();
+  await add.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("dialog", { name: "添加模型供应商" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(add).toBeFocused();
 });

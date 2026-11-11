@@ -7,6 +7,12 @@ import {
   useState,
 } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { DataTable, useDataTable } from "@/components/ui/data-table";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -160,10 +166,14 @@ export function ProviderOperationRecovery({
   storeId,
   onUpdated,
   allowRetry = true,
+  compact = false,
+  hasPending = false,
 }: {
   storeId?: string;
   onUpdated: () => Promise<void>;
   allowRetry?: boolean;
+  compact?: boolean;
+  hasPending?: boolean;
 }) {
   const [local, setLocal] = useState<
     ReturnType<typeof providerRecoveryRecords>
@@ -323,10 +333,10 @@ export function ProviderOperationRecovery({
     enableRowSelection: false,
     enableHiding: false,
   });
-  return (
-    <section className="space-y-3" aria-label="服务商操作恢复">
+  const controls = (
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-body font-medium">服务商操作恢复</h2>
+        {!compact && <h2 className="text-body font-medium">服务商操作恢复</h2>}
         <ProviderDraftRecovery storeId={storeId} />
         <Button
           type="button"
@@ -339,11 +349,6 @@ export function ProviderOperationRecovery({
           读取后台待核查操作
         </Button>
       </div>
-      <p className="text-label text-fg-muted">
-        查询只读取原结果。
-        {allowRetry && "重试保留原编号和输入，尚未开始的连接验证可能产生费用。"}
-        取消阻止后续保存，不能撤回已经发出的远端请求。
-      </p>
       {storageError && (
         <Alert status="warning">
           <AlertTitle>恢复记录暂不可读取</AlertTitle>
@@ -360,7 +365,37 @@ export function ProviderOperationRecovery({
           仅展示前四项；处理后继续读取其余记录，未自动丢弃。
         </p>
       )}
-      {rows.length > 0 && <DataTable table={table} />}
+      {rows.length > 0 && (
+        <>
+          <p className="text-label text-fg-muted">
+            先核查原结果。
+            {allowRetry && "重试沿用原编号，尚未开始的验证可能产生费用。"}
+            取消只阻止后续保存，已发出的请求仍可能完成。
+          </p>
+          <DataTable table={table} />
+        </>
+      )}
+    </div>
+  );
+  return (
+    <section aria-label="服务商操作恢复">
+      {compact ? (
+        <Accordion type="multiple">
+          <AccordionItem value="recovery">
+            <AccordionTrigger>
+              操作恢复
+              {storageError
+                ? " · 记录暂不可读"
+                : rows.length || hasPending
+                  ? " · 有待核查记录"
+                  : ""}
+            </AccordionTrigger>
+            <AccordionContent>{controls}</AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      ) : (
+        controls
+      )}
       <Dialog
         open={!!review}
         onOpenChange={(open) => {

@@ -34,42 +34,9 @@ export function ProviderConnectionFields({
 }) {
   const { provider: draft, endpointMode, advanced } = state;
   const automatic = state.mode === "automatic";
+  const subscription = draft.vendor === "minimax-plan";
   return (
     <>
-      <div className="space-y-2">
-        <p className="text-body text-fg-muted">
-          {automatic
-            ? "填写服务地址和 API Key，自动读取模型、识别连接方式并验证，成功后保存到本机。"
-            : "选择供应商并填写 API Key，获取模型后选择默认模型，再保存连接。获取目录不发送推理请求。"}
-        </p>
-        <div className="flex flex-wrap gap-3">
-          <Button
-            type="button"
-            variant="link"
-            size="sm"
-            disabled={busy}
-            onClick={() => {
-              dispatch({ type: "advanced" });
-              clearError();
-            }}
-          >
-            {automatic || !advanced ? "高级设置" : "收起高级设置"}
-          </Button>
-          {!automatic && (
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              onClick={() => {
-                dispatch({ type: "mode", value: "automatic" });
-                clearError();
-              }}
-            >
-              自动识别并验证
-            </Button>
-          )}
-        </div>
-      </div>
       {!automatic && (
         <ProviderPresetField
           state={state}
@@ -113,38 +80,40 @@ export function ProviderConnectionFields({
               切换时自动匹配或转换协议，保存后可单独验证。
             </FieldDescription>
           </Field>
-          <Field>
-            <FieldLabel>Endpoint 来源</FieldLabel>
-            <Select
-              value={endpointMode}
-              onValueChange={(mode) =>
-                dispatch({
-                  type: "endpoint-source",
-                  value: mode as "default" | "custom",
-                })
-              }
-            >
-              <SelectTrigger aria-label="Endpoint 来源" />
-              <SelectContent>
-                <SelectItem
-                  value="default"
-                  disabled={!presetDefaultEndpoint(state)}
-                >
-                  {state.preset?.origin.kind === "external"
-                    ? "所选预设 Endpoint"
-                    : "官方默认 Endpoint"}
-                </SelectItem>
-                <SelectItem value="custom">自定义 Endpoint</SelectItem>
-              </SelectContent>
-            </Select>
-            <FieldDescription>
-              {state.preset?.origin.kind === "external"
-                ? "预设地址只是初始值，可选择自定义并编辑；目录访问仍需单独授权。"
-                : draft.vendor === "ollama" || draft.vendor === "vllm"
-                  ? "默认地址指本机服务地址；服务部署在其他位置时选择自定义。"
-                  : "使用服务商官方地址，或填写代理、网关等自定义地址。"}
-            </FieldDescription>
-          </Field>
+          {!subscription && (
+            <Field>
+              <FieldLabel>Endpoint 来源</FieldLabel>
+              <Select
+                value={endpointMode}
+                onValueChange={(mode) =>
+                  dispatch({
+                    type: "endpoint-source",
+                    value: mode as "default" | "custom",
+                  })
+                }
+              >
+                <SelectTrigger aria-label="Endpoint 来源" />
+                <SelectContent>
+                  <SelectItem
+                    value="default"
+                    disabled={!presetDefaultEndpoint(state)}
+                  >
+                    {state.preset?.origin.kind === "external"
+                      ? "所选预设 Endpoint"
+                      : "官方默认 Endpoint"}
+                  </SelectItem>
+                  <SelectItem value="custom">自定义 Endpoint</SelectItem>
+                </SelectContent>
+              </Select>
+              <FieldDescription>
+                {state.preset?.origin.kind === "external"
+                  ? "预设地址只是初始值，可选择自定义并编辑；目录访问仍需单独授权。"
+                  : draft.vendor === "ollama" || draft.vendor === "vllm"
+                    ? "默认地址指本机服务地址；服务部署在其他位置时选择自定义。"
+                    : "使用服务商官方地址，或填写代理、网关等自定义地址。"}
+              </FieldDescription>
+            </Field>
+          )}
         </>
       )}
       <Field>
@@ -157,6 +126,7 @@ export function ProviderConnectionFields({
           }
           type="url"
           required
+          readOnly={subscription}
           maxLength={2048}
           value={draft.endpoint}
           onChange={(e) =>
@@ -164,10 +134,12 @@ export function ProviderConnectionFields({
           }
         />
         <FieldDescription>
-          {automatic
-            ? "可粘贴服务商地址或完整调用地址，无需选择接口格式。"
-            : "远程使用 HTTPS；本机回环地址支持 HTTP。"}
-          地址不包含密钥或认证参数。
+          {subscription
+            ? "MiniMax M Plan 国际站官方地址。"
+            : automatic
+              ? "可填写服务地址或完整调用地址。"
+              : "远程使用 HTTPS，本机回环可用 HTTP。"}
+          地址中请勿填写密钥或认证参数。
         </FieldDescription>
       </Field>
       <Field>
@@ -186,11 +158,13 @@ export function ProviderConnectionFields({
           }
         />
         <FieldDescription>
-          {hasNewKey
-            ? "新 API Key 尚未保存；获取模型或保存连接后生效。"
-            : draft.credentialRef
-              ? `当前凭据：${draft.credentialLabel ?? "已保存"}；留空沿用，填写新 Key 可更换。`
-              : "只保存到 macOS 钥匙串；本机无鉴权服务可留空。"}
+          {subscription
+            ? "使用 MiniMax M Plan 控制台签发的 sk-cp- 订阅 Key。已保存的 Key 可留空沿用。"
+            : hasNewKey
+              ? "新 API Key 尚未保存；获取模型或保存连接后生效。"
+              : draft.credentialRef
+                ? `当前凭据：${draft.credentialLabel ?? "已保存"}。留空沿用。`
+                : "只保存到 macOS 钥匙串；本机无鉴权服务可留空。"}
         </FieldDescription>
       </Field>
 
@@ -204,6 +178,34 @@ export function ProviderConnectionFields({
           />
         </Field>
       )}
+      <div className="flex flex-wrap gap-3">
+        <Button
+          type="button"
+          variant="link"
+          size="sm"
+          disabled={busy}
+          onClick={() => {
+            dispatch({ type: "advanced" });
+            clearError();
+          }}
+        >
+          {automatic || !advanced ? "高级设置" : "收起高级设置"}
+        </Button>
+        {!automatic && (
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              dispatch({ type: "mode", value: "automatic" });
+              clearError();
+            }}
+          >
+            自动识别并验证
+          </Button>
+        )}
+      </div>
     </>
   );
 }

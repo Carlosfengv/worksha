@@ -315,7 +315,7 @@ mod tests {
             checked_presets(&local_agent_core::domain::provider_presets::BuiltinPresets)
                 .unwrap()
                 .len(),
-            8
+            9
         );
     }
     #[tokio::test]

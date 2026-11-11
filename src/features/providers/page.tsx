@@ -1,6 +1,7 @@
 import type { Snapshot } from "@/app/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { PageActions, PageHeader } from "@/components/ui/page-layout";
 import { Tabs, TabsList, TabItem, TabPanel } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -60,12 +61,25 @@ export function ProvidersPage({
   const [draft, setDraft] = useState<Provider | null>(null);
   const [verify, setVerify] = useState<Provider | null>(null);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const updated = async () => {
     setNotice(null);
     await refresh();
     void status.invalidate();
+  };
+  const refreshConfiguration = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    setError(null);
+    try {
+      await Promise.all([refresh(), status.reload()]);
+    } catch (reason) {
+      setError(message(reason));
+    } finally {
+      setRefreshing(false);
+    }
   };
   const verifyConnection = async () => {
     if (!verify || busy) return;
@@ -92,14 +106,16 @@ export function ProvidersPage({
   };
   if (!data)
     return (
-      <ConnectionEmpty
-        title="尚未连接服务商配置"
-        description="在桌面应用中管理模型来源，并通过模型服务接入 Agent。"
-        icon="globe"
-      />
+      <div className="min-w-0 space-y-4">
+        <PageHeader className="px-0">
+          <h2 className="text-title font-medium">模型供应商</h2>
+        </PageHeader>
+        <ConnectionEmpty title="尚未连接服务商配置" icon="globe" />
+      </div>
     );
   const freshStatus = status.error ? null : status.data;
   const selected = data.providers.find((p) => p.id === selectedId);
+  const configured = data.providers.filter((p) => p.configured);
   const edit = (p: Provider) => {
     setDraft(p);
     setError(null);
@@ -110,11 +126,43 @@ export function ProvidersPage({
     setError(null);
   };
   return (
-    <div className="space-y-6">
-      <ProviderOperationRecovery
-        storeId={data.providerWriteProtocol?.storeId}
-        onUpdated={updated}
-      />
+    <div className="min-w-0 space-y-4">
+      {!selectedId && (
+        <PageHeader className="px-0">
+          <h2 className="text-title font-medium">模型供应商</h2>
+          <PageActions>
+            <Button
+              variant="tertiary"
+              loading={refreshing}
+              disabled={refreshing}
+              onClick={() => void refreshConfiguration()}
+            >
+              刷新配置
+            </Button>
+            <NativeProviderImport onImported={updated} />
+            <Button
+              onClick={() =>
+                edit({
+                  id: `custom-${crypto.randomUUID()}`,
+                  name: "",
+                  vendor: "custom",
+                  endpoint: "",
+                  protocol: "responses",
+                  model: "",
+                  models: [],
+                  credentialRef: null,
+                  credentialLabel: null,
+                  category: "custom",
+                  configured: false,
+                  revision: 0,
+                })
+              }
+            >
+              添加供应商
+            </Button>
+          </PageActions>
+        </PageHeader>
+      )}
       {notice && (
         <Alert>
           <AlertTitle>服务商配置</AlertTitle>
@@ -130,10 +178,14 @@ export function ProvidersPage({
       {selectedId ? (
         selectedId === "_unknown" ? (
           <>
-            <Button variant="tertiary" asChild>
-              <a href="#/providers">返回供应商列表</a>
-            </Button>
-            <h2 className="text-title font-medium">未归属调用</h2>
+            <PageHeader className="px-0">
+              <h2 className="text-title font-medium">未归属调用</h2>
+              <PageActions>
+                <Button variant="tertiary" asChild>
+                  <a href="#/providers">返回供应商列表</a>
+                </Button>
+              </PageActions>
+            </PageHeader>
             <ProviderHistory
               key="_unknown"
               providerId="_unknown"
@@ -151,6 +203,8 @@ export function ProvidersPage({
             onEdit={edit}
             onVerify={requestVerification}
             onUpdated={updated}
+            onRefresh={() => void refreshConfiguration()}
+            refreshing={refreshing}
             historyFilters={usageFilters}
             onHistoryFiltersChange={setUsageFilters}
           />
@@ -181,48 +235,21 @@ export function ProvidersPage({
             <TabPanel value="overview">
               <ProviderOverview providers={data.providers} />
             </TabPanel>
-            <TabPanel value="models" keepMounted>
+            <TabPanel value="models" keepMounted className="pt-3">
               <ProviderModelInventory
                 storeId={data.providerWriteProtocol?.storeId}
                 providers={data.providers}
                 active={listTab === "models"}
               />
             </TabPanel>
-            <TabPanel value="connections">
-              <section className="space-y-4" aria-label="服务商连接列表">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-title font-medium">
-                      已添加 ·{" "}
-                      {data.providers.filter((p) => p.configured).length}
-                    </h2>
-                  </div>
-                  <div className="flex flex-wrap items-start gap-2">
-                    <NativeProviderImport onImported={updated} />
-                    <Button
-                      variant="neutral"
-                      onClick={() => {
-                        setDraft({
-                          id: `custom-${crypto.randomUUID()}`,
-                          name: "",
-                          vendor: "custom",
-                          endpoint: "",
-                          protocol: "responses",
-                          model: "",
-                          models: [],
-                          credentialRef: null,
-                          credentialLabel: null,
-                          category: "custom",
-                          configured: false,
-                          revision: 0,
-                        });
-                        setError(null);
-                      }}
-                    >
-                      添加供应商
-                    </Button>
-                  </div>
-                </div>
+            <TabPanel value="connections" className="pt-3">
+              <section
+                className="min-w-0 space-y-3"
+                aria-label="服务商连接列表"
+              >
+                <p className="text-label text-fg-muted">
+                  已添加 · {configured.length}
+                </p>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <ProviderUsageFilters
                     value={usageFilters}
@@ -242,6 +269,15 @@ export function ProvidersPage({
                   error={usage.error}
                   reload={usage.reload}
                 />
+                <ProviderTable
+                  providers={configured}
+                  status={freshStatus}
+                  onEdit={edit}
+                  onVerify={requestVerification}
+                  usage={
+                    usage.data?.sourceState === "disabled" ? null : usage.data
+                  }
+                />
                 <ProviderUsageSummary
                   totals={
                     usage.data?.sourceState === "disabled"
@@ -257,15 +293,6 @@ export function ProvidersPage({
                     </a>
                   </Button>
                 )}
-                <ProviderTable
-                  providers={data.providers.filter((p) => p.configured)}
-                  status={freshStatus}
-                  onEdit={edit}
-                  onVerify={requestVerification}
-                  usage={
-                    usage.data?.sourceState === "disabled" ? null : usage.data
-                  }
-                />
                 <ProviderUsageNotes />
               </section>
             </TabPanel>
@@ -273,6 +300,12 @@ export function ProvidersPage({
           <PluginEntries kind="providers" />
         </>
       )}
+      <ProviderOperationRecovery
+        storeId={data.providerWriteProtocol?.storeId}
+        compact
+        hasPending={!!data.providerWriteProtocol?.pendingOperationIds.length}
+        onUpdated={updated}
+      />
       {status.error && (
         <Alert status="warning">
           <AlertTitle>暂时无法读取验证状态</AlertTitle>
@@ -310,8 +343,8 @@ export function ProvidersPage({
           <DialogHeader>
             <DialogTitle>验证 {verify?.name}</DialogTitle>
             <DialogDescription>
-              向所选端点发送一条短请求，最多生成 16 个输出 Token，可能产生少量
-              API 费用。验证内容不会加入业务会话。
+              将向以下地址发送 1 次模型请求，最多生成 16 个输出 Token，可能产生
+              API 费用。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">

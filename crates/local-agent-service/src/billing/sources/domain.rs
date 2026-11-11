@@ -8,7 +8,7 @@ struct NativeRead<'a> {
     raw: Option<ReadRequest<'a>>,
     expected: a::QuotaRequest,
     legacy: Option<AccountSnapshot>,
-    error: Option<&'static str>,
+    error: Option<ReadError>,
 }
 impl DomainAccountSource for NativeRead<'_> {
     fn refresh_quota<'a>(&'a mut self, request: &'a a::QuotaRequest) -> a::QuotaFuture<'a> {
@@ -36,7 +36,7 @@ pub(super) async fn read(
     raw: ReadRequest<'_>,
     kind: &'static str,
     epoch: u64,
-) -> Result<AccountSnapshot, &'static str> {
+) -> Result<AccountSnapshot, ReadError> {
     let expected = a::QuotaRequest {
         invocation: d::Invocation {
             invocation_id: uuid::Uuid::new_v4().to_string(),
@@ -67,12 +67,16 @@ pub(super) async fn read(
         legacy: None,
         error: None,
     };
-    let quota = bridge
-        .refresh_quota(&expected)
-        .await
-        .map_err(|_| bridge.error.unwrap_or("额度结果未通过领域契约核查"))?;
+    let quota = bridge.refresh_quota(&expected).await.map_err(|_| {
+        bridge
+            .error
+            .unwrap_or_else(|| "额度结果未通过领域契约核查".into())
+    })?;
     if quota.account_ref != expected.account_ref {
-        return Err("账户范围已变化，已丢弃额度结果");
+        return Err("账户范围已变化，已丢弃额度结果".into());
     }
-    bridge.legacy.take().ok_or("额度来源未完成读取")
+    bridge
+        .legacy
+        .take()
+        .ok_or_else(|| "额度来源未完成读取".into())
 }

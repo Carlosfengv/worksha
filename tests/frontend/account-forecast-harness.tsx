@@ -2,7 +2,10 @@ import { createRoot } from "react-dom/client";
 import { useState } from "react";
 import { IconProvider } from "@/lib/icon-context";
 import { accountsApi } from "@/features/accounts/api";
-import type { BillingAccount } from "@/features/accounts/types";
+import type {
+  BillingAccount,
+  RoutingQuotaStatus,
+} from "@/features/accounts/types";
 import { ProviderDetail } from "@/features/providers/components/provider-detail";
 import { providersApi } from "@/features/providers/api";
 import type { Provider, ProviderUsage } from "@/features/providers/types";
@@ -12,6 +15,8 @@ import "@/styles/globals.css";
 const now = Date.now();
 const params = new URLSearchParams(location.search);
 const mode = params.get("mode");
+const storeId = "c80ba887-47ce-4100-b816-b7fa424be99b";
+const poolAccount = { id: "e713d6a8-8b81-4fc6-990f-46ed3430261d", revision: 1 };
 const provider: Provider = {
   id: "provider-a",
   name: "同名 Provider",
@@ -134,6 +139,7 @@ declare global {
       usageFailed: boolean;
       finishUsage: (() => void) | null;
       accountLoaded: boolean;
+      routingQuota: RoutingQuotaStatus;
     };
   }
 }
@@ -145,6 +151,7 @@ const fixture = (window.accountForecastFixture = {
   usageFailed: false,
   finishUsage: null as (() => void) | null,
   accountLoaded: mode !== "balance-unread",
+  routingQuota: "exhausted" as RoutingQuotaStatus,
 });
 accountsApi.accounts = async () => {
   if (mode === "loading")
@@ -153,6 +160,20 @@ accountsApi.accounts = async () => {
     });
   if (fixture.directoryFailed || mode === "directory-error")
     throw new Error("账户目录暂不可用");
+  if (mode === "routing-quota") {
+    const shared = { ...linked, routingQuota: fixture.routingQuota };
+    return {
+      accounts: [
+        shared,
+        {
+          ...shared,
+          id: "upstream-" + poolAccount.id,
+          upstreamAccount: poolAccount,
+        },
+      ],
+      asOf: new Date().toISOString(),
+    };
+  }
   return {
     accounts:
       mode === "empty"
@@ -167,6 +188,22 @@ accountsApi.accounts = async () => {
     asOf: new Date().toISOString(),
   };
 };
+if (mode === "routing-quota") {
+  providersApi.upstreamAccount = async (providerId) => ({
+    storeId,
+    accounts: [
+      {
+        ...poolAccount,
+        providerId,
+        label: "验收账号",
+        state: "enabled",
+        verifications: [],
+        cooldowns: [],
+        routingQuota: fixture.routingQuota,
+      },
+    ],
+  });
+}
 accountsApi.refreshAccount = async () => {
   fixture.refreshes++;
   if (mode === "balance-unread") {
@@ -279,6 +316,7 @@ function Harness() {
           key={selected.id}
           provider={selected}
           status={null}
+          storeId={mode === "routing-quota" ? storeId : undefined}
           onEdit={() => undefined}
           onVerify={() => undefined}
           onUpdated={async () => undefined}

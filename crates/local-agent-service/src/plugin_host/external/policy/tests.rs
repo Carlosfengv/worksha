@@ -353,6 +353,47 @@ fn context() -> Context {
         binding: None,
     }
 }
+
+impl super::super::Manager {
+    pub(crate) fn bind_unavailable_policy_fixture(
+        &self,
+        store: &str,
+        service: &str,
+        version: &str,
+    ) -> String {
+        let fixture = context();
+        self.policy
+            .lock()
+            .unwrap()
+            .bind(
+                BindRequest {
+                    store,
+                    service,
+                    version,
+                    expected: &None,
+                    package: &p::PackageQuery {
+                        plugin_id: fixture.package.manifest.id.clone(),
+                        digest: fixture.package.digest.clone(),
+                    },
+                    failure: p::FailureMode::Builtin,
+                    pending: None,
+                },
+                &Authorization::from_context(&fixture, &self.catalog_instance),
+            )
+            .unwrap()
+            .status
+            .revision
+    }
+
+    pub(crate) fn unbind_policy_fixture(&self, store: &str, service: &str, revision: &str) {
+        self.policy
+            .lock()
+            .unwrap()
+            .unbind(store, service, revision)
+            .unwrap();
+    }
+}
+
 #[test]
 fn version_bindings_keep_old_authority_until_explicit_unbind_and_restart_restores_no_activation() {
     let temp = tempfile::tempdir().unwrap();
@@ -554,7 +595,7 @@ pub(super) fn prepared(h: &Host) -> Intent {
         store_id: id(),
         operation_id: id(),
         action: OperationAction::Save {
-            draft: ServiceDraft {
+            draft: Box::new(ServiceDraft {
                 id: id(),
                 revision: 0,
                 name: "Owned policy publication".into(),
@@ -564,7 +605,7 @@ pub(super) fn prepared(h: &Host) -> Intent {
                     enabled: true,
                     ..Default::default()
                 },
-            },
+            }),
         },
     };
     let service = request.action.identity().1.to_string();

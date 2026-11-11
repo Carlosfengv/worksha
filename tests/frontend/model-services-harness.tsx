@@ -1,4 +1,5 @@
 import { DesktopError } from "@/shared/lib/desktop-command";
+import { invalidateCapabilityAccess } from "@/shared/lib/capability-access";
 import {
   serviceReceipt,
   type ServiceRequest,
@@ -21,6 +22,7 @@ import type {
   Provider,
   ProviderStatus,
   ProviderTransaction,
+  UpstreamRecoveryState,
 } from "@/features/providers/types";
 import "@/styles/globals.css";
 
@@ -61,6 +63,10 @@ const service: ModelService = {
   ],
 };
 const params = new URLSearchParams(location.search);
+if (params.has("nested")) {
+  service.id = "620d7132-b3f3-4e56-8f5a-2c06c8282a01";
+  service.versionId = "70130e70-ef47-4cd7-9b01-2da76b6101d5";
+}
 const agent = params.get("agent") ?? "opencode";
 const original: NativeConfig = {
   agentId: agent as NativeConfig["agentId"],
@@ -92,7 +98,11 @@ declare global {
       receipts: Map<string, { request: string; receipt: ServiceReceipt }>;
       parseReceipt: (value: unknown, request: ServiceRequest) => ServiceReceipt;
       failRead: boolean;
+      routingProjectVisible: boolean;
+      revokeRoutingProject: () => void;
       failApply: boolean;
+      previewQuota: string;
+      previewRecovery: UpstreamRecoveryState | null;
       processes: number;
       inUse: boolean;
       catalog: ModelServiceCatalog;
@@ -115,7 +125,14 @@ const fixture = (window.modelServiceFixture = {
   receipts: new Map<string, { request: string; receipt: ServiceReceipt }>(),
   parseReceipt: serviceReceipt,
   failRead: false,
+  routingProjectVisible: true,
+  revokeRoutingProject() {
+    this.routingProjectVisible = false;
+    invalidateCapabilityAccess();
+  },
   failApply: false,
+  previewQuota: "recovering",
+  previewRecovery: null as UpstreamRecoveryState | null,
   processes: params.has("running") ? 2 : 0,
   inUse: false,
   catalog: {
@@ -136,6 +153,28 @@ modelServicesApi.catalog = async () => {
   if (fixture.failRead) throw new Error("服务目录读取失败");
   return structuredClone(fixture.catalog);
 };
+modelServicesApi.routingProjects = async ({ query, selectedId }) => {
+  const project = {
+    id: `project:${"2".repeat(64)}`,
+    name: "OpenCode 2.x 项目",
+    path: "/fixture/opencode-v2",
+    projectKind: "workspace" as const,
+  };
+  return {
+    items:
+      fixture.routingProjectVisible &&
+      `${project.name} ${project.path}`
+        .toLowerCase()
+        .includes(query?.toLowerCase() ?? "")
+        ? [project]
+        : [],
+    nextCursor: null,
+    selected:
+      fixture.routingProjectVisible && selectedId === project.id
+        ? project
+        : null,
+  };
+};
 modelServicesApi.save = async (draft) => {
   fixture.actions.push("save");
   if (fixture.failSave) {
@@ -153,15 +192,21 @@ modelServicesApi.save = async (draft) => {
     revision: draft.revision + 1,
     versionId: crypto.randomUUID(),
     publishedAt: new Date().toISOString(),
-    models: draft.models.map((m) => ({
-      id: m.id,
-      name: m.name,
-      capabilities: m.capabilities,
-      provider: {
-        ...sources.find((p) => p.id === m.providerId)!,
-        model: m.model,
-      },
-    })),
+    models: draft.models.map((m) => {
+      const child = fixture.catalog.services.find(
+        (service) => service.id === m.child?.serviceId,
+      );
+      return {
+        id: m.id,
+        name: m.name,
+        capabilities: m.capabilities,
+        ...(m.child ? { child: m.child } : {}),
+        provider: child
+          ? child.models.find((member) => member.id === child.defaultModelId)!
+              .provider
+          : { ...sources.find((p) => p.id === m.providerId)!, model: m.model },
+      };
+    }),
   };
   fixture.catalog.services = [
     ...fixture.catalog.services.filter((s) => s.id !== saved.id),
@@ -329,7 +374,11 @@ const verifications = new Map<
   string,
   ProviderStatus["verifications"][number]
 >();
-providersApi.verifyProvider = async (id, _revision, model) => {
+const verifyFixture = async (
+  id: string,
+  model?: string,
+  hasAccount = false,
+) => {
   fixture.actions.push(`verify:${id}:${model}`);
   if (fixture.holdVerification)
     await new Promise<void>((resolve) => {
@@ -338,28 +387,133 @@ providersApi.verifyProvider = async (id, _revision, model) => {
         resolve();
       };
     });
+  const needsAccount =
+    params.has("require-account") && id === "source-Alpha" && !hasAccount;
   const result = {
     providerId: id,
     model,
     fingerprint: "fixture",
-    state: "verified" as const,
+    state: needsAccount ? ("failed" as const) : ("verified" as const),
     checkedAt: new Date().toISOString(),
-    message: "短请求验证通过",
+    message: needsAccount ? "测试来源要求使用已发布的账号" : "短请求验证通过",
   };
   verifications.set(`${id}:${model}`, result);
   return result;
 };
+providersApi.verifyProvider = (id, _revision, model) =>
+  verifyFixture(id, model);
 modelServicesApi.verifyMember = async (input) => {
   if (input.storeId !== fixture.catalog.writeProtocol?.storeId)
     throw new DesktopError({
       code: "operation_store_changed",
       message: "数据库已切换",
     });
-  return providersApi.verifyProvider(
-    input.providerId,
-    input.expectedRevision,
-    input.model,
-  );
+  if (input.upstreamAccount)
+    fixture.actions.push(`account:${input.upstreamAccount.id}`);
+  return verifyFixture(input.providerId, input.model, !!input.upstreamAccount);
+};
+const fixtureUpstreamAccounts = [
+  {
+    id: "a8259fd0-66d1-493f-ac6f-12abc5437890",
+    label: "主账号",
+    state: "enabled",
+  },
+  {
+    id: "b8259fd0-66d1-493f-ac6f-12abc5437890",
+    label: "备用账号",
+    state: "enabled",
+  },
+  {
+    id: "c8259fd0-66d1-493f-ac6f-12abc5437890",
+    label: "暂停账号",
+    state: "paused",
+  },
+] as const;
+if (params.has("require-account")) {
+  service.routingPolicy = {
+    ...defaultRoutingPolicy(),
+    enabled: true,
+    accountPools: [
+      {
+        modelId: service.defaultModelId,
+        accounts: fixtureUpstreamAccounts
+          .filter((account) => account.state === "enabled")
+          .map(({ id }) => ({ id, revision: 1 })),
+      },
+    ],
+  };
+}
+providersApi.upstreamAccount = async (providerId) => ({
+  storeId: fixture.catalog.writeProtocol!.storeId,
+  accounts:
+    params.has("upstream-accounts") && providerId === "source-Alpha"
+      ? fixtureUpstreamAccounts.map((a) => ({ ...a, revision: 1, providerId }))
+      : [],
+});
+modelServicesApi.preview = async ({ storeId, draft, entry }) => {
+  fixture.actions.push(`preview:${entry.kind}`);
+  const preferred =
+    entry.kind === "specified" ? entry.modelId : draft.defaultModelId;
+  return {
+    storeId,
+    checkedAt: "2026-10-26T00:16:00Z",
+    entryState: "configured",
+    models: draft.models.map((model) => ({
+      id: model.id,
+      name: model.name,
+      scope:
+        model.id === preferred
+          ? "preferred"
+          : entry.kind === "specified"
+            ? "capabilityMismatch"
+            : draft.routingPolicy?.fallbackAcrossModels
+              ? "fallback"
+              : "outsideFallback",
+      source: null,
+      model: model.model,
+      state: "configured",
+      accounts:
+        model.id === "model-pro"
+          ? [
+              {
+                label: "主账号",
+                position: 1,
+                state: "configured",
+                verification: "expired",
+                verifiedAt: "2026-10-26T00:00:00Z",
+                verifyOnPublish: true,
+                cooldownKnown: true,
+                cooldown: fixture.previewRecovery
+                  ? null
+                  : {
+                      reason: "upstream_rate_limit",
+                      untilMs: Date.parse("2026-10-26T00:18:00Z"),
+                    },
+                recovery: fixture.previewRecovery
+                  ? {
+                      reason: "upstream_rate_limit",
+                      untilMs: Date.parse("2026-10-26T00:18:00Z"),
+                      state: fixture.previewRecovery,
+                    }
+                  : null,
+                quota: fixture.previewQuota,
+              },
+              {
+                label: "备用账号",
+                position: 2,
+                state: "paused",
+                verification: "unverified",
+                verifiedAt: null,
+                verifyOnPublish: false,
+                cooldownKnown: true,
+                cooldown: null,
+                quota: null,
+              },
+            ]
+          : [],
+      child: null,
+    })),
+  };
 };
 providersApi.providerStatus = async (): Promise<ProviderStatus> => ({
   localTokenProtocol: {

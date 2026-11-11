@@ -1,4 +1,4 @@
-use crate::backend::Backend;
+use crate::backend::{Backend, query_path};
 
 #[tauri::command]
 pub(crate) async fn commit_model_service_operation(
@@ -36,6 +36,32 @@ pub(crate) async fn get_model_services(
 ) -> Result<serde_json::Value, String> {
     backend
         .request(reqwest::Method::GET, "/api/model-services", None)
+        .await
+}
+#[tauri::command]
+pub(crate) async fn query_model_service_routing_projects(
+    backend: tauri::State<'_, Backend>,
+    query: local_agent_core::projects::routing::RoutingProjectQuery,
+) -> Result<serde_json::Value, String> {
+    backend
+        .request(
+            reqwest::Method::GET,
+            &query_path("/api/model-services/routing-projects", query)?,
+            None,
+        )
+        .await
+}
+#[tauri::command]
+pub(crate) async fn preview_model_service(
+    backend: tauri::State<'_, Backend>,
+    input: local_agent_core::model_services::operations::PreviewRequest,
+) -> Result<serde_json::Value, String> {
+    backend
+        .request(
+            reqwest::Method::POST,
+            "/api/model-services/preview",
+            Some(serde_json::to_value(input).map_err(|_| "模型服务预览参数无效")?),
+        )
         .await
 }
 #[tauri::command]

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Combobox,
@@ -9,51 +9,83 @@ import {
   ComboboxList,
 } from "@/components/ui/combobox";
 import { usePollingResource } from "@/shared/hooks/use-polling-resource";
+import {
+  capabilityAccessEpoch,
+  subscribeCapabilityAccess,
+} from "@/shared/lib/capability-access";
 import { projectsApi } from "./api";
+import type { RoutingProjectPage, RoutingProjectQuery } from "./types";
 
 export function ProjectPicker({
   value,
   onChange,
   disabled,
+  loadRoutingProjects,
+  hint = "项目来自已授权会话，包含临时目录。也可以直接选择本机已有文件夹，无需新建项目。发送前会通过系统选择器确认目录。",
+  clearLabel = "改选其他文件夹",
 }: {
   value: string | null;
   onChange: (id: string | null) => void;
   disabled?: boolean;
+  loadRoutingProjects?: (
+    query: RoutingProjectQuery,
+  ) => Promise<RoutingProjectPage>;
+  hint?: string;
+  clearLabel?: string;
 }) {
   const [limit, setLimit] = useState(40);
   const [search, setSearch] = useState("");
+  const access = useSyncExternalStore(
+    subscribeCapabilityAccess,
+    capabilityAccessEpoch,
+  );
   const loader = useCallback(async () => {
     const query = { scope: "all", query: search || undefined };
-    let result = await projectsApi.projects(query);
+    const load = async (cursor?: string): Promise<RoutingProjectPage> => {
+      if (loadRoutingProjects) {
+        return loadRoutingProjects({
+          query: query.query,
+          cursor,
+          selectedId: value ?? undefined,
+        });
+      }
+      const result = await projectsApi.projects({ ...query, cursor });
+      return {
+        items: result.items,
+        nextCursor: result.nextCursor,
+        selected: null,
+      };
+    };
+    let result = await load();
     const seen = new Set<string>();
     while (result.nextCursor && result.items.length < limit) {
       if (seen.has(result.nextCursor))
         throw new Error("项目分页已失效，请重新读取");
       seen.add(result.nextCursor);
-      const next = await projectsApi.projects({
-        ...query,
-        cursor: result.nextCursor,
-      });
+      const next = await load(result.nextCursor);
       result = { ...next, items: [...result.items, ...next.items] };
     }
     const selected =
-      value && !result.items.some((item) => item.id === value)
+      !loadRoutingProjects &&
+      value &&
+      !result.items.some((item) => item.id === value)
         ? (await projectsApi.project(value, { scope: "all" })).project
-        : null;
-    return { ...result, selected };
-  }, [search, limit, value]);
+        : result.selected;
+    return { ...result, selected, access };
+  }, [access, loadRoutingProjects, search, limit, value]);
   const resource = usePollingResource(
-    `task-projects:${search}:${limit}:${value}`,
+    `${loadRoutingProjects ? "routing" : "task"}-projects:${search}:${limit}:${value}`,
     loader,
   );
-  const options = new Map((resource.data?.items ?? []).map((p) => [p.id, p]));
-  if (resource.data?.selected)
-    options.set(resource.data.selected.id, resource.data.selected);
+  const data = resource.data?.access === access ? resource.data : null;
+  const loading = resource.loading || (!data && !resource.error);
+  const options = new Map((data?.items ?? []).map((p) => [p.id, p]));
+  if (data?.selected) options.set(data.selected.id, data.selected);
   const label = (id: string) => {
     const project = options.get(id);
     return project
       ? `${project.name} · ${project.path}${project.projectKind !== "workspace" ? " · 临时目录" : ""}`
-      : resource.error
+      : resource.error || data
         ? "所选项目暂不可用"
         : "正在读取所选项目";
   };
@@ -83,7 +115,7 @@ export function ProjectPicker({
         />
         <ComboboxContent>
           <ComboboxEmpty>
-            {resource.loading
+            {loading
               ? "正在读取项目…"
               : resource.error
                 ? "项目读取失败，可在下方重试"
@@ -104,7 +136,7 @@ export function ProjectPicker({
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        {resource.data?.nextCursor && (
+        {data?.nextCursor && (
           <Button
             variant="tertiary"
             disabled={disabled}
@@ -128,13 +160,11 @@ export function ProjectPicker({
             disabled={disabled}
             onClick={() => onChange(null)}
           >
-            改选其他文件夹
+            {clearLabel}
           </Button>
         )}
       </div>
-      <p className="text-label text-fg-muted">
-        项目来自已授权会话，包含临时目录。也可以直接选择本机已有文件夹，无需新建项目。发送前会通过系统选择器确认目录。
-      </p>
+      <p className="text-label text-fg-muted">{hint}</p>
     </div>
   );
 }

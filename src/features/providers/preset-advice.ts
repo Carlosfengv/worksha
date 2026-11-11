@@ -17,7 +17,7 @@ export const builtinPresetAdvice: readonly PresetAdvice[] = Object.freeze(
     name: p.name,
     protocol: p.protocol,
     endpoints: p.endpoints,
-    model: "",
+    model: p.model ?? "",
     documents: p.documents ?? null,
   })),
 );
@@ -74,7 +74,7 @@ export function validatePresetAdvice(value: ContractAdvice): PresetAdvice {
       !known ||
       value.name !== known.name ||
       value.protocol !== known.protocol ||
-      value.model ||
+      value.model !== known.model ||
       value.sourceName !== known.sourceName ||
       value.documents !== known.documents ||
       JSON.stringify(Object.entries(value.endpoints).sort()) !==

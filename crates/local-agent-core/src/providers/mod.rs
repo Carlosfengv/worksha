@@ -14,8 +14,10 @@ pub mod local_tokens;
 mod metadata;
 pub mod model_observations;
 pub mod operations;
+pub mod subscription;
 #[cfg(test)]
 mod tests;
+pub mod upstream_accounts;
 pub mod vault;
 
 use crate::Provider;
@@ -155,6 +157,8 @@ pub struct CredentialSaved {
 #[serde(rename_all = "camelCase")]
 pub struct Verification {
     pub provider_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_revision: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     pub fingerprint: String,
@@ -462,6 +466,7 @@ impl ProviderManager {
             .ok_or_else(|| ConfigError::new("unavailable", "连接保存未完成"))?;
         let verification = Verification {
             provider_id: id,
+            account_revision: None,
             model: Some(saved.model.clone()),
             fingerprint: fingerprint(&saved),
             state: "verified".into(),
@@ -495,12 +500,32 @@ impl ProviderManager {
         provider: &Provider,
         models: Vec<String>,
     ) -> Result<(), ConfigError> {
+        self.require_target_verifications(provider, models, None)
+    }
+    pub fn require_upstream_verification(
+        &self,
+        provider: &Provider,
+        account: &upstream_accounts::AccountRef,
+    ) -> Result<(), ConfigError> {
+        self.require_target_verifications(provider, vec![provider.model.clone()], Some(account))
+    }
+    fn require_target_verifications(
+        &self,
+        provider: &Provider,
+        models: Vec<String>,
+        account: Option<&upstream_accounts::AccountRef>,
+    ) -> Result<(), ConfigError> {
         let now = chrono::Utc::now();
+        let (id, revision) = account.map_or((provider.id.as_str(), None), |account| {
+            (account.id.as_str(), Some(account.revision))
+        });
         let verified: std::collections::HashSet<_> = self
             .verifications()?
             .into_iter()
             .filter(|v| {
-                v.state == "verified"
+                v.provider_id == id
+                    && v.account_revision == revision
+                    && v.state == "verified"
                     && chrono::DateTime::parse_from_rfc3339(&v.checked_at).is_ok_and(|date| {
                         let age = now.signed_duration_since(date);
                         age >= chrono::Duration::zero() && age < chrono::Duration::minutes(15)
@@ -761,6 +786,12 @@ impl ProviderManager {
         }
         if let Some(p) = provider {
             validate_source(p)?;
+            if subscription::minimax_plan(p)
+                && let Some(reference) = &p.credential_ref
+            {
+                let key = self.secret(reference)?;
+                subscription::validate_key(p, Some(&key))?;
+            }
         }
         if let Some(p) = rendered {
             validate_with(&self.adapters, &draft.agent_id, p)?;
@@ -1167,6 +1198,7 @@ pub fn validate_source(p: &Provider) -> Result<(), ConfigError> {
         return fail("incompatible", "供应商接口协议不受支持");
     }
     let url = validate_endpoint(&p.endpoint)?;
+    subscription::validate_endpoint(p)?;
     if !p.configured
         || p.model.trim().is_empty()
         || (!is_loopback_url(&url) && p.credential_ref.is_none())

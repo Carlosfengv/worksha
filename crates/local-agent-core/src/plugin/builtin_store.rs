@@ -276,7 +276,13 @@ impl Store {
         default_profile: Profile,
         revoked_sources: &[String],
     ) -> Result<CompositionReceipt, PluginError> {
-        self.save_builtin_composition_with_iam(request, default_profile, revoked_sources, None)
+        self.save_builtin_composition_with_iam(
+            request,
+            default_profile,
+            revoked_sources,
+            None,
+            false,
+        )
     }
 
     pub fn save_builtin_composition_with_iam(
@@ -285,6 +291,7 @@ impl Store {
         default_profile: Profile,
         revoked_sources: &[String],
         bootstrap: Option<&crate::iam::Bootstrap>,
+        retain_openrouter: bool,
     ) -> Result<CompositionReceipt, PluginError> {
         self.require_builtin_store(&request.store_id)?;
         if !valid_id(&request.operation_id)
@@ -341,6 +348,23 @@ impl Store {
             self.save_native_source(source, false)
                 .map_err(unavailable)?;
         }
+        if retain_openrouter {
+            transaction.execute(
+                "UPDATE service_openrouter_admission_v1 SET composition_revision=?1 WHERE composition_revision=?2",
+                params![revision as i64, state.revision.value() as i64],
+            ).map_err(unavailable)?;
+            transaction.execute(
+                "UPDATE service_openrouter_probes SET composition_revision=?1 WHERE composition_revision=?2",
+                params![revision as i64, state.revision.value() as i64],
+            ).map_err(unavailable)?;
+        } else {
+            transaction
+                .execute("DELETE FROM service_openrouter_admission_v1", [])
+                .map_err(unavailable)?;
+            transaction
+                .execute("DELETE FROM service_openrouter_probes", [])
+                .map_err(unavailable)?;
+        }
         transaction.execute("INSERT INTO builtin_plugin_operations(operation_id,request,receipt,opted_in) VALUES(?1,?2,?3,?4)",params![request.operation_id,serde_json::to_string(&compatible_request).map_err(unavailable)?,serde_json::to_string(&receipt).map_err(unavailable)?,opted_in]).map_err(unavailable)?;
         transaction.execute("DELETE FROM builtin_plugin_operations WHERE sequence NOT IN (SELECT sequence FROM builtin_plugin_operations ORDER BY sequence DESC LIMIT 256)",[]).map_err(unavailable)?;
         transaction.commit().map_err(unavailable)?;
@@ -352,6 +376,7 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model_services::policy::{QuotaProbeSource, QuotaProbeState};
     fn request(store: &Store) -> CompositionChange {
         CompositionChange {
             expected_impact: None,
@@ -367,6 +392,57 @@ mod tests {
             },
         }
     }
+
+    #[test]
+    fn openrouter_evidence_follows_only_retained_source_compositions() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::open(temp.path()).unwrap();
+        let evidence = r#"{"accounts":{},"shared":{}}"#;
+        store.save_openrouter_admission_evidence(evidence).unwrap();
+        store
+            .reserve_service_quota_probe(
+                QuotaProbeSource::OpenRouter,
+                "owner",
+                &[("scope", Some(10), 400_000)],
+                20_000,
+                30_000,
+            )
+            .unwrap();
+        let mut change = request(&store);
+        store
+            .save_builtin_composition_with_iam(&change, Profile::Desktop, &[], None, true)
+            .unwrap();
+        drop(store);
+        let store = Store::open(temp.path()).unwrap();
+        assert_eq!(
+            store.openrouter_admission_evidence().unwrap().as_deref(),
+            Some(evidence)
+        );
+        assert_eq!(
+            store
+                .service_quota_probes(QuotaProbeSource::OpenRouter, ["scope"].into_iter(), 21_000)
+                .unwrap(),
+            [Some(QuotaProbeState::Active)]
+        );
+        change.operation_id = uuid::Uuid::new_v4().to_string();
+        change.expected_revision = 1u64.into();
+        store
+            .save_builtin_composition_with_iam(&change, Profile::Desktop, &[], None, false)
+            .unwrap();
+        drop(store);
+        let store = Store::open(temp.path()).unwrap();
+        assert!(store.openrouter_admission_evidence().unwrap().is_none());
+        store
+            .settle_service_quota_probe(QuotaProbeSource::OpenRouter, "owner", true, 22_000, 0)
+            .unwrap();
+        assert_eq!(
+            store
+                .service_quota_probes(QuotaProbeSource::OpenRouter, ["scope"].into_iter(), 22_000)
+                .unwrap(),
+            [None]
+        );
+    }
+
     #[test]
     fn configuration_and_consent_revocation_commit_once_and_survive_restart() {
         let temp = tempfile::tempdir().unwrap();

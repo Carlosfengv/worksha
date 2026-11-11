@@ -31,6 +31,10 @@ pub(super) struct SourceContext<'a> {
     cancelled: &'a dyn Fn() -> bool,
 }
 impl SourceContext<'_> {
+    pub(super) fn authorization_identity(&self) -> (u64, u64) {
+        (self.grant_revision, self.lease.epoch)
+    }
+
     pub(super) fn domain_cancelled(&self) -> bool {
         (self.cancelled)()
     }

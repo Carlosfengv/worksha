@@ -61,6 +61,9 @@ fn route_revision(id: &str) -> u64 {
 impl Gateway {
     fn client_provider(&self, id: &str, route: &Route) -> Provider {
         let mut p = route.provider.clone();
+        if local_agent_core::providers::subscription::minimax_plan(&p) {
+            p.vendor = "custom".into();
+        }
         p.protocol = if route.agent == "codex" {
             "responses"
         } else {
@@ -587,7 +590,6 @@ pub async fn capture(
             agent_product_id: match route.agent.as_str() {
                 "claude-desktop" => Some("claude-code-desktop".into()),
                 "claude" => Some("claude-code-cli".into()),
-                "opencode" => Some("opencode".into()),
                 _ => None,
             },
             provider: route.provider,

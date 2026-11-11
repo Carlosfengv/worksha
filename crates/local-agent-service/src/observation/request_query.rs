@@ -234,11 +234,21 @@ pub async fn detail(State(state): State<AppState>, Query(query): Query<DetailQue
         let result=state.observation.hub.query(|history|{
             let source=prepare_sources(&state,history)?;
             let request=history.request_detail(&query.id)?;
+            let route_trace = request.as_ref()
+                .filter(|row| row["source"] == "gateway")
+                .and_then(|row| row["id"].as_str())
+                .map(|id| history.request_route_trace(id))
+                .transpose()?
+                .flatten();
             let current=effective_sources(&state.sessions)?;
             if source.sources.iter().any(|old|old.enabled&&!current.iter().any(|now|now.enabled&&old.agent_id==now.agent_id&&old.authorization_revision==now.authorization_revision)){
                 return Err("原生来源授权已变化，请刷新".into());
             }
-            Ok(json!({"request":request,"asOf":chrono::Utc::now().to_rfc3339(),"sourceError":source.error.or(state.observation.hub.error())}))
+            let mut detail = json!({"request":request,"asOf":chrono::Utc::now().to_rfc3339(),"sourceError":source.error.or(state.observation.hub.error())});
+            if let Some(trace) = route_trace {
+                detail["routeTrace"] = trace;
+            }
+            Ok(detail)
         }).map_err(error)?;
         json_value(result)
     }).await

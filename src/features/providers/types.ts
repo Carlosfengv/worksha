@@ -1,5 +1,6 @@
 import type { ConfigAgentId } from "@/shared/types/agent";
 import type { Usage } from "@/shared/types/usage";
+import type { RoutingQuotaStatus } from "@/features/accounts/types";
 
 export interface ProviderUsageQuery {
   source: "gateway" | "native";
@@ -214,6 +215,7 @@ export interface ProviderTransaction {
 
 export interface ProviderVerification {
   providerId: string;
+  accountRevision?: number;
   model?: string | null;
   fingerprint: string;
   state: string;
@@ -307,3 +309,63 @@ export interface ProviderImportCandidate {
   reason: string | null;
   existingProviderId: string | null;
 }
+export interface UpstreamAccountRef {
+  id: string;
+  revision: number;
+}
+
+export interface UpstreamAccount extends UpstreamAccountRef {
+  providerId: string;
+  label: string;
+  state: "enabled" | "paused" | "revoked";
+  verifications?: UpstreamModelVerification[] | null;
+  cooldowns?: UpstreamCooldown[] | null;
+  recoveries?: UpstreamRecovery[] | null;
+  routingQuota?: RoutingQuotaStatus;
+}
+
+export interface UpstreamModelVerification {
+  model: string;
+  state: "verified" | "expired" | "failed" | "outdated" | "unknown";
+  checkedAt: string | null;
+}
+
+export interface UpstreamCooldown {
+  model: string | null;
+  untilMs: number;
+  reason: string;
+}
+
+export type UpstreamRecoveryState = "waitingForProbe" | "probing";
+
+export interface UpstreamRecovery extends UpstreamCooldown {
+  state: UpstreamRecoveryState;
+}
+
+export type UpstreamAccountAction =
+  | { kind: "list" }
+  | {
+      kind: "verify";
+      storeId: string;
+      expectedRevision: number;
+      account: UpstreamAccountRef;
+      model: string;
+    }
+  | {
+      kind: "save";
+      storeId: string;
+      account: {
+        id: string;
+        expectedRevision: number;
+        providerRevision: number;
+        label: string;
+        credentialRef: string;
+      };
+    }
+  | {
+      kind: "set-state";
+      storeId: string;
+      account: UpstreamAccountRef;
+      expectedState: UpstreamAccount["state"];
+      state: UpstreamAccount["state"];
+    };

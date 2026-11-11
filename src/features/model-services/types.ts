@@ -1,12 +1,64 @@
+import type {
+  UpstreamRecovery,
+  UpstreamRecoveryState,
+} from "@/features/providers/types";
+
+export const accountStrategies = [
+  "priority",
+  "round-robin",
+  "weighted",
+  "quota-reset",
+  "quota-remaining",
+  "quota-pace",
+] as const;
+
+export interface AccountPool {
+  modelId: string;
+  accounts: UpstreamAccountRef[];
+  strategy?: (typeof accountStrategies)[number];
+  affinity?: "off" | "prefer" | "strict";
+  weights?: Record<string, number>;
+}
+
+export const routingAgents = [
+  "claude",
+  "opencode",
+  "opencode-cli",
+  "opencode-desktop",
+  "codex",
+] as const;
+
+export interface RouteRule {
+  id: string;
+  name: string;
+  modelId: string;
+  agent?: (typeof routingAgents)[number];
+  projectId?: string;
+  tools?: boolean;
+  stream?: boolean;
+  minInputTokens?: number;
+  intent?: string;
+}
+
+export interface IntentClassifier {
+  modelId: string;
+  account?: UpstreamAccountRef;
+}
+
 export interface RoutingPolicy {
   enabled: boolean;
   order: string[];
   disabledModels: string[];
   fallbackOnFailure: boolean;
   fallbackOnRateLimit: boolean;
+  fallbackOnAccessDenied?: boolean;
   maxAttempts: number;
   deadlineSeconds: number;
   cooldownSeconds: number;
+  accountPools?: AccountPool[];
+  fallbackAcrossModels?: boolean;
+  rules?: RouteRule[];
+  intentClassifier?: IntentClassifier;
   limits: {
     modelId: string;
     maxConcurrent: number;
@@ -24,7 +76,7 @@ export const defaultRoutingPolicy = (): RoutingPolicy => ({
   cooldownSeconds: 30,
   limits: [],
 });
-import type { Provider } from "@/features/providers/types";
+import type { Provider, UpstreamAccountRef } from "@/features/providers/types";
 export interface ModelCapabilities {
   contextWindow: number;
   maxOutputTokens: number;
@@ -32,10 +84,15 @@ export interface ModelCapabilities {
   thinking: boolean;
   inputModalities: string[];
 }
+export interface ChildServiceRef {
+  serviceId: string;
+  versionId: string;
+}
 export interface ServiceModel {
   id: string;
   name: string;
   provider: Provider;
+  child?: ChildServiceRef;
   capabilities: ModelCapabilities;
 }
 export interface ModelService {
@@ -59,6 +116,7 @@ export interface ModelServiceDraft {
     name: string;
     providerId: string;
     model: string;
+    child?: ChildServiceRef;
     capabilities: ModelCapabilities;
   }[];
 }
@@ -73,6 +131,54 @@ export interface ServiceAttachment {
   configurationUnknown: boolean;
   directorySyncRequired: boolean;
 }
+export type ServicePreviewEntry =
+  | { kind: "default" }
+  | { kind: "specified"; modelId: string }
+  | { kind: "rule"; ruleId: string };
+
+export interface ServicePreviewRequest {
+  storeId: string;
+  draft: ModelServiceDraft;
+  entry: ServicePreviewEntry;
+}
+
+export interface ServicePreview {
+  storeId: string;
+  checkedAt: string;
+  entryState: string;
+  models: PreviewModel[];
+}
+
+export interface PreviewModel {
+  id: string;
+  name: string;
+  scope: string;
+  source: string | null;
+  model: string | null;
+  state: string;
+  accounts: PreviewAccount[];
+  child: {
+    name: string;
+    versionId: string;
+    revision: number;
+    models: PreviewModel[];
+  } | null;
+}
+
+export interface PreviewAccount {
+  label: string | null;
+  position: number | null;
+  state: string;
+  verification:
+    | import("@/features/providers/types").UpstreamModelVerification["state"]
+    | "unverified";
+  verifiedAt: string | null;
+  verifyOnPublish: boolean;
+  cooldownKnown: boolean;
+  cooldown: { untilMs: number; reason: string } | null;
+  recovery?: Omit<UpstreamRecovery, "model"> | null;
+  quota: string | null;
+}
 export interface ModelServiceCatalog {
   connectionAgents?: string[];
   writeProtocol?: { version: number; storeId: string; receiptLimit: number };
@@ -80,7 +186,7 @@ export interface ModelServiceCatalog {
     serviceId: string;
     modelId: string;
     status: {
-      state: "ready" | "cooling" | "unknown";
+      state: "ready" | "cooling" | "unknown" | UpstreamRecoveryState;
       untilMs: number | null;
       reason?: string;
     };
@@ -104,8 +210,9 @@ export const serviceDraft = (service: ModelService): ModelServiceDraft => ({
   models: service.models.map((m) => ({
     id: m.id,
     name: m.name,
-    providerId: m.provider.id,
-    model: m.provider.model,
+    providerId: m.child ? "" : m.provider.id,
+    model: m.child ? "" : m.provider.model,
+    ...(m.child ? { child: { ...m.child } } : {}),
     capabilities: { ...m.capabilities },
   })),
 });

@@ -1,5 +1,6 @@
 use super::tests::{Fixture, claude, fixture, write};
 use super::*;
+use crate::storage::default_providers;
 
 fn request(f: &Fixture) -> ImportRequest {
     let candidate = claude(f);
@@ -47,7 +48,10 @@ fn cancel_wins_before_late_submit_and_never_deletes_a_staged_credential() {
         "native_import_cancelled"
     );
     assert!(f.vault.0.lock().unwrap().is_empty());
-    assert_eq!(f.store.providers().unwrap().len(), 7);
+    assert_eq!(
+        f.store.providers().unwrap().len(),
+        default_providers().len()
+    );
     sql(
         &f,
         "CREATE TRIGGER ignore_provider BEFORE INSERT ON providers BEGIN SELECT RAISE(IGNORE); END;",
@@ -99,7 +103,10 @@ fn ignored_intent_clock_or_bytes_roll_back_before_vault() {
             f.manager.native_import_protocol(&f.store).unwrap().sequence,
             0
         );
-        assert_eq!(f.store.providers().unwrap().len(), 7);
+        assert_eq!(
+            f.store.providers().unwrap().len(),
+            default_providers().len()
+        );
     }
 }
 #[test]
@@ -120,7 +127,10 @@ fn rewritten_provider_or_ignored_final_receipt_keeps_one_pending_owner() {
                 .code,
             "native_import_result_unknown"
         );
-        assert_eq!(f.store.providers().unwrap().len(), 7);
+        assert_eq!(
+            f.store.providers().unwrap().len(),
+            default_providers().len()
+        );
         assert_eq!(
             f.manager
                 .native_import_operation(&f.store, &input, false)

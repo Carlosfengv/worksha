@@ -1,4 +1,50 @@
 import { expect, test } from "@playwright/test";
+import { PROVIDER_FIXTURE_STORE_ID } from "./provider-operation-fixture";
+
+test("provider account inspection verifies the selected model and displays stored cooldowns", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 780, height: 650 });
+  await page.goto(
+    "/tests/frontend/tables.html?mode=upstream-account-verification",
+  );
+  await page.getByRole("tab", { name: "上游账号", exact: true }).click();
+  const row = page.getByRole("row").filter({ hasText: "验证账号" });
+  await expect(row).toContainText("验证已过期");
+  await expect(row).toContainText("有候选处于冷却");
+  await row.getByRole("button", { name: "验证与状态 验证账号" }).click();
+  const dialog = page.getByRole("dialog", { name: "验证与状态 · 验证账号" });
+  await expect(dialog.getByText(/上游限流/)).toBeVisible();
+  const model = dialog.getByRole("combobox", { name: "验证模型" });
+  await model.fill("model-324");
+  await page.getByRole("option", { name: "model-324", exact: true }).click();
+  await dialog.getByRole("button", { name: "开始验证" }).click();
+  await expect(dialog.getByRole("status")).toHaveText("model-324 验证通过。");
+  await expect(
+    dialog.getByRole("region", { name: "模型验证记录" }),
+  ).toContainText("model-324");
+  expect(
+    await page.evaluate(() =>
+      window.scopeQueries
+        .filter((q) => q.feature === "upstream-account")
+        .map((q) => q.query),
+    ),
+  ).toEqual([
+    {
+      kind: "verify",
+      storeId: PROVIDER_FIXTURE_STORE_ID,
+      expectedRevision: 1,
+      account: { id: "00000000-0000-4000-8000-000000000101", revision: 3 },
+      model: "model-324",
+    },
+  ]);
+  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(row).toContainText("model-324");
+  await page.getByRole("button", { name: "验证与状态 暂停账号" }).click();
+  const paused = page.getByRole("dialog", { name: "验证与状态 · 暂停账号" });
+  await expect(paused.getByText("已暂停", { exact: true })).toBeVisible();
+  await expect(paused.getByRole("button", { name: "开始验证" })).toHaveCount(0);
+});
 
 test("Agent source state distinguishes partial transcripts from read failure with cached sessions", async ({
   page,
@@ -535,7 +581,7 @@ test("the app shell keeps header and document fixed while the page body scrolls;
     .poll(async () => (await banner.boundingBox())?.y)
     .toBe(before?.y);
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
-  await page.getByRole("heading", { name: "Providers", exact: true }).click();
+  await page.getByRole("heading", { name: "模型供应商", exact: true }).click();
   await page.keyboard.press("ControlOrMeta+b");
   await expect(
     page.getByRole("link", { name: "总览", exact: true }),

@@ -71,6 +71,7 @@ pub use failure::ModelFailure;
 pub use mcp::{McpQuery, McpSnapshot};
 pub use memory::MemorySnapshot;
 pub use opencode_mcp::{install_reader_worker, read_config_worker};
+pub use opencode_messages::RoutingBoundaries;
 pub use parser::{Event, SessionSummary, Usage};
 pub use parser::{Window as TranscriptWindow, parse_snapshot as read_transcript_snapshot};
 pub use source_plugins::{NativeSourceDefinitions, NativeSourcePlugins};

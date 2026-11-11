@@ -203,6 +203,7 @@ async fn disabled_business_routes_are_rejected_but_receipts_and_cancellation_rem
         "/api/providers",
         "/api/provider-models",
         "/api/model-services",
+        "/api/model-services/preview",
         "/api/model-service-members/verify",
         "/api/workbench",
         "/gateway/fixture/v1/messages",

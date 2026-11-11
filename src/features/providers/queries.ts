@@ -14,3 +14,14 @@ export const providerUsageResource = createReadResourceFamily(
   (query: ProviderUsageQuery) => providersApi.providerUsage(query),
   { events },
 );
+export const upstreamAccountsResource = createReadResourceFamily(
+  (providerId: string) =>
+    providersApi.upstreamAccount(providerId, { kind: "list" }),
+  {
+    events: [
+      "upstream-accounts-changed",
+      "provider-status-changed",
+      "account-quota-changed",
+    ],
+  },
+);

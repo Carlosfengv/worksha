@@ -7,9 +7,11 @@ use rusqlite::{Connection, OptionalExtension, params};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+mod nested;
 pub mod notices;
 pub mod operations;
 pub mod policy;
+pub use nested::{ChildServiceRef, NestedHop};
 use policy::RoutingPolicy;
 
 pub const CONNECTION_AGENTS: [&str; 4] = ["claude", "opencode", "claude-desktop", "codex"];
@@ -99,18 +101,21 @@ impl Capabilities {
                 .all(|m| self.input_modalities.contains(m))
     }
     pub fn common(models: &[ServiceModel]) -> Self {
+        Self::common_of(models.iter().map(|model| &model.capabilities))
+    }
+    pub fn common_of<'a>(capabilities: impl Iterator<Item = &'a Self> + Clone) -> Self {
         Self {
-            context_window: models
-                .iter()
-                .map(|m| m.capabilities.context_window)
+            context_window: capabilities
+                .clone()
+                .map(|caps| caps.context_window)
                 .min()
                 .unwrap_or(0),
-            max_output_tokens: models
-                .iter()
-                .map(|m| m.capabilities.max_output_tokens)
+            max_output_tokens: capabilities
+                .clone()
+                .map(|caps| caps.max_output_tokens)
                 .min()
                 .unwrap_or(0),
-            tools: models.iter().all(|m| m.capabilities.tools),
+            tools: capabilities.into_iter().all(|caps| caps.tools),
             thinking: false,
             input_modalities: vec!["text".into()],
         }
@@ -121,8 +126,12 @@ impl Capabilities {
 pub struct ModelDraft {
     pub id: String,
     pub name: String,
+    #[serde(default)]
     pub provider_id: String,
+    #[serde(default)]
     pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub child: Option<ChildServiceRef>,
     pub capabilities: Capabilities,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -142,6 +151,8 @@ pub struct ServiceModel {
     pub id: String,
     pub name: String,
     pub provider: Provider,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub child: Option<ChildServiceRef>,
     pub capabilities: Capabilities,
 }
 impl ServiceModel {
@@ -200,9 +211,31 @@ pub struct ServiceSelection {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fallback_reason: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_account: Option<crate::providers::upstream_accounts::AccountRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_account_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_selection_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routing_rule: Option<policy::MatchedRule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routing_intent: Option<policy::IntentOutcome>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_child: Option<ChildServiceRef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub nested_route: Vec<NestedHop>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nested_scope: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub budget: Option<ContextBudget>,
     pub mode: String,
     pub capabilities: Capabilities,
+}
+
+impl ServiceSelection {
+    pub fn has_strict_account(&self) -> bool {
+        self.account_selection_reason.as_deref() == Some("strict_affinity")
+    }
 }
 
 pub(crate) fn version(db: &Connection, id: &str) -> Result<ModelService, ConfigError> {
@@ -362,6 +395,14 @@ impl ServiceAttachment {
             preferred_model_name: Some(model.name.clone()),
             attempt: 1,
             fallback_reason: None,
+            upstream_account: None,
+            upstream_account_label: None,
+            account_selection_reason: None,
+            routing_rule: None,
+            routing_intent: None,
+            pending_child: model.child.clone(),
+            nested_route: vec![],
+            nested_scope: None,
             budget: None,
             mode: mode.into(),
             capabilities: required,
@@ -440,16 +481,27 @@ impl Store {
                 return fail("invalid_input", "模型名称无效或条目标识重复");
             }
             m.capabilities.validate()?;
-            let source = providers
-                .iter()
-                .find(|p| p.id == m.provider_id && p.configured)
-                .ok_or_else(|| ConfigError::new("invalid_provider", "请选择已配置的 Provider"))?;
-            let provider = select_model(source, Some(&m.model))?;
-            validate_source(&provider)?;
+            let provider = if let Some(child) = &m.child {
+                if !m.provider_id.is_empty() || !m.model.is_empty() {
+                    return fail("invalid_child_service", "子服务条目只可选择一种来源");
+                }
+                nested::member_source(tx, child, &m.capabilities)?
+            } else {
+                let source = providers
+                    .iter()
+                    .find(|p| p.id == m.provider_id && p.configured)
+                    .ok_or_else(|| {
+                        ConfigError::new("invalid_provider", "请选择已配置的 Provider")
+                    })?;
+                let provider = select_model(source, Some(&m.model))?;
+                validate_source(&provider)?;
+                provider
+            };
             models.push(ServiceModel {
                 id: m.id,
                 name: m.name,
                 provider,
+                child: m.child,
                 capabilities: m.capabilities,
             });
         }
@@ -459,6 +511,12 @@ impl Store {
         draft
             .routing_policy
             .validate(&ids, &draft.default_model_id)?;
+        nested::validate_graph(tx, &draft.id, &models, &draft.routing_policy)?;
+        for model in &models {
+            for account in draft.routing_policy.accounts(&model.id) {
+                self.upstream_account_target(&model.provider, account)?;
+            }
+        }
         let old: Option<(u32, bool)> = tx
             .query_row(
                 "SELECT revision,deleted FROM model_services WHERE id=?1",
@@ -548,6 +606,9 @@ impl Store {
                     "此服务仍被 Agent 目录引用，请先移除相关目录或恢复接入前配置",
                 );
             }
+        }
+        if nested::referenced(tx, id)? {
+            return fail("in_use", "此服务仍被其他模型服务引用，请先移除引用");
         }
         tx.execute(
             "UPDATE model_services SET deleted=1,revision=revision+1 WHERE id=?1",

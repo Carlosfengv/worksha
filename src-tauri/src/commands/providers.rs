@@ -1,5 +1,28 @@
 use crate::backend::Backend;
 
+#[tauri::command]
+pub(crate) async fn perform_upstream_account(
+    backend: tauri::State<'_, Backend>,
+    provider_id: String,
+    input: local_agent_core::providers::upstream_accounts::AccountAction,
+) -> Result<serde_json::Value, String> {
+    if provider_id.is_empty()
+        || provider_id.len() > 80
+        || !provider_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    {
+        return Err("Provider 标识无效".into());
+    }
+    backend
+        .request(
+            reqwest::Method::POST,
+            &format!("/api/provider-upstream-accounts/{provider_id}"),
+            Some(serde_json::to_value(input).map_err(|_| "上游账号操作无效")?),
+        )
+        .await
+}
+
 fn credential_identity(store_id: &str, operation_id: Option<&str>) -> Result<(), String> {
     let valid = local_agent_core::providers::operations::valid_id;
     if !valid(store_id) || operation_id.is_some_and(|id| !valid(id)) {

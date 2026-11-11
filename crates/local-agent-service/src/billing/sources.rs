@@ -1,8 +1,9 @@
 //! Trusted billing adapters receive one scoped request; caches and credentials stay in Billing.
-use super::AccountSnapshot;
+use super::{AccountSnapshot, ReadError};
 use local_agent_core::plugin::{
     BuiltinPlugin, CapabilityKey, PluginDescriptor, PluginError, PluginHost, PluginResources,
 };
+use local_agent_core::providers::subscription::MINIMAX_PLAN;
 use std::{
     collections::BTreeMap,
     future::Future,
@@ -12,6 +13,16 @@ use std::{
 };
 mod domain;
 
+const KINDS: [&str; 7] = [
+    "codex",
+    "claude",
+    "deepseek",
+    "openrouter",
+    "kimi-cn",
+    "kimi-global",
+    MINIMAX_PLAN,
+];
+
 fn codex_capacity() -> Arc<tokio::sync::Semaphore> {
     static CAPACITY: OnceLock<Arc<tokio::sync::Semaphore>> = OnceLock::new();
     CAPACITY
@@ -19,8 +30,7 @@ fn codex_capacity() -> Arc<tokio::sync::Semaphore> {
         .clone()
 }
 
-type ReadFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<AccountSnapshot, &'static str>> + Send + 'a>>;
+type ReadFuture<'a> = Pin<Box<dyn Future<Output = Result<AccountSnapshot, ReadError>> + Send + 'a>>;
 enum ReadRequest<'a> {
     Codex,
     Api {
@@ -53,6 +63,7 @@ impl BuiltinPlugin for NativeSource {
             "openrouter" => "OpenRouter",
             "kimi-cn" => "Kimi 国内",
             "kimi-global" => "Kimi 国际",
+            MINIMAX_PLAN => "MiniMax M Plan",
             _ => self.0,
         };
         format!("{name} 账户读取")
@@ -95,16 +106,17 @@ impl AccountSource for NativeSource {
                             crate::blocking::Error::Busy => "Codex 账户读取仍在进行，请稍后重试",
                             crate::blocking::Error::Unavailable => "Codex 读取进程中断",
                         })?
+                        .map_err(Into::into)
                 }
                 (
-                    "deepseek" | "openrouter" | "kimi-cn" | "kimi-global",
+                    "deepseek" | "openrouter" | "kimi-cn" | "kimi-global" | MINIMAX_PLAN,
                     ReadRequest::Api {
                         client,
                         url,
                         secret,
                     },
                 ) => super::api::read(client, self.0, url, secret).await,
-                _ => Err("该账户来源尚未提供直接读取能力"),
+                _ => Err("该账户来源尚未提供直接读取能力".into()),
             }
         })
     }
@@ -123,31 +135,17 @@ pub(crate) struct AccountSources {
 }
 impl AccountSources {
     pub(crate) fn registrations() -> Vec<Arc<dyn BuiltinPlugin>> {
-        [
-            "codex",
-            "claude",
-            "deepseek",
-            "openrouter",
-            "kimi-cn",
-            "kimi-global",
-        ]
-        .into_iter()
-        .map(|kind| Arc::new(NativeSource(kind)) as Arc<dyn BuiltinPlugin>)
-        .collect()
+        KINDS
+            .into_iter()
+            .map(|kind| Arc::new(NativeSource(kind)) as Arc<dyn BuiltinPlugin>)
+            .collect()
     }
     pub(crate) fn with_host(host: Arc<PluginHost>) -> Result<Self, PluginError> {
-        let sources = [
-            "codex",
-            "claude",
-            "deepseek",
-            "openrouter",
-            "kimi-cn",
-            "kimi-global",
-        ]
-        .into_iter()
-        .map(|kind| Arc::new(NativeSource(kind)) as Arc<dyn AccountSource>)
-        .map(|source| (source.kind(), source))
-        .collect();
+        let sources = KINDS
+            .into_iter()
+            .map(|kind| Arc::new(NativeSource(kind)) as Arc<dyn AccountSource>)
+            .map(|source| (source.kind(), source))
+            .collect();
         let client = super::api::client()
             .map_err(|message| PluginError::new("account_http_unavailable", message))?;
         Ok(Self {
@@ -196,17 +194,10 @@ impl AccountSources {
     #[cfg(test)]
     pub(crate) fn builtin() -> Result<Self, PluginError> {
         Self::mount(
-            [
-                "codex",
-                "claude",
-                "deepseek",
-                "openrouter",
-                "kimi-cn",
-                "kimi-global",
-            ]
-            .into_iter()
-            .map(|kind| Arc::new(NativeSource(kind)) as Arc<dyn AccountSource>)
-            .collect(),
+            KINDS
+                .into_iter()
+                .map(|kind| Arc::new(NativeSource(kind)) as Arc<dyn AccountSource>)
+                .collect(),
         )
     }
     #[cfg(test)]
@@ -239,27 +230,35 @@ impl AccountSources {
         &self,
         kind: &'static str,
         request: ReadRequest<'_>,
-    ) -> Result<AccountSnapshot, &'static str> {
+        expected_epoch: Option<u64>,
+    ) -> Result<AccountSnapshot, ReadError> {
         let lease = self
             .host
             .acquire(&key(kind))
             .map_err(|_| "只读额度插件已停止")?;
+        if expected_epoch.is_some_and(|epoch| epoch != lease.epoch) {
+            return Err("额度插件激活已变化，请重新读取账户目录".into());
+        }
         let source = self.sources.get(kind).ok_or("账户来源未注册")?;
-        let result = domain::read(source.as_ref(), request, kind, lease.epoch).await?;
+        let result = domain::read(source.as_ref(), request, kind, lease.epoch).await;
         lease
             .ensure_active()
             .map_err(|_| "读取期间额度插件已停止，已丢弃结果")?;
-        Ok(result)
+        result
     }
-    pub(crate) async fn codex(&self) -> Result<AccountSnapshot, &'static str> {
-        self.read("codex", ReadRequest::Codex).await
+    pub(super) async fn codex(
+        &self,
+        expected_epoch: Option<u64>,
+    ) -> Result<AccountSnapshot, ReadError> {
+        self.read("codex", ReadRequest::Codex, expected_epoch).await
     }
     pub(crate) async fn api(
         &self,
         kind: &'static str,
         url: &str,
         secret: &str,
-    ) -> Result<AccountSnapshot, &'static str> {
+        expected_epoch: Option<u64>,
+    ) -> Result<AccountSnapshot, ReadError> {
         self.read(
             kind,
             ReadRequest::Api {
@@ -267,6 +266,7 @@ impl AccountSources {
                 url,
                 secret,
             },
+            expected_epoch,
         )
         .await
     }
@@ -317,15 +317,17 @@ impl AccountSources {
 
 #[cfg(test)]
 pub(super) struct ControlledSource {
+    kind: &'static str,
     pub entered: tokio::sync::Notify,
     pub resume: tokio::sync::Notify,
     pub calls: std::sync::atomic::AtomicUsize,
     pub fail: std::sync::atomic::AtomicBool,
+    pub budget_response: std::sync::Mutex<Option<serde_json::Value>>,
 }
 #[cfg(test)]
 impl BuiltinPlugin for ControlledSource {
     fn descriptor(&self) -> PluginDescriptor {
-        NativeSource("openrouter").descriptor()
+        NativeSource(self.kind).descriptor()
     }
     fn prepare(&self) -> Result<PluginResources, PluginError> {
         Ok(PluginResources::default())
@@ -334,7 +336,7 @@ impl BuiltinPlugin for ControlledSource {
 #[cfg(test)]
 impl AccountSource for ControlledSource {
     fn kind(&self) -> &'static str {
-        "openrouter"
+        self.kind
     }
     fn read<'a>(&'a self, _: ReadRequest<'a>) -> ReadFuture<'a> {
         Box::pin(async move {
@@ -343,7 +345,9 @@ impl AccountSource for ControlledSource {
             self.entered.notify_one();
             self.resume.notified().await;
             if self.fail.load(std::sync::atomic::Ordering::Acquire) {
-                Err("受控账户读取失败")
+                Err("受控账户读取失败".into())
+            } else if let Some(value) = self.budget_response.lock().unwrap().as_ref() {
+                super::api::decode(self.kind, value, chrono::Utc::now())
             } else {
                 Ok(AccountSnapshot::new("api", "controlled-account"))
             }
@@ -352,11 +356,18 @@ impl AccountSource for ControlledSource {
 }
 #[cfg(test)]
 pub(super) fn controlled() -> (Arc<AccountSources>, Arc<ControlledSource>) {
+    controlled_kind("openrouter")
+}
+
+#[cfg(test)]
+pub(super) fn controlled_kind(kind: &'static str) -> (Arc<AccountSources>, Arc<ControlledSource>) {
     let source = Arc::new(ControlledSource {
+        kind,
         entered: Default::default(),
         resume: Default::default(),
         calls: Default::default(),
         fail: Default::default(),
+        budget_response: Default::default(),
     });
     (
         Arc::new(AccountSources::mount(vec![source.clone()]).unwrap()),
@@ -462,13 +473,18 @@ mod tests {
         );
         let read = tokio::spawn({
             let sources = sources.clone();
-            async move { sources.read("fixture", ReadRequest::Codex).await }
+            async move { sources.read("fixture", ReadRequest::Codex, None).await }
         });
         source.entered.notified().await;
         sources.stop("fixture");
         source.resume.notify_one();
         assert!(read.await.unwrap().is_err());
         assert!(sources.active("claude"));
-        assert!(sources.read("fixture", ReadRequest::Codex).await.is_err());
+        assert!(
+            sources
+                .read("fixture", ReadRequest::Codex, None)
+                .await
+                .is_err()
+        );
     }
 }

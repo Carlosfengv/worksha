@@ -2,19 +2,28 @@ mod api;
 mod codex;
 mod object_summary;
 mod refresh;
+mod upstream;
+pub(crate) use object_summary::upstream_summary;
+pub(crate) use upstream::balance::{BalanceProvider, target as balance_target};
+#[cfg(test)]
+pub(crate) use upstream::upstream_exhausted;
+pub(crate) use upstream::{
+    BudgetReset, UpstreamBudget, openrouter_scope, route_budget_supported, routing_quota_status,
+};
 pub(crate) mod sources;
 pub(crate) use refresh::refresh;
 
 use crate::{ApiResult, AppState, json_value};
+use api::ReadError;
 use axum::{
     Json,
     extract::{Path, State},
     http::StatusCode,
 };
 use local_agent_core::{
-    Provider,
+    Provider, Store,
     billing::AccountSnapshot,
-    providers::{config::NativeConfig, files, fingerprint},
+    providers::{config::NativeConfig, files, fingerprint, upstream_accounts::AccountRef},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -34,11 +43,17 @@ use zeroize::Zeroizing;
 struct Account {
     #[serde(skip)]
     source_kind: Option<&'static str>,
+    #[serde(skip)]
+    read_scope: Option<String>,
     id: String,
     name: String,
     account_type: String,
     scope: String,
     provider_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    upstream_account: Option<AccountRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    routing_quota: Option<&'static str>,
     declared_for: Vec<String>,
     source_revision: String,
     readable: bool,
@@ -49,17 +64,51 @@ struct Account {
 }
 struct Cached {
     revision: String,
+    source_epoch: Option<u64>,
+    current_read_scope: Option<String>,
     snapshot: AccountSnapshot,
     error: Option<String>,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct RefreshKey {
+    account: String,
+    revision: String,
+    epoch: Option<u64>,
+    read_scope: Option<String>,
+}
+impl RefreshKey {
+    fn new(account: &Account, epoch: Option<u64>) -> Self {
+        Self {
+            account: account.id.clone(),
+            revision: account.source_revision.clone(),
+            epoch,
+            read_scope: account.read_scope.clone(),
+        }
+    }
+
+    fn same_read(&self, other: &Self) -> bool {
+        self == other
+            || (self.epoch == other.epoch
+                && self.read_scope.is_some()
+                && self.read_scope == other.read_scope)
+    }
+}
+
+fn read_scope(provider: &Provider, kind: &str) -> Option<String> {
+    let reference = provider.credential_ref.as_deref()?;
+    Some(files::hash(format!("{kind}:{reference}").as_bytes()))
 }
 pub struct Billing {
     pub(crate) sources: Arc<sources::AccountSources>,
     home: PathBuf,
     directory: PathBuf,
     cache: HashMap<String, Cached>,
-    in_flight: HashMap<String, Arc<AtomicBool>>,
-    attempted: HashMap<String, Instant>,
-    failures: HashMap<String, (String, String)>,
+    openrouter_admission: HashMap<String, upstream::OpenRouterAdmission>,
+    shared_budgets: HashMap<String, upstream::SharedBudget>,
+    unavailable_budget_epoch: Option<u64>,
+    in_flight: HashMap<RefreshKey, Arc<AtomicBool>>,
+    attempted: HashMap<RefreshKey, Instant>,
+    failures: HashMap<String, (RefreshKey, ReadError)>,
 }
 impl Billing {
     #[cfg(test)]
@@ -80,13 +129,23 @@ impl Billing {
             home,
             directory: data.join("billing"),
             cache: HashMap::new(),
+            openrouter_admission: HashMap::new(),
+            shared_budgets: HashMap::new(),
+            unavailable_budget_epoch: None,
             in_flight: HashMap::new(),
             attempted: HashMap::new(),
             failures: HashMap::new(),
         }
     }
-    fn catalog(&self, providers: &[Provider], configs: &[NativeConfig]) -> Vec<Account> {
+    fn catalog(
+        &self,
+        route_store: Option<&Store>,
+        providers: &[Provider],
+        configs: &[NativeConfig],
+        upstream: Vec<Account>,
+    ) -> Vec<Account> {
         let mut accounts = Vec::new();
+        let now = chrono::Utc::now();
         for (agent, name, url) in [
             (
                 "codex",
@@ -103,6 +162,7 @@ impl Billing {
             let declared = native.is_some_and(|c| c.state == "ready" && c.mode == "native");
             accounts.push(Account {
                 source_kind: Some(agent),
+                read_scope: None,
                 id: format!("native-{agent}"),
                 name: name.into(),
                 account_type: "subscription".into(),
@@ -113,6 +173,8 @@ impl Billing {
                 }
                 .into(),
                 provider_id: None,
+                upstream_account: None,
+                routing_quota: None,
                 declared_for: if declared { vec![agent.into()] } else { vec![] },
                 source_revision: native.and_then(|c| c.revision.clone()).unwrap_or_default(),
                 readable: agent == "codex",
@@ -127,20 +189,26 @@ impl Billing {
             .filter(|p| p.configured && p.category != "local")
         {
             let url = official(p);
+            let subscription = local_agent_core::providers::subscription::minimax_plan(p);
+            let source_kind = api::adapter(p).map(|(kind, _)| kind);
             let declared_for = vec![];
             accounts.push(Account {
-                source_kind: api::adapter(p).map(|(kind, _)| kind),
+                source_kind,
+                read_scope: source_kind.and_then(|kind| read_scope(p, kind)),
                 id: format!("provider-{}", p.id),
                 name: p.name.clone(),
-                account_type: "api".into(),
+                account_type: if subscription { "subscription" } else { "api" }.into(),
                 scope: format!(
                     "已保存连接 · {}；密钥 / 组织范围独立，不汇总未知账户",
                     p.credential_label.as_deref().unwrap_or("未命名凭据")
                 ),
                 provider_id: Some(p.id.clone()),
+                upstream_account: None,
+                routing_quota: route_store
+                    .and_then(|store| routing_quota_status(Some(self), store, p, now)),
                 declared_for,
                 source_revision: fingerprint(p),
-                readable: api::adapter(p).is_some() && p.credential_ref.is_some(),
+                readable: source_kind.is_some() && p.credential_ref.is_some(),
                 official_url: url.map(str::to_owned),
                 state: "not_loaded".into(),
                 error: None,
@@ -156,12 +224,15 @@ impl Billing {
             let p = native_provider(endpoint);
             accounts.push(Account {
                 source_kind: api::adapter(&p).map(|(kind, _)| kind),
+                read_scope: None,
                 id: "native-api-claude".into(),
                 name: "Claude Code · 当前文件中的 API 账户".into(),
                 account_type: "api".into(),
                 scope: "~/.claude/settings.json 内的显式 API 凭据；不运行凭据助手，不读取订阅令牌"
                     .into(),
                 provider_id: None,
+                upstream_account: None,
+                routing_quota: None,
                 declared_for: vec!["claude".into()],
                 source_revision: c.revision.clone().unwrap_or_default(),
                 readable: api::adapter(&p).is_some(),
@@ -171,18 +242,18 @@ impl Billing {
                 snapshot: None,
             });
         }
+        accounts.extend(upstream);
         for a in &mut accounts {
-            if a.source_kind.is_some_and(|kind| !self.sources.active(kind)) {
+            let epoch = a
+                .source_kind
+                .and_then(|kind| self.sources.lease(kind).ok().map(|lease| lease.epoch));
+            if a.source_kind.is_some() && epoch.is_none() {
                 a.readable = false;
                 a.state = "not_available".into();
                 a.error = Some("只读额度插件已停止".into());
                 continue;
             }
-            if let Some(c) = self
-                .cache
-                .get(&a.id)
-                .filter(|c| c.revision == a.source_revision)
-            {
+            if let Some(c) = self.cached(a, epoch) {
                 a.snapshot = Some(c.snapshot.clone());
                 a.error = c.error.clone();
                 let age = chrono::DateTime::parse_from_rfc3339(&c.snapshot.as_of)
@@ -190,7 +261,10 @@ impl Billing {
                     .unwrap_or(i64::MAX);
                 a.state = if c.error.is_some() {
                     "refresh_failed"
-                } else if age < 0 || age > c.snapshot.valid_for_seconds as i64 {
+                } else if (a.read_scope.is_some() && c.current_read_scope.is_none())
+                    || age < 0
+                    || age > c.snapshot.valid_for_seconds as i64
+                {
                     "stale"
                 } else {
                     "ready"
@@ -215,28 +289,38 @@ impl Billing {
                     "此连接没有已接入的账户查询接口或独立读取凭据；请在官方账单页面核查。".into(),
                 );
             }
+            let key = RefreshKey::new(a, epoch);
             if self
                 .in_flight
-                .get(&a.id)
-                .is_some_and(|active| active.load(Ordering::Acquire))
+                .iter()
+                .any(|(other, active)| key.same_read(other) && active.load(Ordering::Acquire))
             {
                 a.state = "refreshing".into();
-            } else if let Some((revision, reason)) = self
+            } else if let Some((_, reason)) = self
                 .failures
                 .get(&a.id)
-                .filter(|(revision, _)| revision == &a.source_revision)
+                .filter(|(failed, _)| failed == &key)
             {
-                let _ = revision;
-                a.state = if a.snapshot.is_some() {
-                    "refresh_failed"
-                } else {
-                    "failed"
-                }
-                .into();
-                a.error = Some(reason.clone());
+                a.state = reason
+                    .state()
+                    .unwrap_or(if a.snapshot.is_some() {
+                        "refresh_failed"
+                    } else {
+                        "failed"
+                    })
+                    .into();
+                a.error = Some(reason.message().into());
             }
         }
         accounts
+    }
+
+    fn cached(&self, account: &Account, epoch: Option<u64>) -> Option<&Cached> {
+        let cached = self.cache.get(&account.id)?;
+        if cached.revision != account.source_revision || cached.source_epoch != epoch {
+            return None;
+        }
+        Some(cached)
     }
 }
 fn is_stale(s: &AccountSnapshot) -> bool {
@@ -268,6 +352,9 @@ fn official(p: &Provider) -> Option<&'static str> {
         Some("openrouter") => Some("https://openrouter.ai/settings/credits"),
         Some("kimi-cn") => Some("https://platform.kimi.com/console/account"),
         Some("kimi-global") => Some("https://platform.kimi.ai/console/account"),
+        Some(local_agent_core::providers::subscription::MINIMAX_PLAN) => {
+            Some("https://platform.minimax.io/console/plan")
+        }
         _ if p.endpoint.trim_end_matches('/') == "https://api.openai.com/v1" => {
             Some("https://platform.openai.com/usage")
         }
@@ -284,12 +371,6 @@ fn err(message: &str) -> (StatusCode, Json<Value>) {
     )
 }
 fn catalog(state: &AppState) -> Result<Vec<Account>, (StatusCode, Json<Value>)> {
-    let providers = state
-        .store
-        .lock()
-        .map_err(|_| err("账户目录暂不可用"))?
-        .providers()
-        .map_err(crate::error)?;
     let configs = state
         .providers
         .lock()
@@ -297,8 +378,11 @@ fn catalog(state: &AppState) -> Result<Vec<Account>, (StatusCode, Json<Value>)> 
         .status()
         .map_err(|_| err("无法读取原生配置范围"))?
         .configs;
+    let store = state.store.lock().map_err(|_| err("账户目录暂不可用"))?;
+    let providers = store.providers().map_err(crate::error)?;
     let billing = state.billing.lock().map_err(|_| err("账户缓存暂不可用"))?;
-    Ok(billing.catalog(&providers, &configs))
+    let upstream = upstream::rows(&store, &providers, &billing).map_err(crate::providers::error)?;
+    Ok(billing.catalog(Some(&store), &providers, &configs, upstream))
 }
 pub async fn list(State(state): State<AppState>) -> ApiResult {
     crate::blocking::query(state.query_capacity.clone(), move || {
@@ -310,12 +394,12 @@ fn api_credentials(
     state: &AppState,
     account: &Account,
     home: &FsPath,
-) -> Result<(Provider, Zeroizing<Vec<u8>>), &'static str> {
+) -> Result<(Provider, Zeroizing<Vec<u8>>), ReadError> {
     let (provider, secret) = if account.id == "native-api-claude" {
         let snapshot =
             files::read(&home.join(".claude/settings.json")).map_err(|_| "原生配置不可安全读取")?;
         if snapshot.stamp.digest.as_deref() != Some(&account.source_revision) {
-            return Err("原生配置已改变");
+            return Err("原生配置已改变".into());
         }
         let bytes = Zeroizing::new(snapshot.bytes.ok_or("原生配置不存在")?);
         let value: Value = serde_json::from_slice(&bytes).map_err(|_| "原生配置格式不支持")?;
@@ -330,7 +414,8 @@ fn api_credentials(
             .filter(|s| !s.is_empty());
         if matches!((api_key, auth_token), (Some(a), Some(b)) if a != b) {
             return Err(
-                "原配置存在不同的 API Key 与 Auth Token，无法确认计费凭据；请在 Providers 单独配置",
+                "原配置存在不同的 API Key 与 Auth Token，无法确认计费凭据；请在 Providers 单独配置"
+                    .into(),
             );
         }
         let token = value["env"]["ANTHROPIC_API_KEY"]
@@ -347,18 +432,15 @@ fn api_credentials(
             Zeroizing::new(token.as_bytes().to_vec()),
         )
     } else {
-        let p = state
-            .store
-            .lock()
-            .map_err(|_| "服务商目录不可用")?
-            .providers()
-            .map_err(|_| "服务商目录不可用")?
-            .into_iter()
-            .find(|p| Some(&p.id) == account.provider_id.as_ref())
-            .ok_or("服务商已移除")?;
-        if fingerprint(&p) != account.source_revision {
-            return Err("服务商配置已改变");
-        }
+        let p = {
+            let store = state.store.lock().map_err(|_| "服务商目录不可用")?;
+            let id = account.provider_id.as_deref().ok_or("服务商已移除")?;
+            let provider = store
+                .provider_by_id(id)
+                .map_err(|_| "服务商目录不可用")?
+                .ok_or("服务商已移除")?;
+            upstream::target(&store, provider, account)?
+        };
         let reference = p.credential_ref.as_deref().ok_or("未配置账户读取凭据")?;
         uuid::Uuid::parse_str(reference).map_err(|_| "钥匙串凭据不可用，请在 Providers 核查")?;
         let secret = state
@@ -367,6 +449,8 @@ fn api_credentials(
             .map_err(|_| "钥匙串凭据不可用，请在 Providers 核查")?;
         (p, secret)
     };
+    local_agent_core::providers::subscription::validate_key(&provider, Some(&secret))
+        .map_err(|_| ReadError::SubscriptionKeyRequired)?;
     Ok((provider, secret))
 }
 async fn read_api(
@@ -374,7 +458,8 @@ async fn read_api(
     account: &Account,
     home: &FsPath,
     sources: &sources::AccountSources,
-) -> Result<AccountSnapshot, &'static str> {
+    expected_epoch: Option<u64>,
+) -> Result<AccountSnapshot, ReadError> {
     let state_copy = state.clone();
     let account = account.clone();
     let home = home.to_path_buf();
@@ -389,7 +474,7 @@ async fn read_api(
         .ok()
         .filter(|s| !s.is_empty() && s.len() <= 8192 && s.bytes().all(|b| b.is_ascii_graphic()))
         .ok_or("凭据格式不支持")?;
-    sources.api(adapter, url, token).await
+    sources.api(adapter, url, token, expected_epoch).await
 }
 
 // A separate launch entry consumes documented statusLine JSON; native settings stay untouched.
@@ -518,6 +603,8 @@ mod tests {
         billing.cache.insert(
             "native-codex".into(),
             Cached {
+                source_epoch: Some(billing.sources.lease("codex").unwrap().epoch),
+                current_read_scope: None,
                 revision: String::new(),
                 snapshot: AccountSnapshot::new("subscription", "fixture"),
                 error: None,
@@ -525,12 +612,12 @@ mod tests {
         );
         assert!(
             billing
-                .catalog(&[], &[])
+                .catalog(None, &[], &[], vec![])
                 .iter()
                 .all(|a| a.snapshot.is_some())
         );
         billing.sources.stop_all();
-        for account in billing.catalog(&[], &[]) {
+        for account in billing.catalog(None, &[], &[], vec![]) {
             assert_eq!(account.state, "not_available");
             assert!(!account.readable);
             assert!(account.snapshot.is_none());
@@ -577,23 +664,26 @@ mod tests {
         b.cache.insert(
             "native-codex".into(),
             Cached {
+                source_epoch: Some(b.sources.lease("codex").unwrap().epoch),
+                current_read_scope: None,
                 revision: String::new(),
                 snapshot: s.clone(),
                 error: None,
             },
         );
         for _ in 0..2 {
-            let rows = b.catalog(&[], &[]);
+            let rows = b.catalog(None, &[], &[], vec![]);
             assert_eq!(rows[0].snapshot.as_ref().unwrap().as_of, s.as_of);
             assert_eq!(rows[0].state, "ready");
         }
         b.cache.get_mut("native-codex").unwrap().snapshot.as_of =
             (chrono::Utc::now() - chrono::Duration::minutes(6)).to_rfc3339();
-        assert_eq!(b.catalog(&[], &[])[0].state, "stale");
-        b.failures
-            .insert("native-codex".into(), (String::new(), "read denied".into()));
-        assert_eq!(b.catalog(&[], &[])[0].state, "refresh_failed");
+        assert_eq!(b.catalog(None, &[], &[], vec![])[0].state, "stale");
+        let current = b.catalog(None, &[], &[], vec![]).remove(0);
+        let key = RefreshKey::new(&current, Some(b.sources.lease("codex").unwrap().epoch));
+        b.failures.insert(current.id, (key, "read denied".into()));
+        assert_eq!(b.catalog(None, &[], &[], vec![])[0].state, "refresh_failed");
         b.cache.get_mut("native-codex").unwrap().revision = "changed".into();
-        assert!(b.catalog(&[], &[])[0].snapshot.is_none());
+        assert!(b.catalog(None, &[], &[], vec![])[0].snapshot.is_none());
     }
 }

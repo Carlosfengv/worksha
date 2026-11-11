@@ -69,6 +69,7 @@ pub(super) fn retry() -> (Request, Vec<ModelObservation>) {
             row.usage.total_tokens = None;
         }
         row.routing = Some(RouteEvidence {
+            trace: None,
             binding_id: "private-binding".into(),
             route_version_id: format!("private-route-{index}"),
             provider_revision: 1,
@@ -84,6 +85,14 @@ pub(super) fn retry() -> (Request, Vec<ModelObservation>) {
                 preferred_model_name: None,
                 attempt: index as u8,
                 fallback_reason: None,
+                upstream_account: None,
+                upstream_account_label: None,
+                account_selection_reason: None,
+                routing_rule: None,
+                routing_intent: None,
+                pending_child: None,
+                nested_route: vec![],
+                nested_scope: None,
                 budget: None,
                 mode: "auto".into(),
                 capabilities: Capabilities::default(),

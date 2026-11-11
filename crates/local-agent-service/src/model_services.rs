@@ -1,3 +1,4 @@
+use crate::observation::policy::{CooldownSnapshot, unknown_health};
 use crate::{ApiResult, AppState, json_value, providers};
 use axum::{
     Extension, Json,
@@ -8,13 +9,48 @@ use local_agent_core::{
         CONNECTION_AGENTS, ModelService, ServiceDraft,
         operations::{OperationAction, OperationRequest, RECEIPT_LIMIT},
     },
+    projects::routing::{self, RoutingProjectQuery},
     providers::{BindingDraft, ConfigError, fingerprint, select_model},
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+pub(crate) mod preview;
+
 fn unavailable() -> (axum::http::StatusCode, Json<Value>) {
     providers::error(ConfigError::new("service_unavailable", "模型服务暂不可用"))
+}
+
+pub(crate) async fn routing_projects(
+    State(state): State<AppState>,
+    Query(query): Query<RoutingProjectQuery>,
+) -> ApiResult {
+    crate::blocking::query(state.query_capacity.clone(), move || {
+        // Source consent changes and plugin composition use this same lock.
+        let _composition = state.readonly.configuration().map_err(|_| unavailable())?;
+        let (authorized, hidden) = {
+            let store = state.store.lock().map_err(|_| unavailable())?;
+            (
+                store.native_sources().map_err(|_| unavailable())?,
+                store.hidden_projects().map_err(|_| unavailable())?,
+            )
+        };
+        let choices = state
+            .sessions
+            .routing_project_choices(&authorized)
+            .map_err(crate::native_error)?;
+        let page = routing::page(choices, query, &hidden).map_err(crate::native_error)?;
+        if crate::projects::hidden(&state)? != hidden {
+            return Err(crate::native_error(
+                local_agent_core::sessions::NativeError {
+                    code: "stale_snapshot",
+                    message: "项目可见性已更新，请重新读取".into(),
+                },
+            ));
+        }
+        json_value(page)
+    })
+    .await
 }
 
 pub(crate) fn verify_snapshot(
@@ -25,7 +61,25 @@ pub(crate) fn verify_snapshot(
     let sources = store
         .providers()
         .map_err(|_| ConfigError::new("service_unavailable", "Provider 不可读取"))?;
+    verify_sources(store, manager, service, &sources, true)
+}
+
+fn verify_sources(
+    store: &local_agent_core::Store,
+    manager: &local_agent_core::providers::ProviderManager,
+    service: &ModelService,
+    sources: &[local_agent_core::Provider],
+    require_recent_probe: bool,
+) -> Result<(), ConfigError> {
     for model in &service.models {
+        if let Some(child) = &model.child {
+            store.model_service(&child.service_id)?;
+            let published = store.model_service_child(child)?;
+            // Publication already verified the frozen child targets. Recheck
+            // their current configuration and account authorization on attach.
+            verify_sources(store, manager, &published, sources, false)?;
+            continue;
+        }
         let source = sources
             .iter()
             .find(|p| p.id == model.provider.id)
@@ -38,7 +92,16 @@ pub(crate) fn verify_snapshot(
                 "Provider 已改变，请重新验证并发布模型服务",
             ));
         }
-        manager.require_verification(&model.provider)?;
+        let pool = service.routing_policy.accounts(&model.id);
+        if require_recent_probe && pool.is_empty() {
+            manager.require_verification(&model.provider)?;
+        }
+        for account in pool {
+            let (target, _) = store.upstream_account_target(&model.provider, account)?;
+            if require_recent_probe {
+                manager.require_upstream_verification(&target, account)?;
+            }
+        }
     }
     Ok(())
 }
@@ -64,7 +127,12 @@ pub async fn list(State(state): State<AppState>) -> ApiResult {
                 && !m.codex_catalog_current(&crate::gateway::codex_catalog::service_catalog_bytes(&a)));
             json!({"bindingId":a.binding_id,"serviceId":a.service_id,"installed":a.installed,"agentId":binding.map(|b|&b.agent_id),"localEndpoint":endpoint,"attached":attached,"referenced":referenced,"configurationUnknown":configuration_unknown,"directorySyncRequired":directory_sync_required})
         }).collect::<Vec<_>>();
-        let health=services.iter().flat_map(|s|s.models.iter().map(|m|json!({"serviceId":s.id,"modelId":m.id,"status":crate::observation::policy::health(&store,&m.provider)}))).collect::<Vec<_>>();
+        let cooldowns=CooldownSnapshot::read(&state,&store);
+        let health=services.iter().flat_map(|s|s.models.iter().map(|m|json!({
+            "serviceId":s.id,"modelId":m.id,
+            "status":cooldowns.as_ref().filter(|_|m.child.is_none()).map_or_else(unknown_health,|snapshot|
+                snapshot.pool(&store,&m.provider,s.routing_policy.accounts(&m.id)))
+        }))).collect::<Vec<_>>();
         Ok(Json(json!({"services":services,"attachments":attachments,"connectionAgents":CONNECTION_AGENTS,"routingHealth":health,"writeProtocol":{"version":1,"receiptLimit":RECEIPT_LIMIT,"storeId":store.model_service_operation_store_id().map_err(providers::error)?}})))
     }).await.map_err(|e|providers::error(crate::blocking::config_error(e)))?
 }
@@ -124,23 +192,48 @@ fn validate_draft(
         Err(error) => return Err(error),
     };
     for model in &draft.models {
+        if model.child.is_some() {
+            // The core checks the immutable child graph in the publication transaction.
+            continue;
+        }
         let source = sources
             .iter()
             .find(|p| p.id == model.provider_id)
             .ok_or_else(|| ConfigError::new("invalid_provider", "请选择已保存 Provider"))?;
         let selected = select_model(source, Some(&model.model))?;
-        let unchanged = previous.as_ref().is_some_and(|s| {
-            s.models.iter().any(|m| {
-                m.id == model.id
-                    && m.capabilities == model.capabilities
-                    && fingerprint(&m.provider) == fingerprint(&selected)
-            })
-        });
-        if !unchanged {
+        let unchanged =
+            same_published_target(previous.as_ref(), &model.id, &model.capabilities, &selected);
+        let pool = draft.routing_policy.accounts(&model.id);
+        let previous_pool = previous
+            .as_ref()
+            .map_or(&[][..], |s| s.routing_policy.accounts(&model.id));
+        if pool.is_empty() && (!unchanged || !previous_pool.is_empty()) {
             manager.require_verification(&selected)?;
+        }
+        for account in pool {
+            let (target, _) = store.upstream_account_target(&selected, account)?;
+            if !unchanged || !previous_pool.contains(account) {
+                manager.require_upstream_verification(&target, account)?;
+            }
         }
     }
     Ok(())
+}
+
+fn same_published_target(
+    previous: Option<&ModelService>,
+    id: &str,
+    capabilities: &local_agent_core::model_services::Capabilities,
+    selected: &local_agent_core::Provider,
+) -> bool {
+    previous.is_some_and(|service| {
+        service.models.iter().any(|model| {
+            model.child.is_none()
+                && model.id == id
+                && &model.capabilities == capabilities
+                && fingerprint(&model.provider) == fingerprint(selected)
+        })
+    })
 }
 fn active_bindings(
     state: &AppState,
@@ -335,7 +428,7 @@ pub(crate) fn ensure_enrollment(
     store: &local_agent_core::Store,
     manager: &local_agent_core::providers::ProviderManager,
     binding: &str,
-) -> Result<(), ConfigError> {
+) -> Result<bool, ConfigError> {
     if let Some(a) = store.model_service_attachment(binding)? {
         let service = store.model_service(&a.service_id)?;
         if service.version_id != a.installed.version_id {
@@ -345,8 +438,9 @@ pub(crate) fn ensure_enrollment(
             ));
         }
         verify_snapshot(store, manager, &service)?;
+        return Ok(true);
     }
-    Ok(())
+    Ok(false)
 }
 
 use local_agent_core::model_services::operations::VerifyMemberRequest as VerifyMember;
@@ -370,6 +464,7 @@ pub async fn verify_member(
         Json(providers::Verify {
             expected_revision: input.expected_revision,
             model: Some(input.model),
+            upstream_account: input.upstream_account,
         }),
     )
     .await

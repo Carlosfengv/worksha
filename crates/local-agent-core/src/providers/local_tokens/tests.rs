@@ -98,6 +98,7 @@ impl Fixture {
                         name: "Default".into(),
                         provider_id: provider.id.clone(),
                         model: provider.model.clone(),
+                        child: None,
                         capabilities: Default::default(),
                     }],
                     routing_policy: Default::default(),

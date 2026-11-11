@@ -312,6 +312,9 @@ pub fn logical_requests(
     groups
         .into_iter()
         .map(|(id, mut rows)| {
+            if rows.iter().any(|row| !row.is_route_trace()) {
+                rows.retain(|row| !row.is_route_trace());
+            }
             rows.sort_by(|a, b| {
                 time(&a.started_at)
                     .cmp(&time(&b.started_at))
@@ -375,6 +378,9 @@ pub fn logical_requests(
                 timing_note: None,
                 attempts: vec![],
             };
+            if first.is_route_trace() {
+                return result;
+            }
             let complete_clock = first.clock_id.is_some()
                 && rows
                     .iter()

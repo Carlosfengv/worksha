@@ -1,4 +1,13 @@
-import type { BillingAccount } from "@/features/accounts/types";
+import type { BillingAccount, RoutingQuotaStatus } from "./types";
+
+export const routingQuotaLabels: Record<RoutingQuotaStatus, string> = {
+  exhausted: "已知额度已用尽",
+  recovery: "待额度恢复探测",
+  recovering: "正在探测额度恢复",
+  recoveryCooling: "额度恢复探测冷却中",
+  recovered: "额度恢复探测通过",
+  unknown: "额度状态未知",
+};
 
 export function accountsForProvider(
   accounts: readonly BillingAccount[],

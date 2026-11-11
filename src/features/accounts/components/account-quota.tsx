@@ -21,6 +21,7 @@ import { accountsApi } from "@/features/accounts/api";
 import {
   accountsForProvider,
   resetCountdown,
+  routingQuotaLabels,
   selectBillingAccount,
 } from "@/features/accounts/display";
 import type { BillingAccount } from "@/features/accounts/types";
@@ -39,34 +40,72 @@ const stateLabel: Record<string, string> = {
   stale: "快照已过期",
   refreshing: "正在刷新",
   refresh_failed: "刷新失败 · 上次快照",
+  subscription_authorization_failed: "订阅授权未通过",
+  subscription_unconfirmed: "订阅状态待确认",
   failed: "读取失败",
   not_available: "来源未提供额度",
 };
+function accountFeedback(account: BillingAccount, reason: unknown) {
+  return {
+    id: account.id,
+    revision: account.sourceRevision,
+    message: reason instanceof Error ? reason.message : String(reason),
+  };
+}
 export function AccountQuota({
   agentId,
   providerId,
   accountId,
+  upstreamAccount,
 }: {
   agentId?: ConfigAgentId;
   providerId?: string;
   accountId?: string;
+  upstreamAccount?: BillingAccount["upstreamAccount"];
 }) {
   const resource = useSharedRead(accountsResource);
   const reload = resource.invalidate;
   const [selected, setSelected] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [feedback, setError] = useState<ReturnType<
+    typeof accountFeedback
+  > | null>(null);
   const [now, setNow] = useState(Date.now());
   const [readConfirm, setReadConfirm] = useState<BillingAccount | null>(null);
   const [collectorOpen, setCollectorOpen] = useState(false);
   const [launcher, setLauncher] = useState<string | null>(null);
   const returnAccount = useRef<BillingAccount | null>(null);
   const scoped = accountsForProvider(resource.data?.accounts ?? [], providerId);
-  const rows = accountId
-    ? scoped.filter((account) => account.id === accountId)
-    : scoped;
+  const upstreamVersions = upstreamAccount
+    ? scoped.filter(
+        (account) =>
+          account.providerId === providerId &&
+          account.upstreamAccount?.id === upstreamAccount.id,
+      )
+    : [];
+  const rows = upstreamAccount
+    ? upstreamVersions.filter(
+        (account) =>
+          account.upstreamAccount?.revision === upstreamAccount.revision,
+      )
+    : accountId
+      ? scoped.filter((account) => account.id === accountId)
+      : scoped;
   const account = selectBillingAccount(rows, selected, agentId);
+  const scopeReady = !upstreamAccount || (!resource.loading && !resource.error);
+  const canConfirm =
+    !upstreamAccount ||
+    (scopeReady &&
+      account?.readable &&
+      account.id === readConfirm?.id &&
+      account.sourceRevision === readConfirm.sourceRevision);
+  const error =
+    feedback?.id === account?.id &&
+    feedback?.revision === account?.sourceRevision
+      ? feedback?.message
+      : null;
   const snapshot = account?.snapshot;
+  const routingQuota = resource.error ? undefined : account?.routingQuota;
   const snapshotTime = snapshot?.asOf;
   const hasResets = snapshot?.windows.some((w) => w.resetsAt !== null) ?? false;
   useEffect(() => {
@@ -84,7 +123,7 @@ export function AccountQuota({
         reload();
         return true;
       } catch (reason) {
-        setError(reason instanceof Error ? reason.message : String(reason));
+        setError(accountFeedback(a, reason));
         reload();
         return false;
       } finally {
@@ -111,10 +150,11 @@ export function AccountQuota({
       await accountsApi.openAccountConsole(account.id);
     } catch (reason) {
       returnAccount.current = null;
-      setError(reason instanceof Error ? reason.message : String(reason));
+      setError(accountFeedback(account, reason));
     }
   };
   const createCollector = async () => {
+    if (!account) return;
     setBusy(true);
     setError(null);
     try {
@@ -122,7 +162,7 @@ export function AccountQuota({
       setLauncher(result.launcherPath);
       void resource.invalidate();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      setError(accountFeedback(account, reason));
     } finally {
       setBusy(false);
     }
@@ -192,14 +232,20 @@ export function AccountQuota({
           <ConnectionEmpty
             compact
             title={
-              providerId !== undefined
-                ? "此连接暂无账户额度数据"
-                : "尚无可读取的账户"
+              upstreamAccount
+                ? upstreamVersions.length
+                  ? "额度目录中的账号版本已变化"
+                  : "此账号暂无可关联的额度来源"
+                : providerId !== undefined
+                  ? "此连接暂无账户额度数据"
+                  : "尚无可读取的账户"
             }
             description={
-              providerId !== undefined
-                ? "此连接没有可关联的计费账户，用量和额度保持未知。"
-                : "保存服务商连接或接入本机订阅账户后可查看。云服务商未提供账单接口时，可前往官方控制台。"
+              upstreamAccount
+                ? "重新读取目录以核对当前账号版本。缺少当前版本的额度数据时保持未知。"
+                : providerId !== undefined
+                  ? "此连接没有可关联的计费账户，用量和额度保持未知。"
+                  : "保存服务商连接或接入本机订阅账户后可查看。云服务商未提供账单接口时，可前往官方控制台。"
             }
           />
         )}
@@ -229,6 +275,7 @@ export function AccountQuota({
                 size="sm"
                 variant="neutral"
                 loading={busy}
+                disabled={!scopeReady}
                 onClick={() => {
                   setReadConfirm(account);
                   setError(null);
@@ -241,6 +288,7 @@ export function AccountQuota({
               <Button
                 size="sm"
                 variant="tertiary"
+                disabled={!scopeReady}
                 onClick={() => void openOfficial()}
               >
                 官方用量与账单
@@ -259,11 +307,27 @@ export function AccountQuota({
               </Button>
             )}
           </div>
+          {routingQuota && (
+            <Alert status={routingQuota === "exhausted" ? "warning" : "info"}>
+              <AlertTitle>
+                模型服务 · {routingQuotaLabels[routingQuota] ?? "额度状态未知"}
+              </AlertTitle>
+              {routingQuota === "exhausted" && (
+                <AlertDescription>
+                  此凭据已退出模型服务调度。可刷新账户用量，核对是否恢复。
+                </AlertDescription>
+              )}
+            </Alert>
+          )}
           {(error || account.error) && !collectorOpen && !readConfirm && (
             <Alert>
               <AlertTitle>账户数据未更新</AlertTitle>
               <AlertDescription>
                 {error ?? account.error}
+                {account.state === "subscription_authorization_failed" &&
+                  (account.upstreamAccount
+                    ? " 如需更换订阅 Key，请在供应商的「上游账号」更新该账号，再验证并发布引用它的模型服务。"
+                    : " 如需更换订阅 Key，请编辑此供应商连接并重新验证。")}
                 {snapshot ? ` 上次读取：${date(snapshot.asOf)}。` : ""}
               </AlertDescription>
             </Alert>
@@ -450,15 +514,17 @@ export function AccountQuota({
                 : "尚未取得此账户的用量。读取时只查询账户信息，不发起模型推理。"}
             </div>
           )}
-          {providerId !== undefined && account.accountType === "api" && (
-            <ProviderBalanceEstimate
-              key={`balance:${account.id}`}
-              account={account}
-              providerId={providerId}
-              now={now}
-              directoryError={!!resource.error}
-            />
-          )}
+          {providerId !== undefined &&
+            account.accountType === "api" &&
+            !account.upstreamAccount && (
+              <ProviderBalanceEstimate
+                key={`balance:${account.id}`}
+                account={account}
+                providerId={providerId}
+                now={now}
+                directoryError={!!resource.error}
+              />
+            )}
         </>
       )}
       <Dialog
@@ -485,6 +551,13 @@ export function AccountQuota({
           <p className="break-words text-body text-fg-muted">
             {readConfirm?.scope}
           </p>
+          {!canConfirm && !busy && (
+            <p role="status" className="text-body text-fg-muted">
+              {resource.loading
+                ? "正在核对额度来源。"
+                : "当前额度来源待核查，请取消并重新读取目录。"}
+            </p>
+          )}
           {error && (
             <Alert>
               <AlertTitle>读取未完成</AlertTitle>
@@ -501,8 +574,9 @@ export function AccountQuota({
             </Button>
             <Button
               loading={busy}
+              disabled={!canConfirm}
               onClick={() => {
-                if (readConfirm)
+                if (readConfirm && canConfirm && !busy)
                   void refresh(readConfirm).then((ok) => {
                     if (ok) setReadConfirm(null);
                   });

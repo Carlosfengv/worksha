@@ -25,6 +25,7 @@ export interface ProviderPreset {
   protocol: Provider["protocol"];
   endpoints: Partial<Record<Provider["protocol"], string>>;
   documents?: string;
+  model?: string;
 }
 
 // Compiled-in contributions share the same metadata as the Rust host.

@@ -258,7 +258,8 @@ try {
   assert.equal(badHostStatus, 401);
   let data = await (await request("/api/snapshot")).json();
   assert.equal(data.gatewayStatus, "not_configured");
-  assert.equal(data.providers.length, 7);
+  assert.equal(data.providers.length, 8);
+  assert.ok(data.providers.some((provider) => provider.id === "minimax-plan"));
   assert.ok(data.agents.every((agent) => agent.connected === false));
   assert.deepEqual(
     data.agents.map((agent) => agent.id),

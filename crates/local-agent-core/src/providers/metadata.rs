@@ -120,6 +120,14 @@ impl Store {
         }
         .into();
         provider.endpoint = endpoint.to_string().trim_end_matches('/').into();
+        super::subscription::validate_endpoint(&provider)?;
+        if previous.as_ref().is_some_and(|old| {
+            super::subscription::minimax_plan(old) != super::subscription::minimax_plan(&provider)
+                && old.credential_ref.is_some()
+                && old.credential_ref == provider.credential_ref
+        }) {
+            return Err(invalid("更改订阅连接的供应商时须更换凭据"));
+        }
         if let Some(source) = &provider.model_catalog {
             if source.endpoint != provider.endpoint
                 || source.protocol != provider.protocol

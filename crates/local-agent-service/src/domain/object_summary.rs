@@ -37,6 +37,9 @@ impl o::ObjectSummarySource for Source<'_> {
                     .ok_or_else(|| d::Failure::new(d::ErrorCode::NotFound))?;
                 provider_summary(selector, fields, &provider)?
             }
+            o::ObjectSelector::Account { id } if id.starts_with("upstream-") => {
+                crate::billing::upstream_summary(state, id, fields)?
+            }
             o::ObjectSelector::Account { id } => {
                 // Account identity uses only the selected connection; corruption in
                 // another provider cannot force a credential read or widen this scope.

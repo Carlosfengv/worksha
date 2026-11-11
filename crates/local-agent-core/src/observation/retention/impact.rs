@@ -180,9 +180,10 @@ fn scan(
             CASE WHEN typeof(value)='text' AND octet_length(value)<=?1 THEN value END
             FROM model_observations").map_err(unavailable)?;
         let mut cursor = stmt.query([MAX_ROW_BYTES]).map_err(unavailable)?;
+        let mut inspected = 0;
         while let Some(row) = cursor.next().map_err(unavailable)? {
-            result.attempts += 1;
-            if result.attempts > max_attempts || started.elapsed() >= budget {
+            inspected += 1;
+            if inspected > max_attempts || started.elapsed() >= budget {
                 return Err(Error::Limit);
             }
             let raw = row.get::<_, Option<String>>(3).ok().flatten();
@@ -196,10 +197,12 @@ fn scan(
                             .map(|row| (false, row))
                     })
             }) else {
+                result.attempts += 1;
                 result.unreadable_attempts += 1;
                 result.classification_complete = false;
                 continue;
             };
+            result.attempts += u64::from(!observation.is_route_trace());
             let source_ok = strict
                 && row.get::<_, String>(0).ok().as_ref() == Some(&observation.id)
                 && !observation.id.is_empty()

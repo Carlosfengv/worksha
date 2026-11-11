@@ -42,22 +42,26 @@ export type ProviderDraftAction =
 
 export function providerEditorDraft(provider: Provider): ProviderEditorDraft {
   const defaults = usesDefaultEndpoint(provider);
+  const preset =
+    builtinPresetAdvice.find(
+      (p) =>
+        p.origin.kind === "builtin" &&
+        p.origin.presetId === providerVendor(provider),
+    ) ?? null;
+  const model =
+    provider.model || (provider.configured ? "" : (preset?.model ?? ""));
   return {
-    preset:
-      builtinPresetAdvice.find(
-        (p) =>
-          p.origin.kind === "builtin" &&
-          p.origin.presetId === providerVendor(provider),
-      ) ?? null,
+    preset,
     provider: {
       ...provider,
       vendor: providerVendor(provider),
+      model,
       models: [...provider.models],
     },
     vendorChosen: provider.configured || providerVendor(provider) !== "custom",
     endpointMode: defaults ? "default" : "custom",
     customEndpoint: defaults ? "" : provider.endpoint,
-    catalog: provider.models.join(", "),
+    catalog: provider.models.length ? provider.models.join(", ") : model,
     label: provider.credentialLabel ?? `${provider.name || "新连接"} API Key`,
     mode: "catalog",
     advanced: false,
@@ -81,7 +85,12 @@ export function reduceProviderDraft(
     }
     case "preset": {
       const template = action.value;
-      const useDefault = state.endpointMode === "default" || !draft.endpoint;
+      const plan =
+        template.origin.kind === "builtin" &&
+        template.origin.presetId === "minimax-plan";
+      const useDefault =
+        plan || state.endpointMode === "default" || !draft.endpoint;
+      const changedCredentialScope = plan !== (draft.vendor === "minimax-plan");
       const model =
         !draft.model && !state.catalog.trim() && !draft.models.length
           ? template.model
@@ -106,6 +115,9 @@ export function reduceProviderDraft(
           endpoint: useDefault
             ? (template.endpoints[template.protocol] ?? "")
             : draft.endpoint,
+          ...(changedCredentialScope
+            ? { credentialRef: null, credentialLabel: null, modelCatalog: null }
+            : {}),
           model,
         },
         catalog:
@@ -117,9 +129,10 @@ export function reduceProviderDraft(
             ? "default"
             : "custom"
           : state.endpointMode,
-        label: draft.credentialRef
-          ? state.label
-          : presetCredentialLabel(template.name),
+        label:
+          draft.credentialRef && !changedCredentialScope
+            ? state.label
+            : presetCredentialLabel(template.name),
       };
     }
     case "protocol": {

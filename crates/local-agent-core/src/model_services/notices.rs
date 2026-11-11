@@ -1,7 +1,8 @@
 //! Last confirmed target per session; no prompts, responses, or credentials.
+use super::ServiceSelection;
 use crate::{
     Store,
-    providers::ConfigError,
+    providers::{ConfigError, upstream_accounts::AccountRef},
     routing::{Selection, Turn},
 };
 use rusqlite::{Connection, OptionalExtension, params};
@@ -25,6 +26,68 @@ struct Target {
     #[serde(default)]
     issued_notices: Vec<String>,
 }
+
+fn priority_account(
+    db: &Connection,
+    selection: &ServiceSelection,
+) -> Result<Option<AccountRef>, ConfigError> {
+    let (version, model) = selection.nested_route.last().map_or(
+        (&selection.service_version_id, &selection.model_id),
+        |hop| (&hop.version_id, &hop.model_id),
+    );
+    let published = super::version(db, version)?;
+    Ok(published
+        .routing_policy
+        .pool(model)
+        // Rotating and affinity policies have no fixed first account.
+        .filter(|pool| pool.strategy.is_priority() && pool.affinity.is_off())
+        .and_then(|pool| pool.accounts.first())
+        .cloned())
+}
+
+fn account_restored(
+    db: &Connection,
+    binding: &str,
+    session: &str,
+    seq: i64,
+    current: &ServiceSelection,
+) -> Result<bool, ConfigError> {
+    let Some(account) = &current.upstream_account else {
+        return Ok(false);
+    };
+    let previous: Option<String> = db
+        .query_row(
+            "SELECT l.service_selection FROM gateway_route_leases l
+             JOIN service_route_dispatch d USING(binding,session,turn)
+             WHERE l.seq=?1 AND l.binding=?2 AND l.session=?3 AND l.trusted=1
+               AND d.state='committed' AND l.service_selection IS NOT NULL",
+            params![seq, binding, session],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(super::error)?;
+    let Some(previous) = previous else {
+        return Ok(false);
+    };
+    let previous: ServiceSelection = serde_json::from_str(&previous).map_err(super::error)?;
+    let current_path = current
+        .nested_route
+        .iter()
+        .map(|hop| (&hop.service_id, &hop.model_id));
+    let previous_path = previous
+        .nested_route
+        .iter()
+        .map(|hop| (&hop.service_id, &hop.model_id));
+    Ok(previous
+        .upstream_account
+        .as_ref()
+        .is_some_and(|old| old != account)
+        && current.service_id == previous.service_id
+        && current_path.eq(previous_path)
+        && priority_account(db, current)?.as_ref() == Some(account)
+        && priority_account(db, &previous)?.as_ref() == Some(account))
+}
+
 impl Store {
     /// Claim once only after a valid response starts. Old/replayed/tool turns cannot notify.
     /// Recording suppressed JSON responses still keeps the next recovery comparison accurate.
@@ -95,6 +158,7 @@ impl Store {
                 return Ok(None);
             }
         }
+        let previous_seq = old.as_ref().map(|(seq, _)| *seq);
         let previous = old
             .map(|(_, s)| serde_json::from_str::<Target>(&s))
             .transpose()
@@ -127,11 +191,6 @@ impl Store {
         } else {
             ""
         };
-        let action = if recovered {
-            "已恢复使用"
-        } else {
-            "本轮已切换至"
-        };
         let cause = match service.fallback_reason.as_deref() {
             Some("upstream_rate_limit" | "rate_limit_cooldown" | "configured_rate_limit") => {
                 "首选来源限流，"
@@ -139,9 +198,39 @@ impl Store {
             Some("upstream_failure" | "failure_cooldown" | "stream_interrupted_after_commit") => {
                 "首选来源暂不可用，"
             }
+            Some("upstream_credential_rejected") => "上游拒绝首选账号的凭据，",
+            Some("upstream_model_access_denied") => "上游拒绝首选账号访问模型，",
+            Some("account_quota_exhausted") => "首选来源额度不可用，",
             _ => "",
         };
-        let notice = (allow && changed)
+        let account_recovered = allow
+            && cause.is_empty()
+            && previous.as_ref().is_some_and(|old| {
+                old.fingerprint == target.fingerprint
+                    && old.model == target.model
+                    && old.preferred == target.preferred
+                    && old.mode == target.mode
+            })
+            && previous_seq.is_some_and(|seq| {
+                account_restored(&tx, binding, session, seq, service).unwrap_or(false)
+            });
+        let action = if account_recovered {
+            "已恢复使用首选账号，继续使用"
+        } else if recovered {
+            "已恢复使用"
+        } else if !cause.is_empty()
+            && target.model == target.preferred
+            && service.upstream_account.is_some()
+            && service.nested_route.is_empty()
+        {
+            "本轮已切换账号，继续使用"
+        } else {
+            "本轮已切换至"
+        };
+        // An initial fallback may keep the same model ID. A later turn can
+        // try the primary again and fall back to the same backup.
+        let fallback_this_turn = !cause.is_empty() && (previous.is_none() || service.attempt > 1);
+        let notice = (allow && (changed || fallback_this_turn || account_recovered))
             .then(|| format!("【路由提示】{cause}{action} {destination}。{choice}\n\n"));
         target.issued_notices = previous.map(|p| p.issued_notices).unwrap_or_default();
         if let Some(text) = &notice {

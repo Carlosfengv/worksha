@@ -101,13 +101,19 @@ fn evaluate_once(
     })
 }
 
+static CAPACITY: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+
+#[cfg(test)]
+pub(super) async fn hold_budget_for_test() -> tokio::sync::SemaphorePermit<'static> {
+    CAPACITY.acquire_many(4).await.unwrap()
+}
+
 pub(super) async fn evaluate(
     body: Value,
     caps: Capabilities,
     provider: Provider,
     previous: Option<Evaluation>,
 ) -> Result<Evaluation, &'static str> {
-    static CAPACITY: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
     let permit = CAPACITY.acquire().await.map_err(|_| "上下文计数暂不可用")?;
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
@@ -118,11 +124,11 @@ pub(super) async fn evaluate(
 }
 pub(super) fn is_context_error(bytes: &[u8]) -> bool {
     let v: Value = serde_json::from_slice(bytes).unwrap_or_default();
-    let code = v["error"]["code"].as_str().unwrap_or("");
-    let message = v["error"]["message"]
-        .as_str()
-        .unwrap_or("")
-        .to_ascii_lowercase();
+    is_context_rejection(&v["error"])
+}
+pub(super) fn is_context_rejection(error: &Value) -> bool {
+    let code = error["code"].as_str().unwrap_or("");
+    let message = error["message"].as_str().unwrap_or("").to_ascii_lowercase();
     code == "context_length_exceeded"
         || message.contains("maximum context length")
         || message.contains("context window")

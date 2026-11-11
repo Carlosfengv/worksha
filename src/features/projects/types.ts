@@ -47,6 +47,23 @@ export interface ProjectIdentity {
   locationState: string;
 }
 
+export interface RoutingProjectQuery {
+  query?: string;
+  cursor?: string;
+  selectedId?: string;
+}
+
+export type RoutingProject = Pick<
+  ProjectIdentity,
+  "id" | "name" | "path" | "projectKind"
+>;
+
+export interface RoutingProjectPage {
+  items: RoutingProject[];
+  nextCursor: string | null;
+  selected: RoutingProject | null;
+}
+
 export interface ProjectSummary extends ProjectIdentity {
   totals: ProjectTotals;
   agents: { agentId: string; totals: ProjectTotals }[];

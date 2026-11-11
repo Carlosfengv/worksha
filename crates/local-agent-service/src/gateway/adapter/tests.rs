@@ -66,6 +66,66 @@ fn fixtures() -> Vec<(&'static str, String)> {
         ("responses", responses),
     ]
 }
+
+#[tokio::test]
+async fn flash_adapts_intrinsic_reasoning_across_all_supported_streams() {
+    for (target, stream) in fixtures() {
+        let mut p = provider(target);
+        p.vendor = "minimax-plan".into();
+        p.model = "MiniMax-M3.1-Flash".into();
+        let mut adapter = Native::new(&p, "messages", Tools::default(), true, true)
+            .hide_intrinsic_reasoning(true);
+        let mut input = request("messages", true);
+        input.request["thinking"] = json!({"type":"disabled"});
+        let Opened::Json(body) = adapter.open(input).await.unwrap() else {
+            panic!("JSON request")
+        };
+        assert!(body.get("thinking").is_none());
+        let effort = match target {
+            "messages" => &body["output_config"]["effort"],
+            "chat-completions" => &body["reasoning_effort"],
+            _ => &body["reasoning"]["effort"],
+        };
+        assert_eq!(effort, "low");
+        let upstream = super::super::capabilities::builtin()
+            .resolve(target)
+            .unwrap();
+        let client = super::super::capabilities::builtin()
+            .resolve("messages")
+            .unwrap();
+        let mut output = adapter.start_stream(upstream, client).unwrap();
+        let private = match target {
+            "messages" => {
+                json!({"type":"content_block_delta","index":2,"delta":{"type":"thinking_delta","thinking":"private-sample"}})
+            }
+            "chat-completions" => {
+                json!({"choices":[{"delta":{"reasoning_content":"private-sample"}}]})
+            }
+            _ => json!({"type":"response.reasoning_text.delta","delta":"private-sample"}),
+        };
+        for chunk in adapter
+            .feed((event(private) + &stream).as_bytes())
+            .await
+            .unwrap()
+            .chunks
+        {
+            output.extend(chunk);
+        }
+        let Finished::Stream(end) = adapter.finish().await.unwrap() else {
+            panic!("stream result")
+        };
+        for chunk in end.chunks {
+            output.extend(chunk);
+        }
+        let output = String::from_utf8(output).unwrap();
+        assert!(!output.contains("private-sample"));
+        assert!(
+            output.contains("你好")
+                && output.contains("call-owned")
+                && output.contains("message_stop")
+        );
+    }
+}
 fn normalized(parts: Vec<Vec<u8>>, id: &str, earliest: i64) -> Vec<String> {
     assert!(id.starts_with("resp_"));
     uuid::Uuid::parse_str(id.strip_prefix("resp_").unwrap()).unwrap();
@@ -203,6 +263,38 @@ async fn native_stream_frames_match_original_engine_across_all_byte_boundaries()
         }
     }
 }
+#[tokio::test]
+async fn native_stream_preserves_a_valid_prefix_before_a_coalesced_error() {
+    let provider = provider("chat-completions");
+    let registry = super::super::capabilities::builtin();
+    let prefix = event(json!({"choices":[{"delta":{"content":"partial"}}]}));
+    let rejected = event(json!({"error":{"type":"rate_limit_error"}}));
+    for chunks in [vec![prefix.clone() + &rejected], vec![prefix, rejected]] {
+        let mut adapter = Native::new(&provider, "messages", Tools::default(), true, true);
+        adapter.open(request("messages", true)).await.unwrap();
+        adapter
+            .start_stream(
+                registry.resolve(&provider.protocol).unwrap(),
+                registry.resolve("messages").unwrap(),
+            )
+            .unwrap();
+        let mut output = Output::default();
+        let (last, earlier) = chunks.split_last().unwrap();
+        for chunk in earlier {
+            adapter.feed_stream(chunk.as_bytes(), &mut output).unwrap();
+        }
+        assert!(adapter.feed_stream(last.as_bytes(), &mut output).is_err());
+        assert!(!output.complete);
+        let text = String::from_utf8(output.chunks.concat()).unwrap();
+        assert!(text.contains("partial"), "{text}");
+        assert!(!text.contains("message_stop"), "{text}");
+        assert_eq!(
+            adapter.take_rejection().unwrap()["error"]["type"],
+            "rate_limit_error"
+        );
+    }
+}
+
 #[tokio::test]
 async fn native_partial_error_and_text_only_tool_output_never_claim_completion() {
     let p = provider("chat-completions");

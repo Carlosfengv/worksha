@@ -35,6 +35,7 @@ fn service(store: &Store, name: &str) -> crate::model_services::ModelService {
                 name: "Model".into(),
                 provider_id,
                 model: "a".into(),
+                child: None,
                 capabilities: Capabilities::default(),
             }],
             routing_policy: Default::default(),

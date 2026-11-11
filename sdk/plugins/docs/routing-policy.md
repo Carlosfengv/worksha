@@ -66,7 +66,9 @@ pending 一直保留到绑定与完成记录均已持久化，最后先清理仓
 
 模型服务页提供本机完整选包、公钥与摘要确认、安装、启停、撤权、回退、卸载、当前版本绑定、发布新版本并绑定、明确失败选择与原结果查询。新增 perform_routing_policy(input)，原 124 个 IPC 名称与参数保留。
 
-离线验证使用受管临时目录、MemoryVault 和环回模拟上游。原生选包、键盘、滚动、最小窗口与拖拽须在打包窗口核验。DSH、真实 Keychain、Developer ID 和正式公证仍待验证。
+离线验证使用受管临时目录、MemoryVault 和环回模拟上游。macOS 也可用签名开发包验证钥匙串重启链路。将 `LOCAL_AGENT_TEST_SERVICE_BINARY` 指向包内服务，在 Claude Code CLI 空闲时运行 `pnpm test:external-routing-policy --system-keychain`。这组测试通过隔离配置生成凭据助手，检查仅启用插件时仍拒绝发送、显式重新绑定后原入口恢复发送，以及本次测试凭据的回收。
+
+原生选包、键盘、滚动、最小窗口与拖拽须在打包窗口核验。DSH、Developer ID 和正式公证仍待验证。
 
 ## 仓储与界面边界补充
 

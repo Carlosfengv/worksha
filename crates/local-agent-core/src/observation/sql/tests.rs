@@ -77,6 +77,155 @@ fn gateway_session_title_uses_only_the_first_matching_local_request_excerpt() {
 }
 
 #[test]
+fn observed_routes_hide_account_references_in_new_and_legacy_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = ObservationStore::open(dir.path()).unwrap();
+    let mut observed = row(1);
+    let account = crate::providers::upstream_accounts::AccountRef {
+        id: "internal-account-id".into(),
+        revision: 17,
+    };
+    observed.routing = Some(
+        serde_json::from_value(json!({
+            "bindingId": "fixture-binding",
+            "routeVersionId": "fixture-version",
+            "providerRevision": 1,
+            "boundary": "new_user_turn",
+            "service": {
+                "serviceId": "fixture-service",
+                "serviceVersionId": "fixture-version",
+                "serviceName": "Fixture service",
+                "modelId": "fixture-model",
+                "modelName": "Fixture model",
+                "requestedAlias": "local-agent-default",
+                "upstreamAccountLabel": "Backup account",
+                "fallbackReason": "upstream_rate_limit",
+                "mode": "auto",
+                "capabilities": crate::model_services::Capabilities::default(),
+            },
+        }))
+        .unwrap(),
+    );
+    observed
+        .routing
+        .as_mut()
+        .unwrap()
+        .service
+        .as_mut()
+        .unwrap()
+        .upstream_account = Some(account.clone());
+    store.save(&observed).unwrap();
+    let saved: String = store
+        .0
+        .query_row(
+            "SELECT value FROM model_observations WHERE id=?1",
+            [&observed.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let mut legacy: Value = serde_json::from_str(&saved).unwrap();
+    let service = &mut legacy["routing"]["service"];
+    assert!(service.get("upstreamAccount").is_none());
+    assert_eq!(service["upstreamAccountLabel"], "Backup account");
+    service["upstreamAccount"] = json!(account);
+    store
+        .0
+        .execute(
+            "UPDATE model_observations SET value=?2 WHERE id=?1",
+            params![observed.id, legacy.to_string()],
+        )
+        .unwrap();
+
+    let mut history = History::open(dir.path()).unwrap();
+    history.refresh(&[]).unwrap();
+    let detail = history.request_detail(&observed.id).unwrap().unwrap();
+    let attempts = history.observation_page(None, None, 0).unwrap();
+    for service in [
+        &detail["attempts"][0]["routing"]["service"],
+        &attempts["items"][0]["routing"]["service"],
+    ] {
+        assert!(service.get("upstreamAccount").is_none());
+        assert_eq!(service["upstreamAccountLabel"], "Backup account");
+        assert_eq!(service["fallbackReason"], "upstream_rate_limit");
+    }
+}
+
+#[test]
+fn route_trace_is_read_after_restart_without_becoming_an_attempt() {
+    use crate::{
+        model_services::policy::RouteTrace,
+        observation::{ROUTE_TRACE_ID_PREFIX, RouteEvidence},
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let store = ObservationStore::open(dir.path()).unwrap();
+    let mut actual = row(1);
+    actual.logical_id = Some("mixed-route".into());
+    let trace_row = |mut base: ModelObservation, sent_upstream| {
+        base.id = format!("{ROUTE_TRACE_ID_PREFIX}{}", base.id);
+        base.status = "error".into();
+        base.usage = Usage::default();
+        base.routing = Some(RouteEvidence {
+            binding_id: "fixture-binding".into(),
+            route_version_id: "fixture-version".into(),
+            provider_revision: 1,
+            boundary: "new_user_turn".into(),
+            service: None,
+            trace: Some(RouteTrace {
+                sent_upstream,
+                http_status: Some(401),
+                ..Default::default()
+            }),
+        });
+        base
+    };
+    let mixed = trace_row(actual.clone(), true);
+    let mut zero = row(2);
+    zero.logical_id = Some("zero-route".into());
+    zero.session_id = Some("opencode:ses_routezero".into());
+    let zero = trace_row(zero, false);
+    let mixed_key = requests::logical_request_key(&actual);
+    let zero_key = requests::logical_request_key(&zero);
+    store.save_batch(&[mixed.clone(), zero.clone()]).unwrap();
+
+    let mut history = History::open(dir.path()).unwrap();
+    history.refresh(&[]).unwrap();
+    history.refresh_native().unwrap();
+    assert!(history.request_detail(&mixed_key).unwrap().is_none());
+    let request = history.request_detail(&zero_key).unwrap().unwrap();
+    assert_eq!(request["attempts"], json!([]));
+    assert_eq!(request["usageMissing"], 0);
+    assert_eq!(request["status"], "failed");
+    assert_eq!(request["sessionId"], "opencode:ses_routezero");
+    assert_eq!(history.observation_page(None, None, 0).unwrap()["total"], 0);
+    assert!(store.load_all().unwrap().is_empty());
+
+    store.save_batch(std::slice::from_ref(&actual)).unwrap();
+    history.refresh(&[]).unwrap();
+    let detail = history.request_detail(&mixed_key).unwrap().unwrap();
+    assert_eq!(detail["attempts"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        history.request_route_trace(&mixed_key).unwrap().unwrap()["sentUpstream"],
+        true
+    );
+    assert_eq!(history.observation_page(None, None, 0).unwrap()["total"], 1);
+    let impact = crate::observation::retention::impact::gateway(dir.path(), 7, Utc::now()).unwrap();
+    assert_eq!(impact.attempts, 1);
+    assert_eq!(impact.logical_requests, 2);
+
+    store
+        .0
+        .execute(
+            "DELETE FROM model_observations WHERE id IN (?1,?2)",
+            [&mixed.id, &zero.id],
+        )
+        .unwrap();
+    history.refresh(&[]).unwrap();
+    assert!(history.request_detail(&zero_key).unwrap().is_none());
+    assert!(history.request_route_trace(&mixed_key).unwrap().is_none());
+    assert!(history.request_detail(&mixed_key).unwrap().is_some());
+}
+
+#[test]
 fn custom_directory_updates_both_sql_matchers_and_preserves_unknown_semantics() {
     use crate::agents::{AgentDirectory, ProductDescriptor, SourceDescriptor};
     let data = tempfile::tempdir().unwrap();
