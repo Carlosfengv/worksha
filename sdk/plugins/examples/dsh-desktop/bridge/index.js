@@ -4,14 +4,27 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import os from "node:os";
 import { normalizeSession } from "./normalize.js";
+import { isTokenDelta } from "./timing.js";
 export const name = "worksha-readonly-bridge";
 export const inject = ["sessionController"];
 export function apply(ctx, config) {
   const directory = config?.outputDirectory ?? path.join(os.homedir(), ".local", "share", "local-agent", "dsh-desktop");
   if (!path.isAbsolute(directory)) throw Error("The DSH export directory must be absolute");
   const output = path.join(directory, "facts.jsonl");
-  let closed = false, busy = false;
+  let closed = false, busy = false, queued = false, scheduled;
+  const attempts = new Map();
   const cancellation = new AbortController();
+  function schedule() {
+    if (closed || scheduled) return;
+    if (busy) {
+      queued = true;
+      return;
+    }
+    scheduled = setTimeout(() => {
+      scheduled = undefined;
+      void publish();
+    }, 100);
+  }
   async function publish() {
     if (busy || closed) return;
     busy = true;
@@ -38,7 +51,7 @@ export function apply(ctx, config) {
           historyErrors++;
           page = { records: [], hasMore: true };
         }
-        for (const row of normalizeSession(item, page, observedAt)) {
+        for (const row of normalizeSession(item, page, observedAt, attempts.get(item.sessionId))) {
           if (row.fact.kind === "project") {
             if (projects.has(row.fact.value.nativeId)) continue;
             projects.add(row.fact.value.nativeId);
@@ -67,11 +80,49 @@ export function apply(ctx, config) {
       await fs.rename(status, path.join(directory, "status.json"));
     } catch {
       if (!closed) console.warn("worksha-readonly-bridge: DSH export failed at", stage);
-    } finally { busy = false; }
+    } finally {
+      busy = false;
+      if (queued) {
+        queued = false;
+        schedule();
+      }
+    }
   }
+  for (const event of ["api-session/added", "api-session/removed", "api-session/status", "api-session/activity"])
+    ctx.on?.(event, schedule);
+  ctx.on?.("agent/assistant-stream", ({ agent, frame }) => {
+    const session = agent.session.id;
+    if (frame.type === "start") {
+      if (!attempts.has(session) && attempts.size >= 256) return;
+      attempts.set(session, { id: frame.attemptId, turn: frame.turn, step: frame.step,
+        startedAfterSeq: agent.session.seq - 1, first: null, usage: null });
+      return;
+    }
+    const attempt = attempts.get(session);
+    if (!attempt || attempt.id !== frame.attemptId) return;
+    if (frame.type === "end") {
+      attempts.delete(session);
+      schedule();
+    } else if (frame.type === "chunk" && Number.isSafeInteger(frame.time)) {
+      if (attempt.first === null && isTokenDelta(frame.chunk)) {
+        attempt.first = frame.time;
+        schedule();
+      } else if (frame.chunk?.type === "usage") {
+        attempt.usage = { at: frame.time, tokens: frame.chunk.usage?.outputTokens };
+        schedule();
+      }
+    }
+  }, { global: true });
+  ctx.on?.("agent/disposed", ({ agent }) => { attempts.delete(agent.session.id); }, { global: true });
   ctx.effect(() => {
     void publish();
-    const timer = setInterval(() => void publish(), 5000);
-    return () => { closed = true; cancellation.abort(); clearInterval(timer); };
+    const timer = setInterval(schedule, 5000);
+    return () => {
+      closed = true;
+      cancellation.abort();
+      attempts.clear();
+      clearTimeout(scheduled);
+      clearInterval(timer);
+    };
   }, "Local Agent read-only export");
 }

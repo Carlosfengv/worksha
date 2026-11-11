@@ -130,6 +130,12 @@
             "null"
           ]
         },
+        "messageStartedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "model": {
           "type": [
             "string",
@@ -156,6 +162,16 @@
         },
         "providerKey": {
           "type": "string"
+        },
+        "reportedMeasurements": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReportedActivityMeasurements"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "sessionId": {
           "type": [
@@ -370,6 +386,45 @@
         "windowMs",
         "tokensPerSecond"
       ],
+      "type": "object"
+    },
+    "ReportedActivityMeasurements": {
+      "additionalProperties": false,
+      "description": "Timing derived from a source's own model stream and reported usage.",
+      "properties": {
+        "completedTokensPerSecond": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "firstTokenMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "outputTokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runningTokensPerSecond": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
       "type": "object"
     },
     "ScopeKind": {

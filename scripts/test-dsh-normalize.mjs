@@ -1,4 +1,9 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import { apply } from "../sdk/plugins/examples/dsh-desktop/bridge/index.js";
 import { normalizeSession } from "../sdk/plugins/examples/dsh-desktop/bridge/normalize.js";
 const row = { sessionId: "s1", cwd: "/owned/project", updatedAt: 1794016200000, running: true, projections: { values: { title: "Owned DSH fixture" } } };
 const page = { hasMore: true, records: [
@@ -44,3 +49,83 @@ assert(!JSON.stringify(observed).includes("private tool result"));
 assert(!JSON.stringify(observed).includes("private input"));
 assert(!observed.some((r) => r.fact.kind === "mcp-catalog"));
 console.log("DSH public-wire normalization: bounded messages, partial history, source-reported activity, nullable evidence and exact safe counters passed");
+
+const directory = await fs.mkdtemp(path.join(os.tmpdir(), "worksha-dsh-events-"));
+const callbacks = new Map();
+let running = true;
+let stop;
+const step = { turn: 1, step: 0 };
+apply({
+  on(name, callback) { callbacks.set(name, callback); },
+  effect(start) { stop = start(); },
+  sessionController: {
+    async list() { return { items: [{ ...row, running }] }; },
+    async events() {
+      return {
+        hasMore: false,
+        records: [
+          event(1, "step/start", step),
+          event(2, "user/message", { content: [{ type: "image" }] }),
+          ...(!running ? [
+            event(10, "assistant/attempt", { ...step, stream: [{ type: "text-chunks", time0: row.updatedAt + 2, texts: ["", "retry"], dt: [2] }] }),
+            event(24, "assistant/message", {
+              ...step, stream: [{ type: "reasoning-chunks", time0: row.updatedAt + 8, texts: ["result"] }],
+              usage: { outputTokens: 4 }, message: { source: { model: "deepseek-flash" } },
+            }),
+            event(25, "turn/end", { turn: 1 }),
+          ] : []),
+        ],
+      };
+    },
+  },
+}, { outputDirectory: directory });
+const sessionRow = (rows) => rows.find((r) => r.fact?.kind === "session");
+async function frame(phase, ready = () => true) {
+  for (let i = 0; i < 25; i++) {
+    const text = await fs.readFile(path.join(directory, "facts.jsonl"), "utf8").catch(() => "");
+    try {
+      const rows = text.trim().split("\n").map((line) => JSON.parse(line));
+      if (rows[0].snapshot === rows.at(-1).commit && rows[0].records === rows.length - 2) {
+        const activity = rows.find((row) => row.fact?.kind === "activity").fact.value;
+        if (activity.phase === phase && ready(sessionRow(rows)?.activityTiming)) return { activity, rows };
+      }
+    } catch {
+      // An in-place write may be in progress.
+    }
+    await delay(40);
+  }
+  assert.fail("DSH activity event was not published before the heartbeat");
+}
+try {
+  const active = await frame("running");
+  assert.equal(sessionRow(active.rows).conversation[0].text, "附件消息");
+  assert.equal(sessionRow(active.rows).activityTiming.firstTokenMs, null);
+  assert.equal(sessionRow(active.rows).activityTiming.messageStartedAtMs, row.updatedAt + 2);
+  assert.equal(active.activity.durationMs, null);
+  const stream = (frame) => callbacks.get("agent/assistant-stream")({
+    agent: { session: { id: "s1", seq: 3 } }, frame: { ...frame, attemptId: "a1" },
+  });
+  stream({ type: "start", ...step });
+  stream({ type: "chunk", time: row.updatedAt + 3, chunk: { type: "text-delta", text: "" } });
+  stream({ type: "chunk", time: row.updatedAt + 4, chunk: { type: "reasoning-delta", text: "first" } });
+  const first = await frame("running", (timing) => timing?.firstTokenMs === 3);
+  assert.equal(sessionRow(first.rows).activityTiming.runningTokens, null);
+  stream({ type: "chunk", time: row.updatedAt + 8, chunk: { type: "usage", usage: { outputTokens: 2 } } });
+  const sampled = await frame("running", (timing) => timing?.runningTokens === "2");
+  assert.equal(sessionRow(sampled.rows).activityTiming.runningDecodeMs, 4);
+  running = false;
+  stream({ type: "end" });
+  callbacks.get("api-session/status")("s1", false);
+  const completed = await frame("idle");
+  assert.equal(completed.activity.occurredAt, new Date(row.updatedAt + 25).toISOString());
+  assert.equal(completed.activity.durationMs, "23");
+  assert.deepEqual(sessionRow(completed.rows).activityTiming, {
+    messageNativeId: "2", messageStartedAtMs: row.updatedAt + 2,
+    model: "deepseek-flash", firstTokenMs: 3, outputTokens: "4",
+    completedTokens: "4", completedDecodeMs: 20, runningTokens: null, runningDecodeMs: null,
+  });
+  console.log("DSH bridge publishes TTFT before usage and preserves timed retry and completion measurements");
+} finally {
+  stop?.();
+  await fs.rm(directory, { recursive: true, force: true });
+}

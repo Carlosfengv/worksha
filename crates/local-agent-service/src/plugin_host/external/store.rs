@@ -206,6 +206,7 @@ impl Manager {
           CREATE TABLE IF NOT EXISTS host_version(version INTEGER NOT NULL);
           INSERT INTO host_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM host_version);
           CREATE TABLE IF NOT EXISTS publishers(id TEXT PRIMARY KEY, public_key TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS publisher_source_tickets(publisher TEXT PRIMARY KEY REFERENCES publishers(id) ON DELETE CASCADE, ticket TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS packages(digest TEXT PRIMARY KEY,plugin_id TEXT NOT NULL,version TEXT NOT NULL,manifest TEXT NOT NULL,public_key TEXT,bytes INTEGER NOT NULL,removed INTEGER NOT NULL DEFAULT 0);
           CREATE TABLE IF NOT EXISTS selections(plugin_id TEXT PRIMARY KEY,digest TEXT NOT NULL,previous TEXT,enabled INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'installed',error TEXT,epoch INTEGER NOT NULL DEFAULT 1,revision INTEGER NOT NULL DEFAULT 1,source TEXT,connection TEXT,report INTEGER NOT NULL DEFAULT 0);
           CREATE TABLE IF NOT EXISTS private_settings(digest TEXT PRIMARY KEY,settings TEXT NOT NULL);

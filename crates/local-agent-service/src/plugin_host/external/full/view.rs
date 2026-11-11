@@ -26,6 +26,12 @@ impl SourceView {
     pub fn live_report_window(&self) -> Option<u32> {
         self.manifest.source.as_ref()?.max_age_seconds
     }
+    pub fn dsh_task(&self, native_session: &str) -> Option<&super::dsh::Task> {
+        if self.source.status.authorization != d::Authorization::Authorized {
+            return None;
+        }
+        self.projection.as_ref()?.dsh_tasks.get(native_session)
+    }
     pub fn has_agent_connection(&self) -> bool {
         self.manifest.has_agent_connection()
     }

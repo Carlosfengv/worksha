@@ -121,6 +121,7 @@ fn query_with(
                     source_revision: p.revision.to_string(),
                     observed_at: observed.clone(),
                     occurred_at: Some(row.event_at.clone()),
+                    message_started_at: None,
                     session_id: Some(row.session_id.clone()),
                     message_id: row.message_id().map(Into::into),
                     product_ids: row.agent_product_id.iter().cloned().collect(),
@@ -139,6 +140,7 @@ fn query_with(
                     logical_request_id: None,
                     historical_duration_ms: None,
                     measurements: Some(metrics::native(row, now_ms, current)),
+                    reported_measurements: None,
                 };
                 if input.matches(&record, now_ms) {
                     window.observe(record);
@@ -198,6 +200,7 @@ fn query_with(
                 occurred_at: Some(row.request.started_at.clone()),
                 session_id: row.request.session_id.clone(),
                 message_id: row.request.activity_message.as_ref().map(|m| m.id.clone()),
+                message_started_at: None,
                 product_ids: row.request.agent_product_id.iter().cloned().collect(),
                 unknown_client: row.request.agent_product_id.is_none(),
                 title: "网关请求".into(),
@@ -216,6 +219,7 @@ fn query_with(
                 )),
                 historical_duration_ms: None,
                 measurements: Some(metrics::gateway(row, now_ms, current)),
+                reported_measurements: None,
             };
             if input.matches(&record, now_ms) {
                 window.observe(record);
@@ -286,6 +290,17 @@ fn query_with(
                 if !input.include_historical && activity_state == a::ActivityState::Historical {
                     continue;
                 }
+                let task = match view {
+                    SourceView::Full(source) => session.and_then(|s| source.dsh_task(&s.native_id)),
+                    _ => None,
+                };
+                let message_id = task.map(|task| {
+                    d::facts::publication::object_id(
+                        &fact.identity.source_id,
+                        "conversation-event",
+                        &serde_json::json!([value.session_ref, task.native_id]).to_string(),
+                    )
+                });
                 let record = a::ActivityRecord {
                     id: fact.id.clone(),
                     kind: a::ActivityKind::SourceEvent,
@@ -295,11 +310,14 @@ fn query_with(
                     observed_at: fact.identity.observed_at.clone(),
                     occurred_at: value.occurred_at.clone(),
                     session_id: Some(value.session_ref.clone()),
-                    message_id: None,
+                    message_id,
+                    message_started_at: task.and_then(|task| task.started_at.clone()),
                     product_ids: session.map_or_else(Vec::new, |s| s.product_ids.clone()),
                     unknown_client: session.is_none_or(|s| s.unknown_client),
-                    title: session.map_or_else(|| "来源历史活动".into(), |s| s.title.clone()),
-                    model: None,
+                    title: task.map(|task| task.title.clone()).unwrap_or_else(|| {
+                        session.map_or_else(|| "来源历史活动".into(), |s| s.title.clone())
+                    }),
+                    model: task.and_then(|task| task.model.clone()),
                     phase: serde_json::to_value(&value.phase)
                         .ok()
                         .and_then(|v| v.as_str().map(Into::into))
@@ -309,6 +327,17 @@ fn query_with(
                     logical_request_id: None,
                     historical_duration_ms: value.duration_ms.clone(),
                     measurements: None,
+                    reported_measurements: task.and_then(|task| {
+                        let mut measurements = task.measurements.clone()?;
+                        if activity_state != a::ActivityState::Current {
+                            measurements.running_tokens_per_second = None;
+                        }
+                        (measurements.first_token_ms.is_some()
+                            || measurements.completed_tokens_per_second.is_some()
+                            || measurements.running_tokens_per_second.is_some()
+                            || measurements.output_tokens.is_some())
+                        .then_some(measurements)
+                    }),
                 };
                 if input.matches(&record, now_ms) {
                     if record.occurred_at.is_none() {

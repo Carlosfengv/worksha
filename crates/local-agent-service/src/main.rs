@@ -268,6 +268,16 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
     // Installing jobs does not start a disabled collector. A background/recovery
     // combination can later activate its declared scopes without a UI runtime.
     tasks::start(&state);
+    if !options.persistent
+        && plugin_host::features::mounted(&state.readonly.host, "builtin.overview")
+    {
+        let plugins = state.plugins.clone();
+        tokio::spawn(async move {
+            if let Err(error) = plugins.restore_dsh_source().await {
+                eprintln!("DSH 会话来源未恢复（{}）。", error.code);
+            }
+        });
+    }
     println!(
         "{}",
         serde_json::json!({"port":address.port(), "version":env!("CARGO_PKG_VERSION")})

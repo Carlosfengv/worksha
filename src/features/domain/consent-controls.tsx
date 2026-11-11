@@ -33,6 +33,8 @@ export function DomainConsentControls({
   const current =
     !review.loading && !review.error && !error ? review.data : null;
   const persistMetadata = persist ?? current?.persistMetadata ?? false;
+  const remembersSource =
+    fullFacts && sourceId === "net.worksha.dsh-desktop:desktop";
   const save = async (enabled: boolean) => {
     if (busy || !current || error) return;
     setBusy(true);
@@ -71,12 +73,16 @@ export function DomainConsentControls({
             {fullFacts
               ? "将已读取的项目、会话、响应、活动及 MCP 证据加入统一查询。"
               : "将已授权来源的会话标题、时间和用量加入统一查询。"}
-            不会扩大插件读取范围，也不会自动刷新来源。
+            {remembersSource
+              ? "桥接更新后会自动读取所选文件。"
+              : "不会扩大插件读取范围，也不会自动刷新来源。"}
           </p>
           <p className="text-label text-fg-muted">
-            {fullFacts
-              ? "默认仅保留本次运行的元数据；保存的元数据重开后标记过期，需重新启用、选择资源并授权展示后才能读取。"
-              : "默认仅保留本次运行的元数据；重开后需手动刷新。可选择保存元数据，重开时旧记录会标记过期。"}
+            {remembersSource
+              ? "Worksha 会记住所选文件和展示授权，重开时核对后自动恢复。替换来源文件后需要重新授权。"
+              : fullFacts
+                ? "默认仅保留本次运行的元数据；保存的元数据重开后标记过期，需重新启用、选择资源并授权展示后才能读取。"
+                : "默认仅保留本次运行的元数据；重开后需手动刷新。可选择保存元数据，重开时旧记录会标记过期。"}
             正文始终按需读取，不另存副本。
           </p>
           {review.loading && (
@@ -92,7 +98,11 @@ export function DomainConsentControls({
           {current?.unifiedAuthorized && (
             <p role="status" className="text-label">
               已加入统一展示 ·{" "}
-              {current.persistMetadata ? "保存元数据" : "仅本次运行"}
+              {remembersSource
+                ? "重开时恢复"
+                : current.persistMetadata
+                  ? "保存元数据"
+                  : "仅本次运行"}
             </p>
           )}
           <label className="flex items-center gap-2 text-label">
@@ -101,9 +111,11 @@ export function DomainConsentControls({
               disabled={busy || !current || !!error}
               onCheckedChange={(value) => setPersist(value === true)}
             />
-            {fullFacts
-              ? "保存元数据（重开后需要重新授权）"
-              : "保存元数据供重开读取"}
+            {remembersSource
+              ? "保存会话元数据"
+              : fullFacts
+                ? "保存元数据（重开后需要重新授权）"
+                : "保存元数据供重开读取"}
           </label>
           {current && !current.sourceAuthorized && (
             <p className="text-label text-fg-muted">请先选择并授权来源文件。</p>

@@ -59,6 +59,18 @@ impl Selection {
         Ok(())
     }
 }
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct SavedDshSource {
+    pub digest: String,
+    pub epoch: u64,
+    pub revision: u64,
+    pub path: PathBuf,
+    pub device: u64,
+    pub inode: u64,
+    pub created: std::time::SystemTime,
+    pub publisher_ticket: String,
+}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Lease {
     pub id: String,
@@ -94,14 +106,29 @@ pub(super) struct Projection {
     pub summary: d::facts::FactSummary,
     pub source_stamp: super::runtime::FileStamp,
     pub captured_source: Option<super::runtime::SourceData>,
+    pub dsh_tasks: Arc<BTreeMap<String, super::dsh::Task>>,
 }
 impl Projection {
     pub(super) fn resident_bytes(&self) -> usize {
-        self.encoded_bytes.saturating_add(
-            self.captured_source
-                .as_ref()
-                .map_or(0, |source| source.text.len()),
-        )
+        self.encoded_bytes
+            .saturating_add(
+                self.captured_source
+                    .as_ref()
+                    .map_or(0, |source| source.text.len()),
+            )
+            .saturating_add(
+                self.dsh_tasks
+                    .iter()
+                    .map(|(session, task)| {
+                        session.len()
+                            + task.native_id.len()
+                            + task.title.len()
+                            + task.started_at.as_ref().map_or(0, String::len)
+                            + task.model.as_ref().map_or(0, String::len)
+                            + std::mem::size_of_val(task)
+                    })
+                    .sum(),
+            )
     }
 }
 pub(crate) struct Host {
@@ -239,7 +266,7 @@ impl Host {
                 "full_projections",
                 "full_hidden_projects",
             ],
-            "CREATE TABLE IF NOT EXISTS full_version(version INTEGER NOT NULL);INSERT INTO full_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM full_version);CREATE TABLE IF NOT EXISTS full_packages(digest TEXT PRIMARY KEY,plugin_id TEXT NOT NULL,record TEXT NOT NULL,removed INTEGER NOT NULL DEFAULT 0);CREATE TABLE IF NOT EXISTS full_selections(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS full_reviews(id TEXT PRIMARY KEY,record TEXT NOT NULL,expires INTEGER NOT NULL);CREATE TABLE IF NOT EXISTS full_projections(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS full_hidden_projects(id TEXT PRIMARY KEY);",
+            "CREATE TABLE IF NOT EXISTS full_version(version INTEGER NOT NULL);INSERT INTO full_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM full_version);CREATE TABLE IF NOT EXISTS full_packages(digest TEXT PRIMARY KEY,plugin_id TEXT NOT NULL,record TEXT NOT NULL,removed INTEGER NOT NULL DEFAULT 0);CREATE TABLE IF NOT EXISTS full_selections(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS full_reviews(id TEXT PRIMARY KEY,record TEXT NOT NULL,expires INTEGER NOT NULL);CREATE TABLE IF NOT EXISTS full_projections(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS full_hidden_projects(id TEXT PRIMARY KEY);CREATE TABLE IF NOT EXISTS full_saved_sources(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);",
         )?;
         super::recovery::reconcile(self, &db)?;
         Ok(db)
@@ -313,6 +340,18 @@ impl Host {
         let s: Selection = decode(&text)?;
         s.validate()?;
         Ok(s)
+    }
+    pub(super) fn saved_dsh_source(&self, id: &str) -> Result<Option<SavedDshSource>> {
+        let text: Option<String> = self
+            .db()?
+            .query_row(
+                "SELECT record FROM full_saved_sources WHERE plugin_id=?1",
+                [id],
+                |row| row.get(0),
+            )
+            .optional()
+            .checked("unavailable")?;
+        text.as_deref().map(decode).transpose()
     }
     #[cfg(test)]
     pub(super) fn save_selection(&self, id: &str, selection: &Selection) -> Result<()> {
@@ -388,6 +427,8 @@ impl Host {
             )
             .checked("unavailable")?;
             tx.execute("DELETE FROM full_projections WHERE plugin_id=?1", [id])
+                .checked("unavailable")?;
+            tx.execute("DELETE FROM full_saved_sources WHERE plugin_id=?1", [id])
                 .checked("unavailable")?;
             if let Some(digest) = remove {
                 tx.execute(

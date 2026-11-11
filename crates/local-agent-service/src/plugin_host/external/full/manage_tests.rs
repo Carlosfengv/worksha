@@ -4,6 +4,41 @@ use ed25519_dalek::SigningKey;
 use local_agent_core::{plugin::full as f, providers::vault::MemoryVault};
 use std::sync::Arc;
 
+#[test]
+fn dsh_authorization_ticket_is_invalid_after_publisher_revocation_and_reapproval() {
+    let root = tempfile::tempdir().unwrap();
+    let host = Manager::open(root.path(), Arc::new(MemoryVault::default())).unwrap();
+    let installed = host
+        .full_install(&full_review(
+            &host,
+            root.path(),
+            super::dsh::PLUGIN,
+            "net.worksha",
+            7,
+        ))
+        .unwrap();
+    let query = f::PackageQuery {
+        plugin_id: installed.manifest.id,
+        digest: installed.digest,
+    };
+    let package = host.full.lock().unwrap().installed(&query).unwrap();
+    let before = host.dsh_publisher_ticket(&package, true).unwrap().unwrap();
+    host.revoke_shared_publisher("net.worksha").unwrap();
+    host.db
+        .lock()
+        .unwrap()
+        .execute(
+            "INSERT INTO publishers VALUES(?1,?2)",
+            rusqlite::params!["net.worksha", package.signing_key],
+        )
+        .unwrap();
+    assert_eq!(host.dsh_publisher_ticket(&package, false).unwrap(), None);
+    assert_ne!(
+        host.dsh_publisher_ticket(&package, true).unwrap().unwrap(),
+        before
+    );
+}
+
 fn full_review(
     host: &Manager,
     root: &std::path::Path,

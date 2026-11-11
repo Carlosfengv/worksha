@@ -23,9 +23,15 @@ function pack(example, name = example, edit = () => {}) {
 }
 let child, exited, base;
 const token = randomUUID();
-async function api(route, body, status = 200) {
+async function api(route, body, status = 200, busyRetries = 0) {
   const r = await fetch(base + route, { method: body === undefined ? "GET" : "POST", headers: { authorization: "Bearer " + token, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(20000) });
-  const value = await r.json(); assert.equal(r.status, status, route + ": " + JSON.stringify(value)); return value;
+  const value = await r.json();
+  if (busyRetries > 0 && r.status === 503 && value.code === "busy") {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    return api(route, body, status, busyRetries - 1);
+  }
+  assert.equal(r.status, status, route + ": " + JSON.stringify(value));
+  return value;
 }
 const sourceId = "net.worksha.dsh-desktop:desktop", productId = sourceId;
 const secondSourceId = "org.example.full-history:history";
@@ -51,10 +57,25 @@ const writeDshObservation = () => {
   const snapshot = randomUUID();
   fs.writeFileSync(history, [{ snapshot, records: records.length }, ...records, { commit: snapshot }].map((r) => JSON.stringify(r)).join("\n") + "\n");
 };
-try {
+async function start() {
   child = spawn(binary, ["--data-dir", data], { env: { ...process.env, LOCAL_AGENT_SOURCE_HOME: home, LOCAL_AGENT_SERVICE_TOKEN: token, LOCAL_AGENT_TEST_MEMORY_VAULT: "1", LOCAL_AGENT_TEST_IDLE_AGENTS: "1" }, stdio: ["ignore", "pipe", "pipe"] });
   exited = once(child, "exit"); let error = ""; child.stderr.on("data", (v) => error += v);
   const [line] = await Promise.race([once(createInterface({ input: child.stdout }), "line", { signal: AbortSignal.timeout(15000) }), exited.then(() => { throw Error(error); })]); base = "http://127.0.0.1:" + JSON.parse(line).port;
+}
+async function stop() {
+  await api("/api/runtime/shutdown", {});
+  assert.equal((await exited)[0], 0);
+}
+async function waitFor(read, matches) {
+  for (let i = 0; i < 40; i++) {
+    const value = await read();
+    if (matches(value)) return value;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw Error("DSH source did not reach the expected state");
+}
+try {
+  await start();
   const initial = await api("/api/snapshot");
   const reportFile = pack("source-report", "source-report", (folder) => {
     const file = path.join(folder, "manifest.json");
@@ -198,6 +219,88 @@ try {
   const bad = JSON.parse(fs.readFileSync(path.join(malicious, "contributions.json"))); bad.navigation[0].viewId = "../../settings"; fs.writeFileSync(path.join(malicious, "contributions.json"), JSON.stringify(bad)); assert.throws(() => sdk("pack", malicious, malicious + ".laplug", key));
   bad.navigation[0].viewId = "sessions"; bad.dataQueries[0].capability = "domain.session-source@2"; fs.writeFileSync(path.join(malicious, "contributions.json"), JSON.stringify(bad)); assert.throws(() => sdk("pack", malicious, malicious + ".laplug", key));
   pass("导航越界和未知能力主版本拒绝打包");
+  // Reuse an exact bridge file and a stable conversation title across two turns.
+  function writeTask(title, startedAt, running) {
+    const time = Date.parse(startedAt);
+    const event = (seq, type, data, at) => ({
+      type: "event", event: { seq, time: at, type, data },
+    });
+    const records = normalizeSession({
+      sessionId: "dsh-direct", updatedAt: time - 30000, running,
+      projections: { values: { title: "Greeting" } },
+    }, { hasMore: false, records: [
+      event(1, "user/message", { content: "Greeting" }, time - 10000),
+      event(2, "assistant/message", { content: "Hi" }, time - 9000),
+      event(3, "step/start", { turn: 2, step: 0 }, time - 5),
+      event(4, "user/message", { content: title }, time),
+      event(5, "user/message", { source: { kind: "runtime-context" }, content: "Context" }, time + 1),
+      ...(!running ? [
+        event(6, "assistant/message", {
+          turn: 2, step: 0, stream: [{ type: "text-chunks", time0: time + 45, texts: ["Done"] }],
+          usage: { outputTokens: 30 }, message: { content: "Done", source: { model: "deepseek-flash" } },
+        }, time + 1045),
+        event(7, "turn/end", { turn: 2 }, time + 1050),
+      ] : []),
+    ] }, new Date().toISOString(), running ? {
+      turn: 2, step: 0, startedAfterSeq: 5, first: time + 45, usage: { at: time + 545, tokens: 12 },
+    } : undefined);
+    const snapshot = randomUUID();
+    fs.writeFileSync(history, [{ snapshot, records: records.length }, ...records, { commit: snapshot }].map((row) => JSON.stringify(row)).join("\n") + "\n");
+  }
+  const sourceActivity = () => api("/api/domain/activity", { scope: query.scope, rangeSeconds: 3600, productId, sessionId: null, includeGateway: false, includeHistorical: true });
+  const sourceStatus = async () => (await api("/api/plugin-sources")).items.find((item) => item.digest === source.digest);
+  const authorizeHistory = async () => {
+    // Startup restores the saved source in the background and can still hold its gate.
+    await api("/api/plugin-sources/state", { package: source, action: "enable" }, 200, 20);
+    await api("/api/plugin-sources/source", { package: source, path: history });
+    const approval = await api("/api/domain/consent-review", source);
+    await api("/api/domain/consent", { ...source, enabled: true, persistMetadata: false, reviewRef: approval.reviewRef });
+  };
+  const messageTime = new Date(Date.now() - 3000).toISOString();
+  writeTask("Inspect the model route", messageTime, true);
+  await authorizeHistory();
+  const matchesTask = (title, state) => (page) => page.items.some((item) =>
+    item.title === title && item.state === state);
+  const [running] = (await waitFor(sourceActivity, matchesTask("Inspect the model route", "current"))).items;
+  assert.equal(running.messageStartedAt, messageTime);
+  assert.ok(running.messageId);
+  assert.deepEqual(running.reportedMeasurements, { firstTokenMs: 50, runningTokensPerSecond: 24, completedTokensPerSecond: null, outputTokens: null });
+  writeTask("Inspect the model route", messageTime, false);
+  const [idle] = (await waitFor(sourceActivity, matchesTask("Inspect the model route", "historical"))).items;
+  assert.equal(idle.messageId, running.messageId);
+  assert.equal(idle.messageStartedAt, running.messageStartedAt);
+  assert.equal(idle.historicalDurationMs, "1050");
+  assert.notEqual(idle.occurredAt, messageTime);
+  assert.equal(idle.measurements, null);
+  assert.equal(idle.model, "deepseek-flash");
+  assert.deepEqual(idle.reportedMeasurements, { firstTokenMs: 50, runningTokensPerSecond: null, completedTokensPerSecond: 30, outputTokens: "30" });
+  assert.equal((await api("/api/domain/sessions", query)).items[0].record.title, "Greeting");
+  pass("DSH 直连任务携带来源 TTFT、运行均速和完成用量；状态变化保留同一任务和发起时间");
+
+  await stop();
+  await start();
+  await waitFor(sourceActivity, matchesTask("Inspect the model route", "historical"));
+  assert.equal((await sourceStatus()).unifiedAuthorized, true);
+  assert.equal((await sourceStatus()).persistMetadata, false);
+  const nextTime = new Date(Date.now() - 500).toISOString();
+  writeTask("Confirm the next request", nextTime, true);
+  await waitFor(sourceActivity, matchesTask("Confirm the next request", "current"));
+  pass("Worksha 服务重启后恢复此前授权，自动读取同一文件的新任务");
+
+  await stop();
+  fs.renameSync(history, history + ".previous");
+  writeTask("Unapproved replacement", nextTime, false);
+  await start();
+  assert.equal((await sourceStatus()).unifiedAuthorized, false);
+  assert.equal((await sourceActivity()).items.length, 0);
+  await authorizeHistory();
+  await waitFor(sourceActivity, matchesTask("Unapproved replacement", "historical"));
+  await api("/api/domain/consent", { ...source, enabled: false, persistMetadata: false, reviewRef: "" });
+  await stop();
+  await start();
+  assert.equal((await sourceStatus()).unifiedAuthorized, false);
+  assert.equal((await sourceActivity()).items.length, 0);
+  pass("同路径换文件或撤销统一展示后，重启不会恢复旧授权");
   report.complete = true;
 } finally {
   if (child?.exitCode === null) { try { await api("/api/runtime/shutdown", {}); await exited; } catch { child.kill("SIGTERM"); await exited; } }

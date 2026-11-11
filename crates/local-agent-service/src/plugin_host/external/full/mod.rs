@@ -2,6 +2,7 @@
 pub(super) mod api;
 mod connection;
 mod consent;
+mod dsh;
 pub(super) use connection::BundledDshConnection;
 pub(crate) use connection::ConnectionAccess;
 mod view;

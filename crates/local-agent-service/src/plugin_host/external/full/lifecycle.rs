@@ -387,22 +387,31 @@ impl Manager {
         };
         let manager = self.clone();
         super::super::run_sync(move || {
-            manager.full_check(&context)?;
             let live_snapshot = context
                 .package
                 .manifest
                 .source
                 .as_ref()
                 .is_some_and(|source| source.max_age_seconds.is_some());
-            let source = context.source.ok_or(fail("permission_denied"))?;
+            let source = context.source.as_ref().ok_or(fail("permission_denied"))?;
             if live_snapshot {
-                runtime::verify_live_frame(&source, facts.records.len())?;
+                runtime::verify_live_frame(source, facts.records.len())?;
             }
+            let dsh_tasks = if live_snapshot
+                && source.grant.unified
+                && super::dsh::is_source(&context.package.manifest)
+            {
+                super::dsh::latest_tasks(&source.text)
+            } else {
+                Default::default()
+            };
             let encoded = super::store::encode(&facts)?;
             let size = encoded.len();
             let summary = facts
                 .summary(&facts.records)
                 .map_err(|_| fail("resource_limit"))?;
+            manager.full_check(&context)?;
+            let source = context.source.ok_or(fail("permission_denied"))?;
             let mut host = manager.full.lock().checked("unavailable")?;
             if host.active.get(&q.plugin_id) != Some(&context.lease) {
                 return Err(fail("grant_revoked"));
@@ -433,6 +442,7 @@ impl Manager {
                 summary,
                 source_stamp,
                 captured_source,
+                dsh_tasks: Arc::new(dsh_tasks),
             };
             if bytes.saturating_add(projection.resident_bytes()) > 64 * 1_048_576 {
                 return Err(fail("resource_limit"));

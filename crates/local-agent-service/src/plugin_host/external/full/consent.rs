@@ -80,6 +80,14 @@ impl Manager {
         if input.enabled && !self.full_trusted(&installed)? {
             return Err(fail("publisher_untrusted"));
         }
+        let dsh_ticket = if input.enabled && super::dsh::is_source(&installed.manifest) {
+            Some(
+                self.dsh_publisher_ticket(&installed, true)?
+                    .ok_or(fail("publisher_untrusted"))?,
+            )
+        } else {
+            None
+        };
         let publisher_revision = self.full_publisher_revision(&installed.manifest.publisher)?;
         let mut host = self.full.lock().checked("unavailable")?;
         let mut selected = host.selection(&input.plugin_id)?;
@@ -135,12 +143,42 @@ impl Manager {
         };
         selected.advance()?;
         selected.persist_metadata = input.persist_metadata;
+        let saved_dsh_source = if let (Some(ticket), Some(grant)) = (dsh_ticket, grant.as_ref()) {
+            let created = std::fs::symlink_metadata(&grant.path)
+                .and_then(|metadata| metadata.created())
+                .checked("permission_denied")?;
+            Some(super::store::SavedDshSource {
+                digest: selected.digest.clone(),
+                epoch: selected.epoch,
+                revision: selected.revision,
+                path: grant.path.clone(),
+                device: grant.device,
+                inode: grant.inode,
+                created,
+                publisher_ticket: ticket,
+            })
+        } else {
+            None
+        };
         let updated = active.map(|lease| Lease {
             epoch: selected.epoch,
             revision: selected.revision,
             ..lease
         });
         let tx = host.db()?.unchecked_transaction().checked("unavailable")?;
+        if let Some(saved) = saved_dsh_source {
+            tx.execute(
+                "INSERT OR REPLACE INTO full_saved_sources VALUES(?1,?2)",
+                params![input.plugin_id, super::store::encode(&saved)?],
+            )
+            .checked("unavailable")?;
+        } else {
+            tx.execute(
+                "DELETE FROM full_saved_sources WHERE plugin_id=?1",
+                [&input.plugin_id],
+            )
+            .checked("unavailable")?;
+        }
         // Persist only metadata from the same selected resource. Candidate paths are stripped.
         if input.persist_metadata {
             if let (Some(projection), Some(grant)) =
@@ -182,6 +220,7 @@ impl Manager {
             if let Some(projection) = host.projections.get_mut(&input.plugin_id) {
                 projection.lease = lease.clone();
                 projection.captured_source = None;
+                projection.dsh_tasks = Default::default();
             }
             if let Some(review) = review
                 && let Some(current) = host.consents.get_mut(&review.reply.review_ref)

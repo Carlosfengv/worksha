@@ -124,6 +124,12 @@ export function ActivityWorkspace({
           row.state === "current" &&
           Date.parse(row.observedAt) < now - 15000;
         const rate = staleSample ? null : liveRate(row, now);
+        const reportedRunning =
+          row.state === "current" && Date.parse(page?.asOf ?? "") >= now - 15000
+            ? row.reportedMeasurements?.runningTokensPerSecond
+            : null;
+        const reportedRate =
+          reportedRunning ?? row.reportedMeasurements?.completedTokensPerSecond;
         return {
           ...row,
           sourceName: names[row.sourceId] ?? row.sourceId,
@@ -137,7 +143,9 @@ export function ActivityWorkspace({
                   : "当前观测",
           rateLabel:
             row.kind === "source-event"
-              ? "不提供实时采样"
+              ? reportedRate == null
+                ? "不提供实时采样"
+                : `${reportedRate.toLocaleString("zh-CN", { maximumFractionDigits: 2 })} Token/s · DSH ${reportedRunning != null ? "当前步骤均速" : "已完成步骤均速"}`
               : rate === null
                 ? "实时速率未知"
                 : `${rate.toLocaleString("zh-CN", { maximumFractionDigits: 2 })} Token/s · 5 秒窗口`,
@@ -317,6 +325,15 @@ export function ActivityWorkspace({
                 {kindNames[active.kind]} · {active.stateLabel}
               </p>
               <p className="text-label">{active.rateLabel}</p>
+              {active.reportedMeasurements?.firstTokenMs != null && (
+                <p className="text-label">
+                  DSH 步骤首出{" "}
+                  {active.reportedMeasurements.firstTokenMs.toLocaleString(
+                    "zh-CN",
+                  )}{" "}
+                  ms
+                </p>
+              )}
               {active.kind === "source-event" ? (
                 <p className="text-label">
                   来源报告耗时：{counts(active.historicalDurationMs)}{" "}

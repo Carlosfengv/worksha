@@ -1,11 +1,12 @@
 // DSH 0.2.2-rc.1 public session/list and session/events wire records only.
 // No persistence files, credentials, Agent activation or execution operations.
 import { createHash } from "node:crypto";
+import { taskTiming } from "./timing.js";
 const PRODUCT = "net.worksha.dsh-desktop:desktop";
 const decimal = (v) => Number.isSafeInteger(v) && v >= 0 ? String(v) : null;
 const timestamp = (v) => {
-  const n = typeof v === "number" ? v : Date.parse(v);
-  return Number.isFinite(n) ? new Date(n).toISOString() : null;
+  const date = new Date(typeof v === "number" ? v : Date.parse(v));
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 };
 const unknownUsage = () => ({ inputTokens: null, outputTokens: null, cachedInputTokens: null, cacheWriteInputTokens: null, reasoningOutputTokens: null, totalTokens: null });
 function usageOf(value) {
@@ -18,16 +19,22 @@ function usageOf(value) {
   }
   return usage;
 }
-export function normalizeSession(row, page, observedAt) {
+export function normalizeSession(row, page, observedAt, live) {
   const values = row.projections?.values ?? {};
   const events = (page.records ?? []).filter((record) => record.type === "event").map((record) => record.event);
   const titleProjection = values.title;
   const title = typeof titleProjection === "string" ? titleProjection : titleProjection?.title;
   const conversation = [], responses = [];
   const mcp = new Map(), responseSteps = new Map();
+  const updatedAt = timestamp(row.updatedAt);
+  let lastActivity = updatedAt;
   for (const event of events) {
     const data = event.data ?? {};
     const id = String(event.seq);
+    if (["assistant/message", "tool/result", "turn/end"].includes(event.type)) {
+      const time = timestamp(event.time);
+      if (time && (!lastActivity || time > lastActivity)) lastActivity = time;
+    }
     // A durable assistant attempt is source evidence, never a host request ID.
     if (event.type === "assistant/message" && Number.isSafeInteger(data.turn) && Number.isSafeInteger(data.step))
       responseSteps.set(`${data.turn}:${data.step}`, `${row.sessionId}:response:${id}`);
@@ -64,8 +71,11 @@ export function normalizeSession(row, page, observedAt) {
     if (event.type === "user/message" || event.type === "assistant/message") {
       const content = data.content ?? data.message?.content;
       const text = typeof content === "string" ? content : Array.isArray(content) ? content.filter((part) => part.type === "text" && typeof part.text === "string").map((part) => part.text).join("\n") : null;
-      const runtime = event.type === "user/message" && data.source?.kind === "runtime-context";
-      if (text) conversation.push({ id, nativeId: id, turnId: id, kind: runtime ? "runtime-context" : "message", role: runtime ? null : event.type === "user/message" ? "user" : "assistant", status: "recorded", text: text.slice(0, 4096), input: null, output: null, model: null, responseId: null, usage: null });
+      const runtime = event.type === "user/message" && data.source?.kind != null && data.source.kind !== "user";
+      const attachments = event.type === "user/message" && !runtime && Array.isArray(content) &&
+        content.some((part) => part.type === "image" || part.type === "file");
+      const displayText = text?.trim() ? text : attachments ? "附件消息" : null;
+      if (displayText) conversation.push({ id, nativeId: id, turnId: id, kind: runtime ? "runtime-context" : "message", role: runtime ? null : event.type === "user/message" ? "user" : "assistant", status: "recorded", text: displayText.slice(0, 4096), input: null, output: null, model: null, responseId: null, usage: null });
     }
   }
   const project = typeof row.cwd === "string" && row.cwd ? row.cwd : null;
@@ -80,9 +90,13 @@ export function normalizeSession(row, page, observedAt) {
       if (total <= 18446744073709551615n) sessionUsage[key] = String(total);
     }
   }
-  facts.push({ fact: { kind: "session", value: { nativeId: row.sessionId, productIds: [PRODUCT], unknownClient: false, title: title || `DSH ${row.sessionId}`, createdAt: null, updatedAt: timestamp(row.updatedAt), projectRef: projectId, usage: sessionUsage, partial: Boolean(page.hasMore) } }, conversation: conversation.slice(-40) });
+  const recentConversation = conversation.slice(-40);
+  const latestUser = recentConversation.findLast((event) => event.kind === "message" && event.role === "user");
+  const timing = latestUser && taskTiming(events, latestUser.nativeId, row.running ? live : null);
+  const { durationMs, ...activityTiming } = timing ?? {};
+  facts.push({ fact: { kind: "session", value: { nativeId: row.sessionId, productIds: [PRODUCT], unknownClient: false, title: title || `DSH ${row.sessionId}`, createdAt: null, updatedAt, projectRef: projectId, usage: sessionUsage, partial: Boolean(page.hasMore) } }, conversation: recentConversation, ...(timing ? { activityTiming } : {}) });
   facts.push(...responses);
   for (const execution of mcp.values()) facts.push({ fact: { kind: "mcp-execution", value: execution } });
-  facts.push({ fact: { kind: "activity", value: { nativeId: `${row.sessionId}:activity`, sessionRef: row.sessionId, responseRef: null, occurredAt: row.running ? observedAt : timestamp(row.updatedAt), phase: row.running ? "running" : "idle", durationMs: null } } });
+  facts.push({ fact: { kind: "activity", value: { nativeId: `${row.sessionId}:activity`, sessionRef: row.sessionId, responseRef: null, occurredAt: row.running ? observedAt : lastActivity, phase: row.running ? "running" : "idle", durationMs: row.running ? null : decimal(durationMs) } } });
   return facts;
 }

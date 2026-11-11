@@ -97,6 +97,15 @@ pub struct ActivityMeasurements {
     pub recent_rate: Option<RateObservation>,
     pub historical_average_text_rate: Option<f64>,
 }
+/// Timing derived from a source's own model stream and reported usage.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReportedActivityMeasurements {
+    pub first_token_ms: Option<u64>,
+    pub running_tokens_per_second: Option<f64>,
+    pub completed_tokens_per_second: Option<f64>,
+    pub output_tokens: Option<Decimal>,
+}
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActivityRecord {
@@ -109,6 +118,8 @@ pub struct ActivityRecord {
     pub occurred_at: Option<String>,
     pub session_id: Option<String>,
     pub message_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_started_at: Option<String>,
     pub product_ids: Vec<String>,
     pub unknown_client: bool,
     pub title: String,
@@ -120,6 +131,8 @@ pub struct ActivityRecord {
     pub historical_duration_ms: Option<Decimal>,
     /// Absent for external source events. Guests cannot manufacture host metrics.
     pub measurements: Option<ActivityMeasurements>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reported_measurements: Option<ReportedActivityMeasurements>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

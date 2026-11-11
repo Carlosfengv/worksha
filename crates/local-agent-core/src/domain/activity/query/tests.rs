@@ -10,6 +10,7 @@ fn row(id: &str, kind: ActivityKind, at: Option<String>) -> ActivityRecord {
         occurred_at: at,
         session_id: None,
         message_id: None,
+        message_started_at: None,
         product_ids: vec![],
         unknown_client: true,
         title: "metadata".into(),
@@ -20,6 +21,7 @@ fn row(id: &str, kind: ActivityKind, at: Option<String>) -> ActivityRecord {
         logical_request_id: None,
         historical_duration_ms: None,
         measurements: None,
+        reported_measurements: None,
     }
 }
 fn status(kind: ActivityKind, coverage: Coverage) -> ActivitySourceState {
