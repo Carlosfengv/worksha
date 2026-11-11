@@ -46,6 +46,19 @@ export interface ModelObservation {
       preferredModelName?: string | null;
       attempt?: number;
       fallbackReason?: string | null;
+      upstreamAccountLabel?: string | null;
+      accountSelectionReason?: string | null;
+      routingRule?: { id: string; name: string; modelId: string } | null;
+      routingIntent?: "unknown" | "unavailable" | { matched: string } | null;
+      nestedRoute?: {
+        serviceId: string;
+        versionId: string;
+        serviceName: string;
+        modelId: string;
+        modelName: string;
+        routingRule?: { id: string; name: string; modelId: string };
+        routingIntent?: "unknown" | "unavailable" | { matched: string };
+      }[];
       budget?: {
         inputTokens: number;
         outputTokens: number;

@@ -79,15 +79,59 @@ const nativeRows: RequestRecord[] = Array.from({ length: 45 }, (_, i) => ({
   },
   timingNote: "原生记录时间不等于请求开始时间，计时不可测。",
 }));
-rows[1].nativeLinks = [
-  {
-    eventId: "native-0",
-    sessionId: "session-native",
-    responseId: "response-0",
-    attemptId: rows[1].id,
-    usageConflict: true,
-  },
-];
+const fixtureNativeLink = {
+  eventId: "native-0",
+  sessionId: "session-native",
+  responseId: "response-0",
+  attemptId: rows[1].id,
+  usageConflict: true,
+};
+rows[1].nativeLinks = [fixtureNativeLink];
+if (new URLSearchParams(location.search).has("trace")) {
+  const row = rows[1];
+  const first = {
+    ...row.attempts[0],
+    id: "trace-first",
+    status: "failed",
+    httpStatus: 429,
+    issue: "rate_limit",
+    clockId: "fixture-clock",
+    startTickMs: 4000,
+    durationMs: 200,
+  };
+  row.status = "recovered";
+  row.durationMs = null;
+  row.attempts = [
+    first,
+    {
+      ...first,
+      id: "trace-unknown",
+      status: "interrupted",
+      httpStatus: null,
+      issue: null,
+      startTickMs: 4550,
+      durationMs: null,
+      backoffMs: 350,
+    },
+    {
+      ...first,
+      id: "trace-success",
+      status: "success",
+      httpStatus: 200,
+      issue: null,
+      startTickMs: 5200,
+      durationMs: 800,
+      responseId: "response-0",
+    },
+    {
+      ...first,
+      id: "trace-different-clock",
+      clockId: "other-clock",
+      startTickMs: 9000,
+    },
+  ];
+  row.nativeLinks = [{ ...fixtureNativeLink, attemptId: "trace-success" }];
+}
 function sourceDashboard(query: RequestQuery): RequestDashboard {
   const linkedRows = new URLSearchParams(location.search).has("noExactMatch")
     ? []
@@ -232,11 +276,64 @@ observationApi.requestDashboard = async (query) => {
   if (window.requestFail) throw new Error("请求快照已过期，请刷新后重试");
   return sourceDashboard(query);
 };
-observationApi.requestDetail = async (id) => ({
-  request: [...rows, ...nativeRows].find((r) => r.id === id) ?? null,
-  asOf: "2026-10-19T12:00:00Z",
-  sourceError: null,
-});
+observationApi.requestDetail = async (id) => {
+  const row = [...rows, ...nativeRows].find((r) => r.id === id) ?? null;
+  const routeDecisions = new URLSearchParams(location.search).get(
+    "route-decisions",
+  );
+  const unknownResult = routeDecisions === "unknown";
+  return {
+    request:
+      row && routeDecisions
+        ? unknownResult
+          ? { ...row, status: "interrupted" }
+          : { ...row, attempts: [], status: "failed" }
+        : row,
+    ...(routeDecisions
+      ? {
+          routeTrace: {
+            decisions: [
+              {
+                path: [
+                  {
+                    service: "主服务",
+                    model: "子服务入口",
+                    versionId: "root-fixture",
+                  },
+                  {
+                    service: "子服务",
+                    model: "模型 A",
+                    versionId: "child-fixture",
+                    modelId: "child-model-fixture",
+                  },
+                ],
+                accountPosition: 2,
+                reason: unknownResult
+                  ? "upstream-outcome-unconfirmed"
+                  : "access-model-denied",
+              },
+              {
+                path: [
+                  {
+                    service: "主服务",
+                    model: "备用模型",
+                    versionId: "root-fixture",
+                  },
+                ],
+                reason: unknownResult
+                  ? "outcome-unknown"
+                  : "cross-model-fallback-disabled",
+              },
+            ],
+            truncated: false,
+            httpStatus: unknownResult ? 504 : 403,
+          },
+        }
+      : {}),
+    asOf: "2026-10-19T12:00:00Z",
+    sourceError: null,
+  };
+};
 observationApi.exportRequests = async (snapshot) => {
   window.requestExports.push(snapshot);
   const outcome = new URLSearchParams(location.search).get("export");
@@ -262,7 +359,7 @@ function Harness() {
   const id = path.split("/")[1];
   return (
     <IconProvider>
-      <main className="min-w-0 p-4">
+      <main className="flex h-dvh min-w-0 flex-col">
         <RequestsPage selectedId={id} routeSearch={search ?? ""} />
       </main>
     </IconProvider>

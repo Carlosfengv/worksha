@@ -4,6 +4,7 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { IconProvider } from "@/lib/icon-context";
 import { SessionsPage } from "@/features/sessions/page";
 import { AgentDetail } from "@/features/agents/components/agent-detail";
+import { createUiRegistry } from "@/app/plugin-registry";
 import type { Snapshot } from "@/app/types";
 import type {
   Conversation,
@@ -27,6 +28,7 @@ declare global {
     sessionNav: {
       queries: SessionQuery[];
       conversations: string[];
+      anchors: (string | null)[];
       hold: boolean;
       releases: (() => void)[];
       error: string | null;
@@ -45,6 +47,7 @@ Object.defineProperty(globalThis, "isTauri", {
 window.sessionNav = {
   queries: [],
   conversations: [],
+  anchors: [],
   hold: false,
   releases: [],
   error: null,
@@ -59,6 +62,18 @@ window.sessionNav = {
 };
 const fixture = window.sessionNav;
 const params = new URLSearchParams(location.search);
+const registry = createUiRegistry([
+  {
+    id: "fixture",
+    version: 1,
+    pages: (["sessions", "plugins", "settings"] as const).map((id) => ({
+      id,
+      label: id,
+      icon: "message-circle",
+      render: () => null,
+    })),
+  },
+]);
 const observedId = "codex:00000000-0000-4000-8000-000000000001";
 function session(index: number): NativeSession {
   return {
@@ -140,9 +155,9 @@ function conversation(id: string): Conversation {
       id: `${id}:event-${n}`,
       nativeId: `event-${n}`,
       turnId: "fixture",
-      kind: "message",
+      kind: params.has("trace") && n === 2 ? "model" : "message",
       role: "user",
-      name: "message",
+      name: params.has("trace") && n === 2 ? "关联模型响应" : "message",
       timestamp: null,
       endTime: null,
       status: "recorded",
@@ -180,6 +195,9 @@ mockIPC(async (name, args) => {
   if (name === "get_conversation") {
     const id = String(input.sessionId);
     fixture.conversations.push(id);
+    fixture.anchors.push(
+      typeof input.anchor === "string" ? input.anchor : null,
+    );
     return conversation(id);
   }
   if (name === "query_request_dashboard" && params.has("gateway")) {
@@ -241,11 +259,7 @@ function Harness() {
     window.addEventListener("hashchange", change);
     return () => window.removeEventListener("hashchange", change);
   }, []);
-  const selectedId = route.startsWith("#/sessions/")
-    ? decodeURIComponent(route.split("?")[0].slice("#/sessions/".length))
-    : undefined;
-  const showRequests =
-    new URLSearchParams(route.split("?")[1]).get("view") === "requests";
+  const sessionRoute = registry.readRoute(route);
   return (
     <IconProvider>
       <main className="flex h-screen flex-col">
@@ -271,8 +285,11 @@ function Harness() {
           <SessionsPage
             data={snapshot}
             navigate={() => {}}
-            selectedId={selectedId}
-            initialView={showRequests ? "requests" : undefined}
+            selectedId={sessionRoute.objectId}
+            initialAgent={sessionRoute.agent}
+            initialView={sessionRoute.view}
+            anchor={sessionRoute.anchor}
+            returnTo={sessionRoute.returnTo}
           />
         )}
       </main>

@@ -2,6 +2,31 @@ import { expect, test } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 
+test("an exact request link opens the anchored call in the timeline and keeps its return route", async ({
+  page,
+}) => {
+  const anchor = "claude:session-0:event-2";
+  const search = new URLSearchParams({
+    anchor,
+    view: "timeline",
+    returnTo: "/requests/request-001?range=all",
+  });
+  await page.goto(
+    `/tests/frontend/session-navigation.html?trace=1#/sessions/claude%3Asession-0?${search}`,
+  );
+  const timeline = page.getByLabel("调用时间线滚动区域");
+  await expect(
+    timeline.getByText("关联模型响应", { exact: true }),
+  ).toBeVisible();
+  await expect(timeline.getByText("耗时未知")).toBeVisible();
+  await expect(timeline.getByText("message", { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => window.sessionNav.anchors)).toEqual([
+    anchor,
+  ]);
+  await page.getByRole("button", { name: "返回来源请求" }).click();
+  await expect(page).toHaveURL(/#\/requests\/request-001\?range=all$/);
+});
+
 test("gateway sessions share the title list and open requests without native consent", async ({
   page,
 }) => {
@@ -495,4 +520,33 @@ test("navigation controls fit desktop and drawer in light and dark layouts", asy
           : info.outputPath(name),
       });
     }
+});
+test("session tabs keep model requests separate from authorized conversation reads", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 560 });
+  await page.goto(
+    "/tests/frontend/session-navigation.html#/sessions/claude%3Asession-0?view=requests",
+  );
+  const tabs = page.getByRole("tablist", { name: "会话详情" });
+  await expect(tabs.getByRole("tab", { name: "模型请求" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(
+    page.getByRole("region", { name: "会话模型请求" }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => window.sessionNav.conversations)).toEqual(
+    [],
+  );
+  const conversation = tabs.getByRole("tab", { name: "对话", exact: true });
+  await conversation.click();
+  const timeline = page.getByRole("button", {
+    name: "调用时间线",
+    exact: true,
+  });
+  await expect(timeline).toBeVisible();
+  await timeline.click();
+  await expect(timeline).toHaveAttribute("aria-pressed", "true");
+  await expect(conversation).toHaveAttribute("aria-selected", "true");
 });

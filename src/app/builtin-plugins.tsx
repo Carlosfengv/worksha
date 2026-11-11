@@ -207,7 +207,7 @@ export const builtinPlugins: readonly UiPlugin[] = [
         label: "请求",
         icon: "file-text",
         footer: false,
-        ownsBody: false,
+        ownsBody: true,
         refreshInHeader: false,
         resetScrollOnObject: false,
         render: ({ route, routeSearch }) => (

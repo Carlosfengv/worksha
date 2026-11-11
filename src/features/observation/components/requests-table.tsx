@@ -1,5 +1,4 @@
 import { useAgentDirectory } from "@/shared/hooks/use-agent-directory";
-import { recordAgentKey } from "@/shared/types/agent";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { compactNumber } from "@/shared/lib/format";
@@ -14,7 +13,11 @@ import { providerCosts } from "@/features/providers/usage-display";
 import { date, number } from "@/features/sessions/display";
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { useMemo } from "react";
-import { durationLabel, requestStates } from "../request-display";
+import {
+  durationLabel,
+  requestAgentName,
+  requestStates,
+} from "../request-display";
 import type { RequestRecord } from "../request-types";
 
 export function RequestsTable({
@@ -60,7 +63,7 @@ export function RequestsTable({
         meta: { label: "Agent / 模型" },
         cell: ({ row }) => (
           <>
-            <p>{agentNames[recordAgentKey(row.original)]}</p>
+            <p>{requestAgentName(row.original, agentNames)}</p>
             {row.original.client && (
               <p className="text-label text-fg-muted">
                 局域网 · {row.original.client.name}
@@ -235,6 +238,7 @@ export function RequestsTable({
           <Button
             size="sm"
             variant="ghost"
+            data-request-id={row.original.id}
             onClick={() =>
               onOpen
                 ? onOpen(row.original.id)

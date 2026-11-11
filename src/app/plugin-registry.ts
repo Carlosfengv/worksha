@@ -20,7 +20,7 @@ export interface AppRoute {
   project?: string;
   returnTo?: string;
   scope?: string;
-  view?: "context" | "requests";
+  view?: "context" | "requests" | "timeline";
 }
 export interface PageContext {
   route: AppRoute;
@@ -104,6 +104,7 @@ export function createUiRegistry(plugins: readonly UiPlugin[]) {
         };
       }
       const params = new URLSearchParams(search);
+      const view = params.get("view");
       let objectId: string | undefined;
       try {
         objectId = rawId ? decodeURIComponent(rawId) : undefined;
@@ -124,11 +125,9 @@ export function createUiRegistry(plugins: readonly UiPlugin[]) {
         scope: params.get("scope") ?? undefined,
         domainSource: params.get("source") ?? undefined,
         view:
-          params.get("view") === "context"
-            ? "context"
-            : params.get("view") === "requests"
-              ? "requests"
-              : undefined,
+          view === "context" || view === "requests" || view === "timeline"
+            ? view
+            : undefined,
       };
     },
   });

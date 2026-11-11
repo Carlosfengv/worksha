@@ -12,6 +12,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageActions, PageHeader } from "@/components/ui/page-layout";
 import {
   DetailList,
   DetailListItem,
@@ -19,7 +20,10 @@ import {
   DetailListValue,
 } from "@/components/ui/detail-list";
 import { TabItem, TabPanel, Tabs, TabsList } from "@/components/ui/tabs";
-import { SessionMcpLatency } from "@/features/mcp/components/mcp-call-detail";
+import {
+  mcpElapsed,
+  SessionMcpLatency,
+} from "@/features/mcp/components/mcp-call-detail";
 import { sessionsApi } from "@/features/sessions/api";
 import {
   sessionAgentLabel,
@@ -31,7 +35,6 @@ import {
   requestReturnPath,
   number,
   sessionLink,
-  sessionStorage,
   status,
 } from "@/features/sessions/display";
 import type {
@@ -45,6 +48,7 @@ import { ConnectionEmpty } from "@/shared/ui/connection-empty";
 import { useEffect, useRef, useState } from "react";
 import { ModelFailureDetail, failureLabels } from "./model-failure-detail";
 import { SessionContextPanel } from "./session-context";
+import { SessionRequests } from "./session-requests";
 import { appendUniqueById } from "../session-collections";
 import {
   READING_TRAIL_PAGES,
@@ -60,6 +64,9 @@ function keepReading(cache: ReadingCache, id: string, view: ReadingState) {
 
 export function ConversationReader({
   id,
+  summary,
+  requestsActive = false,
+  onRequestsChange,
   anchor,
   cache,
   onSummary,
@@ -69,13 +76,16 @@ export function ConversationReader({
   initialView,
 }: {
   id: string;
+  summary?: NativeSession | null;
+  requestsActive?: boolean;
+  onRequestsChange?: (active: boolean) => void;
   anchor?: string;
   cache: ReadingCache;
   onSummary: (session: NativeSession) => void;
   returnAgent?: string;
   returnTab?: string;
   returnTo?: string;
-  initialView?: "context";
+  initialView?: "context" | "timeline";
 }) {
   const { agentNames, agentFamily } = useAgentDirectory();
   const epoch = useBackendReadEpoch();
@@ -87,6 +97,7 @@ export function ConversationReader({
     (id) => id === "unknown" || agentFamily(id) !== undefined,
   );
   const returnRequest = requestReturnPath(returnTo);
+  const anchorView = initialView === "timeline" ? "timeline" : "conversation";
   const [view, setView] = useState<ReadingState>(
     () =>
       initial ?? {
@@ -94,7 +105,7 @@ export function ConversationReader({
         data: null,
         expanded: [],
         scroll: 0,
-        tab: anchor ? "conversation" : (initialView ?? "conversation"),
+        tab: anchor ? anchorView : (initialView ?? "conversation"),
       },
   );
   const [loading, setLoading] = useState(false);
@@ -112,6 +123,7 @@ export function ConversationReader({
     setView(next);
   };
   useEffect(() => {
+    if (requestsActive) return;
     const recovered = previousEpoch.current !== epoch;
     previousEpoch.current = epoch;
     for (const [cachedId, saved] of cache)
@@ -134,7 +146,7 @@ export function ConversationReader({
       if (anchor && saved.page?.anchor === anchor)
         saved = {
           ...saved,
-          tab: "conversation",
+          tab: anchorView,
           expanded: [...new Set([...saved.expanded, anchor])],
         };
       else if (initialView) saved = { ...saved, tab: initialView, scroll: 0 };
@@ -196,7 +208,7 @@ export function ConversationReader({
             expanded: position?.expanded ?? page.expanded,
             scroll: position?.scroll ?? page.scroll,
             tab: anchor
-              ? "conversation"
+              ? anchorView
               : ((request > 0 ? cache.get(id)?.tab : initialView) ??
                 cache.get(id)?.tab ??
                 initialView ??
@@ -235,7 +247,17 @@ export function ConversationReader({
       clearTimeout(retryTimer);
       finishWait?.();
     };
-  }, [id, anchor, initialView, cache, onSummary, request, epoch]);
+  }, [
+    id,
+    anchor,
+    anchorView,
+    initialView,
+    cache,
+    onSummary,
+    request,
+    epoch,
+    requestsActive,
+  ]);
   useEffect(() => {
     const node = scrollRef.current;
     if (!node || !view.data) return;
@@ -280,7 +302,7 @@ export function ConversationReader({
       stop();
       for (const event of interactions) node.removeEventListener(event, stop);
     };
-  }, [id, anchor, view.data, view.tab, view.scroll, cache]);
+  }, [id, anchor, view.data, view.tab, view.scroll, cache, requestsActive]);
   const loadPage = async (back = false) => {
     if (
       !view.data ||
@@ -365,7 +387,13 @@ export function ConversationReader({
     }
   };
   const data = view.epoch === epoch ? view.data : null;
-  const session = data?.session;
+  const session = data?.session ?? summary;
+  const timeline = view.tab === "timeline";
+  const readingTab = timeline ? "conversation" : view.tab;
+  const activeTab = requestsActive ? "requests" : readingTab;
+  const events = timeline
+    ? data?.items.filter(isConversationCall)
+    : data?.items;
   const navigation = data && (
     <nav
       aria-label="对话分页"
@@ -389,8 +417,24 @@ export function ConversationReader({
         下一页对话
       </Button>
       <span role="status" className="text-label text-fg-subtle">
-        本页 {data.items.length} 条 · 会话共 {data.total} 条
+        {timeline
+          ? `本页 ${events?.length ?? 0} 条调用 · ${data.items.length} 条记录`
+          : `本页 ${data.items.length} 条 · 会话共 ${data.total} 条`}
       </span>
+      <Button
+        size="sm"
+        variant="ghost"
+        aria-pressed={timeline}
+        onClick={() =>
+          patch({
+            ...view,
+            tab: timeline ? "conversation" : "timeline",
+            scroll: 0,
+          })
+        }
+      >
+        调用时间线
+      </Button>
       {(view.page?.cursor || anchor) && (
         <Button
           variant="ghost"
@@ -420,25 +464,51 @@ export function ConversationReader({
       aria-label="会话内容"
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      <header className="shrink-0 space-y-2 border-b border-border p-4">
-        <div className="flex items-start justify-between gap-2">
+      <div className="shrink-0 space-y-2 border-b border-border p-4">
+        <PageHeader className="px-0">
           <h2
-            className="line-clamp-2 text-title font-medium"
+            className="min-w-0 break-words text-title font-medium"
             title={session?.title}
           >
-            {session?.title ?? "读取会话"}
+            {session?.title ?? "会话详情"}
           </h2>
-          <Button
-            variant="ghost"
-            size="sm"
-            loading={loading}
-            onClick={() => {
-              setRequest((n) => n + 1);
-            }}
-          >
-            刷新对话
-          </Button>
-        </div>
+          <PageActions>
+            {returnRequest && (
+              <Button
+                variant="tertiary"
+                size="sm"
+                onClick={() => {
+                  window.location.hash = returnRequest;
+                }}
+              >
+                返回来源请求
+              </Button>
+            )}
+            {returnMcp && (
+              <Button
+                variant="tertiary"
+                size="sm"
+                onClick={() => {
+                  window.location.hash = returnMcp;
+                }}
+              >
+                返回 MCP 服务与调用
+              </Button>
+            )}
+            {!requestsActive && (
+              <Button
+                variant="tertiary"
+                size="sm"
+                loading={loading}
+                onClick={() => {
+                  setRequest((n) => n + 1);
+                }}
+              >
+                刷新对话
+              </Button>
+            )}
+          </PageActions>
+        </PageHeader>
         {session && (
           <>
             <p className="text-label text-fg-muted">
@@ -461,33 +531,7 @@ export function ConversationReader({
                 已记录 {session.modelErrorCount} 条异常 · 查看最近异常
               </Button>
             )}
-            <p className="text-label text-fg-subtle">
-              {number(session.usage.totalTokens)} Token ·{" "}
-              {sessionStorage(session)}
-            </p>
           </>
-        )}
-        {returnRequest && (
-          <Button
-            variant="tertiary"
-            size="sm"
-            onClick={() => {
-              window.location.hash = returnRequest;
-            }}
-          >
-            返回来源请求
-          </Button>
-        )}
-        {returnMcp && (
-          <Button
-            variant="tertiary"
-            size="sm"
-            onClick={() => {
-              window.location.hash = returnMcp;
-            }}
-          >
-            返回 MCP 服务与调用
-          </Button>
         )}
         {returnAgent && (
           <Button
@@ -500,29 +544,13 @@ export function ConversationReader({
             返回 Agent {returnTab === "calls" ? "调用" : "Sessions"}
           </Button>
         )}
-        {session?.projectId && !session.projectHidden && (
-          <Button
-            variant="tertiary"
-            size="sm"
-            onClick={() => {
-              window.location.hash = `/projects/${encodeURIComponent(session.projectId!)}`;
-            }}
-          >
-            查看项目 · {session.projectName ?? "项目详情"}
-          </Button>
-        )}
-        {session?.projectHidden && (
-          <p className="text-label text-fg-muted">
-            此项目已隐藏；会话与原始文件仍保留，可在项目页恢复显示。
-          </p>
-        )}
-      </header>
-      {loading && awaitingIndex && (
+      </div>
+      {!requestsActive && loading && awaitingIndex && (
         <p role="status" className="shrink-0 p-3 text-label text-fg-muted">
           会话暂未就绪，正在重试…
         </p>
       )}
-      {error && (
+      {!requestsActive && error && (
         <div className="shrink-0 p-3">
           <Alert>
             <AlertTitle>会话读取未完成</AlertTitle>
@@ -532,107 +560,65 @@ export function ConversationReader({
           </Alert>
         </div>
       )}
-      {data ? (
-        <Tabs
-          value={view.tab}
-          onValueChange={(tab) => patch({ ...view, tab, scroll: 0 })}
-          variant="underline"
-          color="default"
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          <div className="shrink-0 overflow-x-auto border-b border-border px-4">
-            <TabsList aria-label="会话详情">
-              <TabItem value="conversation" label="对话" />
-              <TabItem value="timeline" label="调用时间线" />
-              <TabItem value="context" label="上下文" />
-              <TabItem value="cost" label="费用" />
-              <TabItem value="disk" label="磁盘与项目" />
-            </TabsList>
-          </div>
-          <TabPanel
-            value="conversation"
-            className="flex min-h-0 flex-1 flex-col"
-          >
-            {navigation}
-            <div
-              ref={view.tab === "conversation" ? scrollRef : undefined}
-              aria-label="对话滚动区域"
-              aria-busy={loading || more}
-              tabIndex={0}
-              className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 [overflow-anchor:none]"
-              onScroll={(event) => {
-                cache.scroll(id, event.currentTarget.scrollTop);
-              }}
-            >
-              {data.warnings.map((warning) => (
-                <p
-                  key={warning}
-                  role="status"
-                  className="text-label text-fg-muted"
-                >
-                  {warning}
-                </p>
-              ))}
-              {data.items.map((event) => (
-                <ConversationEntry
-                  key={event.id}
-                  event={event}
-                  agentId={session!.agentId}
-                  expanded={view.expanded.includes(event.id)}
-                  onExpand={(open) =>
-                    patch({
-                      ...view,
-                      scroll: scrollRef.current?.scrollTop ?? 0,
-                      expanded: open
-                        ? [...new Set([...view.expanded, event.id])]
-                        : view.expanded.filter((id) => id !== event.id),
-                    })
-                  }
-                />
-              ))}
-              {data.items.length === 0 && (
-                <ConnectionEmpty
-                  compact
-                  title="此会话暂无可读对话"
-                  description="原生记录未提供可识别的用户消息或调用内容。"
-                />
-              )}
-              <p className="text-label text-fg-subtle">
-                本页 {data.items.length} 条记录 · {date(data.asOf)}
-              </p>
-              {view.tab === "conversation" && (
-                <ObjectContributionSlots
-                  object={{
-                    target: "session",
-                    id,
-                    origin: { kind: "builtin" },
-                  }}
-                />
-              )}
-            </div>
+      <Tabs
+        value={activeTab}
+        onValueChange={(tab) => {
+          if (tab === "requests") {
+            onRequestsChange?.(true);
+            return;
+          }
+          if (requestsActive) onRequestsChange?.(false);
+          if (tab !== readingTab) patch({ ...view, tab, scroll: 0 });
+        }}
+        variant="underline"
+        color="default"
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <div className="shrink-0 overflow-x-auto border-b border-border px-4">
+          <TabsList aria-label="会话详情">
+            <TabItem value="conversation" label="对话" />
+            {onRequestsChange && <TabItem value="requests" label="模型请求" />}
+            <TabItem value="context" label="上下文" />
+            <TabItem value="cost" label="费用" />
+            <TabItem value="disk" label="项目与文件" />
+          </TabsList>
+        </div>
+        {onRequestsChange && (
+          <TabPanel value="requests" className="flex min-h-0 flex-1 flex-col">
+            {requestsActive && <SessionRequests id={id} embedded />}
           </TabPanel>
-          <TabPanel value="timeline" className="flex min-h-0 flex-1 flex-col">
-            {navigation}
-            <div
-              ref={view.tab === "timeline" ? scrollRef : undefined}
-              aria-label="调用时间线滚动区域"
-              tabIndex={0}
-              aria-busy={loading || more}
-              className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 [overflow-anchor:none]"
-              onScroll={(event) =>
-                cache.scroll(id, event.currentTarget.scrollTop)
-              }
+        )}
+        {data ? (
+          <>
+            <TabPanel
+              value="conversation"
+              className="flex min-h-0 flex-1 flex-col"
             >
-              {data.items
-                .filter((e) =>
-                  ["model", "tool", "mcp", "skill", "diagnostic"].includes(
-                    e.kind,
-                  ),
-                )
-                .map((event) => (
+              {navigation}
+              <div
+                ref={activeTab === "conversation" ? scrollRef : undefined}
+                aria-label={timeline ? "调用时间线滚动区域" : "对话滚动区域"}
+                aria-busy={loading || more}
+                tabIndex={0}
+                className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 [overflow-anchor:none]"
+                onScroll={(event) => {
+                  cache.scroll(id, event.currentTarget.scrollTop);
+                }}
+              >
+                {data.warnings.map((warning) => (
+                  <p
+                    key={warning}
+                    role="status"
+                    className="text-label text-fg-muted"
+                  >
+                    {warning}
+                  </p>
+                ))}
+                {events?.map((event) => (
                   <ConversationEntry
                     key={event.id}
                     event={event}
+                    timeline={timeline}
                     agentId={session!.agentId}
                     expanded={view.expanded.includes(event.id)}
                     onExpand={(open) =>
@@ -646,7 +632,36 @@ export function ConversationReader({
                     }
                   />
                 ))}
-              {view.tab === "timeline" && (
+                {!events?.length && (
+                  <ConnectionEmpty
+                    compact
+                    title={
+                      timeline ? "本页没有已记录调用" : "此会话暂无可读对话"
+                    }
+                  />
+                )}
+                {activeTab === "conversation" && (
+                  <ObjectContributionSlots
+                    object={{
+                      target: "session",
+                      id,
+                      origin: { kind: "builtin" },
+                    }}
+                  />
+                )}
+              </div>
+            </TabPanel>
+            <TabPanel
+              value="context"
+              className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4"
+            >
+              {activeTab === "context" && (
+                <SessionContextPanel
+                  context={data.context}
+                  partial={data.coverage === "partial"}
+                />
+              )}
+              {activeTab === "context" && (
                 <ObjectContributionSlots
                   object={{
                     target: "session",
@@ -655,120 +670,128 @@ export function ConversationReader({
                   }}
                 />
               )}
-            </div>
-          </TabPanel>
-          <TabPanel
-            value="context"
-            className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4"
-          >
-            {view.tab === "context" && (
-              <SessionContextPanel
-                context={data.context}
-                partial={data.coverage === "partial"}
-              />
-            )}
-            {view.tab === "context" && (
-              <ObjectContributionSlots
-                object={{ target: "session", id, origin: { kind: "builtin" } }}
-              />
-            )}
-          </TabPanel>
-          <TabPanel
-            value="cost"
-            className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4"
-          >
-            {view.tab === "cost" && (
-              <CostDetails key={id} scope="session" id={id} />
-            )}
-            <Button
-              variant="tertiary"
-              onClick={() => {
-                window.location.hash = `/requests?source=gateway&range=all&session=${encodeURIComponent(id)}`;
-              }}
+            </TabPanel>
+            <TabPanel
+              value="cost"
+              className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4"
             >
-              查看网关调用
-            </Button>
-            {view.tab === "cost" && (
-              <ObjectContributionSlots
-                object={{ target: "session", id, origin: { kind: "builtin" } }}
-              />
-            )}
-          </TabPanel>
+              {activeTab === "cost" && (
+                <CostDetails key={id} scope="session" id={id} />
+              )}
+              <Button
+                variant="tertiary"
+                onClick={() => {
+                  window.location.hash = `/requests?source=gateway&range=all&session=${encodeURIComponent(id)}`;
+                }}
+              >
+                查看网关调用
+              </Button>
+              {activeTab === "cost" && (
+                <ObjectContributionSlots
+                  object={{
+                    target: "session",
+                    id,
+                    origin: { kind: "builtin" },
+                  }}
+                />
+              )}
+            </TabPanel>
+            <TabPanel
+              value="disk"
+              className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4"
+            >
+              {session && (
+                <>
+                  <DetailList>
+                    <DetailListItem>
+                      <DetailListLabel>项目位置</DetailListLabel>
+                      <DetailListValue>
+                        <span className="break-all">
+                          {session.projectPath ?? "原生记录未提供"}
+                        </span>
+                      </DetailListValue>
+                    </DetailListItem>
+                    <DetailListItem>
+                      <DetailListLabel>Git 远程地址</DetailListLabel>
+                      <DetailListValue>
+                        {session.gitRemote ?? "原生记录未提供"}
+                      </DetailListValue>
+                    </DetailListItem>
+                    <DetailListItem>
+                      <DetailListLabel>原生会话来源</DetailListLabel>
+                      <DetailListValue>
+                        <span className="break-all">{session.sourcePath}</span>
+                      </DetailListValue>
+                    </DetailListItem>
+                    <DetailListItem>
+                      <DetailListLabel>
+                        {session.diskScope === "native_database_payload"
+                          ? "内容估算 / 独立磁盘占用"
+                          : "文件大小 / 实际占用"}
+                      </DetailListLabel>
+                      <DetailListValue>
+                        {bytes(session.diskBytes)} /{" "}
+                        {bytes(session.diskAllocatedBytes)}
+                      </DetailListValue>
+                    </DetailListItem>
+                    <DetailListItem>
+                      <DetailListLabel>原生 ID / 版本</DetailListLabel>
+                      <DetailListValue>
+                        <span className="break-all">
+                          {session.nativeId} · {session.agentVersion ?? "未知"}
+                        </span>
+                      </DetailListValue>
+                    </DetailListItem>
+                    <DetailListItem>
+                      <DetailListLabel>会话累计用量</DetailListLabel>
+                      <DetailListValue>
+                        {number(session.usage.totalTokens)} Token
+                      </DetailListValue>
+                    </DetailListItem>
+                  </DetailList>
+                  {session.projectId && !session.projectHidden && (
+                    <Button variant="tertiary" asChild>
+                      <a
+                        href={`#/projects/${encodeURIComponent(session.projectId)}`}
+                      >
+                        查看项目
+                      </a>
+                    </Button>
+                  )}
+                  {session.projectHidden && (
+                    <p className="text-label text-fg-muted">
+                      此项目已隐藏，可在项目页恢复显示。
+                    </p>
+                  )}
+                  <p className="text-body text-fg-muted">
+                    {session.diskScope === "native_database_payload"
+                      ? "数据库由多个会话共享，此处仅估算该会话记录的内容字节数；无法独立分摊 SQLite 页面、WAL、附件与缓存，实际占用未知。清理能力尚未接入。"
+                      : "占用仅统计此原生会话文件，不含附件、子 Agent 和缓存。清理能力尚未接入。"}
+                  </p>
+                </>
+              )}
+              {activeTab === "disk" && (
+                <ObjectContributionSlots
+                  object={{
+                    target: "session",
+                    id,
+                    origin: { kind: "builtin" },
+                  }}
+                />
+              )}
+            </TabPanel>
+          </>
+        ) : !requestsActive ? (
           <TabPanel
-            value="disk"
-            className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4"
+            value={activeTab}
+            className="min-h-0 flex-1 overflow-y-auto"
           >
-            {session && (
-              <>
-                <DetailList>
-                  <DetailListItem>
-                    <DetailListLabel>项目位置</DetailListLabel>
-                    <DetailListValue>
-                      <span className="break-all">
-                        {session.projectPath ?? "原生记录未提供"}
-                      </span>
-                    </DetailListValue>
-                  </DetailListItem>
-                  <DetailListItem>
-                    <DetailListLabel>Git 远程地址</DetailListLabel>
-                    <DetailListValue>
-                      {session.gitRemote ?? "原生记录未提供"}
-                    </DetailListValue>
-                  </DetailListItem>
-                  <DetailListItem>
-                    <DetailListLabel>原生会话来源</DetailListLabel>
-                    <DetailListValue>
-                      <span className="break-all">{session.sourcePath}</span>
-                    </DetailListValue>
-                  </DetailListItem>
-                  <DetailListItem>
-                    <DetailListLabel>
-                      {session.diskScope === "native_database_payload"
-                        ? "内容估算 / 独立磁盘占用"
-                        : "文件大小 / 实际占用"}
-                    </DetailListLabel>
-                    <DetailListValue>
-                      {bytes(session.diskBytes)} /{" "}
-                      {bytes(session.diskAllocatedBytes)}
-                    </DetailListValue>
-                  </DetailListItem>
-                  <DetailListItem>
-                    <DetailListLabel>原生 ID / 版本</DetailListLabel>
-                    <DetailListValue>
-                      <span className="break-all">
-                        {session.nativeId} · {session.agentVersion ?? "未知"}
-                      </span>
-                    </DetailListValue>
-                  </DetailListItem>
-                  <DetailListItem>
-                    <DetailListLabel>会话累计用量</DetailListLabel>
-                    <DetailListValue>
-                      {number(session.usage.totalTokens)} Token
-                    </DetailListValue>
-                  </DetailListItem>
-                </DetailList>
-                <p className="text-body text-fg-muted">
-                  {session.diskScope === "native_database_payload"
-                    ? "数据库由多个会话共享，此处仅估算该会话记录的内容字节数；无法独立分摊 SQLite 页面、WAL、附件与缓存，实际占用未知。清理能力尚未接入。"
-                    : "占用仅统计此原生会话文件，不含附件、子 Agent 和缓存。清理能力尚未接入。"}
-                </p>
-              </>
-            )}
-            {view.tab === "disk" && (
-              <ObjectContributionSlots
-                object={{ target: "session", id, origin: { kind: "builtin" } }}
-              />
-            )}
+            <ConnectionEmpty
+              title={loading ? "正在读取原生会话…" : "会话内容暂不可用"}
+            />
           </TabPanel>
-        </Tabs>
-      ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <ConnectionEmpty
-            title={loading ? "正在读取原生会话…" : "会话内容暂不可用"}
-            description="从已授权的本机来源读取，不会发起模型或工具调用。"
-          />
-        </div>
-      )}
+        ) : null}
+      </Tabs>
     </section>
   );
 }
@@ -804,21 +827,25 @@ function UsageDetail({ usage }: { usage: Usage }) {
     </dl>
   );
 }
+function isConversationCall(event: ConversationEvent) {
+  return ["model", "tool", "mcp", "skill", "diagnostic"].includes(event.kind);
+}
+
 function ConversationEntry({
   event,
+  timeline,
   agentId,
   expanded,
   onExpand,
 }: {
   event: ConversationEvent;
+  timeline: boolean;
   agentId: NativeSession["agentId"];
   expanded: boolean;
   onExpand: (open: boolean) => void;
 }) {
   const { agentNames } = useAgentDirectory();
-  const isCall = ["model", "tool", "mcp", "skill", "diagnostic"].includes(
-    event.kind,
-  );
+  const isCall = isConversationCall(event);
   const isContext = event.kind === "event" && Boolean(event.text);
   const summary = (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-label">
@@ -835,6 +862,11 @@ function ConversationEntry({
             ? kindNames[event.kind as keyof typeof kindNames]
             : "记录"}
         </Badge>
+      )}
+      {timeline && event.kind !== "diagnostic" && (
+        <span className="text-fg-muted">
+          {event.durationMs == null ? "耗时未知" : mcpElapsed(event.durationMs)}
+        </span>
       )}
       {isCall && (
         <span className="text-fg-muted">
@@ -865,7 +897,7 @@ function ConversationEntry({
     >
       {summary}
       {event.text && !isContext && (
-        <p className="whitespace-pre-wrap break-words text-body leading-relaxed">
+        <p className="max-w-prose whitespace-pre-wrap break-words text-body leading-relaxed">
           {event.text}
         </p>
       )}

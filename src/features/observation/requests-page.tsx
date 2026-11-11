@@ -1,7 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useBackendReadEpoch } from "@/shared/hooks/use-backend-read-epoch";
 import { backendReadEpoch } from "@/shared/lib/backend-recovery";
 import { Button } from "@/components/ui/button";
+import { PageActions, PageBody, PageHeader } from "@/components/ui/page-layout";
 import { Tabs, TabsList, TabItem, TabPanel } from "@/components/ui/tabs";
 import {
   Accordion,
@@ -27,6 +35,15 @@ import { RequestSources } from "./components/request-sources";
 import { RequestHeatmap } from "./components/request-heatmap";
 import { RequestDetail } from "./components/request-detail";
 import { PublishedSources } from "@/features/domain/published-sources";
+
+// The list can unmount while the user follows a request to its session.
+let listPosition: {
+  id: string;
+  epoch: symbol;
+  search: string;
+  snapshotSearch: string;
+  top: number;
+} | null = null;
 
 export function RequestsPage({
   selectedId,
@@ -66,7 +83,9 @@ export function RequestsPage({
   }, [params]);
   const nativeView = query.source === "native";
   const unit = nativeView ? "模型响应记录" : "请求";
+  const bodyRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const exporting = useRef(false);
   const epoch = useBackendReadEpoch(!selectedId);
   const [readingPaused, setReadingPaused] = useState(false);
@@ -86,6 +105,33 @@ export function RequestsPage({
   });
   const key = JSON.stringify([query, range]);
   const data = state.key === key ? state.data : null;
+  const error = state.key === key ? state.error : null;
+  useLayoutEffect(() => {
+    if (!selectedId) return;
+    bodyRef.current?.scrollTo(0, 0);
+    titleRef.current?.focus({ preventScroll: true });
+  }, [selectedId]);
+  useLayoutEffect(() => {
+    if (selectedId || !listPosition) return;
+    if (
+      listPosition.epoch !== epoch ||
+      (routeSearch !== listPosition.search &&
+        routeSearch !== listPosition.snapshotSearch)
+    ) {
+      listPosition = null;
+      return;
+    }
+    if (!data && !error) return;
+    const position = listPosition;
+    listPosition = null;
+    if (document.activeElement !== document.body) return;
+    bodyRef.current?.scrollTo(0, position.top);
+    const trigger = listRef.current?.querySelector<HTMLButtonElement>(
+      `[data-request-id="${CSS.escape(position.id)}"]`,
+    );
+    (trigger ?? titleRef.current)?.focus({ preventScroll: true });
+    trigger?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [data, epoch, error, routeSearch, selectedId]);
   const change = useCallback(
     (patch: Record<string, string | undefined>) => {
       const next = new URLSearchParams(params);
@@ -170,6 +216,13 @@ export function RequestsPage({
       const search = data
         ? requestParams(data.query, range, data.snapshot, query.cursor)
         : routeSearch;
+      listPosition = {
+        id,
+        epoch: backendReadEpoch(),
+        search: routeSearch,
+        snapshotSearch: search,
+        top: bodyRef.current?.scrollTop ?? 0,
+      };
       window.location.hash = `/requests/${encodeURIComponent(id)}?${search}`;
     },
     [data, query.cursor, range, routeSearch],
@@ -179,24 +232,22 @@ export function RequestsPage({
     else setRevision((n) => n + 1);
   };
   if (selectedId)
-    return <RequestDetail id={selectedId} returnSearch={routeSearch} />;
+    return (
+      <PageBody ref={bodyRef} className="relative p-4 lg:p-6">
+        <RequestDetail
+          id={selectedId}
+          returnSearch={routeSearch}
+          titleRef={titleRef}
+        />
+      </PageBody>
+    );
   return (
-    <div className="min-w-0 space-y-6">
-      <PublishedSources mode="requests" productId={query.agent} />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-body font-medium">
-            {nativeView
-              ? "原生模型响应"
-              : query.source === "linked"
-                ? "跨来源精确匹配"
-                : "网关请求"}
-          </p>
-          <p className="mt-1 text-label text-fg-muted">
-            查看模型请求、消耗与性能，定位失败和等待。
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <PageBody ref={bodyRef} className="relative space-y-3 p-4 lg:p-6">
+      <PageHeader className="px-0">
+        <h2 ref={titleRef} tabIndex={-1} className="text-title font-medium">
+          请求
+        </h2>
+        <PageActions>
           <Select
             value={interval}
             onValueChange={(v) => setIntervalSeconds(v ?? "5")}
@@ -250,8 +301,8 @@ export function RequestsPage({
           >
             导出 CSV
           </Button>
-        </div>
-      </div>
+        </PageActions>
+      </PageHeader>
       {exportState.message && (
         <p role={exportState.error ? "alert" : "status"} className="text-label">
           {exportState.message}
@@ -262,53 +313,46 @@ export function RequestsPage({
         report={data?.sourceReport}
         onChange={(source) => change({ source, provider: undefined })}
       />
+      <PublishedSources mode="requests" productId={query.agent} />
       <RequestFilters
         key={`${params.get("search") ?? ""}:${params.get("range") ?? ""}:${params.get("start") ?? ""}:${params.get("end") ?? ""}`}
         params={params}
         data={data}
         onChange={change}
       />
-      {state.key === key && state.error && (
+      {error && (
         <p role="alert" className="text-body">
           {data ? "数据更新失败，保留旧快照：" : "请求读取失败："}
-          {state.error}。可点击刷新重试。
+          {error} 可点击刷新重试。
         </p>
       )}
       {range === "custom" && !(query.start && query.end) ? (
         <p className="text-body text-fg-muted">选择起止时间后应用筛选。</p>
-      ) : !data ? (
+      ) : !data && !error ? (
         <p role="status" className="text-body text-fg-muted">
-          {state.error ? "当前没有可用快照" : "正在读取请求…"}
+          正在读取请求…
         </p>
-      ) : (
+      ) : data ? (
         <>
-          <div className="space-y-1 text-label text-fg-subtle">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-label text-fg-muted">
             <p>
               当前筛选 {data.total} 条 · 更新于 {date(data.asOf)}
-              {query.snapshot
-                ? " · 当前正在阅读固定快照，刷新可获取新请求"
-                : ""}
             </p>
-            <p>
-              已记录历史：{date(data.recordedStart)} 至 {date(data.recordedEnd)}
-              {data.summary.provisional
-                ? ` · ${data.summary.provisional} 条数据暂定`
-                : ""}
-            </p>
-            {!!data.missingTime && (
-              <p>
-                {data.missingTime}{" "}
-                条记录缺少时间，限定日期时无法纳入；全部范围单列，趋势与热力图不分配日期。
-              </p>
-            )}
-            {data.sourceError && <p role="alert">{data.sourceError}</p>}
+            {query.snapshot && <p>固定快照 · 刷新获取最新记录</p>}
+            {!!data.missingTime && <p>{data.missingTime} 条记录的时间未知</p>}
+            {view === "records" &&
+              !query.result &&
+              !!data.summary.statuses.failed && (
+                <Button
+                  size="sm"
+                  variant="tertiary"
+                  onClick={() => change({ result: "failed" })}
+                >
+                  失败 {data.summary.statuses.failed}
+                </Button>
+              )}
           </div>
-          <RequestMetrics
-            summary={data.summary}
-            nativeView={nativeView}
-            onResult={(result) => change({ result })}
-            onIssue={(issue) => change({ issue })}
-          />
+          {data.sourceError && <p role="alert">{data.sourceError}</p>}
           <Tabs
             value={view}
             onValueChange={setView}
@@ -323,6 +367,18 @@ export function RequestsPage({
               <TabItem value="analysis" label="趋势分析" />
             </TabsList>
             <TabPanel value="analysis" className="space-y-6 pt-4">
+              <RequestMetrics
+                summary={data.summary}
+                nativeView={nativeView}
+                onResult={(result) => {
+                  change({ result });
+                  setView("records");
+                }}
+                onIssue={(issue) => {
+                  change({ issue });
+                  setView("records");
+                }}
+              />
               <RequestTrends
                 data={data}
                 onChange={change}
@@ -344,11 +400,9 @@ export function RequestsPage({
                 onAllDates={() => change({ range: "all" })}
               />
             </TabPanel>
-            <TabPanel value="records" className="space-y-4 pt-4">
-              {readingPaused && !query.snapshot && (
-                <p className="text-label text-fg-muted">
-                  正在阅读列表，自动刷新已暂停；可点击刷新获取最新请求。
-                </p>
+            <TabPanel value="records" className="space-y-3 pt-3">
+              {readingPaused && interval !== "0" && !query.snapshot && (
+                <p className="text-label text-fg-muted">阅读时暂停自动刷新</p>
               )}
               <div ref={listRef} className="min-w-0">
                 <RequestsTable
@@ -365,7 +419,7 @@ export function RequestsPage({
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-label text-fg-muted">
-                  共 {data.total} 条 · 本页 {data.items.length} 条 ·{" "}
+                  本页 {data.items.length} 条 ·{" "}
                   {query.cursor ? "当前为历史分页" : "第一页"}
                 </p>
                 <div className="flex gap-2">
@@ -443,12 +497,24 @@ export function RequestsPage({
             <AccordionItem value="coverage">
               <AccordionTrigger>记录范围与统计口径</AccordionTrigger>
               <AccordionContent>
+                <p className="text-label text-fg-muted">
+                  已记录历史：{date(data.recordedStart)} 至{" "}
+                  {date(data.recordedEnd)}
+                  {data.summary.provisional
+                    ? ` · ${data.summary.provisional} 条数据暂定`
+                    : ""}
+                </p>
+                {!!data.missingTime && (
+                  <p className="text-label text-fg-muted">
+                    时间未知的记录仅纳入全部日期，不分配到趋势或热力图。
+                  </p>
+                )}
                 <p className="text-label text-fg-muted">{data.coverage}</p>
               </AccordionContent>
             </AccordionItem>
           </Accordion>
         </>
-      )}
-    </div>
+      ) : null}
+    </PageBody>
   );
 }

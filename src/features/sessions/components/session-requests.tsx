@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { PageActions, PageHeader } from "@/components/ui/page-layout";
 import { observationApi } from "@/features/observation/api";
 import { RequestsTable } from "@/features/observation/components/requests-table";
 import { requestParams } from "@/features/observation/request-display";
@@ -17,12 +18,12 @@ export function SessionRequests({
   id,
   title,
   returnTo,
-  canReadConversation,
+  embedded = false,
 }: {
   id: string;
   title?: string;
   returnTo?: string;
-  canReadConversation: boolean;
+  embedded?: boolean;
 }) {
   const [pages, setPages] = useState<
     Pick<RequestQuery, "snapshot" | "cursor">[]
@@ -40,12 +41,18 @@ export function SessionRequests({
       aria-label="会话模型请求"
       className="min-h-0 flex-1 overflow-y-auto p-4"
     >
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="break-all text-title font-medium">
-          {title ?? page?.items[0]?.sessionTitle ?? "会话模型请求"}
-        </h2>
-        <div className="flex flex-wrap gap-2">
-          {back && (
+      <PageHeader className="mb-3 px-0">
+        {embedded ? (
+          <p className="text-label text-fg-muted">
+            {page ? `共 ${number(page.total)} 条网关请求` : "网关请求"}
+          </p>
+        ) : (
+          <h2 className="min-w-0 break-words text-title font-medium">
+            {title ?? page?.items[0]?.sessionTitle ?? "会话模型请求"}
+          </h2>
+        )}
+        <PageActions>
+          {!embedded && back && (
             <Button
               variant="tertiary"
               size="sm"
@@ -67,12 +74,15 @@ export function SessionRequests({
           >
             刷新请求
           </Button>
+        </PageActions>
+      </PageHeader>
+      {!embedded && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-label text-fg-muted">
+          <p>对话正文需授权读取。</p>
+          <Button asChild variant="link" size="sm">
+            <a href="#/agents">管理读取范围</a>
+          </Button>
         </div>
-      </div>
-      {!canReadConversation && (
-        <p className="mb-3 text-label text-fg-muted">
-          要查看客户端保存的对话正文，可在 Agents 中确认读取范围。
-        </p>
       )}
       {resource.error ? (
         <p role="alert" className="text-body text-fg-muted">
@@ -124,9 +134,11 @@ export function SessionRequests({
             >
               下一页请求
             </Button>
-            <span className="text-label text-fg-muted">
-              共 {number(page.total)} 条请求
-            </span>
+            {!embedded && (
+              <span className="text-label text-fg-muted">
+                共 {number(page.total)} 条请求
+              </span>
+            )}
           </div>
         </>
       )}

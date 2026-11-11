@@ -81,8 +81,8 @@ test("unassociated gateway activity opens its exact request without guessing a S
   await expect(
     page
       .getByRole("region", { name: "请求详情", exact: true })
-      .getByRole("list")
-      .first()
+      .getByRole("listitem")
+      .filter({ hasText: "请求 ID" })
       .getByText("codex-cli", { exact: true }),
   ).toBeVisible();
   await expect(popover).toBeHidden();

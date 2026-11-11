@@ -1,4 +1,14 @@
 import type { RequestQuery } from "./request-types";
+import { recordAgentKey } from "@/shared/types/agent";
+
+export function requestAgentName(
+  record: { agentId: string; agentProductId?: string | null },
+  names: Record<string, string>,
+) {
+  return record.agentId === "model-router"
+    ? "模型服务 · 意图分类"
+    : (names[recordAgentKey(record)] ?? "未知");
+}
 export const requestStates: Record<string, string> = {
   waiting: "等待输出",
   streaming: "输出中",

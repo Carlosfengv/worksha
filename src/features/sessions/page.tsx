@@ -54,7 +54,7 @@ interface SessionProps {
   returnAgent?: string;
   returnTab?: string;
   returnTo?: string;
-  initialView?: "context" | "requests";
+  initialView?: "context" | "requests" | "timeline";
 }
 export function SessionsPage(props: SessionProps) {
   const sourceKey =
@@ -527,51 +527,32 @@ function SessionWorkspace({
             切换会话 / 项目
           </Button>
         </div>
-        {effectiveId && canReadConversation && (
-          <div
-            className="flex shrink-0 gap-2 border-b border-border p-2"
-            aria-label="会话视图"
-          >
-            <Button
-              size="sm"
-              variant="ghost"
-              active={!showRequests}
-              onClick={() => openSession(effectiveId)}
-            >
-              对话
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              active={showRequests}
-              onClick={() => openSession(effectiveId, "requests")}
-            >
-              模型请求
-            </Button>
-          </div>
-        )}
-        {effectiveId && showRequests ? (
-          <SessionRequests
-            key={effectiveId}
-            id={effectiveId}
-            title={selectedSession?.title}
-            returnTo={returnTo}
-            canReadConversation={canReadConversation}
-          />
-        ) : effectiveId && canReadConversation ? (
+        {effectiveId && canReadConversation ? (
           <ConversationReader
             key={effectiveId}
             id={effectiveId}
+            summary={selectedSession}
+            requestsActive={showRequests}
+            onRequestsChange={(active) =>
+              openSession(effectiveId, active ? "requests" : undefined)
+            }
             anchor={selectedId === effectiveId ? anchor : undefined}
             initialView={
-              selectedId === effectiveId && initialView === "context"
-                ? "context"
+              selectedId === effectiveId && initialView !== "requests"
+                ? initialView
                 : undefined
             }
             cache={cache.current}
             onSummary={onSummary}
             returnAgent={returnAgent}
             returnTab={returnTab}
+            returnTo={returnTo}
+          />
+        ) : effectiveId && showRequests ? (
+          <SessionRequests
+            key={effectiveId}
+            id={effectiveId}
+            title={selectedSession?.title}
             returnTo={returnTo}
           />
         ) : (

@@ -220,7 +220,7 @@ test("a pending page preserves tab changes and the departing page's later expand
   await expect
     .poll(() => page.evaluate(() => Boolean(window.readingCapacity.release)))
     .toBe(true);
-  await page.getByRole("tab", { name: "调用时间线", exact: true }).click();
+  await page.getByRole("button", { name: "调用时间线", exact: true }).click();
   await page
     .getByRole("article", { name: "page-0-event-0", exact: true })
     .getByRole("button", { name: "参数与结果详情" })
@@ -233,8 +233,8 @@ test("a pending page preserves tab changes and the departing page's later expand
     page.getByRole("article", { name: "page-1-event-0", exact: true }),
   ).toBeAttached();
   await expect(
-    page.getByRole("tab", { name: "调用时间线", exact: true }),
-  ).toHaveAttribute("aria-selected", "true");
+    page.getByRole("button", { name: "调用时间线", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "上一页对话", exact: true }).click();
   await expect(
     page
@@ -248,7 +248,7 @@ test("the timeline shares bounded paging and restart remains available beyond th
 }) => {
   test.setTimeout(90000);
   await page.goto("/tests/frontend/reading-capacity.html?words=1&pages=110");
-  await page.getByRole("tab", { name: "调用时间线", exact: true }).click();
+  await page.getByRole("button", { name: "调用时间线", exact: true }).click();
   for (let n = 1; n < 103; n++) {
     await page.getByRole("button", { name: "下一页对话", exact: true }).click();
     await expect(
@@ -266,8 +266,8 @@ test("the timeline shares bounded paging and restart remains available beyond th
     page.getByRole("article", { name: "page-0-event-0", exact: true }),
   ).toBeAttached();
   await expect(
-    page.getByRole("tab", { name: "调用时间线", exact: true }),
-  ).toHaveAttribute("aria-selected", "true");
+    page.getByRole("button", { name: "调用时间线", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(
     page.getByRole("button", { name: "上一页对话", exact: true }),
   ).toBeDisabled();

@@ -25,6 +25,8 @@ export interface RequestQuery {
   cursor?: string;
 }
 export interface RequestAttempt extends ModelObservation {
+  clockId?: string | null;
+  startTickMs?: number | null;
   requestedModel?: string | null;
   routedModel?: string | null;
   reportedModel?: string | null;
@@ -175,6 +177,20 @@ export interface RequestDashboard {
 }
 export interface RequestDetailResponse {
   request: RequestRecord | null;
+  routeTrace?: {
+    decisions: {
+      path: {
+        service: string;
+        versionId: string;
+        model: string;
+        modelId?: string;
+      }[];
+      accountPosition?: number;
+      reason: string;
+    }[];
+    truncated: boolean;
+    httpStatus?: number;
+  } | null;
   asOf: string;
   sourceError: string | null;
 }
