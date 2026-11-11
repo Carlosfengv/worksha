@@ -9,3 +9,7 @@ export async function openAgentHistory(page: Page) {
   if ((await trigger.getAttribute("aria-expanded")) !== "true")
     await trigger.click();
 }
+
+export async function openRecentActivities(page: Page) {
+  await page.getByRole("tab", { name: /^最近 3 小时/ }).click();
+}

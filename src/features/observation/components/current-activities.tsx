@@ -1,135 +1,199 @@
-import { useEffect, useMemo, useState } from "react";
-import type { ColumnDef } from "@tanstack/react-table";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import type { CellContext, ColumnDef } from "@tanstack/react-table";
 import type { Snapshot } from "@/app/types";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, useDataTable } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
+import { TabItem, TabPanel, Tabs, TabsList } from "@/components/ui/tabs";
+import type { MetricCardState } from "@/components/ui/metric-card";
 import {
   Empty,
   EmptyActions,
-  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { date, sessionLink } from "@/features/sessions/display";
+import { date } from "@/features/sessions/display";
 import { useAgentDirectory } from "@/shared/hooks/use-agent-directory";
 import { useTablePagination } from "@/shared/hooks/use-table-pagination";
 import { dataTablePagination } from "@/shared/ui/data-table-labels";
-import { recordAgentKey } from "@/shared/types/agent";
+import { recordAgentKey, type AgentDiscovery } from "@/shared/types/agent";
+import { bundledDshAgent } from "@/features/agents/bundled-source";
+import type { UnifiedActivityPage } from "../../../../contracts/domain/facts/types";
 import { activityGroup, nativeSamplingLabel } from "../activity-group";
 import { phaseNames, seconds, speed, timingNote } from "../display";
 import { requestStates } from "../request-display";
-import type { Overview, SessionContextSample } from "../types";
+import type { Overview } from "../types";
 import { activityRows } from "./agent-activity";
-import { ActivityContext } from "./activity-context";
 import { ActivityTime } from "./activity-time";
 import { summarizeActivity } from "../activity-summary";
-import { latestSessionActivities } from "../session-activities";
-import { ActivitySummary } from "./activity-summary";
+import {
+  activityWindowSeconds,
+  latestSessionActivities,
+} from "../session-activities";
+import {
+  publishedActivityRows,
+  type PublishedActivityRow,
+} from "../published-activities";
 
-type ActivityRow = ReturnType<typeof activityRows>[number] & {
+type MeasuredActivityRow = ReturnType<typeof activityRows>[number] & {
+  reported: false;
   agentName: string;
-  agentLogo: string | undefined;
-  context: SessionContextSample | undefined;
 };
-const agentLogos: Record<string, string> = {
-  claude: "/agent-logos/claude.png",
-  codex: "/agent-logos/codex.png",
-  opencode: "/agent-logos/opencode.png",
-};
-const activityWindowMs = 3 * 60 * 60 * 1000;
+type ActivityRow = PublishedActivityRow | MeasuredActivityRow;
+
+function measurementCell(
+  kind: "ttft" | "tokenRate",
+  render: (row: MeasuredActivityRow) => ReactNode,
+) {
+  return ({ row }: CellContext<ActivityRow, unknown>) => {
+    const activity = row.original;
+    if (!activity.reported) return render(activity);
+    const timing = activity.timing;
+    if (kind === "ttft" && timing?.firstTokenMs != null)
+      return (
+        <div className="text-label tabular-nums">
+          <p>TTFT {seconds(timing.firstTokenMs)} 秒</p>
+          <p className="text-fg-muted">DSH 步骤首出</p>
+        </div>
+      );
+    if (kind === "tokenRate" && timing) {
+      const running = activity.active ? timing.runningTokensPerSecond : null;
+      const rate = running ?? timing.completedTokensPerSecond;
+      if (rate != null || timing.outputTokens != null)
+        return (
+          <div className="space-y-1 text-label tabular-nums">
+            {rate != null && (
+              <>
+                <p>均速 {speed(rate)} Token/s</p>
+                <p className="text-fg-muted">
+                  {running != null ? "DSH 当前步骤已上报" : "DSH 已完成步骤"}
+                </p>
+              </>
+            )}
+            {timing.outputTokens != null && (
+              <p className="text-fg-muted">
+                已报输出 {BigInt(timing.outputTokens).toLocaleString("zh-CN")}{" "}
+                Token
+              </p>
+            )}
+          </div>
+        );
+    }
+    return <span className="text-label text-fg-muted">来源未提供</span>;
+  };
+}
 function withinActivityWindow(time: string, now: number) {
   const timestamp = Date.parse(time);
-  return !Number.isFinite(timestamp) || now - timestamp <= activityWindowMs;
+  return (
+    !Number.isFinite(timestamp) ||
+    now - timestamp <= activityWindowSeconds * 1000
+  );
 }
 const columns: ColumnDef<ActivityRow>[] = [
   {
     id: "task",
     header: "任务 / Agent",
     cell: ({ row: { original: a } }) => (
-      <div className="flex min-w-52 max-w-72 items-center gap-3 whitespace-normal wrap-anywhere">
-        {a.agentLogo && (
-          <img
-            src={a.agentLogo}
-            alt=""
-            aria-hidden="true"
-            width={36}
-            height={36}
-            draggable={false}
-            className="size-9 shrink-0 object-contain"
-          />
-        )}
-        <div className="min-w-0 space-y-1">
-          <p className="line-clamp-2 font-medium" title={a.title}>
+      <div className="min-w-24 max-w-96 space-y-1 whitespace-normal wrap-anywhere">
+        <p className="line-clamp-2 font-medium">
+          <a
+            href={`#${a.href}`}
+            title={a.title}
+            className="rounded-sm text-fg-default underline decoration-border underline-offset-4 hover:decoration-current focus-visible:ring-1 focus-visible:ring-focus-ring"
+          >
             {a.title}
+          </a>
+        </p>
+        <p className="text-label text-fg-muted">
+          {a.agentName} · {a.model ?? "模型未知"}
+        </p>
+        {!a.reported && a.userInput?.text.trim() && a.sessionTitle && (
+          <p
+            className="line-clamp-1 text-label text-fg-muted"
+            title={a.sessionTitle}
+          >
+            会话：{a.sessionTitle}
           </p>
-          {a.userInput?.text.trim() ? (
-            a.sessionTitle ? (
-              <p
-                className="truncate text-label text-fg-muted"
-                title={a.sessionTitle}
-              >
-                会话：{a.sessionTitle}
-              </p>
-            ) : null
-          ) : (
-            <p
-              className="text-label text-fg-muted"
-              title="此来源尚未提供这条消息的用户输入，可进入会话查看。"
-            >
-              最近输入：来源未提供
-            </p>
-          )}
-          <p className="text-label text-fg-muted">
-            {a.agentName} · {a.source}
-          </p>
-          {a.messageUncertain && a.sessionId && (
-            <p className="text-label text-fg-subtle">消息归属待确认</p>
-          )}
-        </div>
+        )}
+        {!a.reported && !a.userInput?.text.trim() && a.sessionId && (
+          <p className="text-label text-fg-muted">最近输入：来源未提供</p>
+        )}
+        {!a.reported && a.messageUncertain && a.sessionId && (
+          <p className="text-label text-fg-subtle">消息归属待确认</p>
+        )}
+        <span className="block text-label text-fg-muted @3xl:hidden">
+          <ActivityTime value={a.time} kind="activity" />
+        </span>
       </div>
     ),
   },
   {
     id: "phase",
     header: "阶段",
-    cell: ({ row: { original: a } }) => (
-      <div className="min-w-28 max-w-40 space-y-1 whitespace-normal wrap-anywhere">
-        <Badge size="sm" status="neutral">
-          {a.expired
-            ? "状态待更新"
-            : a.phase === "waiting_input"
-              ? "已结束 · 等待输入"
-              : (phaseNames[a.phase] ?? requestStates[a.phase] ?? a.phase)}
-        </Badge>
-        {(a.toolNames.length > 0 ||
-          a.step ||
-          ["tool_arguments", "tool_requested"].includes(a.phase)) && (
-          <p
-            className="line-clamp-2 text-label text-fg-muted"
-            title={a.step ?? a.toolNames.join("、")}
+    cell: ({ row: { original: a } }) =>
+      a.reported ? (
+        <div className="space-y-1 whitespace-normal">
+          <Badge size="sm" status={a.active ? "success" : "neutral"}>
+            {a.phaseLabel}
+          </Badge>
+          <p className="text-label text-fg-muted">{a.source}</p>
+        </div>
+      ) : (
+        <div className="max-w-40 space-y-1 whitespace-normal wrap-anywhere">
+          <Badge
+            size="sm"
+            status={a.expired ? "neutral" : a.active ? "info" : "neutral"}
           >
-            {a.step
-              ? `${a.expired ? "最近步骤：" : ""}${a.step}`
-              : a.toolNames.length > 0
-                ? `${a.expired ? "最近工具" : "工具"}：${a.toolNames.join("、")}`
-                : "工具名称未提供"}
-          </p>
-        )}
-        <p className="text-label text-fg-muted">{a.model ?? "模型未知"}</p>
-        {a.taskElapsed && (
-          <p className="text-label text-fg-muted">本轮耗时 {a.taskElapsed}</p>
-        )}
-      </div>
+            {a.expired
+              ? "状态待更新"
+              : a.phase === "waiting_input"
+                ? "已结束 · 等待输入"
+                : (phaseNames[a.phase] ?? requestStates[a.phase] ?? a.phase)}
+          </Badge>
+          {(a.toolNames.length > 0 ||
+            a.step ||
+            ["tool_arguments", "tool_requested"].includes(a.phase)) && (
+            <p
+              className="line-clamp-2 text-label text-fg-muted"
+              title={a.step ?? a.toolNames.join("、")}
+            >
+              {a.step
+                ? `${a.expired ? "最近步骤：" : ""}${a.step}`
+                : a.toolNames.length > 0
+                  ? `${a.expired ? "最近工具" : "工具"}：${a.toolNames.join("、")}`
+                  : "工具名称未提供"}
+            </p>
+          )}
+          <p className="text-label text-fg-muted">{a.source}</p>
+        </div>
+      ),
+  },
+  {
+    id: "elapsed",
+    header: "本轮耗时",
+    cell: ({ row: { original: a } }) => (
+      <span
+        className="font-medium text-fg-default tabular-nums"
+        data-activity-elapsed
+        title={
+          !a.taskElapsed
+            ? "来源未提供本轮耗时"
+            : a.messageAt || a.requestAt
+              ? `本轮开始 · ${date(a.messageAt ?? a.requestAt)}`
+              : undefined
+        }
+      >
+        {a.taskElapsed ?? "—"}
+      </span>
     ),
   },
   {
     id: "ttft",
     header: "TTFT",
-    cell: ({ row: { original: a } }) => (
+    cell: measurementCell("ttft", (a) => (
       <div
-        className="min-w-28 max-w-40 space-y-1 whitespace-normal text-label tabular-nums"
+        className="max-w-40 space-y-1 whitespace-normal text-label tabular-nums"
         title={[
           a.ttftSource === "agent"
             ? "Agent 上报的本轮首出耗时，与网关请求 TTFT 分开记录。"
@@ -147,7 +211,7 @@ const columns: ColumnDef<ActivityRow>[] = [
           .filter(Boolean)
           .join(" · ")}
       >
-        <p>
+        <p className="font-medium text-fg-default">
           {a.ttft !== null
             ? `${a.ttftSource === "native_text" ? "正文首出" : "TTFT"} ${seconds(a.ttft)} 秒`
             : a.nativeRealtime
@@ -192,14 +256,14 @@ const columns: ColumnDef<ActivityRow>[] = [
                           : "原生未提供首出时序"}
         </p>
       </div>
-    ),
+    )),
   },
   {
     id: "tokenRate",
-    header: "Token 速率",
-    cell: ({ row: { original: a } }) => (
+    header: "Token/s",
+    cell: measurementCell("tokenRate", (a) => (
       <div
-        className="min-w-36 max-w-48 space-y-1 whitespace-normal text-label tabular-nums"
+        className="max-w-48 space-y-1 whitespace-normal text-label tabular-nums"
         title={
           [
             a.metricRequest
@@ -211,7 +275,7 @@ const columns: ColumnDef<ActivityRow>[] = [
             .join(" · ") || undefined
         }
       >
-        <p>
+        <p className="font-medium text-fg-default">
           {a.speed !== null
             ? `${a.speedKind === "live" ? (a.rateWindowMs === 5000 ? "近5秒" : "实时") : a.speedKind === "average" ? "均速" : "吞吐"} ${speed(a.speed)} Token/s`
             : a.recentSample
@@ -253,7 +317,7 @@ const columns: ColumnDef<ActivityRow>[] = [
           {a.speed !== null ? (
             a.speedKind === "live" ? (
               a.rateWindowMs === 5000 ? (
-                "近5秒 · 输出估算"
+                "输出估算"
               ) : a.outputRate ? (
                 "最近 1 秒 · 输出估算"
               ) : (
@@ -292,73 +356,61 @@ const columns: ColumnDef<ActivityRow>[] = [
             "请求未记录可测速率"
           )}
         </p>
-        <p className="text-fg-muted">
+        <p className="sr-only text-fg-muted @3xl:not-sr-only">
           {a.statistics.outputTokens == null
             ? "本轮用量待上报"
             : `${a.statistics.estimated ? "本轮可见正文约" : "本轮已报输出"} ${a.statistics.outputTokens.toLocaleString("zh-CN", { maximumFractionDigits: 1 })} Token${a.statistics.partial ? " · 部分上报" : ""}`}
         </p>
         {a.statistics.reasoningTokens != null && (
-          <p className="text-fg-muted">
+          <p className="sr-only text-fg-muted @3xl:not-sr-only">
             其中思考 {a.statistics.reasoningTokens.toLocaleString("zh-CN")}{" "}
             Token
           </p>
         )}
         {a.speedKind !== "average" && a.statistics.averageTextRate != null && (
-          <p className="text-fg-muted">
+          <p className="sr-only text-fg-muted @3xl:not-sr-only">
             正文采样均速 {speed(a.statistics.averageTextRate)} Token/s
           </p>
         )}
       </div>
-    ),
-  },
-  {
-    id: "context",
-    header: "上下文",
-    cell: ({ row: { original: a } }) => (
-      <div className="w-36 whitespace-normal">
-        {a.active || !a.sessionId ? (
-          <ActivityContext sessionId={a.sessionId} sample={a.context} />
-        ) : (
-          <a
-            href={`#${sessionLink(a.sessionId, { view: "context" })}`}
-            aria-label={`查看会话上下文：${a.sessionId}`}
-            className="inline-block rounded-lg p-2 text-label text-fg-muted outline-none hover:bg-hover hover:text-fg-default focus-visible:ring-1 focus-visible:ring-focus-ring"
-          >
-            查看会话上下文
-          </a>
-        )}
-      </div>
-    ),
+    )),
   },
   {
     id: "time",
-    header: "请求 / 活动时间",
+    header: () => (
+      <span className="whitespace-nowrap" data-activity-update>
+        更新时间
+      </span>
+    ),
     cell: ({ row: { original: a } }) => (
-      <span className="whitespace-nowrap text-label text-fg-muted">
-        <ActivityTime
-          value={a.messageAt ?? a.requestAt ?? a.time}
-          kind={a.messageAt || a.requestAt ? "request" : "activity"}
-          title={`最近活动 · ${date(a.time)}`}
-        />
+      <span
+        className="whitespace-nowrap text-label text-fg-muted"
+        data-activity-update
+      >
+        <ActivityTime value={a.time} kind="activity" />
       </span>
     ),
   },
 ];
 
-export function CurrentActivities({
+export function useCurrentActivities({
   data,
   overview,
-  stale,
   filter,
   error,
-  latest,
+  publishedPage,
+  sourceAgents,
+  sourceLoading,
+  sourceError,
 }: {
-  data: Snapshot;
+  data: Snapshot | null;
   overview: Overview | null;
-  stale: boolean;
   filter: string;
   error: string | null;
-  latest?: { text: string; time: string; href: string };
+  publishedPage: UnifiedActivityPage | null;
+  sourceAgents: AgentDiscovery[];
+  sourceLoading: boolean;
+  sourceError: string | null;
 }) {
   const [clock, setClock] = useState(Date.now);
   // Fresh snapshots can arrive while the visible-window clock is paused.
@@ -374,32 +426,59 @@ export function CurrentActivities({
       document.removeEventListener("visibilitychange", update);
     };
   }, []);
-  const recentLatest =
-    latest && withinActivityWindow(latest.time, now) ? latest : undefined;
   const { agentNames, agentProducts, agentFamily, isSharedSource } =
     useAgentDirectory();
   const family = agentFamily(filter);
+  const dshSelected = filter === bundledDshAgent.id;
+  const reportedOnly =
+    dshSelected || (filter !== "all" && sourceAgents.length > 0);
   const nativeObservationPaused =
-    data.builtinComposition?.nativeActivityActive === false ||
-    data.builtinComposition?.profile === "recovery" ||
-    !!data.builtinComposition?.problem;
-  const nativeSourceEnabled = data.sessionSources.some(
-    (source) =>
-      source.enabled &&
-      source.runtimeActive !== false &&
-      (filter === "all" ||
-        (filter === "unknown"
-          ? isSharedSource(source.agentId)
-          : source.agentId === family)),
-  );
-  const sourceHref = nativeObservationPaused
-    ? "/plugins?scene=activity"
-    : data.agents.some((agent) => agent.id === filter)
+    !reportedOnly &&
+    (data?.builtinComposition?.nativeActivityActive === false ||
+      data?.builtinComposition?.profile === "recovery" ||
+      !!data?.builtinComposition?.problem);
+  const nativeSourceEnabled =
+    !reportedOnly &&
+    !!data?.sessionSources.some(
+      (source) =>
+        source.enabled &&
+        source.runtimeActive !== false &&
+        (filter === "all" ||
+          (filter === "unknown"
+            ? isSharedSource(source.agentId)
+            : source.agentId === family)),
+    );
+  const sourceHref =
+    reportedOnly ||
+    (!nativeObservationPaused &&
+      data?.agents.some((agent) => agent.id === filter))
       ? `/agents/${encodeURIComponent(filter)}?tab=connection`
-      : "/agents";
+      : nativeObservationPaused
+        ? "/plugins?scene=activity"
+        : "/agents";
+  const reportedSourceEnabled =
+    publishedPage?.sourceStates.some(
+      ({ state }) =>
+        state.authorization === "authorized" &&
+        state.coverage !== "unavailable",
+    ) ?? false;
+  const observationEnabled =
+    (nativeSourceEnabled && !nativeObservationPaused) || reportedSourceEnabled;
+  const reportedRows = useMemo(
+    () => publishedActivityRows(publishedPage, sourceAgents, now),
+    [publishedPage, sourceAgents, now],
+  );
+  const snapshotExpired =
+    Boolean(error) ||
+    Boolean(
+      overview &&
+      (!Number.isFinite(Date.parse(overview.asOf)) ||
+        now - Date.parse(overview.asOf) > 6000),
+    );
+  const agents = data?.agents;
   const rows = useMemo(() => {
     const products = [
-      ...data.agents.map((a) => a.id),
+      ...(agents ?? []).map((a) => a.id),
       ...[...new Set(agentProducts.map((a) => a.family))]
         .filter(isSharedSource)
         .map((family) => `${family}-unknown`),
@@ -408,81 +487,138 @@ export function CurrentActivities({
         filter === "all" ||
         (filter === "unknown" ? id.endsWith("-unknown") : id === filter),
     );
-    const contexts = new Map(
-      overview?.sessionContexts?.map((sample) => [sample.sessionId, sample]),
-    );
     const groups = products.map((id) =>
       activityGroup(
         id,
         overview?.gatewayActivities ?? [],
         overview?.nativeActivities ?? [],
-        stale,
+        snapshotExpired,
         now,
-        data.agents,
+        agents,
       ),
     );
     const combined = {
-      ...(groups[0] ?? activityGroup("", [], [], stale, now, data.agents)),
+      ...(groups[0] ?? activityGroup("", [], [], snapshotExpired, now, agents)),
       gateway: groups.flatMap((g) => g.gateway),
       native: groups.flatMap((g) => g.native),
       activeGateway: groups.flatMap((g) => g.activeGateway),
       activeNative: groups.flatMap((g) => g.activeNative),
       freshNative: groups.flatMap((g) => g.freshNative),
     };
-    const activities = latestSessionActivities(
-      activityRows(combined, "recent", now),
-    ).map((a) => {
-      const id = recordAgentKey(a, data.agents);
+    const activities = activityRows(combined, "recent", now).map((a) => {
+      const id = recordAgentKey(a, agents);
       return {
         ...a,
+        reported: false as const,
         agentName: agentNames[id] ?? id,
-        agentLogo: agentLogos[agentFamily(id) ?? ""],
-        context: a.sessionId ? contexts.get(a.sessionId) : undefined,
       };
     });
     const timestamp = (time: string) => {
       const parsed = Date.parse(time);
       return Number.isFinite(parsed) ? parsed : 0;
     };
-    return activities
+    return latestSessionActivities<ActivityRow>([
+      ...activities,
+      ...reportedRows,
+    ])
       .filter((a) => withinActivityWindow(a.time, now))
       .sort(
         (a, b) =>
-          timestamp(b.messageAt ?? "") - timestamp(a.messageAt ?? "") ||
+          timestamp(b.messageAt ?? (b.reported ? b.time : "")) -
+            timestamp(a.messageAt ?? (a.reported ? a.time : "")) ||
           a.id.localeCompare(b.id),
       );
   }, [
-    data.agents,
+    agents,
     overview,
-    stale,
+    snapshotExpired,
     filter,
     agentProducts,
     agentNames,
-    agentFamily,
     isSharedSource,
     now,
+    reportedRows,
   ]);
-  const pagination = useTablePagination(rows.length, 5);
   const summary = useMemo(
     () =>
       summarizeActivity(
         overview?.gatewayActivities ?? [],
         overview?.nativeActivities ?? [],
         filter,
-        data.agents,
+        agents ?? [],
         now,
+        reportedRows.flatMap((row) =>
+          row.active && row.sessionId ? [row.sessionId] : [],
+        ),
       ),
-    [overview, filter, data.agents, now],
+    [overview, filter, agents, now, reportedRows],
   );
-  const snapshotExpired =
-    stale ||
-    Boolean(
-      overview &&
-      (!Number.isFinite(Date.parse(overview.asOf)) ||
-        now - Date.parse(overview.asOf) > 6000),
-    );
+  const overviewState = !overview
+    ? error
+      ? "error"
+      : "loading"
+    : snapshotExpired
+      ? "stale"
+      : "ready";
+  const sourceState = sourceError
+    ? "error"
+    : sourceLoading && !publishedPage
+      ? "loading"
+      : publishedPage &&
+          (now - Date.parse(publishedPage.asOf) > 15000 ||
+            publishedPage.sourceStates.some(
+              ({ state }) => state.problem === "source_stalled",
+            ))
+        ? "stale"
+        : "ready";
+  const state: MetricCardState =
+    reportedOnly && summary.sources === 0 ? sourceState : overviewState;
+  const activeReported = reportedRows.filter((row) => row.active);
+  const reportedTtfts = activeReported.flatMap((row) =>
+    row.timing?.firstTokenMs == null ? [] : [row.timing.firstTokenMs],
+  );
+  const reportedRates = activeReported.flatMap((row) =>
+    row.timing?.runningTokensPerSecond == null
+      ? []
+      : [row.timing.runningTokensPerSecond],
+  );
+  return {
+    rows,
+    now,
+    dshSelected,
+    overviewExpired: Boolean(overview) && snapshotExpired,
+    performance: {
+      summary,
+      reportedTtfts,
+      reportedRates,
+      nativeSourceEnabled: observationEnabled,
+      nativeObservationPaused,
+      reportedOnly,
+      sourceHref,
+      state,
+    },
+  };
+}
+
+export function CurrentActivities({
+  activity,
+}: {
+  activity: ReturnType<typeof useCurrentActivities>;
+}) {
+  const { rows, dshSelected, overviewExpired } = activity;
+  const {
+    state,
+    nativeSourceEnabled: observationEnabled,
+    nativeObservationPaused,
+    reportedOnly,
+    sourceHref,
+  } = activity.performance;
+  const [mode, setMode] = useState("running");
+  const activeRows = rows.filter((row) => row.active);
+  const visibleRows = mode === "running" ? activeRows : rows;
+  const pagination = useTablePagination(visibleRows.length, 5);
   const { table } = useDataTable({
-    data: rows,
+    data: visibleRows,
     columns,
     getRowId: (row) => (row.sessionId ? `session:${row.sessionId}` : row.id),
     enableSorting: false,
@@ -494,118 +630,107 @@ export function CurrentActivities({
     onPaginationChange: pagination.onChange,
   });
   return (
-    <div className="space-y-2">
-      <ActivitySummary
-        summary={summary}
-        nativeSourceEnabled={nativeSourceEnabled && !nativeObservationPaused}
-        nativeObservationPaused={nativeObservationPaused}
-        sourceHref={sourceHref}
-        state={
-          !overview
-            ? error
-              ? "error"
-              : "loading"
-            : snapshotExpired
-              ? "stale"
-              : "ready"
-        }
-      />
-      {overview && stale && (
-        <p className="text-label text-fg-muted" role="status">
-          实时活动快照已过期，保留最近记录；进行中状态待确认。
-        </p>
-      )}
-      <DataTable
-        table={table}
-        aria-label="当前活动列表"
-        role="region"
-        isLoading={!overview && !error}
-        loadingMessage="正在读取实时活动…"
-        onRowActivate={(row) => {
-          window.location.hash = row.original.href;
-        }}
-        showPagination={rows.length > 5}
-        paginationProps={{
-          labels: dataTablePagination,
-          pageSizeOptions: [5, 10, 20],
-        }}
-        emptyState={
-          !overview || stale ? (
-            <div className="space-y-2 p-6 text-center text-body" role="status">
-              <p className="font-medium">
-                {overview ? "实时活动快照已过期" : "暂时无法读取实时活动"}
-              </p>
-              <p className="text-label text-fg-muted">
-                {overview
-                  ? "保留的记录不能确认仍在运行，等待观测服务更新。"
-                  : "观测服务读取失败，恢复后会自动更新。"}
-              </p>
-            </div>
-          ) : (
-            <Empty reason="no-results" scope="inline">
-              <EmptyHeader>
-                <EmptyTitle>
-                  {nativeObservationPaused
-                    ? "原生活动采集已暂停"
-                    : nativeSourceEnabled
+    <Tabs
+      value={mode}
+      onValueChange={(value) => {
+        setMode(value);
+        pagination.onChange((page) => ({ ...page, pageIndex: 0 }));
+      }}
+      color="default"
+      variant="segment"
+      className="@container min-w-0 space-y-3"
+    >
+      <TabsList aria-label="活动范围">
+        <TabItem value="running" label="执行中" badge={activeRows.length} />
+        <TabItem value="recent" label="最近 3 小时" badge={rows.length} />
+      </TabsList>
+      <TabPanel value={mode} className="min-w-0 space-y-3">
+        {overviewExpired && !reportedOnly && rows.length > 0 && (
+          <p className="text-label text-fg-muted" role="status">
+            实时活动快照已过期，保留最近记录；进行中状态待确认。
+          </p>
+        )}
+        <DataTable
+          id="overview-activity-table"
+          table={table}
+          aria-label="当前活动列表"
+          role="region"
+          className="@max-3xl:[&_:is(td,th):has([data-activity-update])]:hidden [&_td]:align-top @max-3xl:[&_td]:px-2 @max-3xl:[&_th]:px-2"
+          isLoading={visibleRows.length === 0 && state === "loading"}
+          loadingMessage="正在读取实时活动…"
+          showPagination={visibleRows.length > 5}
+          paginationProps={{
+            labels: dataTablePagination,
+            pageSizeOptions: [5, 10, 20],
+          }}
+          emptyState={
+            mode === "running" && rows.length > 0 && state !== "loading" ? (
+              <Empty reason="no-results" scope="inline" density="compact">
+                <EmptyHeader>
+                  <EmptyTitle>当前没有确认在执行的任务</EmptyTitle>
+                  <EmptyDescription>
+                    可在「最近 3 小时」查看已记录的任务。
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            ) : state === "error" || state === "stale" ? (
+              <div
+                className="space-y-2 p-6 text-center text-body"
+                role="status"
+              >
+                <p className="font-medium">
+                  {state === "stale"
+                    ? "实时活动快照已过期"
+                    : "暂时无法读取实时活动"}
+                </p>
+                <p className="text-label text-fg-muted">
+                  {state === "stale"
+                    ? "保留的记录不能确认仍在运行，等待观测服务更新。"
+                    : "观测服务读取失败，恢复后会自动更新。"}
+                </p>
+              </div>
+            ) : (
+              <Empty reason="no-results" scope="inline" density="compact">
+                <EmptyHeader>
+                  <EmptyTitle>
+                    {observationEnabled
                       ? "暂无活动记录"
-                      : "尚未连接原生观测来源"}
-                </EmptyTitle>
-                <EmptyDescription>
-                  {nativeObservationPaused
-                    ? "可在官方组合中恢复活动采集；本机来源的读取授权仍需单独确认。"
-                    : nativeSourceEnabled
+                      : nativeObservationPaused
+                        ? "原生活动采集已暂停"
+                        : dshSelected
+                          ? "尚未收到 DeepSeek Harness 活动"
+                          : "尚未连接原生观测来源"}
+                  </EmptyTitle>
+                  <EmptyDescription>
+                    {observationEnabled
                       ? "仅显示最近 3 小时的活动，按最后活动时间排序。"
-                      : "当前范围未开启原生会话读取，请在 Agent 的“连接与观测”中确认读取范围。网关请求经过本应用时会自动显示。"}
-                </EmptyDescription>
-              </EmptyHeader>
-              {recentLatest && (
-                <EmptyContent>
-                  <p className="text-label text-fg-muted">
-                    最近观测：{recentLatest.text} · {date(recentLatest.time)}
-                  </p>
-                </EmptyContent>
-              )}
-              <EmptyActions>
-                {(!nativeSourceEnabled || nativeObservationPaused) && (
-                  <Button
-                    size="sm"
-                    variant="tertiary"
-                    onClick={() => {
-                      window.location.hash = sourceHref;
-                    }}
-                  >
-                    {nativeObservationPaused ? "管理活动采集" : "连接观测来源"}
-                  </Button>
+                      : dshSelected
+                        ? "在 DeepSeek Harness 启用只读桥接，并在连接与观测中授权读取导出的会话文件，即可显示直连任务。"
+                        : nativeObservationPaused
+                          ? "可在官方组合中恢复活动采集；本机来源的读取授权仍需单独确认。"
+                          : "当前范围未开启原生会话读取，请在 Agent 的“连接与观测”中确认读取范围。网关请求经过本应用时会自动显示。"}
+                  </EmptyDescription>
+                </EmptyHeader>
+                {!observationEnabled && (
+                  <EmptyActions>
+                    <Button
+                      size="sm"
+                      variant="tertiary"
+                      onClick={() => {
+                        window.location.hash = sourceHref;
+                      }}
+                    >
+                      {nativeObservationPaused
+                        ? "管理活动采集"
+                        : "连接观测来源"}
+                    </Button>
+                  </EmptyActions>
                 )}
-                {(nativeSourceEnabled || recentLatest) && (
-                  <Button
-                    size="sm"
-                    variant="tertiary"
-                    onClick={() => {
-                      window.location.hash = recentLatest?.href ?? sourceHref;
-                    }}
-                  >
-                    {recentLatest ? "查看最近记录" : "管理观测来源"}
-                  </Button>
-                )}
-              </EmptyActions>
-            </Empty>
-          )
-        }
-      />
-      {rows.some((row) => row.source.startsWith("原生记录")) && (
-        <p className="text-label text-fg-subtle">
-          原生直连缺少流式时序时无法测量实时
-          Token/s；经本地网关的请求可采集，Agent 上报首出单独标记。
-          <a
-            href={`#${sourceHref}`}
-            className="ml-2 rounded-lg text-fg-muted outline-none hover:text-fg-default focus-visible:ring-1 focus-visible:ring-focus-ring"
-          >
-            查看连接与观测
-          </a>
-        </p>
-      )}
-    </div>
+              </Empty>
+            )
+          }
+        />
+      </TabPanel>
+    </Tabs>
   );
 }

@@ -56,10 +56,14 @@ function ModelActivityFlow({
       document.removeEventListener("visibilitychange", update);
     };
   }, []);
-  const height = models.length * 64;
+  const rowHeight = 48;
+  const height = models.length * rowHeight;
   const center = height / 2;
   return (
-    <div ref={root} className="flex min-w-0 items-stretch gap-3">
+    <div
+      ref={root}
+      className="flex max-h-36 min-w-0 items-start gap-3 overflow-y-auto overscroll-contain"
+    >
       <div
         ref={canvas}
         className="relative hidden min-w-0 flex-1 sm:block"
@@ -78,7 +82,7 @@ function ModelActivityFlow({
           preserveAspectRatio="xMinYMid meet"
         >
           {models.map((model, index) => {
-            const y = index * 64 + 32;
+            const y = (index + 0.5) * rowHeight;
             const path = `M 8 ${center} H ${width * 0.2} C ${width * 0.34} ${center} ${width * 0.332} ${y} ${width * 0.46} ${y} H ${width - 8}`;
             const color = colors.get(model.id);
             return (
@@ -136,7 +140,7 @@ function ModelActivityFlow({
         {models.map((model) => {
           const logo = modelLogo(model.name);
           return (
-            <li key={model.id} className="flex h-16 min-w-0 items-center gap-3">
+            <li key={model.id} className="flex h-12 min-w-0 items-center gap-3">
               {logo ? (
                 <span
                   aria-hidden="true"
@@ -210,12 +214,18 @@ export function ActivitySummary({
   nativeSourceEnabled,
   sourceHref,
   nativeObservationPaused = false,
+  reportedOnly = false,
+  reportedTtfts = [],
+  reportedRates = [],
 }: {
   summary: ActivitySummaryData;
   state: MetricCardState;
   nativeSourceEnabled: boolean;
   sourceHref: string;
   nativeObservationPaused?: boolean;
+  reportedOnly?: boolean;
+  reportedTtfts?: number[];
+  reportedRates?: number[];
 }) {
   const [paused, setPaused] = useState(false);
   const [colors, setColors] =
@@ -227,7 +237,17 @@ export function ActivitySummary({
   if (nextColors !== colors) setColors(nextColors);
   useEffect(() => saveModelColors(colors), [colors]);
   const ready = state === "ready";
-  const hasActivity = summary.sources > 0;
+  const hasActivity = summary.sources > 0 || summary.reportedSessions > 0;
+  const hasMetricSources = summary.sources > 0;
+  const mean = (values: number[]) =>
+    values.length
+      ? values.reduce((total, value) => total + value / values.length, 0)
+      : null;
+  const sourceTtft = hasMetricSources ? null : mean(reportedTtfts);
+  const sourceRate = hasMetricSources ? null : mean(reportedRates);
+  const ttft = summary.ttft ?? sourceTtft;
+  const rateAvailable =
+    hasMetricSources || (!reportedOnly && summary.reportedSessions === 0);
   const metricsAvailable = ready && (hasActivity || nativeSourceEnabled);
   const metricState = ready && !metricsAvailable ? "unavailable" : state;
   const message =
@@ -243,28 +263,34 @@ export function ActivitySummary({
               : nativeObservationPaused
                 ? "原生活动采集已暂停，当前执行状态待确认。"
                 : "未开启原生会话读取，当前执行状态待确认。"
-            : `近 ${summary.windowMs / 1000} 秒可观测输出 Token 估算相加；包含正文与已上报的思考增量，网关另含工具参数。最近实测值保留时间，不参与当前合计；工具结果和未上报的隐藏思考不作推算。`;
+            : hasMetricSources
+              ? `近 ${summary.windowMs / 1000} 秒可测输出合计，包含正文、已上报的思考和网关工具参数。历史采样单独标记。`
+              : "运行状态由 Agent 上报。";
   return (
     <section
       aria-label="实时任务汇总"
-      className="space-y-3 rounded-xl border border-border bg-surface-floating p-4"
+      className="space-y-2 rounded-xl border border-border bg-surface-floating p-3"
     >
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-body font-medium">当前执行</h3>
+        <h3 className="text-body font-medium">活动性能明细</h3>
         <Badge size="sm" status={ready && hasActivity ? "success" : "neutral"}>
           {ready
-            ? !nativeSourceEnabled
+            ? !nativeSourceEnabled && (!reportedOnly || hasMetricSources)
               ? "仅网关"
               : hasActivity
                 ? "实时"
-                : "暂无活动"
+                : nativeSourceEnabled
+                  ? "暂无活动"
+                  : "待接入"
             : state === "loading"
               ? "读取中"
               : "待更新"}
         </Badge>
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-3">
         <MetricCard
+          className="self-stretch p-2"
+          valueClassName="text-title"
           label="执行中的 Session"
           value={metricsAvailable ? summary.sessions : "—"}
           unit="个"
@@ -272,44 +298,61 @@ export function ActivitySummary({
           meta={
             ready && summary.unlinked
               ? `另有 ${summary.unlinked} 个网关请求待关联 Session`
-              : "同一 Session 的消息与工具步骤只计一次"
+              : ready && summary.reportedSessions
+                ? `含 ${summary.reportedSessions} 个 Agent 上报的 Session`
+                : "同一 Session 的消息与工具步骤只计一次"
           }
         />
         <MetricCard
+          className="self-stretch p-2"
+          valueClassName="text-title"
           label="当前平均 TTFT"
           value={
             ready
-              ? summary.ttft === null
-                ? hasActivity
+              ? ttft === null
+                ? hasMetricSources
                   ? (summary.ttftPendingLabel ?? "等待首 Token")
                   : "—"
-                : seconds(summary.ttft)
+                : seconds(ttft)
               : "—"
           }
-          unit={ready && summary.ttft !== null ? "秒" : undefined}
+          unit={ready && ttft !== null ? "秒" : undefined}
           state={metricState}
           meta={
-            ready && hasActivity
+            ready && hasMetricSources
               ? `${summary.ttftSamples}/${summary.sources} 个活动来源已记录 · 原生含事件传递延迟`
-              : "首个推理或正文返回后更新"
+              : ready && sourceTtft !== null
+                ? `DSH 步骤首出 · ${reportedTtfts.length} 个会话已上报`
+                : rateAvailable
+                  ? "首个推理或正文返回后更新"
+                  : "来源未提供"
           }
         />
         <MetricCard
+          className="self-stretch p-2"
+          valueClassName="text-title"
           label={
-            ready && summary.partial && summary.rate !== null
-              ? "已测 Token 速率"
-              : "总 Token 速率"
+            ready && sourceRate !== null
+              ? "DSH 当前步骤均速"
+              : ready &&
+                  (summary.partial || summary.reportedSessions > 0) &&
+                  summary.rate !== null &&
+                  rateAvailable
+                ? "已测 Token 速率"
+                : "总 Token 速率"
           }
           value={
-            metricsAvailable && summary.rate !== null
-              ? speed(summary.rate)
-              : "—"
+            metricsAvailable && sourceRate !== null
+              ? speed(sourceRate)
+              : metricsAvailable && rateAvailable && summary.rate !== null
+                ? speed(summary.rate)
+                : "—"
           }
           unit="Token/s"
           state={metricState}
           footer={
             ready &&
-            hasActivity &&
+            hasMetricSources &&
             summary.rate === null &&
             summary.recentSample ? (
               <>
@@ -323,18 +366,22 @@ export function ActivitySummary({
             ) : undefined
           }
           statusMessage={
-            ready && hasActivity && summary.rate === null
+            ready && hasMetricSources && summary.rate === null
               ? "当前来源未提供可测的 Token 增量"
               : undefined
           }
           meta={
-            ready && hasActivity
+            ready && hasMetricSources
               ? `${summary.samples}/${summary.sources} 个活动来源可测${summary.samples === 0 ? " · 暂无实时采样" : summary.partial ? " · 部分可测" : ""}`
-              : "仅统计当前任务"
+              : ready && sourceRate !== null
+                ? `DSH 已上报 · ${reportedRates.length} 个会话`
+                : rateAvailable
+                  ? "仅统计当前任务"
+                  : "来源未提供"
           }
         />
       </div>
-      {ready && hasActivity && (
+      {ready && hasMetricSources && (
         <ModelActivityFlow
           models={summary.models}
           paused={paused}
@@ -363,7 +410,7 @@ export function ActivitySummary({
             </Button>
           )}
       </div>
-      {ready && !nativeSourceEnabled && (
+      {ready && !nativeSourceEnabled && !reportedOnly && (
         <p className="text-label text-fg-muted">
           {nativeObservationPaused
             ? "原生活动采集已暂停，当前仅统计经本应用的网关请求。可在插件管理中恢复采集。"

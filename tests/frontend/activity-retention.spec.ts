@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openRecentActivities } from "./overview-helpers";
 import type {} from "./activity-fixture";
 
 const url =
@@ -20,6 +21,7 @@ test("activity rows expire after three hours of no business activity, including 
   await page.goto(
     "/tests/frontend/tables.html?mode=activity&activity=recent-history-window#/overview",
   );
+  await openRecentActivities(page);
   await expect(
     feed(page).getByRole("columnheader", { name: "TTFT", exact: true }),
   ).toBeVisible();
@@ -35,7 +37,7 @@ test("activity rows expire after three hours of no business activity, including 
   // The request began four hours ago but has fresh output five seconds ago.
   await expect(
     feed(page).getByRole("row").filter({ hasText: "持续任务" }),
-  ).toContainText("4 小时前请求");
+  ).toContainText("4 时 0 分");
   await page.evaluate(() => {
     window.activityCase = "error";
     document.dispatchEvent(new Event("visibilitychange"));
@@ -71,6 +73,7 @@ test("activity history sorts by message start, keeps that order on later steps a
   page,
 }) => {
   await page.goto(url);
+  await openRecentActivities(page);
   await expect
     .poll(() => titles(page))
     .toEqual([
@@ -84,7 +87,9 @@ test("activity history sorts by message start, keeps that order on later steps a
     .getByRole("row")
     .filter({ hasText: "最近原生已结束" });
   await expect(ended).toContainText("已结束 · 等待输入");
-  await expect(ended).toContainText("查看会话上下文");
+  await expect(
+    ended.getByRole("link", { name: "最近原生已结束" }),
+  ).toHaveAttribute("href", "#/sessions/codex%3Arecent-done");
   await expect(ended).not.toContainText("10.0%");
   const old = feed(page).getByRole("row").filter({ hasText: "较早网关活动" });
   await expect(old).toContainText("均速 35.0 Token/s");
@@ -115,11 +120,12 @@ test("activity history sorts by message start, keeps that order on later steps a
   await expect(feed(page)).not.toContainText("持续任务");
 });
 
-test("a completed request keeps its message position with historical metrics and context link", async ({
+test("a completed request keeps its message position with historical metrics and its session name link", async ({
   page,
 }) => {
   await page.clock.install({ time: new Date("2026-10-24T04:00:00Z") });
   await page.goto(url);
+  await openRecentActivities(page);
   const task = feed(page).getByRole("row").filter({ hasText: "持续任务" });
   await expect(task).toContainText("正在输出正文");
   await expect(task).toContainText("20.0 Token/s");
@@ -138,19 +144,15 @@ test("a completed request keeps its message position with historical metrics and
       "较早网关活动",
       "较早原生活动",
     ]);
-  await task
-    .getByRole("link", { name: "查看会话上下文：claude:running", exact: true })
-    .click();
-  await expect(page).toHaveURL(/#\/sessions\/claude%3Arunning\?view=context$/);
-  await expect(
-    page.getByRole("tab", { name: "上下文", exact: true }),
-  ).toHaveAttribute("aria-selected", "true");
+  await task.getByRole("link", { name: "持续任务", exact: true }).click();
+  await expect(page).toHaveURL(/#\/sessions\/claude%3Arunning$/);
 });
 
 test("a read failure preserves history, makes ongoing status uncertain and never labels the last live speed as a historical average", async ({
   page,
 }) => {
   await page.goto(url);
+  await openRecentActivities(page);
   const task = feed(page).getByRole("row").filter({ hasText: "持续任务" });
   await expect(task).toContainText("20.0 Token/s");
   await page.evaluate(() => {

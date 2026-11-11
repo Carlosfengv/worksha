@@ -33,6 +33,7 @@ export function summarizeActivity(
   filter: string,
   products: readonly AgentProduct[],
   now: number,
+  reportedSessionIds: string[] = [],
 ) {
   const matches = (record: {
     agentId: string;
@@ -77,6 +78,8 @@ export function summarizeActivity(
     requests.flatMap((a) => (a.request.sessionId ? [a.request.sessionId] : [])),
   );
   for (const session of linked) sessions.add(session);
+  const reportedSessions = new Set(reportedSessionIds);
+  for (const session of reportedSessions) sessions.add(session);
   const models = new Map<string, ModelActivity>();
   const windowMs =
     requests.some((a) => a.sampling?.windowMs === 5000) ||
@@ -225,6 +228,7 @@ export function summarizeActivity(
         .filter((sample): sample is RateSample => sample !== null)
         .sort((a, b) => b.at - a.at)[0] ?? null,
     sessions: sessions.size,
+    reportedSessions: reportedSessions.size,
     unlinked: requests.filter((a) => !a.request.sessionId).length,
     models: rows,
     rate:

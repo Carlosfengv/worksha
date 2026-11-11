@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openRecentActivities } from "./overview-helpers";
 import type {} from "./activity-fixture";
 
 test("five-second rates give way to timestamped history and turn totals without entering the live sum", async ({
@@ -18,12 +19,13 @@ test("five-second rates give way to timestamped history and turn totals without 
   await page.evaluate(() => {
     window.activityCase = "native-desktop-performance-live";
   });
+  await openRecentActivities(page);
   await expect(row).toContainText("近5秒 24.0 Token/s");
   await expect(row).toContainText("本轮已报输出 1,200 Token");
   await expect(row).toContainText("其中思考 800 Token");
-  await expect(row).toContainText("本轮耗时 1 分");
+  await expect(row.locator("[data-activity-elapsed]")).toContainText("1 分");
   await expect(value).toContainText(/24\.0\s*Token\/s/);
-  await row.focus();
+  await row.getByRole("link").focus();
   let sampledAt: string | null = null;
   for (const mode of [
     "native-desktop-performance-idle",
@@ -47,7 +49,7 @@ test("five-second rates give way to timestamped history and turn totals without 
     await expect(summary.locator("animateMotion")).toHaveCount(0);
     await expect(row).toContainText("本轮已报输出 1,200 Token");
     await expect(row).toContainText("TTFT 1.05 秒");
-    await expect(row).toBeFocused();
+    await expect(row.getByRole("link")).toBeFocused();
     await expect(feed.getByRole("row")).toHaveCount(2);
   }
   await page.evaluate(() => {
@@ -92,6 +94,7 @@ test("gateway usage is counted once and historical gateway rates remain separate
   await page.evaluate(() => {
     window.activityCase = "native-desktop-performance-gateway";
   });
+  await openRecentActivities(page);
   const row = page
     .getByRole("region", { name: "当前活动列表", exact: true })
     .getByRole("row")

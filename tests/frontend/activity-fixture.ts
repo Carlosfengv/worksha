@@ -35,6 +35,7 @@ declare global {
       | "opencode-tool"
       | "empty"
       | "recent-history"
+      | "recent-history-attention"
       | "recent-history-completed"
       | "recent-history-reordered"
       | "recent-history-window"
@@ -121,6 +122,7 @@ window.activityCase =
   requestedActivity === "error" ||
   requestedActivity === "empty" ||
   requestedActivity === "recent-history" ||
+  requestedActivity === "recent-history-attention" ||
   requestedActivity === "recent-history-window" ||
   requestedActivity === "recent-history-expired"
     ? requestedActivity
@@ -489,6 +491,29 @@ export function activityOverview(query: OverviewQuery): Overview {
       older.stale = false;
     }
     gateways.push(running, previous, failed);
+    if (window.activityCase === "recent-history-attention") {
+      failed.request.logicalId = "shared-key";
+      failed.request.httpStatus = 429;
+      const retried = {
+        ...failed.request,
+        id: "recent-retried",
+        sessionId: "opencode:recovered",
+      };
+      gateways.push(
+        { ...failed, request: retried },
+        {
+          ...failed,
+          request: {
+            ...retried,
+            id: "recent-recovered",
+            startedAt: new Date(now - 2000).toISOString(),
+            endedAt: new Date(now - 1000).toISOString(),
+            status: "success",
+            httpStatus: 200,
+          },
+        },
+      );
+    }
     natives.push(runningNative, previousNative, latest, older);
     if (window.activityCase === "recent-history-window") {
       const windowMs = 3 * 60 * 60 * 1000;

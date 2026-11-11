@@ -151,9 +151,12 @@ export function elapsedLabel(
 ) {
   const start = Date.parse(startedAt ?? "");
   const end = endedAt ? Date.parse(endedAt) : now;
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start)
-    return null;
-  const seconds = Math.floor((end - start) / 1000);
+  return durationLabel(end - start);
+}
+
+export function durationLabel(milliseconds: number) {
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) return null;
+  const seconds = Math.floor(milliseconds / 1000);
   if (seconds < 60) return `${seconds} 秒`;
   if (seconds < 3600)
     return `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;

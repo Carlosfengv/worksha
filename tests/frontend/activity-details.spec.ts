@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openRecentActivities } from "./overview-helpers";
 import type {} from "./activity-fixture";
 
 const feed = (page: Page) =>
@@ -8,6 +9,7 @@ async function load(page: Page, value: Window["activityCase"]) {
   await page.evaluate((value) => {
     window.activityCase = value;
   }, value);
+  await openRecentActivities(page);
 }
 
 test("activity shows the latest input, observed thinking and named native or gateway tools", async ({
@@ -111,13 +113,15 @@ test("long input and tool labels stay within the table at the minimum native win
   expect(
     await input.evaluate((e) => e.getBoundingClientRect().height),
   ).toBeLessThan(240);
-  const title = input.locator("p").first();
+  const title = input.getByRole("link");
   const text = await title.textContent();
   expect(text).toMatch(/^检查包含中文和🙂的长输入/);
   await expect(title).toHaveAttribute("title", text!);
-  expect(await title.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(
-    true,
-  );
+  expect(
+    await title.evaluate(
+      (e) => e.parentElement!.scrollHeight > e.parentElement!.clientHeight,
+    ),
+  ).toBe(true);
 });
 
 test("disabled native sources cannot expose excerpts from an already populated overview", async ({

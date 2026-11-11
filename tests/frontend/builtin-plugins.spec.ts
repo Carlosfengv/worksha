@@ -1,3 +1,4 @@
+import { openRecentActivities } from "./overview-helpers";
 import { test, expect } from "@playwright/test";
 import type {} from "./builtin-plugins-harness";
 const prefix = "local-agent.builtin-composition.v1.";
@@ -295,6 +296,7 @@ test("采集器停止后汇总保持未知，历史活动不再冒充当前执�
   await page.evaluate(() => {
     window.activityCase = "empty";
   });
+  await openRecentActivities(page);
   const summary = page.getByRole("region", {
     name: "实时任务汇总",
     exact: true,

@@ -2,6 +2,7 @@ import {
   createReadResource,
   createReadResourceFamily,
 } from "@/shared/lib/read-resource";
+import { isDesktopRuntime } from "@/shared/lib/desktop-command";
 import { domainApi } from "./api";
 import type { FactQuery } from "../../../contracts/domain/facts/types";
 export const unifiedFactsResource = createReadResourceFamily(
@@ -13,6 +14,10 @@ export const unifiedActivityResource = createReadResourceFamily(
     query: import("../../../contracts/domain/facts/types").UnifiedActivityQuery,
   ) => domainApi.activity(query),
   { interval: 5000 },
+);
+export const overviewActivityResource = createReadResourceFamily(
+  domainApi.activity,
+  { interval: 1500, pollWhileHidden: isDesktopRuntime },
 );
 export const unifiedRequestsResource = createReadResourceFamily(
   (

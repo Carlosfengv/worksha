@@ -1,10 +1,12 @@
 import { expect, test } from "@playwright/test";
+import { openRecentActivities } from "./overview-helpers";
 import type {} from "./activity-fixture";
 
 test("native thinking and tool phases update output rates before completion while retaining the message TTFT", async ({
   page,
 }) => {
   await page.goto("/tests/frontend/tables.html?mode=activity#/overview");
+  await openRecentActivities(page);
   await page.evaluate(() => {
     window.activityCase = "native-desktop-output-thinking";
   });
@@ -19,7 +21,7 @@ test("native thinking and tool phases update output rates before completion whil
   await expect(row).toContainText("实时 37.0 Token/s");
   await expect(row).toContainText("最近 1 秒 · 输出估算");
   await expect(summary).toContainText("37.0 Token/s");
-  await row.focus();
+  await row.getByRole("link").focus();
   for (const [mode, phase, rateLabel] of [
     ["native-desktop-output-tools", "Read 工具执行中", "实时 12.5 Token/s"],
     ["native-desktop-output-tool-idle", "Read 工具执行中", "工具处理中"],
@@ -33,13 +35,13 @@ test("native thinking and tool phases update output rates before completion whil
       window.activityCase = mode;
     }, mode);
     await expect(row).toContainText(phase);
-    await expect(row.getByRole("cell").nth(3)).toContainText(rateLabel);
+    await expect(row.getByRole("cell").nth(4)).toContainText(rateLabel);
     await expect(summary).toContainText(rateLabel.replace("实时 ", ""));
     await expect(row).not.toContainText("0.0 Token/s");
     if (mode !== "native-desktop-output-tools")
       await expect(row).toContainText("原生未上报生成增量");
     await expect(row).toContainText("TTFT 1.05 秒");
-    await expect(row).toBeFocused();
+    await expect(row.getByRole("link")).toBeFocused();
     await expect(feed.getByRole("row")).toHaveCount(2);
   }
   await page.evaluate(() => {
@@ -65,6 +67,7 @@ test("native silence stays unknown in the summary and table instead of displayin
   page,
 }) => {
   await page.goto("/tests/frontend/tables.html?mode=activity#/overview");
+  await openRecentActivities(page);
   const summary = page.getByRole("region", { name: "实时任务汇总" });
   const row = page
     .getByRole("region", { name: "当前活动列表", exact: true })
@@ -78,7 +81,7 @@ test("native silence stays unknown in the summary and table instead of displayin
     await page.evaluate((mode) => {
       window.activityCase = mode;
     }, mode);
-    await expect(row.getByRole("cell").nth(3)).toContainText(label);
+    await expect(row.getByRole("cell").nth(4)).toContainText(label);
     await expect(row).toContainText("原生未上报生成增量");
     await expect(row).toContainText("TTFT 1.05 秒");
     await expect(summary).toContainText(label);
@@ -98,6 +101,7 @@ test("native desktop text updates summary and the same message row without a gat
   page,
 }) => {
   await page.goto("/tests/frontend/tables.html?mode=activity#/overview");
+  await openRecentActivities(page);
   await page.evaluate(() => {
     window.activityCase = "native-desktop-live";
   });
@@ -124,7 +128,7 @@ test("native desktop text updates summary and the same message row without a gat
     window.activityCase = "native-desktop-thinking";
   });
   await expect(summary).toContainText("思考中");
-  await expect(row.getByRole("cell").nth(3)).toContainText("思考中");
+  await expect(row.getByRole("cell").nth(4)).toContainText("思考中");
   await expect(summary).not.toContainText("42.0 Token/s");
   await expect(row).toContainText("TTFT 1.05 秒");
   await page.evaluate(() => {
@@ -146,6 +150,7 @@ test("the first native reasoning token updates TTFT while the same turn is still
   page,
 }) => {
   await page.goto("/tests/frontend/tables.html?mode=activity#/overview");
+  await openRecentActivities(page);
   await page.evaluate(() => {
     window.activityCase = "native-desktop-waiting";
   });
@@ -179,6 +184,7 @@ test("joining after the native first token explicitly waits for attribution inst
   page,
 }) => {
   await page.goto("/tests/frontend/tables.html?mode=activity#/overview");
+  await openRecentActivities(page);
   await page.evaluate(() => {
     window.activityCase = "native-desktop-late";
   });
@@ -199,6 +205,7 @@ test("restored native TTFT remains visible through reconnection and new text res
   page,
 }) => {
   await page.goto("/tests/frontend/tables.html?mode=activity#/overview");
+  await openRecentActivities(page);
   await page.evaluate(() => {
     window.activityCase = "native-desktop-restored";
   });
@@ -226,6 +233,7 @@ test("completed native averages survive restart and an offline owner without bec
   page,
 }) => {
   await page.goto("/tests/frontend/tables.html?mode=activity#/overview");
+  await openRecentActivities(page);
   const feed = page.getByRole("region", { name: "当前活动列表", exact: true });
   const row = feed.getByRole("row").filter({ hasText: "原生采集同一条消息" });
   for (const scenario of [

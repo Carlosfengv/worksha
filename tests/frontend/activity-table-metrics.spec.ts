@@ -1,17 +1,19 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openRecentActivities } from "./overview-helpers";
 import type {} from "./activity-fixture";
 
 const feed = (page: Page) =>
   page.getByRole("region", { name: "当前活动列表", exact: true });
 const ttft = (row: ReturnType<Page["getByRole"]>) =>
-  row.getByRole("cell").nth(2);
-const rate = (row: ReturnType<Page["getByRole"]>) =>
   row.getByRole("cell").nth(3);
+const rate = (row: ReturnType<Page["getByRole"]>) =>
+  row.getByRole("cell").nth(4);
 async function load(page: Page, value: Window["activityCase"]) {
   await page.goto("/tests/frontend/tables.html?mode=activity#/overview");
   await page.evaluate((value) => {
     window.activityCase = value;
   }, value);
+  await openRecentActivities(page);
 }
 
 test("reasoning and tool arguments stream before the conclusion, and continuations keep the message TTFT", async ({
@@ -35,14 +37,14 @@ test("reasoning and tool arguments stream before the conclusion, and continuatio
   await expect(ttft(row)).toContainText("消息首出 · 网关实测");
   await expect(firstOutput).toContainText("0.450"); // Includes the other request's real zero.
   await expect(totalRate).toContainText("37.0");
-  await row.focus();
+  await row.getByRole("link").focus();
   await page.evaluate(() => {
     window.activityCase = "table-metrics-output-tools";
   });
   await expect(rate(row)).toContainText("实时 64.0 Token/s");
   await expect(totalRate).toContainText("64.0");
   await expect(ttft(row)).toContainText("TTFT 0.900 秒");
-  await expect(row).toBeFocused();
+  await expect(row.getByRole("link")).toBeFocused();
   await page.evaluate(() => {
     window.activityCase = "table-metrics-output-waiting";
   });
@@ -67,7 +69,7 @@ test("table shows per-request live TTFT and Token/s, including real zeros, and r
     feed(page).getByRole("columnheader", { name: "TTFT", exact: true }),
   ).toBeVisible();
   await expect(
-    feed(page).getByRole("columnheader", { name: "Token 速率", exact: true }),
+    feed(page).getByRole("columnheader", { name: "Token/s", exact: true }),
   ).toBeVisible();
   await expect(ttft(row)).toContainText("TTFT 1.20 秒");
   await expect(ttft(row)).toContainText("网关实测 · 当前请求");
@@ -101,10 +103,9 @@ test("native-only table keeps metric columns and shows reported first-output tim
   await expect(ttft(unknown)).toContainText("来源未提供");
   await expect(ttft(unknown)).not.toContainText(" 秒");
   await expect(
-    feed(page).getByRole("columnheader", { name: "Token 速率", exact: true }),
+    feed(page).getByRole("columnheader", { name: "Token/s", exact: true }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "查看连接与观测", exact: true }).click();
-  await expect(page).toHaveURL(/#\/agents$/);
+  await expect(row.getByRole("link")).toHaveAttribute("href", /#\/sessions\//);
 });
 
 test("latest native completion keeps its own metrics and hides older requests in the same Session", async ({
@@ -157,7 +158,7 @@ test("stale live metrics clear Token/s but retain the measured first-output timi
   await expect(rate(row)).toContainText("速度待更新");
   await expect(rate(row)).not.toContainText("20.0 Token/s");
   await expect(ttft(row)).toContainText("TTFT 1.20 秒");
-  await expect(ttft(row)).not.toContainText("当前请求");
+  await expect(ttft(row)).not.toContainText("当前活动");
 });
 
 test("public reasoning and tool arguments do not become text Token/s while TTFT remains measurable", async ({
@@ -222,10 +223,10 @@ test("non-streaming timings explain the missing first output while keeping measu
   await expect(ttft(row)).toContainText("非流式响应未提供时序");
   await expect(rate(row)).toContainText("吞吐 8.0 Token/s");
   await expect(rate(row)).not.toContainText("不可测");
-  await expect(row.locator("time")).toHaveText(/\d+ 秒前请求/);
+  await expect(row.locator("time:visible")).toHaveText(/\d+ 秒前活动/);
 });
 
-test("request ages advance through seconds, minutes and hours while an overview read is pending", async ({
+test("activity ages advance through seconds, minutes and hours while an overview read is pending", async ({
   page,
 }) => {
   const now = new Date("2026-10-24T02:00:00Z");
@@ -243,17 +244,19 @@ test("request ages advance through seconds, minutes and hours while an overview 
     new Date(now.getTime() + 1000).toISOString(),
   );
   const row = feed(page).getByRole("row").filter({ hasText: "实时请求指标" });
-  const time = row.locator("time");
-  await expect(time).toHaveText("59 秒前请求");
-  await expect(time).toHaveAttribute("datetime", "2026-10-24T02:00:01.000Z");
-  await expect(time).toHaveAttribute("title", /2026\/10\/24.*10:00:01/);
+  const time = row.locator("time:visible");
+  await expect(time).toHaveText(/\d+ 秒前活动/);
+  const updatedAt = await time.getAttribute("datetime");
+  expect(Date.parse(updatedAt!)).toBeGreaterThan(now.getTime() + 50000);
+  await expect(row.locator("[data-activity-elapsed]")).toContainText("59 秒");
   await page.evaluate(() => {
     window.overviewDelay = 3600000;
   });
-  await page.clock.fastForward(2000);
-  await expect(time).toHaveText("1 分钟前请求");
+  await page.clock.fastForward(61000);
+  await expect(time).toHaveText("1 分钟前活动");
   await page.clock.fastForward(3540000);
-  await expect(time).toHaveText("1 小时前请求");
+  await expect(time).toHaveText("1 小时前活动");
+  await expect(time).toHaveAttribute("datetime", updatedAt!);
   await expect(rate(row)).not.toContainText("20.0 Token/s");
   await expect(ttft(row)).toContainText("TTFT 1.20 秒");
   await expect(row).toHaveCount(1);
@@ -264,6 +267,6 @@ test("native-only rows label the event age as activity and never invent a reques
 }) => {
   await load(page, "table-native-metrics");
   const row = feed(page).getByRole("row").filter({ hasText: "原生首出已上报" });
-  await expect(row.locator("time")).toHaveText(/\d+ 秒前活动/);
-  await expect(row.locator("time")).not.toContainText("请求");
+  await expect(row.locator("time:visible")).toHaveText(/\d+ 秒前活动/);
+  await expect(row.locator("time:visible")).not.toContainText("请求");
 });

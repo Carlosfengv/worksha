@@ -278,3 +278,24 @@ test("server pages retain the same snapshot and full-scope totals across back na
     ),
   ).toEqual([]);
 });
+
+test("a session link opens the scoped conversation even outside the first page", async ({
+  page,
+}) => {
+  const url =
+    "/tests/frontend/domain-readonly.html?unified=1&many=1&directSession=org.example.reader%3APaged-080";
+  await page.goto(url);
+  await expect(page.getByRole("cell", { name: /Paged-000/ })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "统一会话正文" }),
+  ).toContainText("Paged-080 private body");
+  await page.goto(url + "&unapproved=1");
+  await expect(
+    page.getByText("当前快照中无法读取原会话", { exact: false }),
+  ).toBeVisible();
+  expect(
+    (await page.evaluate(() => window.domainFixture.calls)).filter((call) =>
+      call.startsWith("body:"),
+    ),
+  ).toEqual([]);
+});

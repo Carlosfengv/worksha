@@ -8,6 +8,8 @@ test("overview separates actual zero, sub-micro estimates and unknown fees while
     name: "调用趋势与占比",
     exact: true,
   });
+  await page.getByLabel("调用统计来源").click();
+  await page.getByRole("option", { name: "原生响应记录", exact: true }).click();
   await page.getByRole("tab", { name: "费用", exact: true }).click();
   await expect(analysis.getByLabel("费用构成")).toContainText(
     "实际 — · 估算 — · 2 次费用未知",
@@ -20,7 +22,7 @@ test("overview separates actual zero, sub-micro estimates and unknown fees while
   );
   await expect(analysis).toContainText("费用未知 / 部分");
   await expect(
-    analysis.getByRole("heading", { name: "Agent占比 · 费用" }),
+    analysis.getByRole("region", { name: "Agent占比 · 费用" }),
   ).toBeVisible();
   await page.getByLabel("时间范围").click();
   await page.getByRole("option", { name: "最近 6 小时", exact: true }).click();

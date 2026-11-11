@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openRecentActivities } from "./overview-helpers";
 import type {} from "./activity-fixture";
 
 const feed = (page: Page) =>
@@ -24,6 +25,7 @@ async function load(
   await page.evaluate((mode) => {
     window.activityCase = mode;
   }, mode);
+  await openRecentActivities(page);
 }
 
 test("message starts order sessions while thinking, tools, text and completion only update their rows", async ({
@@ -33,29 +35,30 @@ test("message starts order sessions while thinking, tools, text and completion o
   await expect.poll(() => titles(page)).toEqual(initial);
   const older = feed(page).getByRole("row").filter({ hasText: "较早消息" });
   const gateway = feed(page).getByRole("row").filter({ hasText: "网关会话" });
-  const timestamp = await older.locator("time").getAttribute("datetime");
-  await expect(gateway.locator("time")).toHaveAttribute(
-    "datetime",
-    await page.evaluate(() =>
-      new Date(window.activityMessageBase! - 30000).toISOString(),
-    ),
-  );
+  const timestamp = await older
+    .locator("[data-activity-elapsed]")
+    .getAttribute("title");
+  const gatewayStart = await gateway
+    .locator("[data-activity-elapsed]")
+    .getAttribute("title");
+  expect(gatewayStart).toMatch(/本轮开始/);
   await page.evaluate(() => {
     window.activityCase = "message-order-tools";
   });
   await expect(older).toContainText("Read、Grep");
   await expect.poll(() => titles(page)).toEqual(initial);
-  await expect(older.locator("time")).toHaveAttribute("datetime", timestamp!);
+  await expect(older.locator("[data-activity-elapsed]")).toHaveAttribute(
+    "title",
+    timestamp!,
+  );
   await page.evaluate(() => {
     window.activityCase = "message-order-completed";
   });
   await expect(older).toContainText("已结束 · 等待输入");
   await expect.poll(() => titles(page)).toEqual(initial);
-  await expect(gateway.locator("time")).toHaveAttribute(
-    "datetime",
-    await page.evaluate(() =>
-      new Date(window.activityMessageBase! - 30000).toISOString(),
-    ),
+  await expect(gateway.locator("[data-activity-elapsed]")).toHaveAttribute(
+    "title",
+    gatewayStart!,
   );
 });
 
@@ -104,12 +107,12 @@ test("step updates keep pagination and the focused row even when missing message
     .poll(() => titles(page))
     .toEqual(["更早消息 80", "可读摘要，消息开始时间未知"]);
   const row = feed(page).getByRole("row").filter({ hasText: "消息时间未知" });
-  await row.focus();
+  await row.getByRole("link").focus();
   await page.evaluate(() => {
     window.activityCase = "message-order-page-tools";
   });
   await expect(row).toContainText("Bash");
-  await expect(row).toBeFocused();
+  await expect(row.getByRole("link")).toBeFocused();
   await expect
     .poll(() => titles(page))
     .toEqual(["更早消息 80", "可读摘要，消息开始时间未知"]);

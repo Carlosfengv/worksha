@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openRecentActivities } from "./overview-helpers";
 import type {} from "./activity-fixture";
 
 const summary = (page: Page) =>
@@ -71,6 +72,7 @@ test("summary counts Sessions once and sums simultaneous measured text rates", a
   await expect(
     models.getByRole("listitem").filter({ hasText: "deepseek-v4-pro" }),
   ).toContainText("40.0 Token/s");
+  await models.scrollIntoViewIfNeeded();
   await expect(summary(page).locator("animateMotion").first()).toBeAttached();
   await summary(page).getByRole("button", { name: "暂停活动流动效果" }).click();
   await expect(summary(page).locator("animateMotion")).toHaveCount(0);
@@ -97,6 +99,7 @@ test("message steps remain one executing Session and completion clears the live 
   await expect(
     summary(page).getByText("当前没有观测到正在执行的任务。", { exact: true }),
   ).toBeVisible();
+  await openRecentActivities(page);
   await expect(
     page
       .getByRole("region", { name: "当前活动列表", exact: true })

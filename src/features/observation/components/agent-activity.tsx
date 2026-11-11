@@ -370,7 +370,7 @@ export function activityRows(
             ? (currentRequest.sampling?.windowMs ?? 1000)
             : (linkedNative?.realtime?.sampling?.windowMs ?? 1000),
           taskElapsed: elapsedLabel(
-            message.startedAt,
+            message.startedAt ?? (!message.sessionId ? winner.requestAt : null),
             winner.active ? null : winner.time,
             now,
           ),

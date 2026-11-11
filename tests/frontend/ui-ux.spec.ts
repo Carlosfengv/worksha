@@ -41,7 +41,7 @@ test("overview prioritizes live records and keyboard navigation while keeping hi
   await expect(
     page.getByRole("article", { name: "Claude Code CLI实时活动", exact: true }),
   ).not.toBeVisible();
-  const task = table.getByRole("row").filter({ hasText: "修复登录" });
+  const task = table.getByRole("link", { name: "修复登录", exact: true });
   await task.focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/sessions\/claude%3Aa/);

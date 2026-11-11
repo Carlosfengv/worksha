@@ -70,21 +70,36 @@ test("overview rankings retain all groups and drill into the displayed source an
     name: "调用趋势与占比",
     exact: true,
   });
+  await page.getByLabel("调用统计来源").click();
+  await page.getByRole("option", { name: "原生响应记录", exact: true }).click();
   await expect(analysis.getByText("156", { exact: true })).toBeVisible();
   const agents = page.getByRole("region", {
     name: "Agent占比 · 调用次数",
     exact: true,
   });
   await expect(
-    agents.getByRole("button", { name: /^unmeasured/ }),
+    agents
+      .getByRole("listitem")
+      .filter({ has: page.getByRole("link", { name: "unmeasured" }) }),
   ).toContainText("—");
+  await page.getByLabel("趋势分组").click();
+  await page.getByRole("option", { name: "按模型", exact: true }).click();
+  const models = page.getByRole("region", {
+    name: "模型占比 · 调用次数",
+    exact: true,
+  });
   await expect(
-    page
-      .getByRole("region", { name: "模型占比 · 调用次数", exact: true })
-      .getByRole("button", { name: /^fixture-model-9/ }),
+    models
+      .getByRole("listitem")
+      .filter({ has: page.getByRole("link", { name: "fixture-model-9" }) }),
   ).toContainText("0");
-  await agents.scrollIntoViewIfNeeded();
-  await agents.getByRole("button", { name: /^Claude Code CLI/ }).click();
+  const groupSelect = page.getByRole("combobox", { name: "趋势分组" });
+  await expect(groupSelect).toHaveAttribute("aria-expanded", "false");
+  await groupSelect.click();
+  await page.getByRole("option", { name: "按 Agent", exact: true }).click();
+  await agents
+    .getByRole("link", { name: "Claude Code CLI", exact: true })
+    .click();
   await expect(page).toHaveURL(/#\/requests\?/);
   await expect(page).toHaveURL(/source=native/);
   await expect(page).toHaveURL(/agent=claude-code-cli/);

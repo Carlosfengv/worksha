@@ -1,3 +1,5 @@
+export const activityWindowSeconds = 3 * 60 * 60;
+
 interface SessionActivity {
   id: string;
   sessionId: string | null;

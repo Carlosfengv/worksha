@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openRecentActivities } from "./overview-helpers";
 import type {} from "./activity-fixture";
 const feed = (page: Page) =>
   page.getByRole("region", { name: "当前活动列表", exact: true });
@@ -14,6 +15,7 @@ async function mode(page: Page, value: Window["activityCase"]) {
 async function load(page: Page) {
   await page.goto("/tests/frontend/tables.html?mode=activity#/overview");
   await mode(page, "message-row-thinking");
+  await openRecentActivities(page);
   await expect(rows(page)).toHaveCount(1);
 }
 test("one message keeps the same row through thinking, tools, returns, seven requests and completion", async ({
@@ -22,8 +24,9 @@ test("one message keeps the same row through thinking, tools, returns, seven req
   await load(page);
   const row = rows(page).first();
   await expect(row).toContainText("思考中");
-  const stamp = await row.locator("time").getAttribute("datetime");
-  await row.focus();
+  const elapsed = row.locator("[data-activity-elapsed]");
+  const stamp = await elapsed.getAttribute("title");
+  await row.getByRole("link").focus();
   for (const [value, text] of [
     ["message-row-tools", "已提出调用：Read、Grep"],
     ["message-row-returned", "Read 已返回；仍待返回：Grep"],
@@ -33,20 +36,17 @@ test("one message keeps the same row through thinking, tools, returns, seven req
     await mode(page, value);
     await expect(row).toContainText(text);
     await expect(rows(page)).toHaveCount(1);
-    await expect(row).toBeFocused();
-    await expect(row.locator("time")).toHaveAttribute("datetime", stamp!);
+    await expect(row.getByRole("link")).toBeFocused();
+    await expect(elapsed).toHaveAttribute("title", stamp!);
   }
   await expect(row.getByRole("cell").first().locator("p").first()).toHaveText(
     "检查登录",
   );
   await expect(row).toContainText("会话：消息归并会话");
   await expect(row).toContainText("均速 36.0 Token/s");
-  const recent = page.locator("section").filter({
-    has: page.getByRole("heading", { name: "最近活动", exact: true }),
-  });
-  await expect(recent.getByRole("listitem")).toHaveCount(1);
-  await expect(recent).toContainText("检查登录");
-  await expect(recent).not.toContainText("消息归并会话");
+  await expect(
+    page.getByRole("tab", { name: /最近 3 小时.*1/ }),
+  ).toHaveAttribute("aria-selected", "true");
 });
 test("the next message replaces the same Session row without reusing the previous metrics or losing focus", async ({
   page,
@@ -57,14 +57,14 @@ test("the next message replaces the same Session row without reusing the previou
   const row = rows(page).first();
   await expect(row).toContainText("TTFT 0.700 秒");
   await expect(row).toContainText("均速 36.0 Token/s");
-  await row.focus();
+  await row.getByRole("link").focus();
   await mode(page, "message-row-next");
   await expect(rows(page)).toHaveCount(1);
   await expect(row).toContainText("收到新的用户消息");
   await expect(row).not.toContainText("已结束 · 等待输入");
   await expect(row).not.toContainText("TTFT 0.700 秒");
   await expect(row).not.toContainText("36.0 Token/s");
-  await expect(row).toBeFocused();
+  await expect(row.getByRole("link")).toBeFocused();
   await expect(row.getByRole("cell").first().locator("p").first()).toHaveText(
     "检查登录",
   );
@@ -92,12 +92,9 @@ test("legacy requests in the same Session display only the latest resolved user 
   await expect(
     rows(page).first().getByRole("cell").first().locator("p").first(),
   ).toHaveText("检查登录");
-  await expect(rows(page).first().locator("time")).toHaveAttribute(
-    "datetime",
-    await page.evaluate(() =>
-      new Date(window.activityMessageBase! - 20000).toISOString(),
-    ),
-  );
+  await expect(
+    rows(page).first().locator("[data-activity-elapsed]"),
+  ).toHaveAttribute("title", /本轮开始/);
   await expect(feed(page)).not.toContainText("核对设置");
   await expect(feed(page)).not.toContainText("消息归属待确认");
 });

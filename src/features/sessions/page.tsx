@@ -70,8 +70,9 @@ export function SessionsPage(props: SessionProps) {
   )
     return (
       <UnifiedWorkspace
-        key={props.initialDomainSource}
+        key={`${props.initialDomainSource ?? ""}:${props.selectedId ?? ""}`}
         initialSource={props.initialDomainSource}
+        initialSession={props.selectedId}
         defaultAll={!props.initialDomainSource}
       />
     );

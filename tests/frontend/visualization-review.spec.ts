@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openRecentActivities } from "./overview-helpers";
 import type {} from "./activity-fixture";
 
 const overview =
@@ -12,6 +13,7 @@ test("completed activities stay visible with saved metrics and open the recorded
   page,
 }) => {
   await page.goto(overview);
+  await openRecentActivities(page);
   const activity = page.getByRole("region", {
     name: "当前活动列表",
     exact: true,
@@ -27,7 +29,7 @@ test("completed activities stay visible with saved metrics and open the recorded
     "5",
   );
   await expect(activity.getByRole("row")).toHaveCount(6);
-  await retained.click();
+  await retained.getByRole("link").click();
   await expect(page).toHaveURL(/#\/sessions\/claude%3Aa/);
 });
 
@@ -62,6 +64,7 @@ test("expired snapshots retain records while clearing claims of running activity
     name: "当前活动列表",
     exact: true,
   });
+  await openRecentActivities(page);
   await expect(activity).toContainText("修复登录");
   await page.evaluate(() => {
     window.activityCase = "stale";
@@ -120,6 +123,7 @@ test("disconnected native sources retain gateway history and explain a truly emp
     name: "当前活动列表",
     exact: true,
   });
+  await openRecentActivities(page);
   await expect(activity).toContainText("请求已完成");
   await page.evaluate(() => {
     window.activityCase = "empty";
@@ -140,6 +144,7 @@ test("gateway activity remains visible without native source authorization", asy
     name: "当前活动列表",
     exact: true,
   });
+  await openRecentActivities(page);
   await expect(activity).toContainText("Token/s");
   await expect(activity.getByRole("combobox", { name: "每页条数" })).toHaveText(
     "5",
@@ -164,6 +169,7 @@ for (const [client, name] of openCodeClients) {
       name: "当前活动列表",
       exact: true,
     });
+    await openRecentActivities(page);
     await expect(activity).toContainText("请求已完成");
     await page.evaluate(() => {
       window.activityCase = "opencode-tool";
@@ -178,7 +184,7 @@ for (const [client, name] of openCodeClients) {
     await expect(task).toContainText("TTFT 1.20 秒");
     await expect(activity.getByRole("row")).toHaveCount(2);
     await expect(task).not.toContainText("消息归属待确认");
-    await task.click();
+    await task.getByRole("link").click();
     await expect(page).toHaveURL(/#\/sessions\/opencode%3Ases_verified/);
   });
 }
@@ -195,15 +201,23 @@ for (const [metric, label] of [
     await page
       .getByRole("option", { name: "Claude Code CLI", exact: true })
       .click();
+    await page.getByLabel("调用统计来源").click();
+    await page
+      .getByRole("option", { name: "原生响应记录", exact: true })
+      .click();
+    await page.getByLabel("趋势分组").click();
+    await page.getByRole("option", { name: "按模型", exact: true }).click();
     await page.getByRole("tab", { name: label, exact: true }).click();
     const ranking = page.getByRole("region", {
       name: `模型占比 · ${label}`,
       exact: true,
     });
     await expect(
-      ranking.getByRole("button", { name: /^fixture-model-1 / }),
+      ranking.getByRole("link", { name: "fixture-model-1", exact: true }),
     ).toBeVisible();
-    await ranking.getByRole("button", { name: /^fixture-model-1 / }).click();
+    await ranking
+      .getByRole("link", { name: "fixture-model-1", exact: true })
+      .click();
     const params = new URLSearchParams(new URL(page.url()).hash.split("?")[1]);
     expect(params.get("metric")).toBe(metric);
     expect(params.get("source")).toBe("native");

@@ -67,11 +67,13 @@ const columnsFor = (
 ];
 export function UnifiedWorkspace({
   initialSource,
+  initialSession,
   initialProduct,
   defaultAll = false,
   manageHref = "#/plugins",
 }: {
   initialSource?: string;
+  initialSession?: string;
   initialProduct?: string;
   defaultAll?: boolean;
   manageHref?: string;
@@ -223,6 +225,15 @@ export function UnifiedWorkspace({
           search={query}
           names={names}
           productId={initialProduct ?? null}
+          directSession={
+            initialSession &&
+            initialSource &&
+            ids.length === 1 &&
+            ids[0] === initialSource &&
+            !query
+              ? { id: initialSession, sourceId: initialSource }
+              : undefined
+          }
         />
       ) : (
         <p className="p-4 text-body text-fg-muted">
@@ -237,16 +248,20 @@ function UnifiedPane({
   search,
   names,
   productId,
+  directSession,
 }: {
   scope: QueryScope;
   search: string;
   names: Record<string, string>;
   productId: string | null;
+  directSession?: { id: string; sourceId: string };
 }) {
   const [trail, setTrail] = useState<
     { snapshotToken: string | null; cursor: string | null }[]
   >([{ snapshotToken: null, cursor: null }]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(
+    directSession?.id ?? null,
+  );
   const [retryItem, setRetryItem] = useState<SessionItem | null>(null);
   const [facts, setFacts] = useState<{ sessionId: string | null } | null>(null);
   const [activity, setActivity] = useState<{ sessionId: string | null } | null>(
@@ -288,6 +303,21 @@ function UnifiedPane({
     )
       ? retryItem
       : null);
+  // The frozen conversation endpoint rechecks exact membership and authorization
+  // even when the linked session falls outside the first page.
+  const linked = directSession?.id === selected ? directSession : undefined;
+  const direct =
+    linked &&
+    page?.sourceStates.some(
+      (source) =>
+        source.sourceId === linked.sourceId &&
+        source.authorization === "authorized" &&
+        source.coverage !== "unavailable",
+    )
+      ? linked
+      : undefined;
+  const activeId = active?.record.id ?? direct?.id;
+  const activeSource = active?.sourceId ?? direct?.sourceId;
   const columns = useMemo(() => columnsFor(names), [names]);
   const { table } = useDataTable({
     data: rows,
@@ -300,9 +330,12 @@ function UnifiedPane({
     enableRowSelection: false,
     enableHiding: false,
   });
-  const refresh = (item: SessionItem | null = null) => {
+  const refresh = (
+    item: SessionItem | null = null,
+    id = item?.record.id ?? null,
+  ) => {
     setTrail([{ snapshotToken: null, cursor: null }]);
-    setSelected(item?.record.id ?? null);
+    setSelected(id);
     setRetryItem(item);
     void head.invalidate();
   };
@@ -426,28 +459,24 @@ function UnifiedPane({
             <Button
               variant="tertiary"
               size="sm"
-              onClick={() => setFacts({ sessionId: active?.record.id ?? null })}
+              onClick={() => setFacts({ sessionId: activeId ?? null })}
             >
-              {active ? "查看此会话项目与响应" : "查看项目与响应事实"}
+              {activeId ? "查看此会话项目与响应" : "查看项目与响应事实"}
             </Button>
             <Button
               variant="tertiary"
               size="sm"
-              onClick={() =>
-                setActivity({ sessionId: active?.record.id ?? null })
-              }
+              onClick={() => setActivity({ sessionId: activeId ?? null })}
             >
-              {active ? "查看此会话活动" : "查看活动快照"}
+              {activeId ? "查看此会话活动" : "查看活动快照"}
             </Button>
             <span className="text-label text-fg-muted">
               <Button
                 variant="tertiary"
                 size="sm"
-                onClick={() =>
-                  setRequests({ sessionId: active?.record.id ?? null })
-                }
+                onClick={() => setRequests({ sessionId: activeId ?? null })}
               >
-                {active ? "查看此会话请求" : "查看统一请求"}
+                {activeId ? "查看此会话请求" : "查看统一请求"}
               </Button>
             </span>
             <span className="text-label text-fg-muted">
@@ -455,21 +484,22 @@ function UnifiedPane({
             </span>
           </div>
         </div>
-        {page && active ? (
+        {page && activeId && activeSource ? (
           <UnifiedBody
-            key={`${page.snapshotToken}:${active.record.id}`}
+            key={`${page.snapshotToken}:${activeId}`}
             item={active}
+            sessionId={activeId}
             scope={scope}
             snapshotToken={page.snapshotToken}
-            sourceName={names[active.sourceId] ?? active.sourceId}
-            onRetry={() => refresh(active)}
+            sourceName={names[activeSource] ?? activeSource}
+            onRetry={() => refresh(active, activeId)}
           />
         ) : (
           <p
             className="p-4 text-body text-fg-muted"
-            role={retryItem ? "status" : undefined}
+            role={retryItem || linked ? "status" : undefined}
           >
-            {retryItem
+            {retryItem || linked
               ? resource.loading
                 ? "正在刷新会话快照…"
                 : "当前快照中无法读取原会话，请检查来源状态或重新选择会话。"
@@ -506,12 +536,14 @@ function SourceSummaries({
 }
 function UnifiedBody({
   item,
+  sessionId,
   scope,
   snapshotToken,
   sourceName,
   onRetry,
 }: {
-  item: SessionItem;
+  item: SessionItem | null;
+  sessionId: string;
   scope: QueryScope;
   snapshotToken: string;
   sourceName: string;
@@ -519,7 +551,7 @@ function UnifiedBody({
 }) {
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const resource = useSharedQuery(unifiedConversationResource, {
-    sessionId: item.record.id,
+    sessionId,
     snapshotToken,
     cursor: cursors[cursors.length - 1],
     anchor: null,
@@ -535,10 +567,13 @@ function UnifiedBody({
     >
       <div className="shrink-0 space-y-2 border-b border-border p-3">
         <h3 className="break-words text-body font-medium">
-          {item.record.title}
+          {item?.record.title ?? "会话详情"}
         </h3>
         <p className="break-all text-label text-fg-muted">
-          {sourceName} · {domainNumber(item.record.usage.totalTokens)} Token
+          {sourceName}
+          {item
+            ? ` · ${domainNumber(item.record.usage.totalTokens)} Token`
+            : ""}
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -568,18 +603,20 @@ function UnifiedBody({
         aria-label="统一正文滚动区域"
         className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3"
       >
-        <ObjectContributionSlots
-          object={{
-            target: "session",
-            id: item.record.id,
-            origin: {
-              kind: "unified",
-              scope,
-              sourceId: item.sourceId,
-              snapshotToken,
-            },
-          }}
-        />
+        {item && (
+          <ObjectContributionSlots
+            object={{
+              target: "session",
+              id: item.record.id,
+              origin: {
+                kind: "unified",
+                scope,
+                sourceId: item.sourceId,
+                snapshotToken,
+              },
+            }}
+          />
+        )}
         {resource.loading && !body && <p role="status">正在读取正文…</p>}
         {resource.error ? (
           <div role="alert" className="space-y-2">

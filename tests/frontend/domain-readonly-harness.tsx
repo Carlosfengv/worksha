@@ -987,7 +987,10 @@ createRoot(document.getElementById("root")!).render(
       </div>
       <div className="min-h-0 flex-1">
         {params.get("unified") === "1" ? (
-          <UnifiedWorkspace initialSource={source} />
+          <UnifiedWorkspace
+            initialSource={source}
+            initialSession={params.get("directSession") ?? undefined}
+          />
         ) : (
           <p>原生会话保持</p>
         )}

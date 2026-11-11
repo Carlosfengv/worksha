@@ -16,6 +16,7 @@ export interface ReadResource<T> {
 interface Options {
   interval?: number | false;
   events?: readonly string[];
+  pollWhileHidden?: () => boolean;
 }
 
 export interface ReadResourceFamily<P, T> {
@@ -139,7 +140,8 @@ function entry<T>(
     return load();
   };
   const poll = () => {
-    if (document.visibilityState === "visible") void load(true);
+    if (document.visibilityState === "visible" || options.pollWhileHidden?.())
+      void load(true);
   };
   return {
     getSnapshot: () => snapshot,
