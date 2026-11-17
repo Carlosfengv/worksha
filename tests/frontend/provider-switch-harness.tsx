@@ -165,7 +165,7 @@ providersApi.providerStatus = async (): Promise<ProviderStatus> => {
   return structuredClone({
     localTokenProtocol: {
       version: 2,
-      schemaVersion: 16,
+      schemaVersion: 18,
       storeId: "00000000-0000-4000-8000-000000000001",
       namespaceId: "00000000-0000-4000-8000-000000000002",
       namespaceState: "active",

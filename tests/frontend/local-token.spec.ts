@@ -312,9 +312,9 @@ test("old and future ownership schemas cannot admit a new source", async ({
   await open(page);
   const valid = await page.evaluate(() => {
     const protocol = window.localTokenFixture.snapshot().protocol;
-    return [15, 16, 17].map((schemaVersion) =>
+    return [15, 16, 17, 18, 19].map((schemaVersion) =>
       window.localTokenFixture.protocolValid({ ...protocol, schemaVersion }),
     );
   });
-  expect(valid).toEqual([false, true, false]);
+  expect(valid).toEqual([false, true, true, true, false]);
 });
