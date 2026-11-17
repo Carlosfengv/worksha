@@ -2,6 +2,8 @@ use super::*;
 use chrono::{DateTime, Utc};
 #[path = "export_tests.rs"]
 mod export_tests;
+#[path = "mixed_capacity_tests.rs"]
+mod mixed_capacity_tests;
 #[path = "native_bulk_tests.rs"]
 mod native_bulk_tests;
 #[path = "native_usage_tests.rs"]

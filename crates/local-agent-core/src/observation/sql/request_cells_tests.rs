@@ -2,7 +2,7 @@ use super::*;
 use crate::sessions::CallCatalog;
 use std::sync::Arc;
 
-fn catalog(files: usize, calls: usize) -> crate::projects::ProjectCatalog {
+pub(super) fn catalog(files: usize, calls: usize) -> crate::projects::ProjectCatalog {
     let mut c = crate::associated_cost_tests::catalog();
     let prototype = c.calls[0].clone();
     c.calls = CallCatalog::shared((0..files).map(|file| {
