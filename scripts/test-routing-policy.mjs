@@ -392,7 +392,7 @@ try {
   assert.equal((await send([user("Trigger cooldown before a failed send checkpoint")])).model,"m1");
   const unsentProbe=await assertRecoveryPhase("cooling","upstream_rate_limit");
   faults[0]=0;await pause(Math.max(0,unsentProbe-Date.now())+50);seen.length=0;
-  const probeDb=new DatabaseSync(path.join(dir,"app/local-agent.sqlite3"));
+  const probeDb=new DatabaseSync(path.join(dir,"app/local-agent.sqlite3"), { timeout: 3000 });
   try {
     probeDb.exec("CREATE TRIGGER fixture_probe_checkpoint_failure BEFORE INSERT ON service_cooldown_probe_sends BEGIN SELECT RAISE(FAIL,'fixture checkpoint unavailable'); END");
     const session="ses_probeCheckpointUnavailable";
@@ -454,7 +454,7 @@ try {
   seen.length=0;
   assert.equal((await send([user("Complete recovery before testing ordinary interrupted replies")])).model,"m0");
   assert.deepEqual(seen.map(row=>row.i),[0]);
-  const database = new DatabaseSync(path.join(dir,"app/local-agent.sqlite3"));
+  const database = new DatabaseSync(path.join(dir,"app/local-agent.sqlite3"), { timeout: 3000 });
   const interruptedTurns = [
     { stream: false, fault: "truncated-success", prompt: "Interrupted JSON response" },
     { stream: true, fault: "truncated-success", prompt: "Interrupted event stream" },
@@ -526,7 +526,7 @@ try {
   }
   assert.equal((await send(unsentTurn,localRetrySession)).model,"m0");
   assert.deepEqual(seen.map(r=>r.i),[0]);
-  assert.deepEqual(replyOutcomes(database,localRetrySession),[["not_sent","committed"],["committed","committed"]]);
+  assert.deepEqual(replyOutcomes(database,localRetrySession),[["not_sent","committed"],["completed","committed"]]);
   const interruptedFallback = "ses_"+randomUUID().replaceAll("-", "");
   const fallbackTurn = [user("recover the unstarted backup after a confirmed throttle")];
   await publish({maxAttempts:2});

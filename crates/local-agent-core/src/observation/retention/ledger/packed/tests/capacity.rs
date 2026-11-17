@@ -29,7 +29,7 @@ fn packed_copy_bytes(db: &Connection, path: &Path, kind: PackedKind) -> u64 {
     tools::create_staging(&copy).unwrap();
     // Measurement copy only. Keep empty staging tables so this cannot be
     // mistaken for a published artifact: the normal draft reader must reject it.
-    copy.execute_batch("DELETE FROM retention_fact_staging;DELETE FROM retention_tool_staging;DROP TABLE IF EXISTS model_observations;DROP TABLE IF EXISTS retention_source_clock;DROP TABLE IF EXISTS connector_calls;VACUUM;").unwrap();
+    copy.execute_batch("DELETE FROM retention_fact_staging;DELETE FROM retention_tool_staging;DROP TABLE IF EXISTS model_observations;DROP TABLE IF EXISTS retention_source_clock;DROP TABLE IF EXISTS ext_adv_connector_calls;VACUUM;").unwrap();
     assert_eq!(
         copy.query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0))
             .unwrap(),
@@ -60,7 +60,7 @@ fn source_hash(db: &Connection, kind: PackedKind) -> String {
     let sql = match kind {
         PackedKind::Gateway => "SELECT id,value FROM model_observations ORDER BY id",
         PackedKind::ConnectorTool => {
-            "SELECT CAST(id AS TEXT),plugin_id || char(0) || identity || char(0) || record FROM connector_calls ORDER BY id"
+            "SELECT CAST(id AS TEXT),plugin_id || char(0) || identity || char(0) || record FROM ext_adv_connector_calls ORDER BY id"
         }
     };
     let mut stmt = db.prepare(sql).unwrap();
@@ -168,9 +168,9 @@ fn measure_tools(count: i64) -> Value {
         PackedKind::ConnectorTool,
     );
     assert_eq!(source_hash(&db, PackedKind::ConnectorTool), before);
-    let result = json!({"kind":"connector_tool","facts":count,"rawDatabaseBytes":raw_bytes,"rawWalAfterCheckpoint":raw_wal,"databaseWithStagingBytes":with_stage,"databaseWithStagingAndPackedBytes":migration_peak,"sampledWalPeakBytes":wal_peak,"packedOnlyMeasurementCopyBytes":packed_bytes,"restoredWorkingDatabaseLogicalBytes":restored_bytes,"sourceRowsByteHashUnchanged":true,"packedToRawRatio":packed_bytes as f64/raw_bytes as f64,"stagingMs":staging_ms,"packingMs":packing_ms,"restoredSummaryMs":preview_ms,"totalInstrumentedMs":start.elapsed().as_millis(),"allSummaryFieldsExact":true,"originalSourceRows":db.query_row("SELECT count(*) FROM connector_calls",[],|r|r.get::<_,i64>(0)).unwrap(),"sourceAndStagingDeletedOnlyInMeasurementCopy":true,"publishedArtifact":false,"sourceFixtureHasCapacityTrigger":false});
+    let result = json!({"kind":"connector_tool","facts":count,"rawDatabaseBytes":raw_bytes,"rawWalAfterCheckpoint":raw_wal,"databaseWithStagingBytes":with_stage,"databaseWithStagingAndPackedBytes":migration_peak,"sampledWalPeakBytes":wal_peak,"packedOnlyMeasurementCopyBytes":packed_bytes,"restoredWorkingDatabaseLogicalBytes":restored_bytes,"sourceRowsByteHashUnchanged":true,"packedToRawRatio":packed_bytes as f64/raw_bytes as f64,"stagingMs":staging_ms,"packingMs":packing_ms,"restoredSummaryMs":preview_ms,"totalInstrumentedMs":start.elapsed().as_millis(),"allSummaryFieldsExact":true,"originalSourceRows":db.query_row("SELECT count(*) FROM ext_adv_connector_calls",[],|r|r.get::<_,i64>(0)).unwrap(),"sourceAndStagingDeletedOnlyInMeasurementCopy":true,"publishedArtifact":false,"sourceFixtureHasCapacityTrigger":false});
     assert_eq!(
-        db.query_row("SELECT count(*) FROM connector_calls", [], |r| r
+        db.query_row("SELECT count(*) FROM ext_adv_connector_calls", [], |r| r
             .get::<_, i64>(0))
             .unwrap(),
         count

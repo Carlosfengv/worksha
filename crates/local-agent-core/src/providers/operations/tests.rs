@@ -502,6 +502,7 @@ fn v8_migration_preserves_identity_provider_and_private_backup_version() {
     store.save_provider(provider()).unwrap();
     let identity = store.database_id().unwrap();
     let before = serde_json::to_value(store.providers().unwrap()).unwrap();
+    crate::storage::strip_m1_fixture(&store.connection);
     store.connection.execute_batch("DROP TABLE local_token_cancellations;DROP TABLE local_token_owners;DROP TABLE local_token_values;DROP TABLE local_token_scope;DROP TABLE native_import_operations;DROP TABLE native_import_scope;DROP TABLE credential_legacy_operations;DROP TABLE credential_legacy_scope;DROP TABLE credential_recovery_values;DROP TABLE credential_recovery_scope;DROP TABLE provider_operations;DROP TABLE provider_operation_scope;PRAGMA user_version=8;").unwrap();
     drop(store);
     let upgraded = Store::open(&directory).unwrap();
@@ -609,6 +610,7 @@ fn invalid_v8_backup_prevents_migration_without_changing_provider_or_source_sche
             r.get(0)
         })
         .unwrap();
+    crate::storage::strip_m1_fixture(&store.connection);
     store.connection.execute_batch("DROP TABLE local_token_cancellations;DROP TABLE local_token_owners;DROP TABLE local_token_values;DROP TABLE local_token_scope;DROP TABLE native_import_operations;DROP TABLE native_import_scope;DROP TABLE credential_legacy_operations;DROP TABLE credential_legacy_scope;DROP TABLE credential_recovery_values;DROP TABLE credential_recovery_scope;DROP TABLE provider_operations;DROP TABLE provider_operation_scope;PRAGMA user_version=8;").unwrap();
     drop(store);
     let backup = directory.join("local-agent.pre-provider-operations-v8.sqlite3");

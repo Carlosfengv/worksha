@@ -161,12 +161,14 @@ impl Manager {
             expanded_bytes: pkg.expanded.to_string(),
         };
         let full = self.full.try_lock().checked("busy")?;
+        // The shared cache reconciles files from the prior process on first use.
+        full.db()?;
         let h = self.policy.try_lock().checked("busy")?;
         prune_reviews(&h)?;
         let n: i64 = h
             .db()?
             .query_row(
-                "SELECT count(*) FROM policy_reviews WHERE json_extract(record,'$.done')=0",
+                "SELECT count(*) FROM ext_policy_policy_reviews WHERE json_extract(record,'$.done')=0",
                 [],
                 |r| r.get(0),
             )
@@ -187,7 +189,7 @@ impl Manager {
         )?;
         h.db()?
             .execute(
-                "INSERT INTO policy_reviews VALUES(?1,?2)",
+                "INSERT INTO ext_policy_policy_reviews VALUES(?1,?2)",
                 params![
                     r.package_ref,
                     store::encode(&ReviewRecord {
@@ -215,7 +217,7 @@ impl Manager {
             let row: String = h
                 .db()?
                 .query_row(
-                    "SELECT record FROM policy_reviews WHERE id=?1",
+                    "SELECT record FROM ext_policy_policy_reviews WHERE id=?1",
                     [reference],
                     |r| r.get(0),
                 )
@@ -284,7 +286,7 @@ impl Manager {
             )?;
             let old: Option<String> = db
                 .query_row(
-                    "SELECT public_key FROM publishers WHERE id=?1",
+                    "SELECT public_key FROM ext_host_publishers WHERE id=?1",
                     [&p.manifest.publisher],
                     |r| r.get(0),
                 )
@@ -301,7 +303,7 @@ impl Manager {
             }
             if old.is_none() {
                 db.execute(
-                    "INSERT INTO publishers VALUES(?1,?2)",
+                    "INSERT INTO ext_host_publishers VALUES(?1,?2)",
                     params![p.manifest.publisher, p.signing_key],
                 )
                 .checked("unavailable")?;
@@ -313,14 +315,15 @@ impl Manager {
             let target = h.path(&p);
             super::super::installation::check_archives([&self.root, &h.cache], &target, p.bytes)?;
             full.write_private(&target, &bytes)?;
-            let tx = h.db()?.unchecked_transaction().checked("unavailable")?;
+            let db = h.db()?;
+            let tx = db.unchecked_transaction().checked("unavailable")?;
             tx.execute(
-                "INSERT OR REPLACE INTO policy_packages VALUES(?1,?2,?3)",
+                "INSERT OR REPLACE INTO ext_policy_policy_packages VALUES(?1,?2,?3)",
                 params![p.digest, p.manifest.id, store::encode(&p)?],
             )
             .checked("unavailable")?;
             tx.execute(
-                "INSERT OR IGNORE INTO policy_selections VALUES(?1,?2)",
+                "INSERT OR IGNORE INTO ext_policy_policy_selections VALUES(?1,?2)",
                 params![
                     p.manifest.id,
                     store::encode(&Selection {
@@ -333,7 +336,7 @@ impl Manager {
             )
             .checked("unavailable")?;
             tx.execute(
-                "UPDATE policy_reviews SET record=?2 WHERE id=?1",
+                "UPDATE ext_policy_policy_reviews SET record=?2 WHERE id=?1",
                 params![
                     reference,
                     store::encode(&ReviewRecord {
@@ -442,7 +445,10 @@ impl Manager {
             }
             if action == p::StateAction::Remove {
                 h.db()?
-                    .execute("DELETE FROM policy_packages WHERE digest=?1", [&q.digest])
+                    .execute(
+                        "DELETE FROM ext_policy_policy_packages WHERE digest=?1",
+                        [&q.digest],
+                    )
                     .checked("unavailable")?;
                 let file = h.path(&p);
                 if legacy::read_file(&file, legacy::MAX_ARCHIVE)
@@ -505,7 +511,7 @@ impl Manager {
             .db
             .lock()?
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM selections WHERE plugin_id=?1 AND enabled=1)",
+                "SELECT EXISTS(SELECT 1 FROM ext_host_selections WHERE plugin_id=?1 AND enabled=1)",
                 [&c.package.manifest.id],
                 |r| r.get(0),
             )
@@ -555,9 +561,9 @@ impl Manager {
 fn prune_reviews(h: &store::Host) -> Result<()> {
     super::super::full::store::directory(&h.cache)?;
     super::super::full::store::directory(&h.cache.join("staging"))?;
-    let mut statement = h
-        .db()?
-        .prepare("SELECT id,record FROM policy_reviews ORDER BY rowid LIMIT 65")
+    let db = h.db()?;
+    let mut statement = db
+        .prepare("SELECT id,record FROM ext_policy_policy_reviews ORDER BY rowid LIMIT 65")
         .checked("unavailable")?;
     let rows = statement
         .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
@@ -597,7 +603,7 @@ fn prune_reviews(h: &store::Host) -> Result<()> {
             Err(_) => return Err(fail("unavailable")),
         }
         h.db()?
-            .execute("DELETE FROM policy_reviews WHERE id=?1", [id])
+            .execute("DELETE FROM ext_policy_policy_reviews WHERE id=?1", [id])
             .checked("unavailable")?;
         removed += 1;
     }
@@ -630,7 +636,7 @@ mod review_tests {
         h.db()
             .unwrap()
             .execute(
-                "INSERT INTO policy_reviews VALUES(?1,?2)",
+                "INSERT INTO ext_policy_policy_reviews VALUES(?1,?2)",
                 params![id, store::encode(&record).unwrap()],
             )
             .unwrap();
@@ -656,14 +662,18 @@ mod review_tests {
         let count: i64 = h
             .db()
             .unwrap()
-            .query_row("SELECT count(*) FROM policy_reviews", [], |r| r.get(0))
+            .query_row("SELECT count(*) FROM ext_policy_policy_reviews", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(count, 9);
         prune_reviews(&h).unwrap();
         let count: i64 = h
             .db()
             .unwrap()
-            .query_row("SELECT count(*) FROM policy_reviews", [], |r| r.get(0))
+            .query_row("SELECT count(*) FROM ext_policy_policy_reviews", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(count, 1);
         assert!(

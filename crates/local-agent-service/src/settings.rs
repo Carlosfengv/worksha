@@ -131,3 +131,35 @@ pub(crate) async fn scoped_operation(
     .await
     .map_err(worker_error)?
 }
+
+pub(crate) async fn route_archive(
+    State(state): State<AppState>,
+    Json(request): Json<local_agent_core::routing::ArchiveRequest>,
+) -> ApiResult {
+    crate::blocking::run(move || {
+        use local_agent_core::providers::ConfigError;
+        let busy = || ConfigError::new("busy", "路由存储暂不可用，请重新预览");
+        let preview = if request.confirmation.is_none() {
+            state
+                .store_readers
+                .read(busy, |store| store.preview_route_archive(&request.store_id))
+        } else {
+            // Hold the gateway gate through the transaction, including when the
+            // client disconnects before the blocking worker returns its receipt.
+            let _archive = state.gateway.route_archive.try_write().map_err(|_| {
+                settings_error(SettingsError {
+                    code: "conflict",
+                    message: "仍有动态请求在途，请等待结束后重新预览",
+                })
+            })?;
+            state
+                .store
+                .lock()
+                .map_err(|_| crate::providers::error(busy()))?
+                .archive_route_sessions(&request)
+        };
+        json_value(preview.map_err(crate::providers::error)?)
+    })
+    .await
+    .map_err(worker_error)?
+}

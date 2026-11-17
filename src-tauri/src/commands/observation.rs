@@ -1,6 +1,30 @@
 use crate::backend::{Backend, query_path};
 use local_agent_core::model_usage::UsageQuery;
 use local_agent_core::observation::OverviewQuery;
+use local_agent_core::routing::loop_guard::Override;
+
+#[tauri::command]
+pub(crate) async fn query_loop_guards(
+    backend: tauri::State<'_, Backend>,
+) -> Result<serde_json::Value, String> {
+    backend
+        .request(reqwest::Method::GET, "/api/observation/loop-guards", None)
+        .await
+}
+
+#[tauri::command]
+pub(crate) async fn override_loop_guard(
+    backend: tauri::State<'_, Backend>,
+    input: Override,
+) -> Result<serde_json::Value, String> {
+    backend
+        .request(
+            reqwest::Method::POST,
+            "/api/observation/loop-guards/override",
+            Some(serde_json::to_value(input).map_err(|e| e.to_string())?),
+        )
+        .await
+}
 
 #[tauri::command]
 pub(crate) async fn query_agent_usage(

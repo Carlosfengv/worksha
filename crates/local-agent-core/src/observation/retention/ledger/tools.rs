@@ -79,7 +79,7 @@ fn columns(db: &Connection, table: &str, expected: &[&str]) -> Result<(), Ledger
 fn source_schema(db: &Connection) -> Result<(), LedgerError> {
     let (n, version): (i64, Option<i64>) = db
         .query_row(
-            "SELECT count(*),min(version) FROM extension_version",
+            "SELECT count(*),min(version) FROM ext_adv_extension_version",
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
@@ -92,7 +92,7 @@ fn source_schema(db: &Connection) -> Result<(), LedgerError> {
     }
     columns(
         db,
-        "connector_calls",
+        "ext_adv_connector_calls",
         &["id", "plugin_id", "identity", "record"],
     )
 }
@@ -115,7 +115,7 @@ impl<'db> FactLedger<'db> {
         Ok(ledger)
     }
 
-    /// IDs locate committed connector_calls rows. All source bytes and identity
+    /// IDs locate committed ext_adv_connector_calls rows. All source bytes and identity
     /// evidence are read under the same write transaction; callers supply no facts.
     pub fn stage_tool_batch(&self, ids: &[i64]) -> Result<StageResult, LedgerError> {
         if ids.len() > MAX_BATCH {
@@ -133,7 +133,7 @@ impl<'db> FactLedger<'db> {
                 return Err(LedgerError::InvalidQuery);
             }
             let (plugin,identity,raw):(String,String,Option<String>)=tx.query_row(
-                "SELECT CASE WHEN length(CAST(plugin_id AS BLOB))<=256 THEN plugin_id END,CASE WHEN length(CAST(identity AS BLOB))<=8192 THEN identity END,CASE WHEN length(CAST(record AS BLOB))<=?2 THEN record END FROM connector_calls WHERE id=?1",
+                "SELECT CASE WHEN length(CAST(plugin_id AS BLOB))<=256 THEN plugin_id END,CASE WHEN length(CAST(identity AS BLOB))<=8192 THEN identity END,CASE WHEN length(CAST(record AS BLOB))<=?2 THEN record END FROM ext_adv_connector_calls WHERE id=?1",
                 params![id,remaining as i64],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
             ).optional().map_err(unavailable)?.ok_or(LedgerError::SourceChanged)?;
             let raw = raw.ok_or(LedgerError::BatchLimit)?;

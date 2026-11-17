@@ -187,7 +187,6 @@ export function FullPluginManager({
                 : current.freshness === "stale"
                   ? "元数据已过期"
                   : "尚未读取"}
-            。重开后需要重新启用并选择资源。
           </p>
           {current.problem && (
             <p role="alert" className="text-label text-fg-muted">

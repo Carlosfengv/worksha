@@ -52,7 +52,12 @@ fn prune_empty(path: &Path) -> Result<()> {
 }
 
 pub(super) fn reconcile(host: &Host, db: &Connection) -> Result<()> {
-    let mut statement = db.prepare("SELECT plugin_id,digest,CASE WHEN length(record)<=65536 THEN record ELSE NULL END FROM full_packages WHERE removed=0 LIMIT 65").checked("unavailable")?;
+    let archived = host.root.parent().is_some_and(|data| {
+        ["plugin-source-host.sqlite3", "routing-policy.sqlite3"]
+            .iter()
+            .any(|name| super::super::store::has_archived_database(data, name))
+    });
+    let mut statement = db.prepare("SELECT plugin_id,digest,CASE WHEN length(record)<=65536 THEN record ELSE NULL END FROM ext_source_full_packages WHERE removed=0 LIMIT 65").checked("unavailable")?;
     let packages = statement
         .query_map([], |r| {
             Ok((
@@ -78,17 +83,21 @@ pub(super) fn reconcile(host: &Host, db: &Connection) -> Result<()> {
     if packages.len() > 64 {
         return Err(fail("resource_limit"));
     }
-    let committed = packages
+    let mut committed = packages
         .iter()
         .map(|p| host.package_path(p))
         .collect::<BTreeSet<_>>();
+    let policy_archives = super::super::policy::committed_archives(db, &host.root);
+    if let Ok(archives) = &policy_archives {
+        committed.extend(archives.iter().cloned());
+    }
     let mut ids = packages
         .iter()
         .map(|p| p.manifest.id.clone())
         .collect::<BTreeSet<_>>();
     let mut budget = 4096;
     let marker_entries = entries(&host.root.join("selected"), &mut budget)?;
-    for entry in &marker_entries {
+    for entry in marker_entries.iter().filter(|_| !archived) {
         let name = entry.file_name().to_string_lossy().into_owned();
         if legacy::valid_id(&name) {
             ids.insert(name);
@@ -99,7 +108,7 @@ pub(super) fn reconcile(host: &Host, db: &Connection) -> Result<()> {
     for id in ids {
         let text: Option<String> = db
             .query_row(
-                "SELECT record FROM full_selections WHERE plugin_id=?1",
+                "SELECT record FROM ext_source_full_selections WHERE plugin_id=?1",
                 [&id],
                 |r| r.get(0),
             )
@@ -124,8 +133,14 @@ pub(super) fn reconcile(host: &Host, db: &Connection) -> Result<()> {
     }
     // References from a previous process cannot authorize an install. Original input
     // packages are outside staging and are never touched by recovery.
-    db.execute("DELETE FROM full_reviews", [])
+    db.execute("DELETE FROM ext_source_full_reviews", [])
         .checked("unavailable")?;
+    if archived || policy_archives.is_err() {
+        for (id, digest) in desired {
+            host.selected_marker(&id, digest.as_deref())?;
+        }
+        return Ok(());
+    }
     for entry in entries(&host.root.join("staging"), &mut budget)? {
         let name = entry.file_name().to_string_lossy().into_owned();
         if name
@@ -211,9 +226,9 @@ impl Host {
         }
         let result = (|| {
             let tx = db.unchecked_transaction().checked("unavailable")?;
-            tx.execute("INSERT INTO full_packages VALUES(?1,?2,?3,0) ON CONFLICT(digest) DO UPDATE SET removed=0",params![p.digest,p.manifest.id,store::encode(p)?]).checked("unavailable")?;
+            tx.execute("INSERT INTO ext_source_full_packages VALUES(?1,?2,?3,0) ON CONFLICT(digest) DO UPDATE SET removed=0",params![p.digest,p.manifest.id,store::encode(p)?]).checked("unavailable")?;
             tx.execute(
-                "INSERT OR IGNORE INTO full_selections VALUES(?1,?2)",
+                "INSERT OR IGNORE INTO ext_source_full_selections VALUES(?1,?2)",
                 params![
                     p.manifest.id,
                     store::encode(&Selection::installed(&p.digest))?

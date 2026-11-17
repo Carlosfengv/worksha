@@ -142,6 +142,8 @@ pub struct SourceConsent {
     pub review_ref: String,
     pub enabled: bool,
     pub persist_metadata: bool,
+    #[serde(default)]
+    pub persist_watch: bool,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -159,6 +161,10 @@ pub struct SourceConsentReview {
     pub source_authorized: bool,
     pub unified_authorized: bool,
     pub persist_metadata: bool,
+    #[serde(default)]
+    pub persist_watch: bool,
+    #[serde(default)]
+    pub can_persist_watch: bool,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

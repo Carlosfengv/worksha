@@ -745,6 +745,7 @@ mod tests {
         let store = Store::open(&root.path().canonicalize().unwrap()).unwrap();
         let draft = super::super::tests::draft(&store);
         let service = store.save_model_service(draft).unwrap();
+        crate::storage::strip_m1_fixture(&store.connection);
         store
             .connection
             .execute_batch("DROP TABLE local_token_cancellations;DROP TABLE local_token_owners;DROP TABLE local_token_values;DROP TABLE local_token_scope;DROP TABLE native_import_operations;DROP TABLE native_import_scope;DROP TABLE credential_legacy_operations;DROP TABLE credential_legacy_scope;DROP TABLE credential_recovery_values;DROP TABLE credential_recovery_scope;DROP TABLE model_service_operations; DROP TABLE model_service_operation_scope; PRAGMA user_version=7;")

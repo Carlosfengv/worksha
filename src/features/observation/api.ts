@@ -10,7 +10,47 @@ import type {
   RequestDetailResponse,
   RequestQuery,
 } from "./request-types";
+
+type LoopAmounts = { tokens: number | null; usdMicros: number | null };
+export interface LoopAlert {
+  bindingId: string;
+  sessionId: string;
+  agentId: string;
+  bindingName: string | null;
+  turnDigest: string;
+  overrideEpoch: number;
+  status: "warned" | "tripped";
+  reason:
+    "toolErrorStreak" | "actionPingPong" | "unattendedBurn" | "dedupCapacity";
+  continuationSteps: number;
+  consecutiveToolErrors: number;
+  repeatedActions: number;
+  usage: {
+    committed: LoopAmounts;
+    reserved: LoopAmounts;
+    frozen: LoopAmounts;
+    usdUnknown: number;
+  };
+}
+
+export interface LoopOverride {
+  storeId: string;
+  operationId: string;
+  bindingId: string;
+  sessionId: string;
+  expectedTurnDigest: string;
+  expectedOverrideEpoch: number;
+}
+
 export const observationApi = {
+  loopGuards(): Promise<{ storeId: string; alerts: LoopAlert[] }> {
+    return command("query_loop_guards");
+  },
+  overrideLoopGuard(
+    input: LoopOverride,
+  ): Promise<{ operationId: string; overrideEpoch: number }> {
+    return command("override_loop_guard", { input });
+  },
   requestDashboard(query: RequestQuery): Promise<RequestDashboard> {
     return command("query_request_dashboard", { query });
   },

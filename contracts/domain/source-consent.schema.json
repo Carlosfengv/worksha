@@ -11,6 +11,10 @@
     "persistMetadata": {
       "type": "boolean"
     },
+    "persistWatch": {
+      "default": false,
+      "type": "boolean"
+    },
     "pluginId": {
       "type": "string"
     },

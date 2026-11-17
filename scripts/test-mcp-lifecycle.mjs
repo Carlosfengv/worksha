@@ -263,13 +263,13 @@ try {
     "cancelled tool metadata did not settle",
   );
   passed("持续工具进度不会推迟按 JSON-RPC ID 取消");
-  metadata = new DatabaseSync(path.join(data, "plugin-extensions.sqlite3"));
+  metadata = new DatabaseSync(path.join(data, "local-agent.sqlite3"));
   metadata.exec(
-    "CREATE TRIGGER reject_fixture_call BEFORE INSERT ON connector_calls BEGIN SELECT RAISE(ABORT,'fixture'); END;",
+    "CREATE TRIGGER reject_fixture_call BEFORE INSERT ON ext_adv_connector_calls BEGIN SELECT RAISE(ABORT,'fixture'); END;",
   );
   const callsBefore = toolCalls;
   const rowsBefore = metadata
-    .prepare("SELECT count(*) n FROM connector_calls")
+    .prepare("SELECT count(*) n FROM ext_adv_connector_calls")
     .get().n;
   const success = await rpc({
     jsonrpc: "2.0",
@@ -287,7 +287,7 @@ try {
   }, "metadata failure did not become an explicit gap");
   assert.equal(toolCalls, callsBefore + 1);
   assert.equal(
-    metadata.prepare("SELECT count(*) n FROM connector_calls").get().n,
+    metadata.prepare("SELECT count(*) n FROM ext_adv_connector_calls").get().n,
     rowsBefore,
   );
   metadata.exec("DROP TRIGGER reject_fixture_call");

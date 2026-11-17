@@ -481,6 +481,7 @@ fn actual_schema_12_layout_is_backed_up_and_recovery_identity_and_values_survive
             .collect::<Result<_, _>>()
             .unwrap()
     };
+    crate::storage::strip_m1_fixture(&f.store.connection);
     sql(
         &f,
         "DROP TABLE local_token_cancellations;DROP TABLE local_token_owners;DROP TABLE local_token_values;DROP TABLE local_token_scope;DROP TABLE native_import_operations;DROP TABLE native_import_scope;PRAGMA user_version=12;",

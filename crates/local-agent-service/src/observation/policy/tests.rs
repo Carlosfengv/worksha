@@ -836,7 +836,8 @@ impl Fixture {
                 .unwrap(),
             ),
             readonly: Arc::new(crate::plugin_host::ReadonlyRuntime::builtin().unwrap()),
-            store: Arc::new(Mutex::new(store)),
+            store_readers: crate::blocking::StoreReaders::new(&store).unwrap(),
+            store: local_agent_core::StoreWriter::new(store),
             token: Arc::new("isolated-responsiveness-token-00000000".into()),
             host: Arc::new(host.clone()),
             sessions: Arc::new(local_agent_core::sessions::NativeSessions::new(
@@ -1208,8 +1209,7 @@ async fn interrupted_stream_cooldown_waits_off_runtime_and_preserves_the_body_er
         "messages",
         "fixture-model-scope".into(),
         30,
-        None,
-        None,
+        StreamHealth::default(),
     );
     let reader = tokio::spawn(axum::body::to_bytes(response.into_body(), 1024));
     fixture.wait_for_store_worker().await;
@@ -1267,8 +1267,7 @@ async fn committed_stream_cooldown_requires_an_upstream_failure_or_missing_termi
             protocol,
             scope.into(),
             30,
-            None,
-            None,
+            StreamHealth::default(),
         );
         let bytes = axum::body::to_bytes(response.into_body(), 4096)
             .await
@@ -1299,8 +1298,7 @@ async fn committed_stream_cooldown_requires_an_upstream_failure_or_missing_termi
         "messages",
         "client-cancelled".into(),
         30,
-        None,
-        None,
+        StreamHealth::default(),
     );
     let mut body = response.into_body().into_data_stream();
     assert_eq!(body.next().await.unwrap().unwrap(), messages.as_bytes());

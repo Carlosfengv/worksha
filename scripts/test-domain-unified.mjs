@@ -223,7 +223,7 @@ try {
   );
   await boot();
   const originalSchema = readCoreSchema(path.join(data, "local-agent.sqlite3"));
-  assert.equal(originalSchema.version, 16);
+  assert.equal(originalSchema.version, 18);
   assert.equal((await fetch(base + "/api/domain/directory")).status, 401);
   assert.equal(
     (
@@ -296,10 +296,14 @@ try {
   assert.equal(firstReview.resourceLabel, source);
   assert.equal(firstReview.sourceAuthorized, true);
   assert.equal(firstReview.unifiedAuthorized, false);
-  const approve = { ...firstReview, enabled: true, persistMetadata: false };
-  delete approve.resourceLabel;
-  delete approve.sourceAuthorized;
-  delete approve.unifiedAuthorized;
+  const approve = {
+    pluginId: firstReview.pluginId,
+    digest: firstReview.digest,
+    reviewRef: firstReview.reviewRef,
+    enabled: true,
+    persistMetadata: false,
+    persistWatch: false,
+  };
   await api("/api/domain/consent", approve);
   await api("/api/domain/consent", approve);
   assert.equal(
@@ -582,7 +586,7 @@ try {
     originalSchema,
   );
   passed(
-    "resource revocation disables unified projection; native source bytes and schema 16 are preserved",
+    "resource revocation disables unified projection; native source bytes and schema 18 are preserved",
   );
   const oldDigest = plugin.digest;
   async function reconnect() {

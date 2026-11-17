@@ -9,6 +9,7 @@ import { recordAgentKey, type AgentDiscovery } from "@/shared/types/agent";
 import type { UnifiedActivityPage } from "../../../../contracts/domain/facts/types";
 import { activityWindowSeconds } from "../session-activities";
 import type { ModelObservation, Overview } from "../types";
+import { LoopGuardAttention } from "./loop-guard-attention";
 
 interface AttentionItem {
   id: string;
@@ -175,50 +176,54 @@ export function OverviewAttention({
     });
   }
 
-  if (items.length === 0) return null;
   return (
-    <aside
-      aria-labelledby="overview-attention-title"
-      className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-2"
-    >
-      <h3
-        id="overview-attention-title"
-        className="shrink-0 py-1 text-body font-medium"
-      >
-        需要关注
-      </h3>
-      <ul className="min-w-0 flex-1 basis-60 space-y-2">
-        {items.map(({ id, title, detail, status, href }) => (
-          <li key={id} className="min-w-0">
-            <InlineNotice className="w-full gap-x-2 px-2 text-label">
-              <Badge variant="plain" size="sm" status={status}>
-                {status === "danger" ? "失败" : "注意"}
-              </Badge>
-              <InlineNoticeContent className="flex flex-wrap items-baseline gap-x-2 gap-y-1 wrap-anywhere">
-                <span className="line-clamp-1 min-w-0 font-medium">
-                  {href ? (
-                    <a
-                      href={`#${href}`}
-                      className="rounded-sm underline decoration-border underline-offset-2 hover:decoration-current focus-visible:ring-1 focus-visible:ring-focus-ring"
-                      title={title}
-                    >
-                      {title}
-                    </a>
-                  ) : (
-                    title
-                  )}
-                </span>
-                <span className="min-w-0 text-fg-muted">{detail}</span>
-              </InlineNoticeContent>
-            </InlineNotice>
-          </li>
-        ))}
-        {failures.length > 3 && (
-          <li className="text-label text-fg-muted">
-            另有 {failures.length - 3} 条失败请求，可在请求页查看。
-          </li>
-        )}
-      </ul>
-    </aside>
+    <>
+      <LoopGuardAttention />
+      {items.length > 0 && (
+        <aside
+          aria-labelledby="overview-attention-title"
+          className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-2"
+        >
+          <h3
+            id="overview-attention-title"
+            className="shrink-0 py-1 text-body font-medium"
+          >
+            需要关注
+          </h3>
+          <ul className="min-w-0 flex-1 basis-60 space-y-2">
+            {items.map(({ id, title, detail, status, href }) => (
+              <li key={id} className="min-w-0">
+                <InlineNotice className="w-full gap-x-2 px-2 text-label">
+                  <Badge variant="plain" size="sm" status={status}>
+                    {status === "danger" ? "失败" : "注意"}
+                  </Badge>
+                  <InlineNoticeContent className="flex flex-wrap items-baseline gap-x-2 gap-y-1 wrap-anywhere">
+                    <span className="line-clamp-1 min-w-0 font-medium">
+                      {href ? (
+                        <a
+                          href={`#${href}`}
+                          className="rounded-sm underline decoration-border underline-offset-2 hover:decoration-current focus-visible:ring-1 focus-visible:ring-focus-ring"
+                          title={title}
+                        >
+                          {title}
+                        </a>
+                      ) : (
+                        title
+                      )}
+                    </span>
+                    <span className="min-w-0 text-fg-muted">{detail}</span>
+                  </InlineNoticeContent>
+                </InlineNotice>
+              </li>
+            ))}
+            {failures.length > 3 && (
+              <li className="text-label text-fg-muted">
+                另有 {failures.length - 3} 条失败请求，可在请求页查看。
+              </li>
+            )}
+          </ul>
+        </aside>
+      )}
+    </>
   );
 }

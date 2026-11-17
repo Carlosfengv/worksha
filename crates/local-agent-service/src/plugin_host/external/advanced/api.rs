@@ -164,9 +164,9 @@ impl Manager {
     pub(crate) fn extension_history(&self) -> Result<Value> {
         let store = self.advanced.lock().checked("unavailable")?;
         store.ready()?;
-        let mut stmt = store
-            .db()?
-            .prepare("SELECT record FROM plans ORDER BY rowid DESC LIMIT 64")
+        let db = store.db()?;
+        let mut stmt = db
+            .prepare("SELECT record FROM ext_adv_plans ORDER BY rowid DESC LIMIT 64")
             .checked("unavailable")?;
         let plans = stmt
             .query_map([], |r| r.get::<_, String>(0))
@@ -181,7 +181,7 @@ impl Manager {
             })
             .collect::<Result<Vec<_>>>()?;
         Ok(
-            json!({"plans":plans,"planCapacity":super::config::capacity(store.db()?)?,"dsh":"unverified","cleanup":"unsupported","redemption":"unsupported"}),
+            json!({"plans":plans,"planCapacity":super::config::capacity(&db)?,"dsh":"unverified","cleanup":"unsupported","redemption":"unsupported"}),
         )
     }
 }

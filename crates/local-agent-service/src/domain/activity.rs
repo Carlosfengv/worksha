@@ -291,7 +291,9 @@ fn query_with(
                     continue;
                 }
                 let task = match view {
-                    SourceView::Full(source) => session.and_then(|s| source.dsh_task(&s.native_id)),
+                    SourceView::Full(source) => {
+                        session.and_then(|s| source.reported_task(&s.native_id))
+                    }
                     _ => None,
                 };
                 let message_id = task.map(|task| {

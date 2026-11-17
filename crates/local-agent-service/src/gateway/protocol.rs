@@ -334,6 +334,19 @@ fn request_with_reasoning(
             tools.push(json!({"type":"function","function":{"name":tool["name"],"description":tool["description"],"parameters":tool["parameters"],"strict":tool["strict"]}}));
         }
         reasoning = v["reasoning"]["effort"].as_str().map(str::to_owned);
+    } else if source == "chat-completions" {
+        messages.extend(list(&v["messages"])?.iter().cloned());
+        if let Some(value) = v.get("tools").filter(|value| !value.is_null()) {
+            for tool in list(value)? {
+                if tool["type"] != "function"
+                    || !tool["function"]["name"].is_string()
+                    || !tool["function"]["parameters"].is_object()
+                {
+                    return Err("本机 Chat Completions 仅支持标准函数工具");
+                }
+                tools.push(tool.clone());
+            }
+        }
     } else {
         return Err("不支持的 Agent 输入协议");
     }
@@ -486,7 +499,7 @@ fn request_with_reasoning(
             out["tool_choice"] = if choice.is_string() {
                 json!({"type":match choice.as_str(){Some("auto")=>"auto",Some("required")=>"any",Some("none")=>"none",_=>return Err("工具选择方式不可转换")}})
             } else if choice["type"] == "function" {
-                json!({"type":"tool","name":choice["name"]})
+                json!({"type":"tool","name":choice.get("name").unwrap_or(&choice["function"]["name"])})
             } else {
                 return Err("工具选择方式不可转换");
             };

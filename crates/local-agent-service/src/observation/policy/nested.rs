@@ -187,6 +187,7 @@ pub(super) struct PlanningFacts {
     pub facts: RuleFacts,
     // A trusted fresh default turn owns one excerpt for its entire routing tree.
     pub excerpt: Option<String>,
+    pub send_context: intent::SendContext,
 }
 
 pub(super) async fn open(
@@ -257,6 +258,7 @@ pub(super) async fn open(
                         session: root.session.clone(),
                         digest: root.turn.clone(),
                     },
+                    inputs.send_context.clone(),
                 ),
             )
             .await

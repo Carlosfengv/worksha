@@ -34,13 +34,13 @@ fn value(v: impl Serialize) -> Value {
 }
 fn tool_db(path: &std::path::Path) -> Connection {
     let db = Connection::open(path).unwrap();
-    db.execute_batch("CREATE TABLE extension_version(version INTEGER NOT NULL);INSERT INTO extension_version VALUES(1);CREATE TABLE connector_calls(id INTEGER PRIMARY KEY,plugin_id TEXT NOT NULL,identity TEXT NOT NULL,record TEXT NOT NULL,UNIQUE(plugin_id,identity));").unwrap();
+    db.execute_batch("CREATE TABLE ext_adv_extension_version(version INTEGER NOT NULL);INSERT INTO ext_adv_extension_version VALUES(1);CREATE TABLE ext_adv_connector_calls(id INTEGER PRIMARY KEY,plugin_id TEXT NOT NULL,identity TEXT NOT NULL,record TEXT NOT NULL,UNIQUE(plugin_id,identity));").unwrap();
     db
 }
 fn tool(db: &Connection, id: i64, status: &str, duration: Option<f64>, time: &str) {
     let record = json!({"identity":format!("private-tool-{id}"),"rpcId":"private-rpc","mcpConnection":"private-connection","tool":if id%2==0{"search"}else{"read"},"status":status,"durationMs":duration,"observedAt":time,"agentSession":null,"content":"not-persisted","modelTokens":null});
     db.execute(
-        "INSERT INTO connector_calls VALUES(?1,?2,?3,?4)",
+        "INSERT INTO ext_adv_connector_calls VALUES(?1,?2,?3,?4)",
         params![
             id,
             if id % 2 == 0 { "a" } else { "b" },
@@ -307,7 +307,7 @@ fn stale_drafts_are_rejected_and_repacking_collects_only_unreferenced_blocks() {
         first.block
     );
     db.execute(
-        "UPDATE connector_calls SET record=replace(record,'success','tool_error') WHERE id=1",
+        "UPDATE ext_adv_connector_calls SET record=replace(record,'success','tool_error') WHERE id=1",
         [],
     )
     .unwrap();
@@ -580,7 +580,7 @@ fn ignored_old_block_cleanup_rolls_back_replacement_instead_of_leaking_a_new_dra
     ledger.stage_tool_batch(&[1]).unwrap();
     let original = pack_all(&ledger, PackedKind::ConnectorTool);
     db.execute(
-        "UPDATE connector_calls SET record=replace(record,'success','tool_error')",
+        "UPDATE ext_adv_connector_calls SET record=replace(record,'success','tool_error')",
         [],
     )
     .unwrap();

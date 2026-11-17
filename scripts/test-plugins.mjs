@@ -136,10 +136,30 @@ try {
   const begun = new Promise((resolve) => { delayedStarted = resolve; });
   const pending = action(quota, { kind: "refresh" }, 403); await begun; await state(quota, "revoke-grants"); await pending;
   await action(quota,{kind:"bind-connection",providerId:"openai",allowPrivateNetwork:true});
-  behavior="hang"; const blockedAt=performance.now();
-  const blocking=action(quota,{kind:"refresh"},400); await api("/api/snapshot"); await blocking;
-  assert(performance.now()-blockedAt<8000); behavior="ok";
-  passed("额度 GET 绑定、私网显式授权、凭据宿主注入、重定向 / 密钥回显拒绝与在途撤权");
+  behavior = "hang";
+  const hungRequest = new Promise((resolve) => {
+    delayedStarted = resolve;
+  });
+  let refreshFinished = false;
+  const blocking = action(quota, { kind: "refresh" }, 400).finally(() => {
+    refreshFinished = true;
+  });
+  await Promise.race([
+    hungRequest,
+    blocking.then(() => {
+      assert.fail("quota refresh finished before reaching the hung upstream");
+    }),
+  ]);
+  const blockedAt = performance.now();
+  await api("/api/snapshot");
+  assert(
+    !refreshFinished,
+    "the snapshot must return while quota refresh is still in flight",
+  );
+  await blocking;
+  assert(performance.now() - blockedAt < 8000, "the hung upstream must time out");
+  behavior = "ok";
+  passed("额度 GET 绑定、私网显式授权、凭据宿主注入、重定向 / 密钥回显拒绝、在途撤权与快照并行");
   const settings = { "title-style": "with-model" }; await action(aurora, { kind: "save-settings", values: settings });
   const newer = await install(pack("aurora-agent", "1.1.0")); assert.equal((await api("/api/plugins")).items.find((p) => p.digest === aurora.digest).enabled, true);
   await state(newer, "enable"); const switched = (await api("/api/plugins")).items.find((p) => p.digest === newer.digest); assert(!switched.sourceAuthorized);
@@ -202,7 +222,13 @@ try {
   passed("升级 preflight 失败保持原版本；移除失败候选不影响活动版本");
   assert.deepEqual(readCoreSchema(path.join(data, "local-agent.sqlite3")), coreSchema);
   assert.equal(sourceHash(), initialHash);
-  const metadata = readFileSync(path.join(data, "plugin-host.sqlite3")); assert(!metadata.includes(Buffer.from("这是虚构的离线会话"))); assert(!metadata.includes(Buffer.from(secret)));
+  const control = path.join(data, "local-agent.sqlite3");
+  for (const file of [control, `${control}-wal`].filter(existsSync)) {
+    const bytes = readFileSync(file);
+    assert(!bytes.includes(Buffer.from("这是虚构的离线会话")));
+    assert(!bytes.includes(Buffer.from(secret)));
+  }
+  assert(!existsSync(path.join(data, "plugin-host.sqlite3")));
   await stop(); await boot();
   const restarted = await api("/api/plugins"); assert(restarted.diagnostics.items.every(p => p.activity === null));
   const resumed = restarted.items.find((p) => p.digest === aurora.digest); assert(resumed.enabled); assert.equal(resumed.settings["title-style"], "with-model"); assert(!resumed.sourceAuthorized);

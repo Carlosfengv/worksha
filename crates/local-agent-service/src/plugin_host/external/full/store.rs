@@ -1,7 +1,8 @@
 //! Private source storage; opening the legacy service does not touch this store.
+use super::super::store::{ControlConnection, ControlDatabase};
 use super::super::{Checked, Result, fail, package as legacy};
 use local_agent_core::{domain as d, plugin::full as f};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -61,7 +62,11 @@ impl Selection {
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct SavedDshSource {
+pub(super) struct SavedWatch {
+    #[serde(default)]
+    pub persist_watch: bool,
+    #[serde(default)]
+    pub publisher: String,
     pub digest: String,
     pub epoch: u64,
     pub revision: u64,
@@ -86,7 +91,9 @@ pub(super) struct Grant {
     pub path: PathBuf,
     pub device: u64,
     pub inode: u64,
+    pub created: Option<std::time::SystemTime>,
     pub unified: bool,
+    pub persist_watch: bool,
     pub connection: Option<String>,
 }
 #[derive(Clone)]
@@ -95,7 +102,7 @@ pub(super) struct ConsentReview {
     pub grant: Grant,
     pub persist: bool,
     pub created: std::time::Instant,
-    pub applied: Option<(Lease, bool, bool)>,
+    pub applied: Option<(Lease, bool, bool, bool)>,
 }
 #[derive(Clone)]
 pub(super) struct Projection {
@@ -106,7 +113,7 @@ pub(super) struct Projection {
     pub summary: d::facts::FactSummary,
     pub source_stamp: super::runtime::FileStamp,
     pub captured_source: Option<super::runtime::SourceData>,
-    pub dsh_tasks: Arc<BTreeMap<String, super::dsh::Task>>,
+    pub reported_tasks: Arc<BTreeMap<String, super::activity::Task>>,
 }
 impl Projection {
     pub(super) fn resident_bytes(&self) -> usize {
@@ -117,7 +124,7 @@ impl Projection {
                     .map_or(0, |source| source.text.len()),
             )
             .saturating_add(
-                self.dsh_tasks
+                self.reported_tasks
                     .iter()
                     .map(|(session, task)| {
                         session.len()
@@ -133,8 +140,8 @@ impl Projection {
 }
 pub(crate) struct Host {
     pub(super) root: PathBuf,
-    db_path: PathBuf,
-    db: OnceLock<Connection>,
+    db: ControlDatabase,
+    reconciled: OnceLock<()>,
     pub(super) active: BTreeMap<String, Lease>,
     pub(super) grants: BTreeMap<String, Grant>,
     pub(super) projections: BTreeMap<String, Projection>,
@@ -212,8 +219,8 @@ impl Host {
     pub fn new(data: &Path) -> Self {
         Self {
             root: data.join("plugin-sources"),
-            db_path: data.join("plugin-source-host.sqlite3"),
-            db: OnceLock::new(),
+            db: ControlDatabase::new(data.join(super::super::store::CONTROL_DATABASE)),
+            reconciled: OnceLock::new(),
             active: BTreeMap::new(),
             grants: BTreeMap::new(),
             projections: BTreeMap::new(),
@@ -221,54 +228,20 @@ impl Host {
             consents: BTreeMap::new(),
         }
     }
-    pub fn db(&self) -> Result<&Connection> {
-        if let Some(db) = self.db.get() {
-            return Ok(db);
-        }
-        // Host is protected by the Manager mutex. A transient open/lock error must
-        // remain retryable instead of disabling this optional store until restart.
-        let db = self.open()?;
-        let _ = self.db.set(db);
-        self.db.get().ok_or(fail("unavailable"))
+    pub fn with_writer(mut self, writer: Option<local_agent_core::StoreWriter>) -> Self {
+        self.db.set_writer(writer);
+        self
     }
-    fn open(&self) -> Result<Connection> {
-        use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-        directory(&self.root)?;
-        for name in ["packages", "staging", "selected"] {
-            directory(&self.root.join(name))?;
+    pub fn db(&self) -> Result<ControlConnection<'_>> {
+        let db = self.db.lock()?;
+        if self.reconciled.get().is_none() {
+            directory(&self.root)?;
+            for name in ["packages", "staging", "selected"] {
+                directory(&self.root.join(name))?;
+            }
+            super::recovery::reconcile(self, &db)?;
+            let _ = self.reconciled.set(());
         }
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(0o600)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(&self.db_path)
-            .checked("permission_denied")?;
-        let m = file.metadata().checked("permission_denied")?;
-        if !m.is_file() || m.nlink() != 1 {
-            return Err(fail("permission_denied"));
-        }
-        let db = Connection::open(&self.db_path).checked("unavailable")?;
-        db.busy_timeout(std::time::Duration::from_millis(250))
-            .checked("unavailable")?;
-        db.pragma_update(None, "foreign_keys", true)
-            .checked("unavailable")?;
-        super::super::store::initialize_database(
-            &db,
-            "full_version",
-            "version",
-            &[
-                "full_packages",
-                "full_selections",
-                "full_reviews",
-                "full_projections",
-                "full_hidden_projects",
-            ],
-            "CREATE TABLE IF NOT EXISTS full_version(version INTEGER NOT NULL);INSERT INTO full_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM full_version);CREATE TABLE IF NOT EXISTS full_packages(digest TEXT PRIMARY KEY,plugin_id TEXT NOT NULL,record TEXT NOT NULL,removed INTEGER NOT NULL DEFAULT 0);CREATE TABLE IF NOT EXISTS full_selections(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS full_reviews(id TEXT PRIMARY KEY,record TEXT NOT NULL,expires INTEGER NOT NULL);CREATE TABLE IF NOT EXISTS full_projections(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS full_hidden_projects(id TEXT PRIMARY KEY);CREATE TABLE IF NOT EXISTS full_saved_sources(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);",
-        )?;
-        super::recovery::reconcile(self, &db)?;
         Ok(db)
     }
     pub(super) fn package_path(&self, p: &Installed) -> PathBuf {
@@ -283,13 +256,14 @@ impl Host {
         if !legacy::valid_id(&q.plugin_id) || legacy::unhex::<32>(&q.digest).is_err() {
             return Err(fail("invalid_input"));
         }
-        let text: Option<String>=self.db()?.query_row("SELECT CASE WHEN length(record)<=65536 THEN record ELSE NULL END FROM full_packages WHERE plugin_id=?1 AND digest=?2 AND removed=0",params![q.plugin_id,q.digest],|r|r.get(0)).optional().checked("unavailable")?.flatten();
+        let text: Option<String>=self.db()?.query_row("SELECT CASE WHEN length(record)<=65536 THEN record ELSE NULL END FROM ext_source_full_packages WHERE plugin_id=?1 AND digest=?2 AND removed=0",params![q.plugin_id,q.digest],|r|r.get(0)).optional().checked("unavailable")?.flatten();
         let p: Installed = decode(&text.ok_or(fail("not_found"))?)?;
         validate_installed(q, &p)?;
         Ok(p)
     }
     pub(super) fn packages(&self) -> Result<Vec<Installed>> {
-        let mut statement=self.db()?.prepare("SELECT plugin_id,digest FROM full_packages WHERE removed=0 ORDER BY plugin_id,digest LIMIT 65").checked("unavailable")?;
+        let db = self.db()?;
+        let mut statement = db.prepare("SELECT plugin_id,digest FROM ext_source_full_packages WHERE removed=0 ORDER BY plugin_id,digest LIMIT 65").checked("unavailable")?;
         let ids = statement
             .query_map([], |r| {
                 Ok(f::PackageQuery {
@@ -309,7 +283,7 @@ impl Host {
         &self,
     ) -> Result<Vec<super::super::installation::Entry>> {
         // Do not create optional source files when an old-format package is installed.
-        match std::fs::symlink_metadata(&self.db_path) {
+        match std::fs::symlink_metadata(self.db.path()) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
             Err(_) => return Err(fail("unavailable")),
             Ok(_) => {}
@@ -332,7 +306,7 @@ impl Host {
         let text: String = self
             .db()?
             .query_row(
-                "SELECT record FROM full_selections WHERE plugin_id=?1",
+                "SELECT record FROM ext_source_full_selections WHERE plugin_id=?1",
                 [id],
                 |r| r.get(0),
             )
@@ -341,23 +315,21 @@ impl Host {
         s.validate()?;
         Ok(s)
     }
-    pub(super) fn saved_dsh_source(&self, id: &str) -> Result<Option<SavedDshSource>> {
-        let text: Option<String> = self
-            .db()?
+    pub(super) fn saved_watch(&self, id: &str) -> Result<Option<String>> {
+        self.db()?
             .query_row(
-                "SELECT record FROM full_saved_sources WHERE plugin_id=?1",
+                "SELECT record FROM ext_source_full_saved_sources WHERE plugin_id=?1",
                 [id],
                 |row| row.get(0),
             )
             .optional()
-            .checked("unavailable")?;
-        text.as_deref().map(decode).transpose()
+            .checked("unavailable")
     }
     #[cfg(test)]
     pub(super) fn save_selection(&self, id: &str, selection: &Selection) -> Result<()> {
         self.db()?
             .execute(
-                "INSERT OR REPLACE INTO full_selections VALUES(?1,?2)",
+                "INSERT OR REPLACE INTO ext_source_full_selections VALUES(?1,?2)",
                 params![id, encode(selection)?],
             )
             .checked("unavailable")?;
@@ -420,19 +392,26 @@ impl Host {
         };
         let mut marker_attempted = false;
         let result = (|| {
-            let tx = self.db()?.unchecked_transaction().checked("unavailable")?;
+            let db = self.db()?;
+            let tx = db.unchecked_transaction().checked("unavailable")?;
             tx.execute(
-                "INSERT OR REPLACE INTO full_selections VALUES(?1,?2)",
+                "INSERT OR REPLACE INTO ext_source_full_selections VALUES(?1,?2)",
                 params![id, encode(selection)?],
             )
             .checked("unavailable")?;
-            tx.execute("DELETE FROM full_projections WHERE plugin_id=?1", [id])
-                .checked("unavailable")?;
-            tx.execute("DELETE FROM full_saved_sources WHERE plugin_id=?1", [id])
-                .checked("unavailable")?;
+            tx.execute(
+                "DELETE FROM ext_source_full_projections WHERE plugin_id=?1",
+                [id],
+            )
+            .checked("unavailable")?;
+            tx.execute(
+                "DELETE FROM ext_source_full_saved_sources WHERE plugin_id=?1",
+                [id],
+            )
+            .checked("unavailable")?;
             if let Some(digest) = remove {
                 tx.execute(
-                    "UPDATE full_packages SET removed=1 WHERE plugin_id=?1 AND digest=?2",
+                    "UPDATE ext_source_full_packages SET removed=1 WHERE plugin_id=?1 AND digest=?2",
                     params![id, digest],
                 )
                 .checked("unavailable")?;
@@ -464,14 +443,15 @@ impl Host {
             return Err(fail("invalid_input"));
         }
         selection.validate()?;
-        let tx = self.db()?.unchecked_transaction().checked("unavailable")?;
+        let db = self.db()?;
+        let tx = db.unchecked_transaction().checked("unavailable")?;
         tx.execute(
-            "UPDATE full_packages SET removed=1 WHERE plugin_id=?1 AND digest=?2",
+            "UPDATE ext_source_full_packages SET removed=1 WHERE plugin_id=?1 AND digest=?2",
             params![id, digest],
         )
         .checked("unavailable")?;
         tx.execute(
-            "INSERT OR REPLACE INTO full_selections VALUES(?1,?2)",
+            "INSERT OR REPLACE INTO ext_source_full_selections VALUES(?1,?2)",
             params![id, encode(selection)?],
         )
         .checked("unavailable")?;

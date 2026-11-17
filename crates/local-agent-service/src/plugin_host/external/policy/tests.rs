@@ -56,7 +56,7 @@ async fn policy_scope_interrupted_unbind_does_not_select_native_mode() {
                 &Authorization::from_context(&c, "owned-instance"),
             )
             .unwrap();
-        h.db().unwrap().execute_batch("CREATE TRIGGER reject_unbind BEFORE INSERT ON policy_controls BEGIN SELECT RAISE(FAIL,'owned unbind persistence failure'); END;").unwrap();
+        h.db().unwrap().execute_batch("CREATE TRIGGER reject_unbind BEFORE INSERT ON ext_policy_policy_controls BEGIN SELECT RAISE(FAIL,'owned unbind persistence failure'); END;").unwrap();
         assert!(h.unbind(&store, &service, &bound.status.revision).is_err());
         assert!(
             h.cached_control(&store, &service)
@@ -126,13 +126,13 @@ fn policy_scope_double_loss_preserves_unknown_from_surviving_version_binding() {
     h.db()
         .unwrap()
         .execute(
-            "DELETE FROM policy_controls WHERE scope=?1",
+            "DELETE FROM ext_policy_policy_controls WHERE scope=?1",
             [Host::scope(&store, &service)],
         )
         .unwrap();
     std::fs::remove_file(marker_path(&h)).unwrap();
     drop(h);
-    let before = std::fs::read(root.path().join("routing-policy.sqlite3")).unwrap();
+    let before = std::fs::read(root.path().join("local-agent.sqlite3")).unwrap();
     let h = Host::new(root.path());
     let presence = h.presence.read().unwrap();
     assert!(presence.unknown.contains(&service));
@@ -144,7 +144,7 @@ fn policy_scope_double_loss_preserves_unknown_from_surviving_version_binding() {
         "invalid_record"
     );
     assert_eq!(
-        std::fs::read(root.path().join("routing-policy.sqlite3")).unwrap(),
+        std::fs::read(root.path().join("local-agent.sqlite3")).unwrap(),
         before
     );
     assert!(
@@ -197,7 +197,7 @@ fn policy_scope_double_loss_preserves_unresolved_publication_identity_without_bi
     let intent = prepared(&h);
     h.db()
         .unwrap()
-        .execute("DELETE FROM policy_controls", [])
+        .execute("DELETE FROM ext_policy_policy_controls", [])
         .unwrap();
     std::fs::remove_file(marker_path(&h)).unwrap();
     drop(h);
@@ -255,7 +255,7 @@ async fn policy_scope_missing_evidence_blocks_only_its_service_and_keeps_native_
         .unwrap();
         h.db()
             .unwrap()
-            .execute("DELETE FROM policy_controls", [])
+            .execute("DELETE FROM ext_policy_policy_controls", [])
             .unwrap();
         std::fs::remove_file(marker_path(&h)).unwrap();
     }
@@ -320,7 +320,7 @@ fn policy_scope_full_physical_registry_keeps_known_controls_and_rejects_only_new
     assert_eq!(
         h.db()
             .unwrap()
-            .query_row("SELECT count(*) FROM policy_controls", [], |r| r
+            .query_row("SELECT count(*) FROM ext_policy_policy_controls", [], |r| r
                 .get::<_, i64>(0))
             .unwrap(),
         256
@@ -493,7 +493,7 @@ fn marker_first_database_failure_is_detected_and_explicit_unbind_can_repair_with
         pending_request_identity: None,
     };
     h.save_control(&c).unwrap();
-    h.db().unwrap().execute_batch("CREATE TRIGGER deny_control BEFORE INSERT ON policy_controls BEGIN SELECT RAISE(FAIL,'owned test failure'); END;").unwrap();
+    h.db().unwrap().execute_batch("CREATE TRIGGER deny_control BEFORE INSERT ON ext_policy_policy_controls BEGIN SELECT RAISE(FAIL,'owned test failure'); END;").unwrap();
     let mut changed = c.clone();
     changed.revision = id();
     assert!(h.save_control(&changed).is_err());
@@ -673,7 +673,7 @@ fn publication_keeps_pending_until_completion_and_failed_binding_transaction_lea
     let temp = tempfile::tempdir().unwrap();
     let h = Host::new(temp.path());
     let mut i = prepared(&h);
-    h.db().unwrap().execute_batch("CREATE TRIGGER deny_binding BEFORE INSERT ON policy_bindings BEGIN SELECT RAISE(FAIL,'owned binding failure'); END;").unwrap();
+    h.db().unwrap().execute_batch("CREATE TRIGGER deny_binding BEFORE INSERT ON ext_policy_policy_bindings BEGIN SELECT RAISE(FAIL,'owned binding failure'); END;").unwrap();
     let result = h.bind(
         BindRequest {
             store: &i.status.store_id,
@@ -714,7 +714,7 @@ fn publication_keeps_pending_until_completion_and_failed_binding_transaction_lea
             .code,
         "result_pending"
     );
-    h.db().unwrap().execute_batch("CREATE TRIGGER deny_finish BEFORE INSERT ON policy_intents WHEN json_extract(NEW.record,'$.status.state')='committed' BEGIN SELECT RAISE(FAIL,'owned finalize failure'); END;").unwrap();
+    h.db().unwrap().execute_batch("CREATE TRIGGER deny_finish BEFORE INSERT ON ext_policy_policy_intents WHEN json_extract(NEW.record,'$.status.state')='committed' BEGIN SELECT RAISE(FAIL,'owned finalize failure'); END;").unwrap();
     i.status.state = "committed".into();
     i.status.binding = Some(b.status.clone());
     assert!(h.save_intent(&i).is_err());
@@ -825,7 +825,7 @@ fn prepared_cancellation_is_atomic_and_query_only_repairs_its_own_marker() {
     let temp = tempfile::tempdir().unwrap();
     let h = Host::new(temp.path());
     let i = prepared(&h);
-    h.db().unwrap().execute_batch("CREATE TRIGGER deny_cancel BEFORE INSERT ON policy_intents WHEN json_extract(NEW.record,'$.status.state')='cancelled' BEGIN SELECT RAISE(FAIL,'owned cancel failure'); END;").unwrap();
+    h.db().unwrap().execute_batch("CREATE TRIGGER deny_cancel BEFORE INSERT ON ext_policy_policy_intents WHEN json_extract(NEW.record,'$.status.state')='cancelled' BEGIN SELECT RAISE(FAIL,'owned cancel failure'); END;").unwrap();
     assert!(h.cancel_prepared(i.clone()).is_err());
     assert_eq!(
         h.intent(&i.status.operation_id).unwrap().status.state,
@@ -923,7 +923,7 @@ fn startup_malformed_control_is_scoped_and_does_not_disable_unrelated_native_ser
     h.db()
         .unwrap()
         .execute(
-            "UPDATE policy_controls SET record='broken-owned-control' WHERE scope=?1",
+            "UPDATE ext_policy_policy_controls SET record='broken-owned-control' WHERE scope=?1",
             [Host::scope(&i.status.store_id, &i.status.service_id)],
         )
         .unwrap();
@@ -951,7 +951,7 @@ fn stored_control_and_binding_cannot_redirect_to_another_scope_or_version() {
     h.db()
         .unwrap()
         .execute(
-            "UPDATE policy_controls SET record=?1 WHERE scope=?2",
+            "UPDATE ext_policy_policy_controls SET record=?1 WHERE scope=?2",
             rusqlite::params![encode(&foreign).unwrap(), scope],
         )
         .unwrap();
@@ -964,7 +964,7 @@ fn stored_control_and_binding_cannot_redirect_to_another_scope_or_version() {
     h.db()
         .unwrap()
         .execute(
-            "UPDATE policy_controls SET record=?1 WHERE scope=?2",
+            "UPDATE ext_policy_policy_controls SET record=?1 WHERE scope=?2",
             rusqlite::params![encode(&c).unwrap(), scope],
         )
         .unwrap();
@@ -973,7 +973,7 @@ fn stored_control_and_binding_cannot_redirect_to_another_scope_or_version() {
     h.db()
         .unwrap()
         .execute(
-            "UPDATE policy_bindings SET record=?1 WHERE scope=?2",
+            "UPDATE ext_policy_policy_bindings SET record=?1 WHERE scope=?2",
             rusqlite::params![encode(&foreign).unwrap(), scope],
         )
         .unwrap();
@@ -993,7 +993,7 @@ fn stored_control_and_binding_cannot_redirect_to_another_scope_or_version() {
     h.db()
         .unwrap()
         .execute(
-            "UPDATE policy_bindings SET record=?1 WHERE scope=?2",
+            "UPDATE ext_policy_policy_bindings SET record=?1 WHERE scope=?2",
             rusqlite::params![encode(&foreign).unwrap(), scope],
         )
         .unwrap();

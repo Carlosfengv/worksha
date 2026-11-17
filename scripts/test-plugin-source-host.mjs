@@ -283,10 +283,10 @@ try {
     (await api("/api/plugin-sources/install", install, 400)).code,
     "publisher_untrusted",
   );
-  const storeFile = path.join(data, "plugin-source-host.sqlite3");
+  const storeFile = path.join(data, "local-agent.sqlite3");
   const installFault = new DatabaseSync(storeFile);
   installFault.exec(
-    "CREATE TRIGGER reject_package BEFORE INSERT ON full_packages BEGIN SELECT RAISE(ABORT,'storage failure fixture'); END;",
+    "CREATE TRIGGER reject_package BEFORE INSERT ON ext_source_full_packages BEGIN SELECT RAISE(ABORT,'storage failure fixture'); END;",
   );
   assert.equal(
     (
@@ -1238,9 +1238,9 @@ try {
   fs.copyFileSync(pkg, orphan);
   fs.writeFileSync(marker, "f".repeat(64));
   await stop("SIGKILL");
+  await boot();
   const coldLock = new DatabaseSync(storeFile);
   coldLock.exec("BEGIN IMMEDIATE");
-  await boot();
   const lockStarted = performance.now();
   assert.equal(
     (await api("/api/plugin-sources", undefined, 400)).code,
@@ -1304,10 +1304,10 @@ try {
   });
   const commitFault = new DatabaseSync(storeFile);
   const projectionBefore = commitFault
-    .prepare("SELECT record FROM full_projections WHERE plugin_id=?")
+    .prepare("SELECT record FROM ext_source_full_projections WHERE plugin_id=?")
     .get(manifest.id).record;
   commitFault.exec(
-    "CREATE TABLE commit_parent(id INTEGER PRIMARY KEY);CREATE TABLE commit_child(parent INTEGER REFERENCES commit_parent(id) DEFERRABLE INITIALLY DEFERRED);CREATE TRIGGER reject_commit AFTER INSERT ON full_selections BEGIN INSERT INTO commit_child VALUES(42); END;",
+    "CREATE TABLE commit_parent(id INTEGER PRIMARY KEY);CREATE TABLE commit_child(parent INTEGER REFERENCES commit_parent(id) DEFERRABLE INITIALLY DEFERRED);CREATE TRIGGER reject_commit AFTER INSERT ON ext_source_full_selections BEGIN INSERT INTO commit_child VALUES(42); END;",
   );
   assert.equal(
     (
@@ -1332,7 +1332,7 @@ try {
   assert.equal(fs.readFileSync(marker, "utf8"), q.digest);
   assert.equal(
     commitFault
-      .prepare("SELECT record FROM full_projections WHERE plugin_id=?")
+      .prepare("SELECT record FROM ext_source_full_projections WHERE plugin_id=?")
       .get(manifest.id).record,
     projectionBefore,
   );

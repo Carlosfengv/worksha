@@ -11,6 +11,8 @@ import { installTableProviders } from "./providers";
 import { installTableActivity } from "./activity";
 import { installTableProjects } from "./projects";
 import { installPluginNavigation } from "./plugin-navigation";
+import { installLocalConnectionFixture } from "./local-connections";
+import { installLoopGuards } from "./loop-guards";
 import { appApi } from "@/app/api";
 import {
   agentConnectionApi,
@@ -253,6 +255,7 @@ export function installTableFixtures() {
   }
   if (context.mode === "plugin-navigation") installPluginNavigation();
   const provider = installTableProviders();
+  if (context.params.has("localConnections")) installLocalConnectionFixture();
   if (context.mode === "upstream-account-verification") {
     const providerId = provider.getProvider().id;
     const account: UpstreamAccount = {
@@ -304,6 +307,7 @@ export function installTableFixtures() {
     };
   }
   if (context.mode === "activity") installTableActivity(context);
+  if (context.params.has("loopGuards")) installLoopGuards();
   if (["mcp-page", "projects-page"].includes(context.mode ?? ""))
     installTableProjects(context);
   if (context.params.has("fees")) installAssociatedCosts();

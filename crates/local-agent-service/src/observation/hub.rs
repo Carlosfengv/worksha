@@ -1270,11 +1270,20 @@ impl Hub {
         }
     }
     pub fn finish(&self, id: &str, status: &str, issue: Option<&str>) {
+        self.finish_evidence(id, status, issue);
+    }
+
+    pub(super) fn finish_evidence(
+        &self,
+        id: &str,
+        status: &str,
+        issue: Option<&str>,
+    ) -> Option<ModelObservation> {
         let row = if let Ok(mut rows) = self.rows.lock()
             && let Some(l) = rows.get_mut(id)
         {
             if l.row.status != "in_progress" {
-                return;
+                return None;
             }
             l.row.status = status.into();
             l.row.ended_at = Some(chrono::Utc::now().to_rfc3339());
@@ -1289,9 +1298,10 @@ impl Hub {
         } else {
             None
         };
-        if let Some(row) = row {
-            self.persist(row);
+        if let Some(row) = &row {
+            self.persist(row.clone());
         }
+        row
     }
     pub fn rows(&self) -> Vec<ModelObservation> {
         let mut rows: Vec<_> = self

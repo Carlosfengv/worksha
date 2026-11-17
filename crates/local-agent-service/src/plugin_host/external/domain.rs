@@ -549,11 +549,16 @@ impl Manager {
             source_authorized: s.enabled && s.source.is_some(),
             unified_authorized: valid,
             persist_metadata: valid && consent.is_some_and(|c| c.persist),
+            persist_watch: false,
+            can_persist_watch: false,
         })
     }
     pub(crate) fn domain_consent(&self, input: &d::SourceConsent) -> Result<()> {
         if self.full_query(&input.plugin_id, &input.digest)? {
             return self.full_consent(input);
+        }
+        if input.persist_watch {
+            return Err(fail("invalid_input"));
         }
         let mut host = self.domain.lock().checked("unavailable")?;
         let review = host

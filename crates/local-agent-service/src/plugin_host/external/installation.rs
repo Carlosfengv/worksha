@@ -22,7 +22,7 @@ pub(super) struct Entry {
 
 pub(super) fn check(db: &Connection, full: &[Entry], candidate: &Entry) -> Result<()> {
     let mut statement = db.prepare(
-        "SELECT digest,plugin_id,version,manifest,public_key,bytes FROM packages WHERE removed=0 LIMIT 65",
+        "SELECT digest,plugin_id,version,manifest,public_key,bytes FROM ext_host_packages WHERE removed=0 LIMIT 65",
     ).checked("unavailable")?;
     let legacy = statement
         .query_map([], |r| {

@@ -194,6 +194,14 @@ fn bundle_source_allows_only_the_admin_managed_applications_parent() {
 }
 
 pub fn atomic_write(path: &Path, bytes: &[u8], mode: u32) -> Result<(), ConfigError> {
+    atomic_write_inner(path, bytes, mode, false)
+}
+
+pub fn atomic_write_new_private(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
+    atomic_write_inner(path, bytes, 0o600, true)
+}
+
+fn atomic_write_inner(path: &Path, bytes: &[u8], mode: u32, new: bool) -> Result<(), ConfigError> {
     checked_path(path)?;
     let parent = path
         .parent()
@@ -212,7 +220,12 @@ pub fn atomic_write(path: &Path, bytes: &[u8], mode: u32) -> Result<(), ConfigEr
         f.write_all(bytes)?;
         f.sync_all()?;
         f.set_permissions(fs::Permissions::from_mode(mode))?;
-        fs::rename(&tmp, path)?;
+        if new {
+            fs::hard_link(&tmp, path)?;
+            fs::remove_file(&tmp)?;
+        } else {
+            fs::rename(&tmp, path)?;
+        }
         fs::File::open(parent)?.sync_all()
     })();
     if result.is_err() {

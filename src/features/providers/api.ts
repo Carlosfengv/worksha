@@ -616,15 +616,23 @@ export const providersApi = {
   dynamicRouteAction(
     change: DynamicChange,
     action: "commit" | "cancel" | "restore",
+    restoreOperationId?: string,
   ): Promise<DynamicChange> {
     return command<unknown>("dynamic_route_action", {
       changeId: change.id,
       action,
+      restoreOperationId: restoreOperationId ?? null,
     }).then((value) =>
       providerDynamicChange(
         value,
         action === "restore"
-          ? { bindingId: change.bindingId, target: change.before.provider }
+          ? {
+              ...(restoreOperationId === undefined
+                ? {}
+                : { id: restoreOperationId }),
+              bindingId: change.bindingId,
+              target: change.before.provider,
+            }
           : {
               id: change.id,
               bindingId: change.bindingId,

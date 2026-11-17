@@ -9,6 +9,20 @@ pub(crate) async fn preview_retention_inventory(
     read_retention_inventory(&backend, request).await
 }
 
+#[tauri::command]
+pub(crate) async fn archive_route_sessions(
+    backend: tauri::State<'_, Backend>,
+    request: local_agent_core::routing::ArchiveRequest,
+) -> Result<serde_json::Value, String> {
+    backend
+        .request(
+            reqwest::Method::POST,
+            "/api/settings/route-archive",
+            Some(serde_json::to_value(request).map_err(|_| "归档参数无效")?),
+        )
+        .await
+}
+
 async fn read_retention_inventory(
     backend: &Backend,
     request: local_agent_core::observation::retention::impact::InventoryRequest,

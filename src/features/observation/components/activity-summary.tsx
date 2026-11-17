@@ -217,6 +217,7 @@ export function ActivitySummary({
   reportedOnly = false,
   reportedTtfts = [],
   reportedRates = [],
+  reportedSourceNames = [],
 }: {
   summary: ActivitySummaryData;
   state: MetricCardState;
@@ -226,6 +227,7 @@ export function ActivitySummary({
   reportedOnly?: boolean;
   reportedTtfts?: number[];
   reportedRates?: number[];
+  reportedSourceNames?: string[];
 }) {
   const [paused, setPaused] = useState(false);
   const [colors, setColors] =
@@ -245,6 +247,8 @@ export function ActivitySummary({
       : null;
   const sourceTtft = hasMetricSources ? null : mean(reportedTtfts);
   const sourceRate = hasMetricSources ? null : mean(reportedRates);
+  const sourceLabel =
+    reportedSourceNames.length === 1 ? reportedSourceNames[0] : "来源上报";
   const ttft = summary.ttft ?? sourceTtft;
   const rateAvailable =
     hasMetricSources || (!reportedOnly && summary.reportedSessions === 0);
@@ -322,7 +326,7 @@ export function ActivitySummary({
             ready && hasMetricSources
               ? `${summary.ttftSamples}/${summary.sources} 个活动来源已记录 · 原生含事件传递延迟`
               : ready && sourceTtft !== null
-                ? `DSH 步骤首出 · ${reportedTtfts.length} 个会话已上报`
+                ? `${sourceLabel} · ${reportedTtfts.length} 个会话已上报`
                 : rateAvailable
                   ? "首个推理或正文返回后更新"
                   : "来源未提供"
@@ -333,7 +337,7 @@ export function ActivitySummary({
           valueClassName="text-title"
           label={
             ready && sourceRate !== null
-              ? "DSH 当前步骤均速"
+              ? "上报的当前步骤均速"
               : ready &&
                   (summary.partial || summary.reportedSessions > 0) &&
                   summary.rate !== null &&
@@ -374,7 +378,7 @@ export function ActivitySummary({
             ready && hasMetricSources
               ? `${summary.samples}/${summary.sources} 个活动来源可测${summary.samples === 0 ? " · 暂无实时采样" : summary.partial ? " · 部分可测" : ""}`
               : ready && sourceRate !== null
-                ? `DSH 已上报 · ${reportedRates.length} 个会话`
+                ? `${sourceLabel} · ${reportedRates.length} 个会话`
                 : rateAvailable
                   ? "仅统计当前任务"
                   : "来源未提供"

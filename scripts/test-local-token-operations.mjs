@@ -64,7 +64,7 @@ async function fixture(name) {
   const modelId = randomUUID(); c.service = await api(c, "/api/model-services", {id: randomUUID(), revision: 0, name: "Owned service", defaultModelId: modelId, models: [{id: modelId, name: "Default", providerId: p.id, model: p.model, capabilities: {contextWindow: 32768, maxOutputTokens: 8192, tools: true, thinking: false, inputModalities: ["text"]}}]}, 200, "PUT");
   c.config = (await api(c, "/api/provider-status")).configs.find(v => v.agentId === "claude");
   const pcol = await protocol(c); c.identity = {storeId: pcol.storeId, namespaceId: pcol.namespaceId, operationId: randomUUID()};
-  assert.equal(pcol.schemaVersion, 16); return c;
+  assert.equal(pcol.schemaVersion, 18); return c;
 }
 function input(c, purpose) {return purpose === "model_service" ? {agentId: "claude", expectedRevision: c.config.revision, serviceId: c.service.id, expectedServiceRevision: c.service.revision, operation: c.identity} : {agentId: "claude", expectedRevision: c.config.revision, providerId: c.provider.id, expectedProviderRevision: 1, model: c.provider.model, operation: c.identity};}
 const routes = {fixed_route: "/api/provider-switches", dynamic_binding: "/api/dynamic-connections", model_service: "/api/model-service-connections"};

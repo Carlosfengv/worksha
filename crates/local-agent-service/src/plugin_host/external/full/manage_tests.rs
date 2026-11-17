@@ -5,14 +5,14 @@ use local_agent_core::{plugin::full as f, providers::vault::MemoryVault};
 use std::sync::Arc;
 
 #[test]
-fn dsh_authorization_ticket_is_invalid_after_publisher_revocation_and_reapproval() {
+fn source_authorization_ticket_is_invalid_after_publisher_revocation_and_reapproval() {
     let root = tempfile::tempdir().unwrap();
     let host = Manager::open(root.path(), Arc::new(MemoryVault::default())).unwrap();
     let installed = host
         .full_install(&full_review(
             &host,
             root.path(),
-            super::dsh::PLUGIN,
+            "net.worksha.dsh-desktop",
             "net.worksha",
             7,
         ))
@@ -22,19 +22,26 @@ fn dsh_authorization_ticket_is_invalid_after_publisher_revocation_and_reapproval
         digest: installed.digest,
     };
     let package = host.full.lock().unwrap().installed(&query).unwrap();
-    let before = host.dsh_publisher_ticket(&package, true).unwrap().unwrap();
+    let before = saved_watch::publisher_ticket(&host.db.lock().unwrap(), &package, true)
+        .unwrap()
+        .unwrap();
     host.revoke_shared_publisher("net.worksha").unwrap();
     host.db
         .lock()
         .unwrap()
         .execute(
-            "INSERT INTO publishers VALUES(?1,?2)",
+            "INSERT INTO ext_host_publishers VALUES(?1,?2)",
             rusqlite::params!["net.worksha", package.signing_key],
         )
         .unwrap();
-    assert_eq!(host.dsh_publisher_ticket(&package, false).unwrap(), None);
+    assert_eq!(
+        saved_watch::publisher_ticket(&host.db.lock().unwrap(), &package, false).unwrap(),
+        None
+    );
     assert_ne!(
-        host.dsh_publisher_ticket(&package, true).unwrap().unwrap(),
+        saved_watch::publisher_ticket(&host.db.lock().unwrap(), &package, true)
+            .unwrap()
+            .unwrap(),
         before
     );
 }
@@ -281,7 +288,7 @@ fn older_installer_cannot_take_over_a_source_identity_after_trust_revocation() {
     host.db
         .lock()
         .unwrap()
-        .execute("DELETE FROM publishers", [])
+        .execute("DELETE FROM ext_host_publishers", [])
         .unwrap();
     for publisher in ["org.example", "org.example.owner"] {
         let mut manifest = super::super::tests::manifest();
@@ -407,11 +414,11 @@ fn source_resource_transition_removes_only_derived_metadata_and_rolls_back_on_st
     host.db()
         .unwrap()
         .execute(
-            "INSERT INTO full_projections VALUES('org.example.reader','previous metadata')",
+            "INSERT INTO ext_source_full_projections VALUES('org.example.reader','previous metadata')",
             [],
         )
         .unwrap();
-    host.db().unwrap().execute_batch("CREATE TRIGGER reject_projection_delete BEFORE DELETE ON full_projections BEGIN SELECT RAISE(ABORT,'storage failure fixture'); END;").unwrap();
+    host.db().unwrap().execute_batch("CREATE TRIGGER reject_projection_delete BEFORE DELETE ON ext_source_full_projections BEGIN SELECT RAISE(ABORT,'storage failure fixture'); END;").unwrap();
     let mut after = before.clone();
     after.advance().unwrap();
     assert_eq!(
@@ -424,7 +431,9 @@ fn source_resource_transition_removes_only_derived_metadata_and_rolls_back_on_st
     let saved: String = host
         .db()
         .unwrap()
-        .query_row("SELECT record FROM full_projections", [], |r| r.get(0))
+        .query_row("SELECT record FROM ext_source_full_projections", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(saved, "previous metadata");
     host.db()
@@ -437,7 +446,11 @@ fn source_resource_transition_removes_only_derived_metadata_and_rolls_back_on_st
     let count: i64 = host
         .db()
         .unwrap()
-        .query_row("SELECT count(*) FROM full_projections", [], |r| r.get(0))
+        .query_row(
+            "SELECT count(*) FROM ext_source_full_projections",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(count, 0);
 }
@@ -584,9 +597,9 @@ fn source_install_cannot_claim_an_existing_legacy_plugin_identity_with_another_p
         old.id = manifest.id.clone();
         old.publisher = publisher.into();
         let db = host.db.lock().unwrap();
-        db.execute("DELETE FROM packages", []).unwrap();
+        db.execute("DELETE FROM ext_host_packages", []).unwrap();
         db.execute(
-            "INSERT INTO packages VALUES(?1,?2,?3,?4,?5,1,0)",
+            "INSERT INTO ext_host_packages VALUES(?1,?2,?3,?4,?5,1,0)",
             params![
                 "a".repeat(64),
                 old.id,
@@ -609,11 +622,11 @@ fn future_source_database_is_preserved_and_does_not_gate_unrelated_legacy_reader
     let data = tempfile::tempdir().unwrap();
     let file = data.path().join("plugin-source-host.sqlite3");
     let db = rusqlite::Connection::open(&file).unwrap();
-    db.execute_batch("CREATE TABLE full_version(version INTEGER);INSERT INTO full_version VALUES(2);CREATE TABLE future_data(value TEXT);INSERT INTO future_data VALUES('preserve');").unwrap();
+    db.execute_batch("CREATE TABLE ext_source_full_version(version INTEGER);INSERT INTO ext_source_full_version VALUES(2);CREATE TABLE future_data(value TEXT);INSERT INTO future_data VALUES('preserve');").unwrap();
     drop(db);
     let original = std::fs::read(&file).unwrap();
     let host = Manager::open(data.path(), Arc::new(MemoryVault::default())).unwrap();
-    assert_eq!(host.full_list().unwrap_err().code, "incompatible_api");
+    assert!(host.full_list().unwrap().is_empty());
     assert_eq!(std::fs::read(&file).unwrap(), original);
     assert!(!legacy_conflict(&data.path().join("plugins"), "org.example.unrelated").unwrap());
     assert!(host.list().unwrap().is_empty());
@@ -632,7 +645,7 @@ fn unversioned_nonempty_source_database_is_preserved_and_empty_file_can_initiali
     let original = std::fs::read(&file).unwrap();
     let host = Manager::open(data.path(), Arc::new(MemoryVault::default())).unwrap();
     for _ in 0..2 {
-        assert_eq!(host.full_list().unwrap_err().code, "invalid_record");
+        assert!(host.full_list().unwrap().is_empty());
         assert_eq!(std::fs::read(&file).unwrap(), original);
         assert!(host.list().unwrap().is_empty());
     }
@@ -658,7 +671,7 @@ fn trust_write_failure_keeps_the_committed_package_disabled_and_never_retrusts_o
         "org.example",
         31,
     );
-    host.db.lock().unwrap().execute_batch("CREATE TRIGGER reject_trust BEFORE INSERT ON publishers BEGIN SELECT RAISE(ABORT,'trust write failed'); END;").unwrap();
+    host.db.lock().unwrap().execute_batch("CREATE TRIGGER reject_trust BEFORE INSERT ON ext_host_publishers BEGIN SELECT RAISE(ABORT,'trust write failed'); END;").unwrap();
     assert_eq!(host.full_install(&install).unwrap_err().code, "unavailable");
     let status = host.full_list().unwrap().pop().unwrap();
     assert!(
@@ -719,7 +732,7 @@ fn in_flight_install_cannot_restore_publisher_trust_revoked_during_package_publi
             .lock()
             .unwrap()
             .execute(
-                "INSERT INTO publishers VALUES('org.example',?1)",
+                "INSERT INTO ext_host_publishers VALUES('org.example',?1)",
                 [&install.expected_signing_key],
             )
             .unwrap();
@@ -737,7 +750,7 @@ fn in_flight_install_cannot_restore_publisher_trust_revoked_during_package_publi
                     if matches!(
                         action.action,
                         AuthAction::Insert {
-                            table_name: "full_packages"
+                            table_name: "ext_source_full_packages"
                         }
                     ) && !once.swap(true, Ordering::SeqCst)
                         && (arrived.send(()).is_err()

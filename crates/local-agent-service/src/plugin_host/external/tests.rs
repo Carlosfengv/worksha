@@ -405,7 +405,7 @@ async fn cancelled_activation_keeps_graph_and_plugin_guards_until_the_commit_wor
             if matches!(
                 context.action,
                 AuthAction::Update {
-                    table_name: "selections",
+                    table_name: "ext_host_selections",
                     ..
                 }
             ) && let Some(entered) = entered.take()
@@ -701,7 +701,7 @@ async fn declarative_lifecycle_preserves_settings_and_recovers_uncommitted_insta
         .lock()
         .unwrap()
         .execute(
-            "INSERT INTO operations VALUES('interrupted-test','x','publishing','{}')",
+            "INSERT INTO ext_host_operations VALUES('interrupted-test','x','publishing','{}')",
             [],
         )
         .unwrap();
@@ -718,7 +718,7 @@ async fn declarative_lifecycle_preserves_settings_and_recovers_uncommitted_insta
         .lock()
         .unwrap()
         .query_row(
-            "SELECT phase FROM operations WHERE id='interrupted-test'",
+            "SELECT phase FROM ext_host_operations WHERE id='interrupted-test'",
             [],
             |r| r.get(0),
         )

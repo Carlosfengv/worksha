@@ -291,7 +291,8 @@ impl Fixture {
             credentials: vault.clone(),
             plugins: Arc::new(crate::plugin_host::external::Manager::open(&data, vault).unwrap()),
             readonly: Arc::new(readonly),
-            store: Arc::new(Mutex::new(store)),
+            store_readers: crate::blocking::StoreReaders::new(&store).unwrap(),
+            store: local_agent_core::StoreWriter::new(store),
             token: Arc::new("offline-composition".into()),
             host: Arc::new("127.0.0.1:9".into()),
             sessions: Arc::new(NativeSessions::with_source_plugins(

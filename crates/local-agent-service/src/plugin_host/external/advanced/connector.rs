@@ -172,7 +172,7 @@ struct Bridge {
     telemetry: Arc<Mutex<Telemetry>>,
     connection: String,
     clock: Instant,
-    core: Arc<Mutex<local_agent_core::Store>>,
+    core: local_agent_core::StoreWriter,
     http_pending: Arc<Mutex<BTreeMap<String, Cancellation>>>,
 }
 #[derive(Clone)]
@@ -239,7 +239,7 @@ impl Manager {
         self: &Arc<Self>,
         q: &Query,
         provider: Option<Provider>,
-        core: Arc<Mutex<local_agent_core::Store>>,
+        core: local_agent_core::StoreWriter,
     ) -> Result<Value> {
         let manager = self.clone();
         let query = q.clone();
@@ -1060,7 +1060,7 @@ fn record(b: &Bridge, r: &Value, _response: Option<&Value>, state: &str, start: 
             let store = manager.advanced.lock().checked("unavailable")?;
             let db = store.db()?;
             db.execute(
-                "INSERT OR IGNORE INTO connector_calls(plugin_id,identity,record) VALUES(?1,?2,?3)",
+                "INSERT OR IGNORE INTO ext_adv_connector_calls(plugin_id,identity,record) VALUES(?1,?2,?3)",
                 params![id, identity, record.to_string()],
             )
             .checked("unavailable")
@@ -1200,7 +1200,7 @@ mod observation_tests {
             telemetry: Arc::new(Mutex::new(Telemetry::default())),
             connection: "fixture".into(),
             clock: Instant::now(),
-            core: Arc::new(Mutex::new(local_agent_core::Store::open(root).unwrap())),
+            core: local_agent_core::StoreWriter::new(local_agent_core::Store::open(root).unwrap()),
             http_pending: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -1268,7 +1268,7 @@ mod observation_tests {
             .unwrap()
         );
         let raw = db
-            .prepare("SELECT id,record FROM connector_calls ORDER BY id")
+            .prepare("SELECT id,record FROM ext_adv_connector_calls ORDER BY id")
             .unwrap()
             .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
             .unwrap()
@@ -1277,7 +1277,7 @@ mod observation_tests {
         assert_eq!(raw.len(), 6);
         assert!(raw.iter().all(|(_, r)| !r.contains(private)));
         let ledger =
-            FactLedger::for_connector_store(db, "00000000-0000-4000-8000-000000000001").unwrap();
+            FactLedger::for_connector_store(&db, "00000000-0000-4000-8000-000000000001").unwrap();
         ledger
             .stage_tool_batch(&raw.iter().map(|(id, _)| *id).collect::<Vec<_>>())
             .unwrap();
@@ -1303,7 +1303,7 @@ mod observation_tests {
         assert_eq!(summary.unknown_service_calls, 6);
         assert_eq!(summary.coverage, "staged_only");
         let after = db
-            .prepare("SELECT id,record FROM connector_calls ORDER BY id")
+            .prepare("SELECT id,record FROM ext_adv_connector_calls ORDER BY id")
             .unwrap()
             .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
             .unwrap()
@@ -1359,7 +1359,9 @@ mod observation_tests {
         let record: String = store
             .db()
             .unwrap()
-            .query_row("SELECT record FROM connector_calls", [], |r| r.get(0))
+            .query_row("SELECT record FROM ext_adv_connector_calls", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert!(!record.contains("do-not-persist"));
         assert_eq!(
@@ -1373,7 +1375,7 @@ mod observation_tests {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().canonicalize().unwrap();
         let bridge = bridge(&root).await;
-        bridge.manager.advanced.lock().unwrap().db().unwrap().execute_batch("CREATE TRIGGER reject_call BEFORE INSERT ON connector_calls BEGIN SELECT RAISE(ABORT,'fixture'); END;").unwrap();
+        bridge.manager.advanced.lock().unwrap().db().unwrap().execute_batch("CREATE TRIGGER reject_call BEFORE INSERT ON ext_adv_connector_calls BEGIN SELECT RAISE(ABORT,'fixture'); END;").unwrap();
         let request =
             json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"safe"}});
         let response = json!({"jsonrpc":"2.0","id":2,"result":{"content":[]}});

@@ -40,10 +40,11 @@ test("complete source installation pins the reviewed key and keeps lifecycle gra
     ),
   ).toBe(false);
   await page.getByRole("button", { name: "读取插件数据", exact: true }).click();
-  await expect(
-    page.getByText(/已手动读取。重开后需要重新启用并选择资源/),
-  ).toBeVisible();
+  await expect(page.getByText("已手动读取", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "统一会话展示", exact: true }).click();
+  await expect(
+    page.getByRole("checkbox", { name: /允许应用重启后/ }),
+  ).toHaveCount(0);
   await page
     .getByRole("button", { name: "确认加入统一展示", exact: true })
     .click();
@@ -60,4 +61,33 @@ test("complete source installation pins the reviewed key and keeps lifecycle gra
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("persistent watch is explicit and independent of metadata storage", async ({
+  page,
+}) => {
+  await page.goto("/tests/frontend/full-plugin.html?watch=1");
+  await page.getByRole("row").filter({ hasText: "完整只读历史" }).click();
+  await page.getByRole("button", { name: "统一会话展示", exact: true }).click();
+  const watch = page.getByRole("checkbox", {
+    name: "允许应用重启后继续自动读取并监听此文件",
+  });
+  const metadata = page.getByRole("checkbox", { name: "保存会话元数据" });
+  await expect(watch).not.toBeChecked();
+  await expect(metadata).not.toBeChecked();
+  await page.getByRole("button", { name: "确认加入统一展示" }).click();
+  await expect(page.getByText("已加入统一展示 · 仅本次运行")).toBeVisible();
+  await watch.check();
+  await page.getByRole("button", { name: "更新展示授权" }).click();
+  await expect(page.getByText("已加入统一展示 · 重启后继续监听")).toBeVisible();
+  await page.getByRole("button", { name: "停止统一展示" }).click();
+  await expect(watch).not.toBeChecked();
+  const calls = (await page.evaluate(() => window.fullPluginFixture.calls))
+    .filter((call) => call.operation === "consent")
+    .map((call) => call.input);
+  expect(calls).toMatchObject([
+    { enabled: true, persistMetadata: false, persistWatch: false },
+    { enabled: true, persistMetadata: false, persistWatch: true },
+    { enabled: false, persistMetadata: false, persistWatch: false },
+  ]);
 });

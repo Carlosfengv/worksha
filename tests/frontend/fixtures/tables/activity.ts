@@ -18,6 +18,7 @@ import type { TableFixtureContext } from "./context";
 declare global {
   interface Window {
     dshActivity?: "running" | "idle" | "expired" | "revoked";
+    removeReportedSource?: boolean;
   }
 }
 
@@ -25,6 +26,16 @@ export function installTableActivity({
   sourceState,
   params,
 }: TableFixtureContext) {
+  const reportedAgent =
+    params.get("reportedSource") === "other"
+      ? {
+          ...bundledDshAgent,
+          id: "test.full-history:desktop",
+          pluginId: "test.full-history",
+          sourceId: "test.full-history:desktop",
+          name: "历史记录来源",
+        }
+      : bundledDshAgent;
   observationApi.requestDetail = async (id) => ({
     request:
       activityOverview(activityQuery)
@@ -45,7 +56,7 @@ export function installTableActivity({
     window.overviewReads.push(query);
     const data = activityOverview(query);
     if (params.has("dshActivity")) {
-      if (query.agent === bundledDshAgent.id) throw Error("调用分析筛选无效");
+      if (query.agent === reportedAgent.id) throw Error("调用分析筛选无效");
       data.nativeActivities = [];
       data.gatewayActivities = [];
       data.sessionContexts = [];
@@ -74,14 +85,16 @@ export function installTableActivity({
       return {
         ...data,
         sessionSources: [],
-        agents: [
-          ...data.agents,
-          { ...bundledDshAgent, found: true, connected: true },
-        ],
+        agents: window.removeReportedSource
+          ? data.agents
+          : [
+              ...data.agents,
+              { ...reportedAgent, found: true, connected: true },
+            ],
       };
     };
     domainApi.activity = async (query) => {
-      const sourceId = bundledDshAgent.sourceId!;
+      const sourceId = reportedAgent.sourceId!;
       window.scopeQueries.push({ feature: "dsh-activity", query });
       if (
         query.scope.kind !== "external" ||
@@ -121,8 +134,8 @@ export function installTableActivity({
                   sourceRevision: "1",
                   sourceId,
                   sessionId: "dsh-fixture-session",
-                  productIds: [bundledDshAgent.id],
-                  title: "DSH 直连任务",
+                  productIds: [reportedAgent.id],
+                  title: `${reportedAgent.name}任务`,
                   phase: state === "idle" ? "idle" : "running",
                   occurredAt: now,
                   messageStartedAt,

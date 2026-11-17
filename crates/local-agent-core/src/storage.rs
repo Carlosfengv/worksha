@@ -1,11 +1,81 @@
 use crate::{Provider, Settings, Snapshot, providers};
-use rusqlite::{Connection, OptionalExtension, params};
-use std::{fs, path::Path};
+use parking_lot::{MappedReentrantMutexGuard, ReentrantMutex, ReentrantMutexGuard};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
+use std::{
+    fs,
+    path::Path,
+    sync::{Arc, TryLockError, Weak},
+    time::Duration,
+};
+
+mod control_plane;
+
+#[cfg(test)]
+pub(crate) use control_plane::remove_from_fixture as strip_m1_fixture;
+
+pub(crate) fn publish_control_plane(db: &Connection, version: u32) -> Result<(), String> {
+    control_plane::initialize(db).map_err(|error| error.to_string())?;
+    crate::routing::retention::initialize(db).map_err(|error| error.message)?;
+    crate::routing::retention::backfill(db).map_err(|error| error.message)?;
+    db.pragma_update(None, "user_version", version)
+        .map_err(|error| error.to_string())
+}
 
 pub struct Store {
     pub(crate) connection: Connection,
     path: String,
+    file_identity: (u64, u64),
     directory: std::sync::Arc<crate::agents::AgentDirectory>,
+    writer: Option<Weak<ReentrantMutex<Store>>>,
+}
+
+/// The service shares one SQLite writer across its control-plane domains.
+/// A scoped operation may consult the same Store again on the same thread.
+#[derive(Clone)]
+pub struct StoreWriter(Arc<ReentrantMutex<Store>>);
+
+pub type StoreConnection<'a> = MappedReentrantMutexGuard<'a, Connection>;
+
+impl StoreWriter {
+    pub fn new(mut store: Store) -> Self {
+        Self(Arc::new_cyclic(|writer| {
+            store.writer = Some(writer.clone());
+            ReentrantMutex::new(store)
+        }))
+    }
+
+    pub fn lock(&self) -> Result<ReentrantMutexGuard<'_, Store>, TryLockError<()>> {
+        let guard = self
+            .0
+            .try_lock_for(Duration::from_secs(3))
+            .ok_or(TryLockError::WouldBlock)?;
+        if !guard.database_file_matches() {
+            return Err(TryLockError::WouldBlock);
+        }
+        Ok(guard)
+    }
+
+    pub fn try_lock(&self) -> Result<ReentrantMutexGuard<'_, Store>, TryLockError<()>> {
+        self.0.try_lock().ok_or(TryLockError::WouldBlock)
+    }
+
+    pub fn connection(&self) -> Result<StoreConnection<'_>, TryLockError<()>> {
+        let guard = self
+            .0
+            .try_lock_for(Duration::from_millis(250))
+            .ok_or(TryLockError::WouldBlock)?;
+        if !guard.database_file_matches() {
+            return Err(TryLockError::WouldBlock);
+        }
+        Ok(ReentrantMutexGuard::map(guard, |store| &store.connection))
+    }
+}
+
+fn database_file_identity(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = fs::symlink_metadata(path).ok()?;
+    (metadata.is_file() && metadata.nlink() == 1 && metadata.uid() == unsafe { libc::geteuid() })
+        .then(|| (metadata.dev(), metadata.ino()))
 }
 
 fn migration_backup(
@@ -44,7 +114,36 @@ fn migration_backup(
 }
 
 impl Store {
-    pub const SCHEMA_VERSION: u32 = 16;
+    pub const SCHEMA_VERSION: u32 = 18;
+
+    pub(crate) fn database_file_matches(&self) -> bool {
+        database_file_identity(Path::new(&self.path)) == Some(self.file_identity)
+    }
+
+    pub fn open_reader(&self) -> Result<Self, String> {
+        if !self.database_file_matches() {
+            return Err("本地数据库文件已变化".to_owned());
+        }
+        let connection = Connection::open_with_flags(
+            &self.path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NOFOLLOW,
+        )
+        .map_err(|error| error.to_string())?;
+        connection
+            .busy_timeout(std::time::Duration::from_millis(250))
+            .map_err(|error| error.to_string())?;
+        if !self.database_file_matches() {
+            return Err("本地数据库文件已变化".to_owned());
+        }
+        Ok(Self {
+            connection,
+            path: self.path.clone(),
+            file_identity: self.file_identity,
+            directory: self.directory.clone(),
+            writer: None,
+        })
+    }
+
     pub fn open(directory: &Path) -> Result<Self, String> {
         Self::open_with_directory(
             directory,
@@ -56,9 +155,29 @@ impl Store {
         agents: std::sync::Arc<crate::agents::AgentDirectory>,
     ) -> Result<Self, String> {
         fs::create_dir_all(directory).map_err(|_| "无法创建应用数据目录".to_string())?;
+        let directory =
+            &fs::canonicalize(directory).map_err(|_| "无法解析应用数据目录".to_string())?;
         let path = directory.join("local-agent.sqlite3");
         let fresh = !path.exists();
-        let connection = Connection::open(&path).map_err(|_| "无法打开本地数据库".to_string())?;
+        if fresh {
+            use std::os::unix::fs::OpenOptionsExt;
+            fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&path)
+                .map_err(|_| "无法创建本地数据库".to_string())?;
+        }
+        let file_identity =
+            database_file_identity(&path).ok_or("本地数据库必须为当前用户拥有的单链接普通文件")?;
+        let connection = Connection::open_with_flags(
+            &path,
+            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NOFOLLOW,
+        )
+        .map_err(|_| "无法打开本地数据库".to_string())?;
+        if database_file_identity(&path) != Some(file_identity) {
+            return Err("本地数据库文件已变化".to_owned());
+        }
         let schema_version: u32 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .map_err(|e| e.to_string())?;
@@ -92,8 +211,12 @@ impl Store {
                 "local-agent.pre-local-token-v13.sqlite3"
             } else if schema_version == 14 {
                 "local-agent.pre-local-token-admission-v14.sqlite3"
-            } else {
+            } else if schema_version == 15 {
                 "local-agent.pre-plugin-lifecycle-v15.sqlite3"
+            } else if schema_version == 16 {
+                "local-agent.pre-single-control-v16.sqlite3"
+            } else {
+                "local-agent.pre-single-control-v17.sqlite3"
             });
             migration_backup(&connection, directory, &backup, schema_version)?;
         }
@@ -118,6 +241,9 @@ impl Store {
             .map_err(|e| e.to_string())?;
         crate::routing::initialize(&connection).map_err(|e| e.message)?;
         crate::model_services::initialize(&connection).map_err(|e| e.message)?;
+        crate::routing::chat::initialize(&connection).map_err(|e| e.message)?;
+        crate::routing::budget::initialize(&connection).map_err(|e| e.message)?;
+        crate::routing::loop_guard::initialize(&connection).map_err(|e| e.message)?;
         crate::model_services::policy::initialize(&connection).map_err(|e| e.message)?;
         crate::providers::upstream_accounts::initialize(&connection).map_err(|e| e.message)?;
         crate::model_services::notices::initialize(&connection).map_err(|e| e.message)?;
@@ -131,10 +257,13 @@ impl Store {
             fresh,
         )
         .map_err(|e| e.message)?;
+        control_plane::validate(&connection).map_err(|_| "控制面数据库结构无效".to_owned())?;
         Ok(Self {
             connection,
             path: path.to_string_lossy().into_owned(),
+            file_identity,
             directory: agents,
+            writer: None,
         })
     }
 
@@ -145,7 +274,7 @@ impl Store {
         migration_backup(
             &self.connection,
             directory,
-            &directory.join("local-agent.pre-iam-v16.sqlite3"),
+            &directory.join("local-agent.pre-iam-v18.sqlite3"),
             Self::SCHEMA_VERSION,
         )
         .map_err(|message| crate::plugin::PluginError::new("iam_unavailable", message))
@@ -169,6 +298,9 @@ impl Store {
         &self,
         expected_store_id: &str,
     ) -> Result<providers::credential_scope::CredentialScope, providers::ConfigError> {
+        if !matches!(self.connection.is_readonly("main"), Ok(false)) {
+            return providers::fail("credential_protocol_unavailable", "凭据恢复需要主库写连接");
+        }
         let store_id = self.database_id()?;
         if !providers::operations::valid_id(expected_store_id) || store_id != expected_store_id {
             return providers::fail(
@@ -190,6 +322,17 @@ impl Store {
             &self.connection,
             Path::new(&self.path),
             &store_id,
+            self.writer
+                .as_ref()
+                .map(|writer| {
+                    writer.upgrade().map(StoreWriter).ok_or_else(|| {
+                        providers::ConfigError::new(
+                            "credential_recovery_unavailable",
+                            "凭据恢复账本暂不可用",
+                        )
+                    })
+                })
+                .transpose()?,
         )?;
         Ok(providers::credential_scope::CredentialScope {
             store_id,
@@ -704,6 +847,7 @@ mod tests {
             })
             .unwrap();
         store.save_native_source("codex", true).unwrap();
+        strip_m1_fixture(&store.connection);
         let providers = serde_json::to_value(store.providers().unwrap()).unwrap();
         store
             .connection

@@ -24,6 +24,10 @@ struct Guard {
     id: String,
     done: bool,
     mismatched_reply: bool,
+    accounting: Option<super::budget::Accounting>,
+    verified_usage: bool,
+    confirmed_output: bool,
+    settlement: Option<tokio::task::JoinHandle<()>>,
 }
 impl Guard {
     fn finish(&mut self, status: &str, issue: Option<&str>) {
@@ -33,8 +37,30 @@ impl Guard {
             } else {
                 (status, issue)
             };
-            self.observation.hub.finish(&self.id, status, issue);
+            let row = self
+                .observation
+                .hub
+                .finish_evidence(&self.id, status, issue);
+            if let Some(accounting) = &self.accounting {
+                self.settlement =
+                    accounting.finish(row.as_ref(), self.verified_usage && !self.mismatched_reply);
+            }
             self.done = true;
+        }
+    }
+
+    async fn wait_budget(&mut self) {
+        if let Some(settlement) = self.settlement.take() {
+            let _ = settlement.await;
+        }
+    }
+
+    async fn confirm_output(&mut self) {
+        if !self.confirmed_output
+            && let Some(accounting) = &self.accounting
+        {
+            accounting.record(None, true).await;
+            self.confirmed_output = true;
         }
     }
 }
@@ -57,6 +83,15 @@ fn reject(status: StatusCode, message: &str) -> Response {
         axum::Json(
             serde_json::json!({"error":{"type":"local_observation_error","message":message}}),
         ),
+    )
+        .into_response()
+}
+pub(super) fn route_conflict(error: &ConfigError) -> Response {
+    (
+        StatusCode::CONFLICT,
+        axum::Json(serde_json::json!({
+            "error":{"type":"local_observation_error","message":error.message,"code":error.code}
+        })),
     )
         .into_response()
 }
@@ -339,12 +374,26 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         };
         binding.provider.model = model.into();
     }
-    let session_id = native_session(&agent, &parts.headers, &parsed).map(|session| {
+    let chat = binding.client_protocol == "chat-completions"
+        && parts
+            .extensions
+            .get::<local_agent_core::routing::chat::SendFence>()
+            .is_some();
+    let session = if chat {
+        match super::dynamic_turn::chat_session(&parts.headers) {
+            Ok(session) => session,
+            Err(message) => return reject(StatusCode::BAD_REQUEST, message),
+        }
+    } else {
+        native_session(&agent, &parts.headers, &parsed)
+    };
+    let session_id = session.map(|session| {
         client
             .as_ref()
             .map_or_else(|| session.clone(), |c| format!("lan:{}:{session}", c.id))
     });
     let mut routing = None;
+    let mut fallback_notice = None;
     if let Some(context) = parts
         .extensions
         .get::<crate::gateway::dynamic::Context>()
@@ -376,7 +425,16 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             super::dynamic_turn::evidence
         };
         let responses = binding.client_protocol == "responses";
-        let mut projection = if responses {
+        let mut chat_continuation = None;
+        let mut projection = if chat {
+            match super::dynamic_turn::chat_projection(&mut parsed) {
+                Ok((body, continuation)) => {
+                    chat_continuation = Some(continuation);
+                    Some(body)
+                }
+                Err(message) => return reject(StatusCode::BAD_REQUEST, message),
+            }
+        } else if responses {
             match super::dynamic_turn::responses_projection(&parsed) {
                 Ok(body) => Some(body),
                 Err(message) => return reject(StatusCode::BAD_REQUEST, message),
@@ -384,7 +442,7 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         } else {
             None
         };
-        let (turn, compatible) = match evidence(
+        let (mut turn, compatible) = match evidence(
             &state.observation.hub,
             projection.as_ref().unwrap_or(&parsed),
             session_id.clone(),
@@ -394,17 +452,30 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             Ok(turn) => turn,
             Err(message) => return reject(StatusCode::BAD_REQUEST, message),
         };
+        if let Some(continuation) = chat_continuation {
+            turn.continuation = continuation;
+        }
         let dispatch_service =
             context.service.is_some() && parts.extensions.get::<super::policy::Attempt>().is_none();
+        let auxiliary_title = agent == "opencode"
+            && turn.session.is_some()
+            && super::dynamic_turn::opencode_auxiliary_title(&parsed);
         let selection = if let Some(overridden) = parts.extensions.get::<super::policy::Selected>()
         {
             Ok(Ok((overridden.0.clone(), None, turn, None)))
         } else {
             let state = state.clone();
             let id = context.binding.id.clone();
+            let local = client.is_none();
             let model = context.service.as_ref().map(|_| alias);
-            let requested_output = (model.is_some() && !responses)
-                .then(|| parsed["max_tokens"].as_u64().unwrap_or_default());
+            let requested_output = if chat {
+                parsed
+                    .get("max_tokens")
+                    .map(|limit| limit.as_u64().unwrap_or_default())
+            } else {
+                (model.is_some() && !responses)
+                    .then(|| parsed["max_tokens"].as_u64().unwrap_or_default())
+            };
             let groups = dispatch_service
                 .then(|| {
                     super::dynamic_turn::opencode_text_groups(
@@ -446,14 +517,32 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                             .native_sources()
                             .is_ok_and(|sources| sources.iter().any(|source| source == "opencode"))
                 });
-                let (selected, effective) = store.gateway_admit(
+                let selected = store.gateway_admit_request(
                     &id,
                     &turn,
-                    &compatible,
-                    history.as_ref().map(|h| &h.route),
-                    model.as_deref(),
-                    requested_output,
-                )?;
+                    local_agent_core::routing::GatewayAdmission {
+                        compatible: &compatible,
+                        opencode_proof: history.as_ref().map(|h| &h.route),
+                        model: model.as_deref(),
+                        requested_output,
+                        auxiliary_title,
+                    },
+                );
+                if local
+                    && selected.as_ref().map_or_else(
+                        |error| {
+                            matches!(
+                                error.code.as_str(),
+                                "route_turn_superseded" | "stale_or_evicted_continuation"
+                            )
+                        },
+                        |_| true,
+                    )
+                    && let Some(error) = store.loop_rejection(&id, turn.session.as_deref())?
+                {
+                    return Err(error);
+                }
+                let (selected, effective) = selected?;
                 // Reserve the turn before releasing the store lock. A duplicate
                 // cannot overtake admission while the first request checks its input.
                 let guard =
@@ -469,6 +558,24 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         };
         let (mut selected, guard, policy_turn, native_intent) = match selection {
             Ok(Ok(s)) => s,
+            Ok(Err(error))
+                if matches!(
+                    error.code.as_str(),
+                    "local_agent_loop_circuit_breaker" | "local_agent_loop_dedup_capacity"
+                ) =>
+            {
+                return super::budget::error(&error);
+            }
+            Ok(Err(error))
+                if matches!(
+                    error.code.as_str(),
+                    "route_turn_superseded"
+                        | "session_lease_archived"
+                        | "stale_or_evicted_continuation"
+                ) =>
+            {
+                return route_conflict(&error);
+            }
             Ok(Err(error)) => {
                 let status = if error.code == "invalid_output_limit" {
                     StatusCode::BAD_REQUEST
@@ -479,6 +586,20 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             }
             Err(_) => return reject(StatusCode::SERVICE_UNAVAILABLE, "动态路由选择未完成"),
         };
+        if parts.extensions.get::<super::budget::Scope>().is_none() {
+            parts.extensions.insert(super::budget::Scope::new(
+                context.binding.id.clone(),
+                &policy_turn,
+            ));
+        }
+        let monitor = client.is_none()
+            && policy_turn.session.is_some()
+            && parts.extensions.get::<super::policy::Selected>().is_none();
+        let batch = (monitor && policy_turn.continuation)
+            .then(|| {
+                super::loop_batch::extract(&binding.client_protocol, &parsed, &policy_turn.digest)
+            })
+            .flatten();
         let journal_for = |selected: &local_agent_core::routing::Selection| {
             let mut service = selected.service.clone();
             if let Some(service) = &mut service {
@@ -512,18 +633,6 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                 },
             )
         };
-        let turn_guard = match guard {
-            Some(Ok(guard)) => Some(guard),
-            Some(Err(message)) => {
-                let (mut journal, _) = journal_for(&selected);
-                journal.duplicate(&selected);
-                return super::policy::rejection(StatusCode::CONFLICT, message);
-            }
-            None if dispatch_service => {
-                return reject(StatusCode::SERVICE_UNAVAILABLE, "本轮路由保护不可用");
-            }
-            None => None,
-        };
         if !responses
             && context.service.is_some()
             && let Some(session) = &policy_turn.session
@@ -544,19 +653,53 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                 Err(_) => return reject(StatusCode::SERVICE_UNAVAILABLE, "路由通知读取繁忙"),
             }
         }
-        let caps = selected
+        let mut caps = selected
             .service
             .as_ref()
             .map(|s| s.capabilities.clone())
             .unwrap_or_default();
         let request_stream = parsed["stream"] == true;
         let analysis = projection.as_mut().unwrap_or(&mut parsed);
-        if responses && analysis.get("max_tokens").is_none() {
+        if (responses || chat) && analysis.get("max_tokens").is_none() {
             analysis["max_tokens"] = serde_json::json!(caps.max_output_tokens);
         }
         if let Err(message) = super::dynamic_turn::prepare(analysis, &caps) {
             return reject(StatusCode::BAD_REQUEST, message);
         }
+        if monitor {
+            let binding = context.binding.id.clone();
+            let monitored_turn = policy_turn.clone();
+            match crate::blocking::store(state.store.clone(), move |store| {
+                if auxiliary_title {
+                    store.loop_admit_auxiliary(&binding, monitored_turn.session.as_deref())
+                } else {
+                    store.loop_admit(&binding, &monitored_turn, batch.as_ref())
+                }
+            })
+            .await
+            {
+                Ok(monitor) => {
+                    if let Some(scope) = parts.extensions.get_mut::<super::budget::Scope>() {
+                        scope.monitor = monitor;
+                    }
+                }
+                Err(error) => return super::budget::error(&error),
+            }
+        }
+        // The durable guard evaluates complete batches even when another request
+        // already holds the same turn's upstream dispatch slot.
+        let mut turn_guard = match guard {
+            Some(Ok(guard)) => Some(guard),
+            Some(Err(message)) => {
+                let (mut journal, _) = journal_for(&selected);
+                journal.duplicate(&selected);
+                return super::policy::rejection(StatusCode::CONFLICT, message);
+            }
+            None if dispatch_service => {
+                return reject(StatusCode::SERVICE_UNAVAILABLE, "本轮路由保护不可用");
+            }
+            None => None,
+        };
         let request_tools = analysis["tools"].as_array().is_some_and(|t| !t.is_empty());
         let input = analysis.clone();
         if selected.fresh
@@ -580,11 +723,108 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             .extensions
             .get::<super::context_budget::Evaluation>()
             .cloned();
-        let evaluation =
-            match super::context_budget::evaluate(input, counter_caps, provider, previous).await {
-                Ok(b) => b,
-                Err(e) => return reject(StatusCode::SERVICE_UNAVAILABLE, e),
-            };
+        let mut evaluation = match super::context_budget::evaluate(
+            input.clone(),
+            counter_caps,
+            provider.clone(),
+            previous,
+        )
+        .await
+        {
+            Ok(b) => b,
+            Err(e) => return reject(StatusCode::SERVICE_UNAVAILABLE, e),
+        };
+        if parts.extensions.get::<super::policy::Selected>().is_none()
+            && let Some(scope) = parts.extensions.get::<super::budget::Scope>().cloned()
+        {
+            use local_agent_core::routing::budget::{Quote, Tier};
+            let check_scope = scope.clone();
+            let now = chrono::Utc::now();
+            let primary_estimate = scope
+                .quote_override
+                .unwrap_or_else(|| super::budget::estimate(&provider, &evaluation.budget, now));
+            let choice = crate::blocking::store(state.store.clone(), move |store| {
+                let quote = check_scope.quote(store, &provider, primary_estimate, now)?;
+                let candidate = match &quote {
+                    Quote::TryFallback(service) => Some(store.budget_fallback_candidate(
+                        &check_scope.binding,
+                        check_scope.session.as_deref().unwrap_or("unknown"),
+                        service,
+                    )?),
+                    _ => None,
+                };
+                Ok((quote, candidate))
+            })
+            .await;
+            match choice {
+                Ok((Quote::Primary, _)) => (),
+                Ok((quote, fallback)) => {
+                    let mut scoped = scope;
+                    scoped.tier = Tier::Fallback;
+                    if let Some(fallback) = fallback {
+                        caps = fallback.service.as_ref().unwrap().capabilities.clone();
+                        if super::dynamic_turn::validate(&input, &caps).is_err() {
+                            return super::budget::error(&ConfigError::new(
+                                "budget_fallback_exhausted",
+                                "备用服务不能承载原请求能力和输出上限",
+                            ));
+                        }
+                        evaluation = match super::context_budget::evaluate(
+                            input,
+                            caps.clone(),
+                            fallback.version.provider.clone(),
+                            None,
+                        )
+                        .await
+                        {
+                            Ok(evaluation)
+                                if evaluation
+                                    .budget
+                                    .input_tokens
+                                    .saturating_add(evaluation.budget.output_tokens)
+                                    <= u64::from(caps.context_window) =>
+                            {
+                                evaluation
+                            }
+                            _ => {
+                                return super::budget::error(&ConfigError::new(
+                                    "budget_fallback_exhausted",
+                                    "备用服务上下文不足",
+                                ));
+                            }
+                        };
+                        scoped.fallback = Some((fallback.clone(), primary_estimate));
+                        let mut notice_selection = fallback.clone();
+                        notice_selection.fresh = true;
+                        fallback_notice = Some((
+                            scoped.binding.clone(),
+                            policy_turn.clone(),
+                            notice_selection,
+                        ));
+                        if fallback.fresh {
+                            // Route the backup through its own published policy. Classification
+                            // is optional until the first candidate acquires the backup pool.
+                            parts
+                                .extensions
+                                .remove::<super::policy::intent::IntentInput>();
+                        } else {
+                            parts.extensions.insert(turn_guard.take().map(Arc::new));
+                        }
+                        selected = fallback;
+                    } else if !matches!(quote, Quote::Fallback) {
+                        return super::budget::error(&ConfigError::new(
+                            "budget_fallback_exhausted",
+                            "备用服务不可用",
+                        ));
+                    }
+                    parts.extensions.insert(scoped);
+                }
+                Err(error) if error.code == "route_turn_superseded" => {
+                    return route_conflict(&error);
+                }
+                Err(error) => return super::budget::error(&error),
+            }
+        }
         let budget = evaluation.budget.clone();
         parts.extensions.insert(evaluation);
         if budget.input_tokens.saturating_add(budget.output_tokens) > u64::from(caps.context_window)
@@ -595,13 +835,36 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         if let Some(service) = &mut selected.service {
             service.budget = Some(budget);
         }
+        if parts.extensions.get::<super::policy::Selected>().is_some()
+            && let Some(scope) = parts.extensions.get_mut::<super::budget::Scope>()
+            && let Some((fallback, _)) = &mut scope.fallback
+        {
+            if let Some(service) = &mut selected.service {
+                service.fallback_reason = Some("budget_downgraded".into());
+            }
+            *fallback = selected.clone();
+        }
         if let Some(turn_guard) = turn_guard {
             drop(permit);
             let (mut journal, attempt) = journal_for(&selected);
             parts.extensions.insert(attempt);
+            let mut retry = None;
+            if let Some(scope) = parts.extensions.get::<super::budget::Scope>()
+                && scope.quote_override.is_none()
+                && !scope.continuation
+                && scope.session.is_some()
+            {
+                let mut request = Request::new(Body::from(body.clone()));
+                *request.method_mut() = parts.method.clone();
+                *request.uri_mut() = parts.uri.clone();
+                *request.version_mut() = parts.version;
+                *request.headers_mut() = parts.headers.clone();
+                *request.extensions_mut() = parts.extensions.clone();
+                retry = Some(request);
+            }
             let response = Box::pin(super::policy::dispatch(
-                state,
-                binding,
+                state.clone(),
+                binding.clone(),
                 parts,
                 body,
                 selected,
@@ -621,6 +884,20 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             ))
             .await;
             journal.finish(response.status());
+            if let Some(mut request) = retry
+                && let Some(estimate) = response
+                    .extensions()
+                    .get::<super::budget::RetryWithFallback>()
+            {
+                request
+                    .extensions_mut()
+                    .get_mut::<super::budget::Scope>()
+                    .unwrap()
+                    .quote_override = Some(estimate.0);
+                request.extensions_mut().remove::<super::policy::Attempt>();
+                drop(response);
+                return Box::pin(forward(state, binding, request)).await;
+            }
             return response;
         }
         if selected
@@ -633,6 +910,15 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         if responses {
             parsed["max_output_tokens"] = max_output_tokens;
             parsed["store"] = serde_json::json!(false);
+            if !caps.tools
+                && let Some(body) = parsed.as_object_mut()
+            {
+                for field in ["tools", "tool_choice", "parallel_tool_calls"] {
+                    body.remove(field);
+                }
+            }
+        } else if chat {
+            parsed["max_tokens"] = max_output_tokens;
             if !caps.tools
                 && let Some(body) = parsed.as_object_mut()
             {
@@ -675,8 +961,26 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             16,
         )
         .unwrap_or(1);
+        let trace = selected
+            .service
+            .as_ref()
+            .filter(|service| service.fallback_reason.as_deref() == Some("budget_downgraded"))
+            .map(|service| {
+                use local_agent_core::model_services::policy::{
+                    RouteDecision, RouteDecisionReason, RouteTrace,
+                };
+                RouteTrace {
+                    decisions: vec![RouteDecision::new(
+                        service,
+                        None,
+                        RouteDecisionReason::BudgetDowngraded,
+                    )],
+                    sent_upstream: true,
+                    ..RouteTrace::default()
+                }
+            });
         routing = Some(local_agent_core::observation::RouteEvidence {
-            trace: None,
+            trace,
             binding_id: context.binding.id.clone(),
             route_version_id: selected.version.id,
             provider_revision: binding.provider.revision,
@@ -796,6 +1100,17 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
     } else {
         body.to_vec()
     };
+    let classifier_size = if classifier.is_some()
+        && parts.extensions.get::<super::budget::Scope>().is_some()
+    {
+        match super::context_budget::inspect(&parsed, &Default::default(), Some(&binding.provider))
+        {
+            Ok(size) => Some(size),
+            Err(message) => return reject(StatusCode::BAD_REQUEST, message),
+        }
+    } else {
+        None
+    };
     drop(parsed);
     let upstream_wire =
         match crate::gateway::capabilities::builtin().resolve(&binding.provider.protocol) {
@@ -851,15 +1166,34 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         .extensions
         .get::<super::policy::CheckAccountQuota>()
         .cloned();
+    let key = parts
+        .extensions
+        .get::<local_agent_core::routing::chat::SendFence>()
+        .cloned();
+    let budget_scope = parts.extensions.get::<super::budget::Scope>().cloned();
+    let accounting = budget_scope
+        .as_ref()
+        .map(|_| super::budget::Accounting::new(&state));
+    let budget_size = parts
+        .extensions
+        .get::<super::context_budget::Evaluation>()
+        .map(|eval| eval.budget.clone())
+        .or(classifier_size);
+    let id = uuid::Uuid::new_v4().to_string();
     if account.is_some()
         || pending.is_some()
         || authority.is_some()
         || recovery_probe.is_some()
         || check_quota.is_some()
         || check_http_cooldown
+        || key.is_some()
+        || budget_scope.is_some()
+        || classifier.is_some()
     {
         let provider = binding.provider.clone();
         let state_copy = state.clone();
+        let accounting = accounting.clone();
+        let observation_id = id.clone();
         match crate::blocking::store(state.store.clone(), move |store| {
             if authority.is_some_and(|authority| !authority.valid(&state_copy.plugins)) {
                 let mut response = super::policy::rejection(
@@ -882,12 +1216,53 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                 return Ok(Err(Box::new(response)));
             }
             let begin_send = |quota: Option<QuotaProbeClaim<'_>>| {
+                if let Some(key)=&key {
+                    store.chat_key_current(&key.binding_id,key.key_version).map_err(|error|Box::new(super::budget::error(&error)))?;
+                }
+                if let Some(scope) = budget_scope.as_ref().filter(|scope| scope.monitor.is_some())
+                    && let Some(error) = store.loop_rejection(&scope.binding, scope.session.as_deref())
+                        .map_err(|error| Box::new(super::budget::error(&error)))?
+                {
+                    return Err(Box::new(super::budget::error(&error)));
+                }
+                if let Some(classifier)=&classifier {
+                    let admitted=classifier.admit(&state_copy,store,&target)
+                        .map_err(|error| Box::new(super::budget::error(&error)))?;
+                    if !admitted {return Err(Box::new(reject(StatusCode::SERVICE_UNAVAILABLE,"意图分类连接已变更")));}
+                }
+                let prepared = if let (Some(accounting),Some(scope),Some(size)) = (&accounting,&budget_scope,&budget_size) {
+                    accounting.prepare(store,scope,&target,size,&observation_id)
+                        .map_err(|error|{
+                            let mut response=super::budget::error(&error);
+                            if error.code=="local_agent_budget_exceeded" && scope.quote_override.is_none() {
+                                let now=chrono::Utc::now();
+                                let estimate=super::budget::estimate(&target,size,now);
+                                if matches!(scope.quote(store,&target,estimate,now),Ok(local_agent_core::routing::budget::Quote::TryFallback(_))) {
+                                    response.extensions_mut().insert(super::budget::RetryWithFallback(estimate));
+                                }
+                            }
+                            Box::new(response)
+                        })?
+                } else {None};
                 super::policy::CooldownProbe::begin_send(
                     store, recovery_probe.as_deref(),
                     pending.as_ref().map(|(plan, id)| (plan.as_ref(), *id)),
                     quota,
+                    local_agent_core::model_services::policy::SendBoundary {
+                        key:key.as_ref(),budget_attempt:prepared.as_ref().map(|attempt|attempt.attempt_key.as_str()),
+                        observation_id:Some(&observation_id),
+                    },
                 )
-                .map_err(|_| {
+                .map_err(|error| {
+                    if let Some(prepared)=prepared {
+                        let _ = store.budget_complete(&prepared.attempt_key,Default::default(),None);
+                    }
+                    if error.code == "chat_key_changed" {
+                        return Box::new(reject(StatusCode::UNAUTHORIZED, &error.message));
+                    }
+                    if matches!(error.code.as_str(), "local_agent_loop_circuit_breaker" | "local_agent_loop_dedup_capacity" | "route_turn_superseded") {
+                        return Box::new(super::budget::error(&error));
+                    }
                     let mut response = reject(
                         StatusCode::SERVICE_UNAVAILABLE,
                         "发送状态未能保存，本次候选未发送",
@@ -928,22 +1303,6 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             }
         }
     }
-    if let Some(classifier) = classifier {
-        let store = state.store.clone();
-        let state = state.clone();
-        let provider = binding.provider.clone();
-        let admitted = crate::blocking::store(store, move |store| {
-            classifier.admit(&state, store, &provider)
-        })
-        .await
-        .is_ok_and(|admitted| admitted);
-        if !admitted {
-            let mut response = reject(StatusCode::SERVICE_UNAVAILABLE, "意图分类连接已变更");
-            response.extensions_mut().insert(LocalCapacity);
-            return response;
-        }
-    }
-    let id = uuid::Uuid::new_v4().to_string();
     state.observation.hub.start(
         ModelObservation {
             last_rate_sample: None,
@@ -1003,6 +1362,24 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         id: id.clone(),
         done: false,
         mismatched_reply: false,
+        accounting,
+        verified_usage: false,
+        confirmed_output: false,
+        settlement: None,
+    };
+    let annotate = |response| {
+        if let Some((binding_id, turn, selected)) = &fallback_notice {
+            super::route_notices::apply(
+                response,
+                state.clone(),
+                binding_id.clone(),
+                turn.clone(),
+                selected.clone(),
+                &body,
+            )
+        } else {
+            response
+        }
     };
     let request_client = external_protocol
         .as_ref()
@@ -1086,14 +1463,17 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
     let status = response.status();
     let observed_at = chrono::Utc::now();
     let retry_after = super::policy::single_retry_after(response.headers()).cloned();
-    state.observation.hub.upstream_id(
-        &id,
-        response
-            .headers()
-            .get("x-request-id")
-            .or_else(|| response.headers().get("request-id"))
-            .and_then(|v| v.to_str().ok()),
-    );
+    let upstream_id = response
+        .headers()
+        .get("x-request-id")
+        .or_else(|| response.headers().get("request-id"))
+        .and_then(|v| v.to_str().ok());
+    state.observation.hub.upstream_id(&id, upstream_id);
+    if let Some(accounting) = &guard.accounting
+        && let Some(request_id) = upstream_id
+    {
+        accounting.record(Some(request_id.to_owned()), false).await;
+    }
     state.observation.hub.status(&id, status.as_u16());
     let response = if let Some(protocol) = external_protocol {
         match protocol
@@ -1170,6 +1550,7 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             update.text = false;
             update.estimated_tokens = 0.0;
             state.observation.hub.update(&id, update);
+            guard.verified_usage = !compressed;
         }
         if super::context_budget::is_context_error(&bytes) {
             guard.finish("error", Some("上游上下文超限"));
@@ -1231,6 +1612,7 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             return access.response();
         }
         guard.finish("error", Some(issue));
+        guard.wait_budget().await;
         if let Some(value) = retry_after {
             result.headers_mut().insert("retry-after", value);
         }
@@ -1275,6 +1657,7 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             let upstream_status = update.terminal;
             state.observation.hub.update(&id, update);
             let result = native_protocol.finish().await;
+            guard.verified_usage = true;
             return match result {
                 Ok(Finished::Json(v)) => {
                     if let Some(client_response_id) = native_protocol.response_id() {
@@ -1293,7 +1676,8 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                         },
                         None,
                     );
-                    axum::Json(v).into_response()
+                    guard.wait_budget().await;
+                    annotate(axum::Json(v).into_response())
                 }
                 Ok(Finished::Stream(_)) => {
                     guard.finish("error", Some("协议转换返回了不匹配的结果"));
@@ -1301,6 +1685,7 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                 }
                 Err(message) => {
                     guard.finish("error", Some(message));
+                    guard.wait_budget().await;
                     serde_json::from_slice(native_protocol.json_bytes())
                         .ok()
                         .as_ref()
@@ -1338,7 +1723,8 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                 match tokio::time::timeout(wait,input.next()).await {
                     Ok(Some(Ok(chunk)))=>{
                         if !recovery.allows(chunk.len()) { break; }
-                        let received_at=std::time::Instant::now();observation.hub.touch(&id);for update in metrics.feed(&chunk){observation.hub.update_at(&id,update,received_at);}
+                        let received_at=std::time::Instant::now();observation.hub.touch(&id);let mut generated=false;
+                        for update in metrics.feed(&chunk){generated|=update.generated;observation.hub.update_at(&id,update,received_at);}
                         let mut output=Output::default();
                         let converted=native_protocol.feed_stream(&chunk,&mut output);
                         if let Err(message)=converted {
@@ -1346,7 +1732,11 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                             if let Some(rejection)=native_protocol.take_rejection(){let _=recorded_rejection.0.set(rejection);}
                         } else if output.complete {
                             // A client may close as soon as it receives the terminal event.
+                            guard.verified_usage=true;
                             guard.finish(native_protocol.end_status(),None);
+                            guard.wait_budget().await;
+                        } else if generated {
+                            guard.confirm_output().await;
                         }
                         for part in output.chunks {if !part.is_empty(){yield Ok(axum::body::Bytes::from(part));}}
                         if output.complete{break;}
@@ -1373,7 +1763,9 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                         let output=native_protocol.finish().await;
                         match output {
                             Ok(Finished::Stream(output)) if output.complete=>{
+                                guard.verified_usage=true;
                                 guard.finish(native_protocol.end_status(),None);
+                                guard.wait_budget().await;
                                 for part in output.chunks {if !part.is_empty(){yield Ok(axum::body::Bytes::from(part));}}
                             },
                             _=>{guard.finish("interrupted",Some("上游在完整结束事件前断开"));yield Ok(axum::body::Bytes::from(native_protocol.error()));}
@@ -1402,7 +1794,7 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
         if let Some(value) = retry_after {
             result.headers_mut().insert("retry-after", value);
         }
-        return result;
+        return annotate(result);
     }
     let mismatched_reply = service_attempt && status.is_success() && streamed != sse;
     guard.mismatched_reply = mismatched_reply;
@@ -1441,7 +1833,7 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                 Ok(Some(Ok(chunk)))=>{
                     if !recovery.allows(chunk.len()) { break; }
                     observation.hub.touch(&id);
-                    if sse && status.is_success(){let received_at=std::time::Instant::now();for update in decoder.feed(&chunk){if let Some(state)=update.terminal{terminal=Some(state);}observation.hub.update_at(&id,update,received_at);}if let Some(state)=terminal{guard.finish(state,None);}}
+                    if sse && status.is_success(){let received_at=std::time::Instant::now();let mut generated=false;for update in decoder.feed(&chunk){generated|=update.generated;if let Some(state)=update.terminal{terminal=Some(state);}observation.hub.update_at(&id,update,received_at);}if let Some(state)=terminal{guard.verified_usage=true;guard.finish(state,None);guard.wait_budget().await;}else if generated{guard.confirm_output().await;}}
                     else if !sse && !compressed {total=total.saturating_add(chunk.len());if total<=8*1024*1024{json.extend_from_slice(&chunk);}else{json.clear();}}
                     yield chunk;
                     if sse && terminal.is_some(){break;}
@@ -1450,7 +1842,8 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
                     if sse && status.is_success(){for update in decoder.end(){if let Some(state)=update.terminal{terminal=Some(state);}observation.hub.update(&id,update);}}
                     if !sse && !compressed {let mut update=decode(&json,&protocol);update.generated=false;update.text=false;update.estimated_tokens=0.0;if let Some(state)=update.terminal{terminal=Some(state);}observation.hub.update(&id,update);}
                     let final_status=if !status.is_success(){"error"}else{terminal.unwrap_or("interrupted")};
-                    guard.finish(final_status,if compressed{Some("上游返回压缩内容，已原样转发；流式计时和用量不可测")}else if sse&&terminal.is_none(){Some("连接在协议结束事件前关闭，计时样本不进入成功分布")}else{None});break;
+                    guard.verified_usage=!compressed && ((!sse && total<=8*1024*1024)||terminal.is_some());
+                    guard.finish(final_status,if compressed{Some("上游返回压缩内容，已原样转发；流式计时和用量不可测")}else if sse&&terminal.is_none(){Some("连接在协议结束事件前关闭，计时样本不进入成功分布")}else{None});guard.wait_budget().await;break;
                 },
                 Ok(Some(Err(_)))=>{guard.finish("interrupted",Some("上游流读取中断"));Err(std::io::Error::other("上游流读取中断"))?;},
                 Err(_)=>{guard.finish("interrupted",Some("上游流超过 120 秒没有数据"));Err(std::io::Error::new(std::io::ErrorKind::TimedOut,"上游流等待超时"))?;}
@@ -1477,7 +1870,7 @@ pub async fn forward(state: AppState, mut binding: Forward, request: Request) ->
             Ok(response) | Err(response) => response,
         }
     } else {
-        result
+        annotate(result)
     }
 }
 

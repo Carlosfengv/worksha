@@ -109,7 +109,7 @@ pub(crate) fn status(
 }
 
 struct Probe {
-    store: Arc<Mutex<Store>>,
+    store: local_agent_core::StoreWriter,
     source: QuotaProbeSource,
     owner: String,
     cooldown: u64,
@@ -163,14 +163,14 @@ struct Reservation {
 #[derive(Clone)]
 pub(in crate::observation) struct CheckAccountQuota {
     reservation: Arc<Reservation>,
-    store: Arc<Mutex<Store>>,
+    store: local_agent_core::StoreWriter,
     cooldown: u64,
     deadline: Option<Instant>,
     stream_window: Duration,
 }
 
 impl CheckAccountQuota {
-    pub(super) fn new(cooldown: u64, store: Arc<Mutex<Store>>, streamed: bool) -> Self {
+    pub(super) fn new(cooldown: u64, store: local_agent_core::StoreWriter, streamed: bool) -> Self {
         Self {
             reservation: Arc::default(),
             store,
@@ -338,7 +338,7 @@ mod tests {
     #[test]
     fn an_expired_fixed_deadline_never_records_a_quota_probe() {
         let directory = tempfile::tempdir().unwrap();
-        let store = Arc::new(Mutex::new(Store::open(directory.path()).unwrap()));
+        let store = local_agent_core::StoreWriter::new(Store::open(directory.path()).unwrap());
         let check = CheckAccountQuota::new(30, store.clone(), false).with_deadline(Instant::now());
         let now = chrono::Utc::now().timestamp();
         let budget = UpstreamBudget::with_key_reset(BudgetReset {
@@ -361,7 +361,7 @@ mod tests {
     #[tokio::test]
     async fn cancellation_cools_the_reserved_account_without_blocking_others() {
         let directory = tempfile::tempdir().unwrap();
-        let store = Arc::new(Mutex::new(Store::open(directory.path()).unwrap()));
+        let store = local_agent_core::StoreWriter::new(Store::open(directory.path()).unwrap());
         let budget = || {
             let now = chrono::Utc::now().timestamp();
             UpstreamBudget::with_key_reset(BudgetReset {

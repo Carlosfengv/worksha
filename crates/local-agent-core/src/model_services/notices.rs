@@ -192,6 +192,7 @@ impl Store {
             ""
         };
         let cause = match service.fallback_reason.as_deref() {
+            Some("budget_downgraded") => "主服务预算不足，",
             Some("upstream_rate_limit" | "rate_limit_cooldown" | "configured_rate_limit") => {
                 "首选来源限流，"
             }
@@ -229,7 +230,10 @@ impl Store {
         };
         // An initial fallback may keep the same model ID. A later turn can
         // try the primary again and fall back to the same backup.
-        let fallback_this_turn = !cause.is_empty() && (previous.is_none() || service.attempt > 1);
+        let fallback_this_turn = !cause.is_empty()
+            && (previous.is_none()
+                || service.attempt > 1
+                || service.fallback_reason.as_deref() == Some("budget_downgraded"));
         let notice = (allow && (changed || fallback_this_turn || account_recovered))
             .then(|| format!("【路由提示】{cause}{action} {destination}。{choice}\n\n"));
         target.issued_notices = previous.map(|p| p.issued_notices).unwrap_or_default();

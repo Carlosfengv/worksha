@@ -695,7 +695,7 @@ impl Manager {
                 let _guard = guard;
                 if manager.alive(&context).is_ok() {
                     manager.db.lock().checked("unavailable")?.execute(
-                        "UPDATE selections SET status='degraded',error=?2 WHERE plugin_id=?1 AND digest=?3 AND epoch=?4 AND revision=?5 AND enabled=1",
+                        "UPDATE ext_host_selections SET status='degraded',error=?2 WHERE plugin_id=?1 AND digest=?3 AND epoch=?4 AND revision=?5 AND enabled=1",
                         rusqlite::params![id,code,context.selection.digest,i64::try_from(context.selection.epoch).checked("resource_limit")?,i64::try_from(context.selection.revision).checked("resource_limit")?],
                     ).checked("unavailable")?;
                 }
@@ -708,7 +708,7 @@ impl Manager {
         self.ensure_running()?;
         let db = self.db.lock().checked("unavailable")?;
         let changed = db.execute(
-            "UPDATE selections SET status='active',error=NULL WHERE plugin_id=?1 AND digest=?2 AND epoch=?3 AND revision=?4 AND enabled=1",
+            "UPDATE ext_host_selections SET status='active',error=NULL WHERE plugin_id=?1 AND digest=?2 AND epoch=?3 AND revision=?4 AND enabled=1",
             rusqlite::params![id, selected.digest, i64::try_from(selected.epoch).checked("resource_limit")?, i64::try_from(selected.revision).checked("resource_limit")?],
         ).checked("unavailable")?;
         if changed != 1 {
@@ -1177,7 +1177,7 @@ mod isolation_tests {
             .unwrap()
             .data
             .insert(id.clone(), cached(&selected, "old").into());
-        manager.db.lock().unwrap().execute_batch("CREATE TRIGGER reject_refresh BEFORE UPDATE ON selections BEGIN SELECT RAISE(ABORT,'fixture'); END;").unwrap();
+        manager.db.lock().unwrap().execute_batch("CREATE TRIGGER reject_refresh BEFORE UPDATE ON ext_host_selections BEGIN SELECT RAISE(ABORT,'fixture'); END;").unwrap();
         assert_eq!(
             manager
                 .publish_refresh(id, &selected, cached(&selected, "new"))

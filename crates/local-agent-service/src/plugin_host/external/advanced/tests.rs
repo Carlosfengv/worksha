@@ -2,18 +2,17 @@ use super::*;
 
 #[test]
 fn retention_inventory_does_not_initialize_the_lazy_extension_database_or_namespace() {
-    use local_agent_core::{observation::retention::impact, providers::vault::MemoryVault};
+    use local_agent_core::providers::vault::MemoryVault;
     let temp = tempfile::tempdir().unwrap();
     let dir = temp.path().canonicalize().unwrap();
     let manager = Manager::open(&dir, std::sync::Arc::new(MemoryVault::default())).unwrap();
-    assert!(manager.advanced.lock().unwrap().db.get().is_none());
     assert_eq!(
         manager
             .retention_tool_impact(30, chrono::Utc::now())
-            .unwrap_err(),
-        impact::Error::SourceAbsent
+            .unwrap()
+            .records,
+        0
     );
-    assert!(manager.advanced.lock().unwrap().db.get().is_none());
     assert!(!dir.join("plugin-extensions.sqlite3").exists());
 }
 
@@ -141,7 +140,12 @@ async fn damaged_optional_metadata_does_not_break_original_or_fallback_bound_tra
         .unwrap(),
     );
     assert!(manager.list().unwrap().is_empty());
-    assert!(manager.extension_history().is_err());
+    assert!(
+        manager.extension_history().unwrap()["plans"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
     let provider = local_agent_core::Store::open(&path)
         .unwrap()
         .providers()
@@ -216,7 +220,7 @@ fn encrypted_host_restore_survives_package_removal_and_refuses_changed_files() {
         .db()
         .unwrap()
         .execute(
-            "INSERT INTO plans VALUES(?1,?2,?3)",
+            "INSERT INTO ext_adv_plans VALUES(?1,?2,?3)",
             params!["restore-test", q.plugin_id, plan.to_string()],
         )
         .unwrap();
@@ -239,7 +243,7 @@ fn encrypted_host_restore_survives_package_removal_and_refuses_changed_files() {
         .db()
         .unwrap()
         .execute(
-            "INSERT INTO plans VALUES(?1,?2,?3)",
+            "INSERT INTO ext_adv_plans VALUES(?1,?2,?3)",
             params!["conflict-test", q.plugin_id, changed.to_string()],
         )
         .unwrap();

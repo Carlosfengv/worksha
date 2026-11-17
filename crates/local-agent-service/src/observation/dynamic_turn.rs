@@ -4,7 +4,7 @@ use local_agent_core::{
     sessions::NativeSessions,
 };
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 const OPENCODE_NAMESPACES: [Option<&str>; 4] = [
     Some("opencode"),
@@ -12,6 +12,131 @@ const OPENCODE_NAMESPACES: [Option<&str>; 4] = [
     Some("opencode-cli"),
     Some("opencode-desktop"),
 ];
+
+pub(super) fn opencode_auxiliary_title(body: &Value) -> bool {
+    let system = &body["system"];
+    let system = system.as_str().or_else(|| system[0]["text"].as_str());
+    let Some(messages) = body["messages"].as_array() else {
+        return false;
+    };
+    let [user] = messages.as_slice() else {
+        return false;
+    };
+    system.is_some_and(|text| {
+        text.starts_with(
+            "You are a title generator. You output ONLY a thread title. Nothing else.\n\n<task>\n",
+        )
+    }) && body["tools"].as_array().is_none_or(Vec::is_empty)
+        && user["role"] == "user"
+        && user["content"][0]["type"] == "text"
+        && user["content"][0]["text"] == "Generate a title for this conversation:\n"
+}
+
+pub(super) fn chat_session(
+    headers: &axum::http::HeaderMap,
+) -> Result<Option<String>, &'static str> {
+    let mut session = None;
+    for name in ["x-local-agent-session-id", "x-session-id"] {
+        let mut values = headers.get_all(name).iter();
+        if let Some(value) = values.next() {
+            let raw = value.to_str().map_err(|_| "会话 ID 无效")?;
+            if session.is_some()
+                || values.next().is_some()
+                || raw.is_empty()
+                || raw.len() > 128
+                || !raw
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+            {
+                return Err("请提供一个有效、单值的会话 ID");
+            }
+            session = Some(format!("chat:{raw}"));
+        }
+    }
+    Ok(session)
+}
+
+pub(super) fn chat_projection(body: &mut Value) -> Result<(Value, bool), &'static str> {
+    if body["reasoning_effort"]
+        .as_str()
+        .is_some_and(|value| value != "none")
+        || body["store"] == true
+    {
+        return Err("此入口发布纯文本和标准工具能力，请关闭思考和服务端会话保存");
+    }
+    let mut continuation = false;
+    let mut legacy_call = None;
+    let messages = body["messages"]
+        .as_array_mut()
+        .ok_or("Chat Completions 需要完整消息历史")?;
+    if messages.is_empty() || messages.len() > 4096 {
+        return Err("Chat Completions 消息历史为空或超过限制");
+    }
+    for (index, message) in messages.iter_mut().enumerate() {
+        match message["role"].as_str() {
+            Some("user") => {
+                if local_agent_core::sessions::activity_input::preview(&message["content"])
+                    .is_some()
+                {
+                    continuation = false;
+                }
+            }
+            Some("assistant") => {
+                if let Some(function) = message
+                    .as_object_mut()
+                    .and_then(|m| m.remove("function_call"))
+                {
+                    let name = function["name"]
+                        .as_str()
+                        .ok_or("旧版函数调用缺少名称")?
+                        .to_owned();
+                    let id = format!("call_legacy_{index}");
+                    if message.get("tool_calls").is_some() {
+                        return Err("一条消息不能同时包含两种函数调用格式");
+                    }
+                    message["tool_calls"] =
+                        json!([{"id":id,"type":"function","function":function}]);
+                    legacy_call = Some((name, id));
+                }
+                continuation |= message["tool_calls"]
+                    .as_array()
+                    .is_some_and(|calls| !calls.is_empty());
+            }
+            Some("tool") => continuation = true,
+            Some("function") => {
+                let (_, id) = legacy_call
+                    .take()
+                    .filter(|(name, _)| message["name"] == *name)
+                    .ok_or("函数结果缺少对应的历史调用")?;
+                message["role"] = json!("tool");
+                message["tool_call_id"] = json!(id);
+                message.as_object_mut().unwrap().remove("name");
+                continuation = true;
+            }
+            Some("system" | "developer") => (),
+            _ => return Err("Chat Completions 消息角色无效"),
+        }
+    }
+    if body.get("max_completion_tokens").is_some() {
+        if body.get("max_tokens").is_some() {
+            return Err("只能提供一个输出上限参数");
+        }
+        body["max_tokens"] = body
+            .as_object_mut()
+            .unwrap()
+            .remove("max_completion_tokens")
+            .unwrap();
+    }
+    if body.get("n").is_some_and(|n| n.as_u64() != Some(1)) {
+        return Err("本机模型入口每次只支持一个候选回复");
+    }
+    let mut projection =
+        crate::gateway::protocol::request("chat-completions", "messages", body, "")?;
+    if body.get("max_tokens").is_none() {
+        projection.as_object_mut().unwrap().remove("max_tokens");
+    }
+    Ok((projection, continuation))
+}
 
 fn turn_digest(chain: &[String]) -> Result<String, &'static str> {
     Ok(local_agent_core::providers::files::hash(
@@ -191,6 +316,30 @@ pub(super) fn validate(
     }
     Ok(())
 }
+fn routing_user_content(content: &Value, open_code: bool) -> Option<Cow<'_, Value>> {
+    let Some((parts, last_result)) = content.as_array().and_then(|parts| {
+        parts
+            .iter()
+            .rposition(|part| part["type"] == "tool_result")
+            .map(|index| (parts, index))
+    }) else {
+        return Some(Cow::Borrowed(content));
+    };
+    let tail = &parts[last_result + 1..];
+    // OpenCode's Messages adapter can merge the next user message with the
+    // last tool result. The trailing text blocks are outside the tool result.
+    if !open_code
+        || tail.is_empty()
+        || !tail
+            .iter()
+            .all(|part| part["type"] == "text" && part["text"].is_string())
+    {
+        return None;
+    }
+    let content = Value::Array(tail.to_vec());
+    local_agent_core::sessions::activity_input::preview(&content).map(|_| Cow::Owned(content))
+}
+
 pub(super) fn service_evidence(
     hub: &Hub,
     body: &Value,
@@ -216,20 +365,19 @@ pub(super) fn service_evidence(
         if message["role"] != "user" {
             continue;
         }
-        let content = &message["content"];
-        let tool = content
-            .as_array()
-            .is_some_and(|parts| parts.iter().any(|p| p["type"] == "tool_result"));
-        if tool {
+        let Some(content) = routing_user_content(&message["content"], agent == "opencode") else {
             continuation = true;
             continue;
-        }
-        let single = json!({"messages":[message]});
+        };
+        let single = match &content {
+            Cow::Borrowed(_) => json!({"messages":[message]}),
+            Cow::Owned(tail) => json!({"messages":[{"role":"user","content":tail}]}),
+        };
         let hash = |namespace| hub.message_identity(&single, Some("dynamic-user-chain"), namespace);
         let Some(primary) = hash(namespaces[0]) else {
             // Codex sends environment and workspace instructions as user-role
             // items. Keep forwarding them, without creating a routing boundary.
-            if local_agent_core::sessions::activity_input::preview(content).is_none() {
+            if local_agent_core::sessions::activity_input::preview(&content).is_none() {
                 continue;
             }
             return Err("用户轮次标识不可用；未选择新的路由");
@@ -270,14 +418,10 @@ pub(super) fn opencode_text_groups(body: &Value, turn: &Turn) -> Option<Vec<Vec<
         .iter()
         .filter(|m| m["role"] == "user")
     {
-        let content = &message["content"];
-        if content
-            .as_array()
-            .is_some_and(|parts| parts.iter().any(|p| p["type"] == "tool_result"))
-        {
+        let Some(content) = routing_user_content(&message["content"], true) else {
             continue;
-        }
-        if local_agent_core::sessions::activity_input::preview(content).is_none() {
+        };
+        if local_agent_core::sessions::activity_input::preview(&content).is_none() {
             continue;
         }
         let text = if let Some(text) = content.as_str() {
@@ -399,6 +543,75 @@ fn opencode_text_message(group: &[String]) -> Value {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn opencode_normalizes_user_text_after_a_tool_result_to_the_separate_user_turn() {
+        let dir = tempfile::tempdir().unwrap();
+        let hub =
+            Hub::new(local_agent_core::observation::ObservationStore::open(dir.path()).unwrap())
+                .unwrap();
+        let request = json!({"messages":[
+            {"role":"user","content":[{"type":"text","text":"Original request"}]},
+            {"role":"assistant","content":[{"type":"tool_use","id":"old","name":"read","input":{}}]},
+            {"role":"user","content":[
+                {"type":"tool_result","tool_use_id":"old","content":"Do not use as a new instruction","is_error":true},
+                {"type":"text","text":"New instruction","cache_control":{"type":"ephemeral"}}
+            ]}
+        ]});
+        let turn = |body: &Value, agent| {
+            service_evidence(&hub, body, Some("opencode:ses_fixture".into()), agent, None)
+                .unwrap()
+                .0
+        };
+        let merged = turn(&request, "opencode");
+        let mut split = request.clone();
+        let tail = split["messages"][2]["content"]
+            .as_array_mut()
+            .unwrap()
+            .pop()
+            .unwrap();
+        let prior = turn(&split, "opencode");
+        assert!(prior.continuation);
+        assert_eq!(prior.chain.len(), 1);
+        split["messages"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"role":"user","content":[tail]}));
+        assert_eq!(merged.digest, turn(&split, "opencode").digest);
+        assert!(merged.chain.starts_with(&prior.chain));
+        assert!(!merged.continuation);
+        assert_eq!(
+            opencode_text_groups(&request, &merged).unwrap(),
+            vec![vec!["Original request"], vec!["New instruction"]]
+        );
+        let mut reversed = request.clone();
+        reversed["messages"][2]["content"]
+            .as_array_mut()
+            .unwrap()
+            .reverse();
+        assert!(turn(&reversed, "opencode").continuation);
+        assert!(turn(&request, "claude").continuation);
+    }
+
+    #[test]
+    fn opencode_title_recognition_requires_the_auxiliary_system_and_message_shape() {
+        let request = json!({
+            "system": [{"type":"text","text":"You are a title generator. You output ONLY a thread title. Nothing else.\n\n<task>\nGenerate a title."}],
+            "messages":[{"role":"user","content":[{"type":"text","text":"Generate a title for this conversation:\n"},{"type":"text","text":"Example message"}]}]
+        });
+        assert!(opencode_auxiliary_title(&request));
+        for (key, value) in [
+            ("system", json!("ordinary prompt")),
+            ("tools", json!([{"name":"fixture"}])),
+        ] {
+            let mut ordinary = request.clone();
+            ordinary[key] = value;
+            assert!(!opencode_auxiliary_title(&ordinary));
+        }
+        let mut ordinary = request;
+        ordinary["messages"][0]["content"][0]["text"] = json!("Generate a title for my book");
+        assert!(!opencode_auxiliary_title(&ordinary));
+    }
     use super::*;
 
     #[test]

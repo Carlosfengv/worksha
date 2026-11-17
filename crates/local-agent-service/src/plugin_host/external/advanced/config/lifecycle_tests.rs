@@ -31,7 +31,7 @@ fn count(manager: &Manager) -> u32 {
         .unwrap()
         .db()
         .unwrap()
-        .query_row("SELECT count(*) FROM plans", [], |r| r.get(0))
+        .query_row("SELECT count(*) FROM ext_adv_plans", [], |r| r.get(0))
         .unwrap()
 }
 fn insert(manager: &Manager, value: &Value) {
@@ -42,7 +42,7 @@ fn insert(manager: &Manager, value: &Value) {
         .db()
         .unwrap()
         .execute(
-            "INSERT OR REPLACE INTO plans VALUES(?1,?2,?3)",
+            "INSERT OR REPLACE INTO ext_adv_plans VALUES(?1,?2,?3)",
             params![
                 value["id"].as_str().unwrap(),
                 value["plugin_id"].as_str().unwrap(),
@@ -189,7 +189,7 @@ async fn discard_preserves_backups_unknown_records_and_all_started_states() {
             .db()
             .unwrap()
             .execute(
-                "INSERT OR REPLACE INTO plans VALUES('valid-plan',?1,?2)",
+                "INSERT OR REPLACE INTO ext_adv_plans VALUES('valid-plan',?1,?2)",
                 params![query.plugin_id, record.to_string()],
             )
             .unwrap();
@@ -211,9 +211,11 @@ async fn discard_preserves_backups_unknown_records_and_all_started_states() {
             .unwrap()
             .db()
             .unwrap()
-            .query_row("SELECT record FROM plans WHERE id='valid-plan'", [], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT record FROM ext_adv_plans WHERE id='valid-plan'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(kept, record.to_string());
         assert_eq!(count(&manager), 1);

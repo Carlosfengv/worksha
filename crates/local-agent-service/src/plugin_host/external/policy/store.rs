@@ -1,3 +1,4 @@
+use super::super::store::{ControlConnection, ControlDatabase};
 use super::super::{Checked, Result, fail, installation, package};
 use local_agent_core::plugin::policy as p;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -145,7 +146,7 @@ pub(crate) struct Host {
     pub root: PathBuf,
     pub cache: PathBuf,
     db_path: PathBuf,
-    db: OnceLock<Connection>,
+    db: ControlDatabase,
     db_identity: OnceLock<(u64, u64)>,
     pub(super) recovery_references: BTreeMap<String, recovery::Reference>,
     pub presence: Arc<RwLock<Presence>>,
@@ -244,67 +245,41 @@ impl Host {
         Self {
             root,
             cache: data.join("plugin-sources"),
-            db_path: data.join("routing-policy.sqlite3"),
-            db: OnceLock::new(),
+            db_path: data.join(super::super::store::CONTROL_DATABASE),
+            db: ControlDatabase::new(data.join(super::super::store::CONTROL_DATABASE)),
             db_identity: OnceLock::new(),
             recovery_references: BTreeMap::new(),
             presence: Arc::new(RwLock::new(presence)),
             active: BTreeMap::new(),
         }
     }
-    pub(super) fn db(&self) -> Result<&Connection> {
-        if let Some(db) = self.db.get() {
-            return Ok(db);
-        }
-        use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(0o600)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(&self.db_path)
-            .checked("permission_denied")?;
-        let metadata = file.metadata().checked("permission_denied")?;
-        if !metadata.is_file() || metadata.nlink() != 1 {
-            return Err(fail("permission_denied"));
-        }
-        let db = Connection::open(&self.db_path).checked("unavailable")?;
-        db.busy_timeout(std::time::Duration::from_millis(25))
-            .checked("unavailable")?;
-        super::super::store::initialize_database(
-            &db,
-            "policy_meta",
-            "format",
-            &[
-                "policy_packages",
-                "policy_selections",
-                "policy_reviews",
-                "policy_controls",
-                "policy_bindings",
-                "policy_intents",
-            ],
-            "CREATE TABLE IF NOT EXISTS policy_meta(format INTEGER NOT NULL); INSERT INTO policy_meta SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM policy_meta); CREATE TABLE IF NOT EXISTS policy_packages(digest TEXT PRIMARY KEY,id TEXT NOT NULL,record TEXT NOT NULL); CREATE TABLE IF NOT EXISTS policy_selections(id TEXT PRIMARY KEY,record TEXT NOT NULL); CREATE TABLE IF NOT EXISTS policy_reviews(id TEXT PRIMARY KEY,record TEXT NOT NULL); CREATE TABLE IF NOT EXISTS policy_controls(scope TEXT PRIMARY KEY,record TEXT NOT NULL); CREATE TABLE IF NOT EXISTS policy_bindings(scope TEXT NOT NULL,version TEXT NOT NULL,record TEXT NOT NULL,PRIMARY KEY(scope,version)); CREATE TABLE IF NOT EXISTS policy_intents(id TEXT PRIMARY KEY,record TEXT NOT NULL);",
-        )?;
-        let v: i64 = db
-            .query_row("SELECT format FROM policy_meta", [], |r| r.get(0))
-            .checked("invalid_record")?;
-        if v != 1 {
-            return Err(fail("invalid_record"));
-        }
+    pub(in crate::plugin_host::external) fn with_writer(
+        mut self,
+        writer: Option<local_agent_core::StoreWriter>,
+    ) -> Self {
+        self.db.set_writer(writer);
+        self
+    }
+    pub(super) fn db(&self) -> Result<ControlConnection<'_>> {
+        let db = self.db.lock()?;
+        use std::os::unix::fs::MetadataExt;
         let metadata = std::fs::symlink_metadata(&self.db_path).checked("unavailable")?;
-        let _ = self.db_identity.set((metadata.dev(), metadata.ino()));
-        let _ = self.db.set(db);
-        self.db.get().ok_or(fail("unavailable"))
+        if *self
+            .db_identity
+            .get_or_init(|| (metadata.dev(), metadata.ino()))
+            != (metadata.dev(), metadata.ino())
+        {
+            return Err(fail("stale_snapshot"));
+        }
+        Ok(db)
     }
     pub(super) fn packages(&self) -> Result<Vec<Installed>> {
         if !self.db_path.exists() {
             return Ok(vec![]);
         }
-        let mut st = self
-            .db()?
-            .prepare("SELECT record FROM policy_packages LIMIT 65")
+        let db = self.db()?;
+        let mut st = db
+            .prepare("SELECT record FROM ext_policy_policy_packages LIMIT 65")
             .checked("unavailable")?;
         let rows = st
             .query_map([], |r| r.get::<_, String>(0))
@@ -323,7 +298,7 @@ impl Host {
         let text: String = self
             .db()?
             .query_row(
-                "SELECT record FROM policy_packages WHERE digest=?1",
+                "SELECT record FROM ext_policy_policy_packages WHERE digest=?1",
                 [&q.digest],
                 |r| r.get(0),
             )
@@ -347,7 +322,7 @@ impl Host {
         let s: Option<String> = self
             .db()?
             .query_row(
-                "SELECT record FROM policy_selections WHERE id=?1",
+                "SELECT record FROM ext_policy_policy_selections WHERE id=?1",
                 [id],
                 |r| r.get(0),
             )
@@ -358,7 +333,7 @@ impl Host {
     pub(super) fn save_selection(&self, id: &str, s: &Selection) -> Result<()> {
         self.db()?
             .execute(
-                "INSERT OR REPLACE INTO policy_selections VALUES(?1,?2)",
+                "INSERT OR REPLACE INTO ext_policy_policy_selections VALUES(?1,?2)",
                 params![id, encode(s)?],
             )
             .checked("unavailable")?;
@@ -387,7 +362,7 @@ impl Host {
         let row: Option<String> = self
             .db()?
             .query_row(
-                "SELECT record FROM policy_controls WHERE scope=?1",
+                "SELECT record FROM ext_policy_policy_controls WHERE scope=?1",
                 [Self::scope(store, service)],
                 |r| r.get(0),
             )
@@ -528,7 +503,7 @@ impl Host {
         // fresh dispatch and other publication even if this write succeeded.
         self.db()?
             .execute(
-                "INSERT OR REPLACE INTO policy_controls VALUES(?1,?2)",
+                "INSERT OR REPLACE INTO ext_policy_policy_controls VALUES(?1,?2)",
                 params![Self::scope(&c.store_id, &c.service_id), encode(&c)?],
             )
             .checked("unavailable")?;
@@ -538,7 +513,7 @@ impl Host {
         self.marker(c)?;
         self.db()?
             .execute(
-                "INSERT OR REPLACE INTO policy_controls VALUES(?1,?2)",
+                "INSERT OR REPLACE INTO ext_policy_policy_controls VALUES(?1,?2)",
                 params![Self::scope(&c.store_id, &c.service_id), encode(c)?],
             )
             .checked("unavailable")?;
@@ -553,7 +528,7 @@ impl Host {
         let row: Option<String> = self
             .db()?
             .query_row(
-                "SELECT record FROM policy_bindings WHERE scope=?1 AND version=?2",
+                "SELECT record FROM ext_policy_policy_bindings WHERE scope=?1 AND version=?2",
                 params![Self::scope(store, service), version],
                 |r| r.get(0),
             )
@@ -638,9 +613,11 @@ impl Host {
     pub(super) fn intent_optional(&self, id: &str) -> Result<Option<Intent>> {
         let row: Option<String> = self
             .db()?
-            .query_row("SELECT record FROM policy_intents WHERE id=?1", [id], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT record FROM ext_policy_policy_intents WHERE id=?1",
+                [id],
+                |r| r.get(0),
+            )
             .optional()
             .checked("unavailable")?;
         row.map(|r| decode(&r)).transpose()
@@ -652,9 +629,9 @@ impl Host {
         if !self.db_path.exists() {
             return Ok(vec![]);
         }
-        let mut s = self
-            .db()?
-            .prepare("SELECT record FROM policy_intents LIMIT 257")
+        let db = self.db()?;
+        let mut s = db
+            .prepare("SELECT record FROM ext_policy_policy_intents LIMIT 257")
             .checked("unavailable")?;
         let rows = s
             .query_map([], |r| r.get::<_, String>(0))
@@ -676,7 +653,7 @@ impl Host {
     pub(super) fn save_intent(&self, i: &Intent) -> Result<()> {
         self.db()?
             .execute(
-                "INSERT OR REPLACE INTO policy_intents VALUES(?1,?2)",
+                "INSERT OR REPLACE INTO ext_policy_policy_intents VALUES(?1,?2)",
                 params![i.status.operation_id, encode(i)?],
             )
             .checked("unavailable")?;
@@ -684,9 +661,10 @@ impl Host {
     }
     pub(super) fn prepare_intent(&self, control: &Control, intent: &Intent) -> Result<()> {
         self.marker(control)?;
-        let tx = self.db()?.unchecked_transaction().checked("unavailable")?;
+        let db = self.db()?;
+        let tx = db.unchecked_transaction().checked("unavailable")?;
         tx.execute(
-            "INSERT OR REPLACE INTO policy_controls VALUES(?1,?2)",
+            "INSERT OR REPLACE INTO ext_policy_policy_controls VALUES(?1,?2)",
             params![
                 Self::scope(&control.store_id, &control.service_id),
                 encode(control)?
@@ -694,7 +672,7 @@ impl Host {
         )
         .checked("unavailable")?;
         tx.execute(
-            "INSERT OR REPLACE INTO policy_intents VALUES(?1,?2)",
+            "INSERT OR REPLACE INTO ext_policy_policy_intents VALUES(?1,?2)",
             params![intent.status.operation_id, encode(intent)?],
         )
         .checked("unavailable")?;
@@ -720,14 +698,15 @@ impl Host {
         i.status.error_code = None;
         i.cancellation_revision = Some(c.revision.clone());
         // Keep the durable pending marker until both cancellation records commit.
-        let tx = self.db()?.unchecked_transaction().checked("unavailable")?;
+        let db = self.db()?;
+        let tx = db.unchecked_transaction().checked("unavailable")?;
         tx.execute(
-            "INSERT OR REPLACE INTO policy_controls VALUES(?1,?2)",
+            "INSERT OR REPLACE INTO ext_policy_policy_controls VALUES(?1,?2)",
             params![Self::scope(&c.store_id, &c.service_id), encode(&c)?],
         )
         .checked("unavailable")?;
         tx.execute(
-            "INSERT OR REPLACE INTO policy_intents VALUES(?1,?2)",
+            "INSERT OR REPLACE INTO ext_policy_policy_intents VALUES(?1,?2)",
             params![i.status.operation_id, encode(&i)?],
         )
         .checked("unavailable")?;
@@ -819,14 +798,15 @@ impl Host {
         if pending.is_none() {
             self.marker(&c)?;
         }
-        let tx = self.db()?.unchecked_transaction().checked("unavailable")?;
+        let db = self.db()?;
+        let tx = db.unchecked_transaction().checked("unavailable")?;
         tx.execute(
-            "INSERT OR REPLACE INTO policy_bindings VALUES(?1,?2,?3)",
+            "INSERT OR REPLACE INTO ext_policy_policy_bindings VALUES(?1,?2,?3)",
             params![Self::scope(store, service), version, encode(&b)?],
         )
         .checked("unavailable")?;
         tx.execute(
-            "INSERT OR REPLACE INTO policy_controls VALUES(?1,?2)",
+            "INSERT OR REPLACE INTO ext_policy_policy_controls VALUES(?1,?2)",
             params![Self::scope(store, service), encode(&c)?],
         )
         .checked("unavailable")?;
@@ -843,7 +823,7 @@ impl Host {
 fn reconcile_startup(data: &Path, presence: &mut Presence) {
     let records = (|| -> Result<Vec<(String, String)>> {
         let db = evidence::database(data)?;
-        let mut query = db.prepare("SELECT CASE WHEN length(scope)<=128 THEN scope ELSE '' END, CASE WHEN length(record)<=4096 THEN record ELSE '' END FROM policy_controls LIMIT 257")
+        let mut query = db.prepare("SELECT CASE WHEN length(scope)<=128 THEN scope ELSE '' END, CASE WHEN length(record)<=4096 THEN record ELSE '' END FROM ext_policy_policy_controls LIMIT 257")
             .checked("invalid_record")?;
         query
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))

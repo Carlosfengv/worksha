@@ -292,8 +292,10 @@ try {
       "/retention-preview?",
       "/retention-inventory?",
     );
-  const toolFile = path.join(data, "plugin-extensions.sqlite3");
-  assert.equal(fs.existsSync(toolFile), false);
+  const toolFile = path.join(data, "local-agent.sqlite3");
+  const archivedToolFile = path.join(data, "plugin-extensions.sqlite3");
+  fs.writeFileSync(archivedToolFile, "archived fixture");
+  assert.equal(fs.readFileSync(archivedToolFile, "utf8"), "archived fixture");
   const absent = await api(inventoryRoute());
   assert.equal(absent.version, 1);
   assert.equal(Object.hasOwn(absent, "activityCaches"), false);
@@ -317,18 +319,14 @@ try {
   );
   assert.equal(absent.scope, "product_owned_saved_metadata");
   assert.equal(absent.gateway.status, "checked");
-  assert.deepEqual(absent.tools, {
-    status: "unverified",
-    reason: "source_absent",
-  });
-  assert.equal(fs.existsSync(toolFile), false);
-  passed("综合预览保留已核查网关，工具来源缺失不显示为零，也不初始化数据库");
+  assert.equal(absent.tools.status, "checked");
+  assert.equal(absent.tools.value.records, 0);
+  assert.equal(fs.readFileSync(archivedToolFile, "utf8"), "archived fixture");
+  passed("综合预览读取已初始化的主库工具表，忽略原外围文件");
   toolDb = new DatabaseSync(toolFile);
-  toolDb.exec(
-    "PRAGMA journal_mode=WAL;CREATE TABLE extension_version(version INTEGER NOT NULL);INSERT INTO extension_version VALUES(1);CREATE TABLE connector_calls(id INTEGER PRIMARY KEY,plugin_id TEXT NOT NULL,identity TEXT NOT NULL,record TEXT NOT NULL,UNIQUE(plugin_id,identity));CREATE TRIGGER call_retention AFTER INSERT ON connector_calls BEGIN DELETE FROM connector_calls WHERE id<=NEW.id-10000;END;BEGIN;",
-  );
+  toolDb.exec("BEGIN;");
   const toolInsert = toolDb.prepare(
-    "INSERT INTO connector_calls VALUES(?,?,?,?)",
+    "INSERT INTO ext_adv_connector_calls VALUES(?,?,?,?)",
   );
   const toolRow = (id, status = "success", at = old) => ({
     identity: `private-tool-${id}`,
@@ -369,7 +367,7 @@ try {
         JSON.stringify(
           toolDb
             .prepare(
-              "SELECT id,plugin_id,identity,record FROM connector_calls ORDER BY id",
+              "SELECT id,plugin_id,identity,record FROM ext_adv_connector_calls ORDER BY id",
             )
             .all(),
         ),
@@ -377,7 +375,7 @@ try {
       .digest("hex");
   const toolBaseline = toolSource(),
     triggerBaseline = toolDb
-      .prepare("SELECT sql FROM sqlite_master WHERE name='call_retention'")
+      .prepare("SELECT sql FROM sqlite_master WHERE name='ext_adv_call_retention'")
       .get().sql;
   let lastInventory;
   for (const days of [7, 30, 90]) {
@@ -418,7 +416,7 @@ try {
     assert.equal(toolSource(), toolBaseline);
     assert.equal(
       toolDb
-        .prepare("SELECT sql FROM sqlite_master WHERE name='call_retention'")
+        .prepare("SELECT sql FROM sqlite_master WHERE name='ext_adv_call_retention'")
         .get().sql,
       triggerBaseline,
     );
@@ -457,14 +455,14 @@ try {
   passed(
     "综合入口同样验证参数、未来字段、库 / 设置版本和 token / Host / Origin",
   );
-  toolDb.exec("UPDATE extension_version SET version=2");
+  toolDb.exec("UPDATE ext_adv_extension_version SET version=2");
   const futureTool = await api(inventoryRoute());
   assert.equal(futureTool.gateway.status, "checked");
   assert.deepEqual(futureTool.tools, {
     status: "unverified",
     reason: "unsupported_schema",
   });
-  toolDb.exec("UPDATE extension_version SET version=1");
+  toolDb.exec("UPDATE ext_adv_extension_version SET version=1");
   db.exec("PRAGMA user_version=2");
   const futureGateway = await api(inventoryRoute());
   assert.deepEqual(futureGateway.gateway, {

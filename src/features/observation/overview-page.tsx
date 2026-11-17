@@ -1,7 +1,10 @@
-import { bundledDshAgent } from "@/features/agents/bundled-source";
 import { sourceProvides } from "@/features/domain/published-sources";
 import { overviewActivityResource } from "@/features/domain/queries";
 import { useSharedQuery } from "@/shared/hooks/use-shared-read";
+import { useSharedRead } from "@/shared/hooks/use-shared-read";
+import { createReadResource } from "@/shared/lib/read-resource";
+import { isDesktopRuntime } from "@/shared/lib/desktop-command";
+import { localConnectionsApi } from "@/features/agents/api";
 import type { Page, Snapshot } from "@/app/types";
 import {
   Accordion,
@@ -40,6 +43,8 @@ import {
 import { OverviewAttention } from "./components/overview-attention";
 import { activityWindowSeconds } from "./session-activities";
 
+const budgetWarnings = createReadResource(localConnectionsApi.warnings);
+
 export function OverviewPage({
   data,
   navigate,
@@ -47,15 +52,25 @@ export function OverviewPage({
   data: Snapshot | null;
   navigate: (page: Page) => void;
 }) {
-  const [agent, setAgent] = useState("all");
+  const [selectedAgent, setAgent] = useState("all");
   const [range, setRange] = useState("24");
   const [metric, setMetric] = useState<OverviewQuery["metric"]>("calls");
   const [dimension, setDimension] =
     useState<OverviewQuery["dimension"]>("agent");
   const [source, setSource] = useState<OverviewQuery["source"]>("gateway");
-  const sourceAgentSelected =
-    agent === bundledDshAgent.id ||
-    Boolean(data?.agents.some((item) => item.id === agent && item.sourceId));
+  const warnings = useSharedRead(budgetWarnings, isDesktopRuntime());
+  const budgetAlerts = new Set(
+    warnings.data?.warnings
+      .filter(
+        (warning) => Date.parse(warning.createdAt) > Date.now() - 86_400_000,
+      )
+      .map((warning) => warning.bindingId),
+  ).size;
+  const agents = data?.agents ?? [];
+  const directoryAgent = agents.find((item) => item.id === selectedAgent);
+  const agent =
+    directoryAgent || selectedAgent === "unknown" ? selectedAgent : "all";
+  const sourceAgentSelected = Boolean(directoryAgent?.sourceId);
   const observation = useOverview({
     // The host overview only accepts built-in Agent filters. Use its
     // unfiltered activity snapshot for any attributable gateway requests.
@@ -65,7 +80,6 @@ export function OverviewPage({
     dimension,
     source,
   });
-  const agents = data?.agents ?? [];
   const eligibleSourceAgents = useMemo(
     () =>
       (data?.agents ?? []).filter(
@@ -178,11 +192,6 @@ export function OverviewPage({
                     {a.name}
                   </SelectItem>
                 ))}
-                {data && !agents.some((a) => a.id === bundledDshAgent.id) && (
-                  <SelectItem value={bundledDshAgent.id}>
-                    {bundledDshAgent.name}
-                  </SelectItem>
-                )}
                 <SelectItem value="unknown">客户端来源未知</SelectItem>
               </SelectContent>
             </Select>
@@ -195,6 +204,14 @@ export function OverviewPage({
             </Button>
           </div>
         </div>
+        {budgetAlerts > 0 && (
+          <p role="status" className="text-label text-fg-muted">
+            最近 24 小时有 {budgetAlerts} 个本机绑定触发预算预警。{" "}
+            <a href="#/agents" className="underline">
+              查看绑定预算
+            </a>
+          </p>
+        )}
         <OverviewAttention
           overview={overview}
           now={activity.now}

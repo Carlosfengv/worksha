@@ -45,6 +45,32 @@ export class SettingsPreflightError extends DesktopError {
   }
 }
 export const settingsApi = {
+  async archiveRouteSessions(request: {
+    storeId: string;
+    confirmation?: string;
+  }) {
+    const result = await command<{
+      storeId: string;
+      confirmation: string;
+      sessions: number;
+      leases: number;
+    }>("archive_route_sessions", { request });
+    if (
+      result?.storeId !== request.storeId ||
+      !/^[a-f0-9]{64}$/.test(result.confirmation) ||
+      (request.confirmation !== undefined &&
+        result.confirmation !== request.confirmation) ||
+      !Number.isSafeInteger(result.sessions) ||
+      result.sessions < 0 ||
+      result.sessions > 128 ||
+      !Number.isSafeInteger(result.leases) ||
+      result.leases < result.sessions ||
+      result.leases > 4096
+    ) {
+      throw new Error("无法核对路由归档结果，请重新预览。");
+    }
+    return result;
+  },
   previewRetentionContentInventory: async (input: RetentionRequest) => {
     const request = freezeRetentionRequest(input);
     return retentionContentInventory(

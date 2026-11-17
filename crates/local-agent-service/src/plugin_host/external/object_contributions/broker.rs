@@ -18,6 +18,13 @@ impl Host {
             references: refs::Registry::default(),
         }
     }
+    pub(in crate::plugin_host::external) fn with_writer(
+        mut self,
+        writer: Option<local_agent_core::StoreWriter>,
+    ) -> Self {
+        self.grants.set_writer(writer);
+        self
+    }
 }
 struct Definition {
     parent: p::Status,

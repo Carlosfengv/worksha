@@ -267,7 +267,7 @@ impl Drop for TurnGuard {
 
 pub(super) struct CooldownProbe {
     guard: Option<TurnGuard>,
-    store: Arc<Mutex<Store>>,
+    store: local_agent_core::StoreWriter,
     checkpointed: AtomicBool,
     owner: String,
     scopes: [String; 4],
@@ -335,8 +335,9 @@ impl CooldownProbe {
         probe: Option<&Self>,
         attempt: Option<(&Dispatch, i64)>,
         quota: Option<QuotaProbeClaim<'_>>,
+        boundary: local_agent_core::model_services::policy::SendBoundary<'_>,
     ) -> Result<(), ConfigError> {
-        store.service_begin_send(
+        store.service_begin_scoped_send(
             attempt,
             probe.map(|probe| HttpProbeClaim {
                 owner: &probe.owner,
@@ -345,6 +346,7 @@ impl CooldownProbe {
                 cooldown_ms: probe.cooldown_ms,
             }),
             quota,
+            boundary,
         )?;
         if let Some(probe) = probe {
             probe.checkpointed.store(true, Ordering::Release);
@@ -723,14 +725,23 @@ fn held(response: Response, guard: impl Send + 'static) -> Response {
     let stream = async_stream::stream! {let _guard=guard;while let Some(item)=stream.next().await {yield item;}};
     Response::from_parts(parts, Body::from_stream(stream))
 }
+#[derive(Default)]
+struct StreamHealth {
+    probe: Option<Arc<CooldownProbe>>,
+    quota: Option<CheckAccountQuota>,
+    attempt: Option<i64>,
+}
 fn monitor(
     response: Response,
     state: AppState,
     protocol: &str,
     model_scope: String,
     cooldown: u64,
-    mut probe: Option<Arc<CooldownProbe>>,
-    mut quota: Option<CheckAccountQuota>,
+    StreamHealth {
+        mut probe,
+        mut quota,
+        mut attempt,
+    }: StreamHealth,
 ) -> Response {
     let mut decoder = super::stream::is_event_stream(response.headers())
         .then(|| super::stream::StreamDecoder::new(protocol));
@@ -738,6 +749,7 @@ fn monitor(
     let mut input = body.into_data_stream();
     let stream = async_stream::stream! {
         let mut complete = false;
+        let mut successful = false;
         let mut marked = false;
         loop {
             let next = input.next().await;
@@ -751,6 +763,7 @@ fn monitor(
                 for update in updates {
                     failed |= update.issue || matches!(update.terminal, Some("error" | "interrupted"));
                     complete |= matches!(update.terminal, Some("success" | "incomplete"));
+                    successful |= update.terminal == Some("success");
                 }
                 // Only an observed upstream EOF proves truncation. A downstream drop
                 // stops this stream without reaching this check.
@@ -779,7 +792,14 @@ fn monitor(
                     probe.recovered(&state).await;
                 }
             }
-            let Some(chunk) = next else { break };
+            let Some(chunk) = next else {
+                if successful && !marked && let Some(id) = attempt.take() {
+                    let _ = crate::blocking::store(state.store.clone(), move |store| {
+                        store.service_attempt_completed(id)
+                    }).await;
+                }
+                break;
+            };
             yield chunk;
         }
     };
@@ -1110,6 +1130,12 @@ pub(super) async fn preflight(
                             && v["object"] == "response"
                             && matches!(v["status"].as_str(), Some("completed" | "incomplete"))
                             && v["output"].is_array()
+                    } else if protocol == "chat-completions" {
+                        v.get("error").is_none_or(|error| error.is_null())
+                            && v["object"] == "chat.completion"
+                            && v["choices"].as_array().is_some_and(|choices| {
+                                choices.len() == 1 && choices[0]["message"]["role"] == "assistant"
+                            })
                     } else {
                         v.get("error").is_none() && v["type"] == "message"
                     }
@@ -1213,6 +1239,13 @@ pub(super) async fn dispatch(
             .extensions
             .remove::<intent::IntentInput>()
             .map(|input| input.0),
+        send_context: intent::SendContext {
+            scope: parts.extensions.get::<super::budget::Scope>().cloned(),
+            key: parts
+                .extensions
+                .get::<local_agent_core::routing::chat::SendFence>()
+                .cloned(),
+        },
     };
     if selected.fresh
         && let Some(service) = selected.service.as_ref().filter(|s| s.mode == "default")
@@ -1261,8 +1294,16 @@ pub(super) async fn dispatch(
                 session: session.clone(),
                 digest: turn.digest.clone(),
             };
-            facts.intent =
-                intent::classify(&state, &runtime, classifier, labels, Some(input), key).await;
+            facts.intent = intent::classify(
+                &state,
+                &runtime,
+                classifier,
+                labels,
+                Some(input),
+                key,
+                inputs.send_context.clone(),
+            )
+            .await;
         }
     }
     let started = {
@@ -1310,6 +1351,10 @@ pub(super) async fn dispatch(
     };
     let plan = match started {
         Ok(p) => p,
+        Err(error) if error.code == "route_turn_superseded" => {
+            journal.note(&selected, Reason::AdmissionFailed);
+            return super::proxy::route_conflict(&error);
+        }
         Err(error) if error.code == "account_affinity_unavailable" => {
             journal.note(&selected, Reason::StrictAffinity);
             return rejection(StatusCode::CONFLICT, &error.message);
@@ -1607,8 +1652,11 @@ pub(super) async fn dispatch(
                         &protocol,
                         model,
                         cooldown,
-                        pinned_probe.take(),
-                        streaming_quota,
+                        StreamHealth {
+                            probe: pinned_probe.take(),
+                            quota: streaming_quota,
+                            attempt: None,
+                        },
                     );
                 } else if let Some(probe) = pinned_probe.take() {
                     probe.recovered(&state).await;
@@ -1898,6 +1946,10 @@ async fn execute(
     } = routing;
     let runtime = state.observation.policy.clone();
     let first = candidates.first().and_then(|s| s.service.as_ref());
+    let budget_downgrade = parts
+        .extensions
+        .get::<super::budget::Scope>()
+        .is_some_and(|scope| scope.fallback.is_some());
     let initial_reason = if first.is_some_and(|s| {
         s.routing_rule
             .as_ref()
@@ -2279,7 +2331,11 @@ async fn execute(
         }
         if let Some(service) = &mut selected.service {
             service.attempt = tried;
-            service.fallback_reason = reason.clone();
+            service.fallback_reason = if budget_downgrade {
+                Some("budget_downgraded".into())
+            } else {
+                reason.clone()
+            };
             service.upstream_account_label = label;
         }
         let attempt = {
@@ -2336,8 +2392,13 @@ async fn execute(
                 }
                 let saved = {
                     let plan = plan.clone();
+                    let outcome = if inputs.facts.stream {
+                        "committed"
+                    } else {
+                        "completed"
+                    };
                     crate::blocking::store(state.store.clone(), move |store| {
-                        store.service_attempt_result(attempt, status, "committed")?;
+                        store.service_attempt_result(attempt, status, outcome)?;
                         store.service_dispatch_finish(&plan, true)
                     })
                     .await
@@ -2362,11 +2423,17 @@ async fn execute(
                     &binding.client_protocol,
                     model,
                     cooldown,
-                    probe,
-                    quota.filter(|check| inputs.facts.stream && check.is_probing()),
+                    StreamHealth {
+                        probe,
+                        quota: quota.filter(|check| inputs.facts.stream && check.is_probing()),
+                        attempt: inputs.facts.stream.then_some(attempt),
+                    },
                 );
                 for frame in frames.iter().rev() {
                     frame.record_remaining(journal, Reason::EarlierCandidateAccepted);
+                }
+                if budget_downgrade {
+                    journal.note(&selected, Reason::BudgetDowngraded);
                 }
                 // Candidates suppress recursive admission; this committed dispatch is
                 // nevertheless the first response of a confirmed new user turn.

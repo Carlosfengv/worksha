@@ -1,4 +1,5 @@
 mod backend;
+mod budget_notifications;
 mod commands;
 mod instance;
 #[cfg(target_os = "macos")]
@@ -28,7 +29,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
-        .setup(backend::start)
+        .plugin(tauri_plugin_notification::init())
+        .setup(|app| {
+            backend::start(app)?;
+            budget_notifications::start(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(commands::iam::guard_invocations(tauri::generate_handler![
             commands::iam::get_iam_status,
             commands::iam::perform_iam,
@@ -90,6 +96,7 @@ pub fn run() {
             commands::backend::get_backend_diagnostics,
             commands::backend::reconnect_backend,
             commands::settings::save_settings,
+            commands::settings::archive_route_sessions,
             commands::settings::preview_retention,
             commands::settings::preview_retention_inventory,
             commands::settings::get_settings_operation,
@@ -101,6 +108,7 @@ pub fn run() {
             commands::gateway::get_gateway_client_operation,
             commands::gateway::commit_gateway_client_operation,
             commands::gateway::save_gateway_client_operation,
+            commands::gateway::local_chat_connection,
             commands::providers::get_provider_status,
             commands::providers::perform_upstream_account,
             commands::local_tokens::get_local_token_protocol,
@@ -159,6 +167,8 @@ pub fn run() {
             commands::sessions::set_session_source,
             commands::sessions::refresh_sessions,
             commands::observation::query_overview,
+            commands::observation::query_loop_guards,
+            commands::observation::override_loop_guard,
             commands::observation::query_agent_usage,
             commands::observation::query_requests,
             commands::requests::query_request_dashboard,

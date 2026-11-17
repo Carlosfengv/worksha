@@ -24,6 +24,7 @@ pub(crate) mod worker;
 
 use local_agent_core::plugin::external::*;
 use local_agent_core::providers::vault::Vault;
+#[cfg(test)]
 use rusqlite::Connection;
 use std::{
     collections::BTreeMap,
@@ -37,13 +38,13 @@ use std::{
 // A damaged optional catalog must not take the original service offline. Keep
 // the failure explicit instead of substituting a new/empty database.
 enum Database {
-    Ready(Mutex<Connection>),
+    Ready(store::ControlDatabase),
     Unavailable(Error),
 }
 impl Database {
-    fn lock(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
+    fn lock(&self) -> Result<store::ControlConnection<'_>> {
         match self {
-            Self::Ready(db) => db.lock().checked("unavailable"),
+            Self::Ready(db) => db.lock(),
             Self::Unavailable(error) => Err(error.clone()),
         }
     }

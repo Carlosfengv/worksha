@@ -137,6 +137,19 @@ try {
     }),
   ]).finally(() => clearTimeout(readyTimer));
   base = `http://127.0.0.1:${ready.port}`;
+  const catalog = await api("/api/builtin-plugins");
+  assert.equal(catalog.status, 200);
+  const projects = await api("/api/builtin-plugins/changes", {
+    operationId: randomUUID(),
+    storeId: catalog.body.storeId,
+    expectedRevision: catalog.body.revision,
+    expectedGeneration: catalog.body.host.generation,
+    composition: {
+      ...catalog.body.composition,
+      optedInPluginIds: ["builtin.projects"],
+    },
+  });
+  assert.equal(projects.status, 200);
   const snapshot = await api("/api/snapshot");
   assert.equal(snapshot.status, 200);
   routes.push(
@@ -218,7 +231,7 @@ try {
   report.completedReadsBeforeSaturation = submittedReads - activeReads.size;
   activeReads.keys().next().value.abort();
   const started = performance.now();
-  const [rejected, health, plugins, revoked] = await Promise.all([
+  const [rejected, health, revoked] = await Promise.all([
     Promise.all(
       routes.map(async (route) => {
         const value = await api(
@@ -233,7 +246,6 @@ try {
       }),
     ),
     api("/api/runtime", undefined, "GET", AbortSignal.timeout(1000)),
-    api("/api/plugins", undefined, "GET", AbortSignal.timeout(1000)),
     api(
       `/api/gateway-lan/clients/${clientId}/revoke`,
       {},
@@ -242,7 +254,6 @@ try {
     ),
   ]);
   assert.equal(health.status, 200);
-  assert.equal(plugins.status, 200);
   assert.equal(revoked.status, 200);
   assert.equal(revoked.body.revoked, true);
   const registry = JSON.parse(
@@ -317,6 +328,7 @@ try {
       statusBeforeAndAfter: value.status,
     });
   }
+  assert.equal((await api("/api/plugins")).status, 200);
   const final = await api("/api/snapshot");
   assert.equal(
     final.body.providers.find((p) => p.id === provider.id).revision,

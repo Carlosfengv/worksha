@@ -6,8 +6,8 @@ fn now() -> DateTime<Utc> {
     "2026-10-27T00:00:00Z".parse().unwrap()
 }
 fn db(dir: &Path) -> Connection {
-    let db = Connection::open(dir.join("plugin-extensions.sqlite3")).unwrap();
-    db.execute_batch("PRAGMA journal_mode=WAL;CREATE TABLE extension_version(version INTEGER NOT NULL);INSERT INTO extension_version VALUES(1);CREATE TABLE connector_calls(id INTEGER PRIMARY KEY,plugin_id TEXT NOT NULL,identity TEXT NOT NULL,record TEXT NOT NULL,UNIQUE(plugin_id,identity));CREATE TRIGGER call_retention AFTER INSERT ON connector_calls BEGIN DELETE FROM connector_calls WHERE id<=NEW.id-10000;END;").unwrap();
+    let db = Connection::open(dir.join("local-agent.sqlite3")).unwrap();
+    db.execute_batch("PRAGMA journal_mode=WAL;PRAGMA user_version=18;CREATE TABLE ext_adv_extension_version(version INTEGER NOT NULL);INSERT INTO ext_adv_extension_version VALUES(1);CREATE TABLE ext_adv_connector_calls(id INTEGER PRIMARY KEY,plugin_id TEXT NOT NULL,identity TEXT NOT NULL,record TEXT NOT NULL,UNIQUE(plugin_id,identity));CREATE TRIGGER ext_adv_call_retention AFTER INSERT ON ext_adv_connector_calls BEGIN DELETE FROM ext_adv_connector_calls WHERE id<=NEW.id-10000;END;").unwrap();
     db
 }
 fn row(id: i64, status: &str, at: &str) -> Value {
@@ -15,13 +15,13 @@ fn row(id: i64, status: &str, at: &str) -> Value {
 }
 fn insert(db: &Connection, id: i64, value: &Value) {
     db.execute(
-        "INSERT INTO connector_calls VALUES(?1,'fixture.plugin',?2,?3)",
+        "INSERT INTO ext_adv_connector_calls VALUES(?1,'fixture.plugin',?2,?3)",
         params![id, value["identity"].as_str().unwrap(), value.to_string()],
     )
     .unwrap();
 }
 fn raw(db: &Connection) -> Vec<(i64, String, String, String)> {
-    db.prepare("SELECT id,plugin_id,identity,record FROM connector_calls ORDER BY id")
+    db.prepare("SELECT id,plugin_id,identity,record FROM ext_adv_connector_calls ORDER BY id")
         .unwrap()
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
         .unwrap()
@@ -109,7 +109,7 @@ fn future_fields_unknown_status_private_content_or_invented_usage_remain_unclass
         let mut value_row = row(id, "success", "2026-01-01T00:00:00Z");
         value_row[field] = value;
         db.execute(
-            "INSERT INTO connector_calls VALUES(?1,'fixture.plugin',?2,?3)",
+            "INSERT INTO ext_adv_connector_calls VALUES(?1,'fixture.plugin',?2,?3)",
             params![id, format!("private-{id}"), value_row.to_string()],
         )
         .unwrap();
@@ -128,17 +128,17 @@ fn large_or_wrongly_typed_columns_are_counted_without_loading_unbounded_values()
     let dir = tempfile::tempdir().unwrap();
     let db = db(dir.path());
     db.execute(
-        "INSERT INTO connector_calls VALUES(1,'fixture.plugin','oversize',?1)",
+        "INSERT INTO ext_adv_connector_calls VALUES(1,'fixture.plugin','oversize',?1)",
         ["x".repeat(MAX_ROW_BYTES as usize + 1)],
     )
     .unwrap();
     db.execute(
-        "INSERT INTO connector_calls VALUES(2,?1,'oversize-plugin','{}')",
+        "INSERT INTO ext_adv_connector_calls VALUES(2,?1,'oversize-plugin','{}')",
         ["p".repeat(257)],
     )
     .unwrap();
     db.execute(
-        "INSERT INTO connector_calls VALUES(3,'fixture.plugin','broken','{')",
+        "INSERT INTO ext_adv_connector_calls VALUES(3,'fixture.plugin','broken','{')",
         [],
     )
     .unwrap();
@@ -167,13 +167,13 @@ fn source_absence_is_not_confirmed_empty_and_preview_does_not_initialize_any_dat
 #[test]
 fn future_or_incomplete_source_schemas_are_rejected_instead_of_becoming_empty() {
     for sql in [
-        "UPDATE extension_version SET version=2",
-        "INSERT INTO extension_version VALUES(1)",
-        "DELETE FROM extension_version",
+        "UPDATE ext_adv_extension_version SET version=2",
+        "INSERT INTO ext_adv_extension_version VALUES(1)",
+        "DELETE FROM ext_adv_extension_version",
         "PRAGMA user_version=1",
-        "ALTER TABLE connector_calls ADD COLUMN future TEXT",
-        "DROP TABLE connector_calls;CREATE TABLE connector_calls(id INTEGER PRIMARY KEY,plugin_id TEXT NOT NULL,identity TEXT NOT NULL,record TEXT NOT NULL)",
-        "ALTER TABLE connector_calls ADD COLUMN generated TEXT GENERATED ALWAYS AS ('future') VIRTUAL",
+        "ALTER TABLE ext_adv_connector_calls ADD COLUMN future TEXT",
+        "DROP TABLE ext_adv_connector_calls;CREATE TABLE ext_adv_connector_calls(id INTEGER PRIMARY KEY,plugin_id TEXT NOT NULL,identity TEXT NOT NULL,record TEXT NOT NULL)",
+        "ALTER TABLE ext_adv_connector_calls ADD COLUMN generated TEXT GENERATED ALWAYS AS ('future') VIRTUAL",
     ] {
         let dir = tempfile::tempdir().unwrap();
         let db = db(dir.path());
@@ -199,7 +199,8 @@ fn current_saved_collection_is_complete_without_claiming_history_removed_by_the_
     assert_eq!(result.records, 10_000);
     assert_eq!(result.expired, 10_000);
     assert_eq!(result.capacity_limit, Some(10_000));
-    db.execute_batch("DROP TRIGGER call_retention").unwrap();
+    db.execute_batch("DROP TRIGGER ext_adv_call_retention")
+        .unwrap();
     let unknown = connector(dir.path(), 30, now()).unwrap();
     assert_eq!(unknown.records, 10_000);
     assert_eq!(unknown.capacity_limit, None);
@@ -224,8 +225,8 @@ fn limits_or_links_never_yield_a_partial_or_aliased_inventory() {
     );
     let linked = tempfile::tempdir().unwrap();
     std::fs::hard_link(
-        dir.path().join("plugin-extensions.sqlite3"),
-        linked.path().join("plugin-extensions.sqlite3"),
+        dir.path().join("local-agent.sqlite3"),
+        linked.path().join("local-agent.sqlite3"),
     )
     .unwrap();
     assert_eq!(

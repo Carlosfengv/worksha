@@ -86,7 +86,7 @@ const passed = (name) => {
 };
 const history = () =>
   api("/api/plugin-extensions/status", { pluginId: "", digest: "" });
-const rows = () => db.prepare("SELECT count(*) AS n FROM plans").get().n;
+const rows = () => db.prepare("SELECT count(*) AS n FROM ext_adv_plans").get().n;
 try {
   const folder = path.join(root, "package");
   fs.cpSync("sdk/plugins/examples/json-config/package", folder, {
@@ -148,16 +148,16 @@ try {
   assert.equal(plan.canDiscard, true);
   assert.equal((await preview()).planId, plan.planId);
   assert.equal(fs.readFileSync(target, "utf8"), original);
-  db = new DatabaseSync(path.join(data, "plugin-extensions.sqlite3"));
+  db = new DatabaseSync(path.join(data, "local-agent.sqlite3"));
   const record = JSON.parse(
-    db.prepare("SELECT record FROM plans WHERE id=?").get(plan.planId).record,
+    db.prepare("SELECT record FROM ext_adv_plans WHERE id=?").get(plan.planId).record,
   );
   const seeded = [];
   for (let i = 0; i < 63; i++) {
     const copy = structuredClone(record);
     copy.id = randomUUID();
     copy.provider.revision += i + 100;
-    db.prepare("INSERT INTO plans VALUES(?,?,?)").run(
+    db.prepare("INSERT INTO ext_adv_plans VALUES(?,?,?)").run(
       copy.id,
       query.pluginId,
       JSON.stringify(copy),
@@ -189,10 +189,10 @@ try {
   );
 
   const protectedRecord = JSON.parse(
-    db.prepare("SELECT record FROM plans WHERE id=?").get(seeded[0]).record,
+    db.prepare("SELECT record FROM ext_adv_plans WHERE id=?").get(seeded[0]).record,
   );
   protectedRecord.state = "applying";
-  db.prepare("UPDATE plans SET record=? WHERE id=?").run(
+  db.prepare("UPDATE ext_adv_plans SET record=? WHERE id=?").run(
     JSON.stringify(protectedRecord),
     seeded[0],
   );
@@ -201,7 +201,7 @@ try {
     "result_pending",
   );
   assert.equal(
-    db.prepare("SELECT record FROM plans WHERE id=?").get(seeded[0]).record,
+    db.prepare("SELECT record FROM ext_adv_plans WHERE id=?").get(seeded[0]).record,
     JSON.stringify(protectedRecord),
   );
   assert.equal(rows(), 64);
@@ -273,12 +273,12 @@ try {
     "卸载后重启保留全部记录；旧身份可释放未执行预览，错误摘要被拒绝且不访问凭据库",
   );
 
-  db.exec("ALTER TABLE plans RENAME TO preserved_plans");
+  db.exec("ALTER TABLE ext_adv_plans RENAME TO preserved_plans");
   assert.equal(
     (await action({ kind: "discard-config", planId: seeded[2] }, 400)).code,
     "unavailable",
   );
-  db.exec("ALTER TABLE preserved_plans RENAME TO plans");
+  db.exec("ALTER TABLE preserved_plans RENAME TO ext_adv_plans");
   assert.equal(rows(), 63);
   assert.equal(fs.readFileSync(target, "utf8"), original);
   passed("SQL 失败不伪造名额释放，也不丢弃文件与恢复记录");

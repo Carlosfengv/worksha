@@ -10,19 +10,26 @@ edition = "2024"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["arbitrary_precision"] }
 
-# Keep line backtraces while keeping the debug credential helper below its
-# existing 128 MiB limit.
+# Keep the debug credential helper below its existing 128 MiB limit.
 [profile.dev.package.local-agent-core]
 debug = 1
 opt-level = 1
 
 [profile.dev.package.local-agent-service]
-debug = 1
+debug = 0
 opt-level = "s"
 
 [profile.dev.package.jsonc-parser]
 debug = 1
 opt-level = "s"
+
+[profile.dev.package.chrono-tz]
+debug = 0
+opt-level = "s"
+
+# Route previews hash the bundled service before staging the credential helper.
+[profile.dev.package.sha2]
+opt-level = 3
 
 [profile.release]
 codegen-units = 1

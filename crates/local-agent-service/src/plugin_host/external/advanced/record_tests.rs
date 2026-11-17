@@ -88,7 +88,7 @@ fn damaged_plan_never_becomes_an_empty_or_partially_successful_history() {
                 .db()
                 .unwrap()
                 .execute(
-                    "INSERT OR REPLACE INTO plans VALUES('broken',?1,?2)",
+                    "INSERT OR REPLACE INTO ext_adv_plans VALUES('broken',?1,?2)",
                     params![query.plugin_id, damaged],
                 )
                 .unwrap();
@@ -105,14 +105,16 @@ fn damaged_plan_never_becomes_an_empty_or_partially_successful_history() {
             let store = manager.advanced.lock().unwrap();
             let db = store.db().unwrap();
             db.execute(
-                "INSERT OR REPLACE INTO plans VALUES('valid-plan',?1,?2)",
+                "INSERT OR REPLACE INTO ext_adv_plans VALUES('valid-plan',?1,?2)",
                 params![query.plugin_id, valid.to_string()],
             )
             .unwrap();
             let kept: String = db
-                .query_row("SELECT record FROM plans WHERE id='broken'", [], |r| {
-                    r.get(0)
-                })
+                .query_row(
+                    "SELECT record FROM ext_adv_plans WHERE id='broken'",
+                    [],
+                    |r| r.get(0),
+                )
                 .unwrap();
             assert_eq!(kept, damaged);
         }
@@ -139,7 +141,7 @@ fn damaged_plan_never_becomes_an_empty_or_partially_successful_history() {
             .unwrap()
             .db()
             .unwrap()
-            .execute("DELETE FROM plans WHERE id='broken'", [])
+            .execute("DELETE FROM ext_adv_plans WHERE id='broken'", [])
             .unwrap();
         assert_eq!(
             manager.extension_history().unwrap()["plans"][0]["planId"],
@@ -160,7 +162,7 @@ fn malformed_optional_resource_and_call_records_report_unreadable_metadata() {
             .db()
             .unwrap()
             .execute(
-                "INSERT INTO resources VALUES(?1,'{broken')",
+                "INSERT INTO ext_adv_resources VALUES(?1,'{broken')",
                 [&query.plugin_id],
             )
             .unwrap();
@@ -172,9 +174,9 @@ fn malformed_optional_resource_and_call_records_report_unreadable_metadata() {
     {
         let store = manager.advanced.lock().unwrap();
         let db = store.db().unwrap();
-        db.execute("DELETE FROM resources", []).unwrap();
+        db.execute("DELETE FROM ext_adv_resources", []).unwrap();
         db.execute(
-            "INSERT INTO connector_calls(plugin_id,identity,record) VALUES(?1,'broken','{broken')",
+            "INSERT INTO ext_adv_connector_calls(plugin_id,identity,record) VALUES(?1,'broken','{broken')",
             [&query.plugin_id],
         )
         .unwrap();
@@ -199,7 +201,7 @@ fn unreadable_history_survives_restart_without_rewriting_or_hiding_records() {
         .db()
         .unwrap()
         .execute(
-            "INSERT INTO plans VALUES('broken',?1,'{}')",
+            "INSERT INTO ext_adv_plans VALUES('broken',?1,'{}')",
             [&query.plugin_id],
         )
         .unwrap();
@@ -217,9 +219,11 @@ fn unreadable_history_survives_restart_without_rewriting_or_hiding_records() {
     let kept: String = store
         .db()
         .unwrap()
-        .query_row("SELECT record FROM plans WHERE id='broken'", [], |r| {
-            r.get(0)
-        })
+        .query_row(
+            "SELECT record FROM ext_adv_plans WHERE id='broken'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(kept, "{}");
 }
@@ -236,7 +240,7 @@ fn sqlite_query_failure_is_not_a_confirmed_empty_history() {
         .unwrap()
         .db()
         .unwrap()
-        .execute("ALTER TABLE plans RENAME TO preserved_plans", [])
+        .execute("ALTER TABLE ext_adv_plans RENAME TO preserved_plans", [])
         .unwrap();
     assert_eq!(manager.extension_history().unwrap_err().code, "unavailable");
     assert_eq!(manager.list().unwrap().len(), 1);

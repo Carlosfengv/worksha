@@ -3,6 +3,32 @@ use local_agent_core::{Store, providers::ConfigError};
 use std::sync::{Arc, Mutex, OnceLock};
 use tokio::sync::Semaphore;
 
+/// These handles can be checked out while a WAL write is in progress.
+#[derive(Clone)]
+pub(crate) struct StoreReaders(Arc<[Mutex<Store>]>);
+
+impl StoreReaders {
+    pub(crate) fn new(writer: &Store) -> Result<Self, String> {
+        let readers = (0..4)
+            .map(|_| writer.open_reader().map(Mutex::new))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self(readers.into()))
+    }
+
+    pub(crate) fn read<T, E>(
+        &self,
+        busy: impl FnOnce() -> E,
+        work: impl FnOnce(&Store) -> Result<T, E>,
+    ) -> Result<T, E> {
+        let reader = self
+            .0
+            .iter()
+            .find_map(|reader| reader.try_lock().ok())
+            .ok_or_else(busy)?;
+        work(&reader)
+    }
+}
+
 #[cfg(test)]
 mod query_tests;
 
@@ -22,7 +48,7 @@ pub(crate) fn config_error(error: Error) -> ConfigError {
 /// Acquire the SQLite mutex on the blocking worker, including lock contention.
 /// The closure must finish before a request is sent to an upstream provider.
 pub(crate) async fn store<T: Send + 'static>(
-    store: Arc<Mutex<Store>>,
+    store: local_agent_core::StoreWriter,
     work: impl FnOnce(&Store) -> Result<T, ConfigError> + Send + 'static,
 ) -> Result<T, ConfigError> {
     run(move || {
@@ -133,6 +159,42 @@ fn spawn_with<T: Send + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn control_plane_readers_are_bounded_and_read_only_during_a_write() {
+        let directory = tempfile::tempdir().unwrap();
+        let writer = Store::open(directory.path()).unwrap();
+        let readers = StoreReaders::new(&writer).unwrap();
+        let id = writer.database_id().unwrap();
+        let transaction =
+            rusqlite::Connection::open(directory.path().join("local-agent.sqlite3")).unwrap();
+        transaction.execute_batch("BEGIN IMMEDIATE").unwrap();
+        assert_eq!(
+            readers
+                .read(
+                    || "pool busy".to_owned(),
+                    |store| store.database_id().map_err(|error| error.message)
+                )
+                .unwrap(),
+            id
+        );
+        let handles: Vec<_> = readers
+            .0
+            .iter()
+            .map(|store| store.lock().unwrap())
+            .collect();
+        assert_eq!(handles.len(), 4);
+        assert_eq!(readers.read(|| "pool busy", |_| Ok(())), Err("pool busy"));
+        transaction.execute_batch("ROLLBACK").unwrap();
+        let update = local_agent_core::settings::SettingsUpdate {
+            store_id: Some(id),
+            expected_revision: 0,
+            operation_id: uuid::Uuid::new_v4().to_string(),
+            value: local_agent_core::Settings::default(),
+        };
+        assert!(handles[0].save_settings(&update).is_err());
+        writer.save_settings(&update).unwrap();
+    }
 
     #[test]
     fn rejected_work_releases_captured_state_without_a_runtime() {

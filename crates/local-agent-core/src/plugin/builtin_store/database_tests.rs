@@ -129,6 +129,7 @@ fn schema_15_upgrade_preserves_all_existing_rows_and_verified_private_backup() {
                 .unwrap();
         }
         let identity = store.database_id().unwrap();
+        crate::storage::strip_m1_fixture(&store.connection);
         let mut query = store.connection.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").unwrap();
         let names: Vec<String> = query
             .query_map([], |r| r.get(0))
@@ -155,7 +156,7 @@ fn schema_15_upgrade_preserves_all_existing_rows_and_verified_private_backup() {
                 .connection
                 .pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
                 .unwrap(),
-            16
+            Store::SCHEMA_VERSION
         );
         let state = upgraded.builtin_composition(Profile::Desktop).unwrap();
         assert_eq!(state.revision.value(), u64::from(has_plugin_state));
@@ -333,6 +334,7 @@ fn locked_and_full_transactions_preserve_state_consent_and_receipts() {
 fn failed_migration_cannot_publish_the_new_reader_barrier_or_partial_plugin_tables() {
     let root = tempfile::tempdir().unwrap();
     let store = Store::open(&root.path().canonicalize().unwrap()).unwrap();
+    crate::storage::strip_m1_fixture(&store.connection);
     store.connection.execute_batch("DROP TABLE builtin_plugin_operations; DROP TABLE builtin_plugin_composition; PRAGMA user_version=15; CREATE VIEW builtin_plugin_operations AS SELECT 1;").unwrap();
     drop(store);
     assert!(Store::open(&root.path().canonicalize().unwrap()).is_err());

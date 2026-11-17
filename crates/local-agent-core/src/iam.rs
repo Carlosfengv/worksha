@@ -4,7 +4,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, 
 use serde::{Deserialize, Serialize};
 
 pub const PLUGIN_ID: &str = "builtin.iam";
-pub const PROTECTED_SCHEMA_VERSION: u32 = 17;
+pub const PROTECTED_SCHEMA_VERSION: u32 = 19;
 pub const DEFAULT_TENANT: &str = "local";
 const MAX_ACCOUNTS: i64 = 128;
 type Result<T> = std::result::Result<T, PluginError>;
@@ -30,7 +30,7 @@ pub(crate) fn initialize(db: &Connection, original_version: u32) -> Result<()> {
         "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('iam_mode','iam_accounts','iam_memberships','iam_model_grants','iam_model_creators','iam_audit')",
         [], |row| row.get(0),
     ).map_err(unavailable)?;
-    if count == 0 && original_version < PROTECTED_SCHEMA_VERSION {
+    if count == 0 && original_version < 16 {
         db.execute_batch(
             "CREATE TABLE iam_mode (
                 id INTEGER PRIMARY KEY CHECK(id=1), tenant_id TEXT NOT NULL,
@@ -72,7 +72,7 @@ pub(crate) fn initialize(db: &Connection, original_version: u32) -> Result<()> {
         .map_err(unavailable)?;
     db.prepare("SELECT actor,action,target,time FROM iam_audit LIMIT 0")
         .map_err(unavailable)?;
-    if enabled(db)? != (original_version == PROTECTED_SCHEMA_VERSION) {
+    if enabled(db)? != matches!(original_version, 17 | PROTECTED_SCHEMA_VERSION) {
         return Err(unavailable("IAM schema marker"));
     }
     Ok(())

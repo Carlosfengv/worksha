@@ -181,7 +181,7 @@ test("full facts storage consent can be withdrawn without retaining persistence"
   await page.getByRole("button", { name: "统一会话展示", exact: true }).click();
   await page
     .getByRole("checkbox", {
-      name: "保存元数据（重开后需要重新授权）",
+      name: "保存会话元数据",
       exact: true,
     })
     .check();

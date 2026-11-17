@@ -7,6 +7,31 @@ use axum::{Router, middleware, routing::get};
 pub(crate) fn management(state: AppState) -> Router {
     Router::new()
         .route(
+            "/api/observation/loop-guards",
+            get(observation::loop_guards::alerts),
+        )
+        .route(
+            "/api/observation/loop-guards/override",
+            axum::routing::post(observation::loop_guards::release),
+        )
+        .route(
+            "/api/agents/budget-warnings",
+            get(gateway::budget::warnings).post(gateway::budget::notified),
+        )
+        .route("/api/agents/budgets", get(gateway::budget::bindings))
+        .route(
+            "/api/agents/budgets/{binding}",
+            get(gateway::budget::view).put(gateway::budget::save),
+        )
+        .route(
+            "/api/agents/budget-review",
+            axum::routing::post(gateway::budget::review),
+        )
+        .route(
+            "/api/agents/budget-attempt/{id}",
+            get(gateway::budget::attempt),
+        )
+        .route(
             "/api/builtin-plugins",
             get(crate::plugin_host::builtin::catalog),
         )
@@ -22,6 +47,19 @@ pub(crate) fn management(state: AppState) -> Router {
         .route(
             "/api/agents/model-connection",
             axum::routing::post(crate::agent_connections::handle),
+        )
+        .route("/api/agents/local-connections", get(gateway::chat::list))
+        .route(
+            "/api/agents/local-connections/prepare",
+            axum::routing::post(gateway::chat::prepare),
+        )
+        .route(
+            "/api/agents/local-connections/operation",
+            axum::routing::post(gateway::chat::operation),
+        )
+        .route(
+            "/api/agents/local-connections/finish",
+            axum::routing::post(gateway::chat::finish),
         )
         .route("/api/domain/catalog", get(crate::domain::catalog))
         .route("/api/domain/directory", get(crate::domain::directory))
@@ -153,6 +191,10 @@ pub(crate) fn management(state: AppState) -> Router {
         )
         .route("/api/snapshot", get(settings::snapshot))
         .route("/api/settings", axum::routing::put(settings::save_settings))
+        .route(
+            "/api/settings/route-archive",
+            axum::routing::post(settings::route_archive),
+        )
         .route(
             "/api/settings/retention-preview",
             get(settings::retention_preview),

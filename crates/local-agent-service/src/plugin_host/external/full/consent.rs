@@ -51,6 +51,8 @@ impl Manager {
             source_authorized: true,
             unified_authorized: grant.unified,
             persist_metadata: selected.persist_metadata,
+            persist_watch: grant.persist_watch,
+            can_persist_watch: super::package::can_persist_watch(&status.manifest),
         };
         host.consents.insert(
             reply.review_ref.clone(),
@@ -69,7 +71,7 @@ impl Manager {
         input: &d::SourceConsent,
     ) -> Result<()> {
         self.ensure_running()?;
-        if !input.enabled && input.persist_metadata {
+        if !input.enabled && (input.persist_metadata || input.persist_watch) {
             return Err(fail("invalid_input"));
         }
         let query = f::PackageQuery {
@@ -80,14 +82,9 @@ impl Manager {
         if input.enabled && !self.full_trusted(&installed)? {
             return Err(fail("publisher_untrusted"));
         }
-        let dsh_ticket = if input.enabled && super::dsh::is_source(&installed.manifest) {
-            Some(
-                self.dsh_publisher_ticket(&installed, true)?
-                    .ok_or(fail("publisher_untrusted"))?,
-            )
-        } else {
-            None
-        };
+        if input.persist_watch && !super::package::can_persist_watch(&installed.manifest) {
+            return Err(fail("invalid_input"));
+        }
         let publisher_revision = self.full_publisher_revision(&installed.manifest.publisher)?;
         let mut host = self.full.lock().checked("unavailable")?;
         let mut selected = host.selection(&input.plugin_id)?;
@@ -113,7 +110,11 @@ impl Manager {
                 return Err(fail("stale_snapshot"));
             }
             let current = grant.as_ref().ok_or(fail("permission_denied"))?;
-            runtime::stamp(current)?;
+            if let Err(error) = runtime::stamp(current) {
+                drop(host);
+                self.invalidate_changed_watch(current)?;
+                return Err(error);
+            }
             let lease = active.as_ref().ok_or(fail("plugin_disabled"))?;
             if lease.publisher_revision != publisher_revision
                 || current.lease != *lease
@@ -123,10 +124,12 @@ impl Manager {
             {
                 return Err(fail("grant_revoked"));
             }
-            if let Some((applied, enabled, persist)) = &review.applied {
+            if let Some((applied, enabled, persist, watch)) = &review.applied {
                 if applied == lease
                     && *enabled == input.enabled
                     && *persist == input.persist_metadata
+                    && *watch == input.persist_watch
+                    && current.persist_watch == *watch
                     && current.unified == *enabled
                     && selected.persist_metadata == *persist
                 {
@@ -143,38 +146,44 @@ impl Manager {
         };
         selected.advance()?;
         selected.persist_metadata = input.persist_metadata;
-        let saved_dsh_source = if let (Some(ticket), Some(grant)) = (dsh_ticket, grant.as_ref()) {
-            let created = std::fs::symlink_metadata(&grant.path)
-                .and_then(|metadata| metadata.created())
-                .checked("permission_denied")?;
-            Some(super::store::SavedDshSource {
-                digest: selected.digest.clone(),
-                epoch: selected.epoch,
-                revision: selected.revision,
-                path: grant.path.clone(),
-                device: grant.device,
-                inode: grant.inode,
-                created,
-                publisher_ticket: ticket,
-            })
-        } else {
-            None
-        };
         let updated = active.map(|lease| Lease {
             epoch: selected.epoch,
             revision: selected.revision,
             ..lease
         });
-        let tx = host.db()?.unchecked_transaction().checked("unavailable")?;
-        if let Some(saved) = saved_dsh_source {
+        let db = host.db()?;
+        let tx = db.unchecked_transaction().checked("unavailable")?;
+        if input.enabled
+            && (self.full_publisher_revision(&installed.manifest.publisher)? != publisher_revision
+                || !self.full_trusted(&installed)?)
+        {
+            return Err(fail("grant_revoked"));
+        }
+        if input.persist_watch {
+            let mut grant = grant.clone().ok_or(fail("permission_denied"))?;
+            grant.persist_watch = true;
+            runtime::stamp(&grant)?;
+            let saved = super::store::SavedWatch {
+                persist_watch: true,
+                publisher: installed.manifest.publisher.clone(),
+                digest: selected.digest.clone(),
+                epoch: selected.epoch,
+                revision: selected.revision,
+                path: grant.path,
+                device: grant.device,
+                inode: grant.inode,
+                created: grant.created.ok_or(fail("permission_denied"))?,
+                publisher_ticket: super::saved_watch::publisher_ticket(&tx, &installed, true)?
+                    .ok_or(fail("publisher_untrusted"))?,
+            };
             tx.execute(
-                "INSERT OR REPLACE INTO full_saved_sources VALUES(?1,?2)",
+                "INSERT OR REPLACE INTO ext_source_full_saved_sources VALUES(?1,?2)",
                 params![input.plugin_id, super::store::encode(&saved)?],
             )
             .checked("unavailable")?;
         } else {
             tx.execute(
-                "DELETE FROM full_saved_sources WHERE plugin_id=?1",
+                "DELETE FROM ext_source_full_saved_sources WHERE plugin_id=?1",
                 [&input.plugin_id],
             )
             .checked("unavailable")?;
@@ -192,40 +201,47 @@ impl Manager {
                     }
                 }
                 tx.execute(
-                    "INSERT OR REPLACE INTO full_projections VALUES(?1,?2)",
+                    "INSERT OR REPLACE INTO ext_source_full_projections VALUES(?1,?2)",
                     params![input.plugin_id, super::store::encode(&saved)?],
                 )
                 .checked("unavailable")?;
             }
         } else {
             tx.execute(
-                "DELETE FROM full_projections WHERE plugin_id=?1",
+                "DELETE FROM ext_source_full_projections WHERE plugin_id=?1",
                 [&input.plugin_id],
             )
             .checked("unavailable")?;
         }
         tx.execute(
-            "INSERT OR REPLACE INTO full_selections VALUES(?1,?2)",
+            "INSERT OR REPLACE INTO ext_source_full_selections VALUES(?1,?2)",
             params![input.plugin_id, super::store::encode(&selected)?],
         )
         .checked("unavailable")?;
         tx.commit().checked("unavailable")?;
+        drop(db);
         if let Some(lease) = updated {
             host.active.insert(input.plugin_id.clone(), lease.clone());
             if let Some(mut grant) = grant {
                 grant.lease = lease.clone();
                 grant.unified = input.enabled;
+                grant.persist_watch = input.persist_watch;
                 host.grants.insert(input.plugin_id.clone(), grant);
             }
             if let Some(projection) = host.projections.get_mut(&input.plugin_id) {
                 projection.lease = lease.clone();
                 projection.captured_source = None;
-                projection.dsh_tasks = Default::default();
+                projection.reported_tasks = Default::default();
             }
             if let Some(review) = review
                 && let Some(current) = host.consents.get_mut(&review.reply.review_ref)
             {
-                current.applied = Some((lease, input.enabled, input.persist_metadata));
+                current.applied = Some((
+                    lease,
+                    input.enabled,
+                    input.persist_metadata,
+                    input.persist_watch,
+                ));
             }
         }
         host.failures.remove(&input.plugin_id);

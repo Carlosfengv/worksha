@@ -228,7 +228,7 @@ impl Manager {
         let declared = {
             let db = self.db.lock().checked("unavailable")?;
             let mut stmt = db
-                .prepare("SELECT manifest FROM packages WHERE plugin_id=?1")
+                .prepare("SELECT manifest FROM ext_host_packages WHERE plugin_id=?1")
                 .checked("unavailable")?;
             let manifests = stmt
                 .query_map([id], |r| r.get::<_, String>(0))
@@ -472,7 +472,7 @@ mod tests {
             .lock()
             .unwrap()
             .execute(
-                "INSERT INTO selections(plugin_id,digest,enabled,status) VALUES(?1,?2,1,'active')",
+                "INSERT INTO ext_host_selections(plugin_id,digest,enabled,status) VALUES(?1,?2,1,'active')",
                 rusqlite::params![original.plugin_id, original.digest],
             )
             .unwrap();

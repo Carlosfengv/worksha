@@ -383,6 +383,7 @@ fn schema14_upgrade_preserves_owned_ciphertext_and_reference_with_a_private_cons
             |row| row.get(0),
         )
         .unwrap();
+    crate::storage::strip_m1_fixture(&f.store.connection);
     f.store.connection.execute_batch("DROP TABLE local_token_cancellations;ALTER TABLE local_token_scope DROP COLUMN cancellation_count;ALTER TABLE local_token_scope DROP COLUMN cancellation_bytes;UPDATE local_token_scope SET format=1;PRAGMA user_version=14;").unwrap();
     let data = f.root.path().join("data");
     drop(f.store);

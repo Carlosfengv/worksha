@@ -37,6 +37,10 @@ pub(super) fn stamp(grant: &Grant) -> Result<FileStamp> {
         || m.nlink() != 1
         || m.dev() != grant.device
         || m.ino() != grant.inode
+        || (grant.persist_watch
+            && (grant.created.is_none()
+                || m.created().ok() != grant.created
+                || grant.path.canonicalize().ok().as_ref() != Some(&grant.path)))
         || m.len() > common::MAX_SOURCE
     {
         return Err(fail("grant_revoked"));
@@ -185,7 +189,7 @@ impl Manager {
             .db
             .lock()?
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM selections WHERE plugin_id=?1 AND enabled=1)",
+                "SELECT EXISTS(SELECT 1 FROM ext_host_selections WHERE plugin_id=?1 AND enabled=1)",
                 [&c.lease.id],
                 |r| r.get(0),
             )

@@ -71,8 +71,8 @@ fn unknown() -> ConfigError {
 }
 impl Journal {
     pub(crate) fn validate_legacy_admission(&self) -> Result<(), ConfigError> {
-        let mut db = self.connect()?;
-        let tx = db.transaction().map_err(unavailable)?;
+        let db = self.connect()?;
+        let tx = db.unchecked_transaction().map_err(unavailable)?;
         let meta = self.validate(&tx)?;
         validate(&tx, &meta.store_id)?;
         tx.commit().map_err(unavailable)?;
@@ -88,10 +88,9 @@ impl Journal {
         if !valid_id(id) {
             return Err(corrupt());
         }
-        let mut db = self.connect()?;
-        let tx = db
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(unavailable)?;
+        let db = self.connect()?;
+        let tx =
+            Transaction::new_unchecked(&db, TransactionBehavior::Immediate).map_err(unavailable)?;
         let meta = self.validate(&tx)?;
         let admission = validate(&tx, &meta.store_id)?;
         let known = admission.ids.iter().any(|saved| saved == id);

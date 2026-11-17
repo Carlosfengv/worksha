@@ -18,7 +18,7 @@ fn rows(store: &Store, table: &str) -> i64 {
         .unwrap()
 }
 
-fn service(store: &Store, name: &str) -> crate::model_services::ModelService {
+pub(super) fn service(store: &Store, name: &str) -> crate::model_services::ModelService {
     use crate::model_services::{Capabilities, ModelDraft, ServiceDraft};
     let p = source(store);
     let provider_id = p.id.clone();

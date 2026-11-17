@@ -26,24 +26,25 @@ fn unavailable() -> (StatusCode, Json<serde_json::Value>) {
 }
 
 fn scope(state: &AppState, request: &Request) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
-    let store = state.store.lock().map_err(|_| unavailable())?;
-    if store.database_id().map_err(|_| unavailable())? != request.store_id {
-        return Err(failure(
-            "retention_store_changed",
-            "后台数据库已变化，请刷新设置后重新预览",
-            StatusCode::CONFLICT,
-        ));
-    }
-    if store.settings_state().map_err(|_| unavailable())?.revision
-        != request.expected_settings_revision
-    {
-        return Err(failure(
-            "retention_settings_changed",
-            "设置已有新版本，请刷新后重新预览",
-            StatusCode::CONFLICT,
-        ));
-    }
-    Ok(())
+    state.store_readers.read(unavailable, |store| {
+        if store.database_id().map_err(|_| unavailable())? != request.store_id {
+            return Err(failure(
+                "retention_store_changed",
+                "后台数据库已变化，请刷新设置后重新预览",
+                StatusCode::CONFLICT,
+            ));
+        }
+        if store.settings_state().map_err(|_| unavailable())?.revision
+            != request.expected_settings_revision
+        {
+            return Err(failure(
+                "retention_settings_changed",
+                "设置已有新版本，请刷新后重新预览",
+                StatusCode::CONFLICT,
+            ));
+        }
+        Ok(())
+    })
 }
 
 #[derive(Serialize)]
@@ -230,7 +231,12 @@ pub(crate) async fn inventory(
         // Each source owns its snapshot. These two WAL databases do not form
         // an atomic inventory or deletion authorization.
         let gateway = source_report(|| state.observation.retention_impact(request.days, now));
-        let tools = source_report(|| state.plugins.retention_tool_impact(request.days, now));
+        let tools = source_report(|| {
+            state.store_readers.read(
+                || impact::Error::Unavailable,
+                |store| store.connector_retention_impact(request.days, now),
+            )
+        });
         let activity_caches = (version == 2).then(|| ActivityCaches {
             gateway: source_report(|| {
                 state.observation.retention_activity_impact(

@@ -1128,6 +1128,7 @@ fn write_admission_upgrade_11_keeps_existing_material_and_blocks_unseen_historic
     let id = uuid::Uuid::new_v4().to_string();
     let receipt = f.old(&id).unwrap();
     let bytes = f.bytes(&id);
+    crate::storage::strip_m1_fixture(&f.store.connection);
     f.store.connection.execute_batch("DROP TABLE local_token_cancellations;DROP TABLE local_token_owners;DROP TABLE local_token_values;DROP TABLE local_token_scope;DROP TABLE native_import_operations;DROP TABLE native_import_scope;DROP TABLE credential_legacy_operations;DROP TABLE credential_legacy_scope;PRAGMA user_version=11").unwrap();
     let upgraded = Store::open(&f._root.path().join("data")).unwrap();
     let scope = upgraded
@@ -1286,6 +1287,7 @@ fn schema10_reader_barrier_upgrade_preserves_claim_bytes_identity_and_private_ba
             "DROP TABLE local_token_cancellations;DROP TABLE local_token_owners;DROP TABLE local_token_values;DROP TABLE local_token_scope;DROP TABLE native_import_operations;DROP TABLE native_import_scope;DROP TABLE credential_legacy_operations;DROP TABLE credential_legacy_scope;",
         )
         .unwrap();
+    crate::storage::strip_m1_fixture(&store.connection);
     store
         .connection
         .pragma_update(None, "user_version", 10)

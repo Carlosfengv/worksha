@@ -216,6 +216,14 @@ export function PluginManager({
         </p>
       )}
       <PluginAdmissionRules />
+      {general.data?.diagnostics?.archivedDatabases && (
+        <Alert>
+          <AlertTitle>旧插件数据库已保留备查</AlertTitle>
+          <AlertDescription>
+            如需继续使用原扩展，请在当前插件中心重新安装并核对授权。
+          </AlertDescription>
+        </Alert>
+      )}
       {general.data?.developmentMode && (
         <p className="text-label text-warning-fg">
           当前为显式插件开发模式，允许未签名开发包。

@@ -43,6 +43,22 @@ pub(crate) struct Journal {
     store_id: String,
     namespace_id: String,
     domain: u32,
+    writer: Option<crate::StoreWriter>,
+}
+
+enum JournalConnection<'a> {
+    Shared(crate::StoreConnection<'a>),
+    Standalone(Connection),
+}
+
+impl std::ops::Deref for JournalConnection<'_> {
+    type Target = Connection;
+    fn deref(&self) -> &Connection {
+        match self {
+            Self::Shared(db) => db,
+            Self::Standalone(db) => db,
+        }
+    }
 }
 fn corrupt() -> ConfigError {
     ConfigError::new(
@@ -177,16 +193,16 @@ impl Journal {
             Ok(_) => (),
         }
         files::checked_path(&path)?;
-        let mut db = Connection::open_with_flags(
+        let db = Connection::open_with_flags(
             &path,
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )
         .map_err(unavailable)?;
         db.busy_timeout(std::time::Duration::from_secs(3))
             .map_err(unavailable)?;
-        let tx = db.transaction().map_err(unavailable)?;
+        let tx = db.unchecked_transaction().map_err(unavailable)?;
         let meta = metadata(&tx)?;
-        Self::from_store(&tx, &path, &meta.store_id).map(Some)
+        Self::from_store(&tx, &path, &meta.store_id, None).map(Some)
     }
     pub(crate) fn same_source(&self, other: &Self) -> Result<bool, ConfigError> {
         self.check_file()?;
@@ -199,6 +215,7 @@ impl Journal {
         db: &Connection,
         path: &Path,
         store_id: &str,
+        writer: Option<crate::StoreWriter>,
     ) -> Result<Arc<Self>, ConfigError> {
         let meta = metadata(db)?;
         if meta.store_id != store_id {
@@ -219,6 +236,7 @@ impl Journal {
             store_id: store_id.into(),
             namespace_id: meta.namespace_id,
             domain: 3,
+            writer,
         });
         result.status()?;
         Ok(result)
@@ -230,6 +248,7 @@ impl Journal {
             store_id: self.store_id.clone(),
             namespace_id: self.namespace_id.clone(),
             domain,
+            writer: self.writer.clone(),
         })
     }
     pub(crate) fn namespace_id(&self) -> &str {
@@ -249,8 +268,13 @@ impl Journal {
         }
         Ok(())
     }
-    fn connect(&self) -> Result<Connection, ConfigError> {
+    fn connect(&self) -> Result<JournalConnection<'_>, ConfigError> {
         self.check_file()?;
+        if let Some(writer) = &self.writer {
+            let db = writer.connection().map_err(unavailable)?;
+            self.check_file()?;
+            return Ok(JournalConnection::Shared(db));
+        }
         let db = Connection::open_with_flags(
             &self.path,
             OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -259,7 +283,7 @@ impl Journal {
         db.busy_timeout(std::time::Duration::from_secs(3))
             .map_err(unavailable)?;
         self.check_file()?;
-        Ok(db)
+        Ok(JournalConnection::Standalone(db))
     }
     fn validate(&self, db: &Connection) -> Result<Metadata, ConfigError> {
         let mut meta = metadata(db)?;
@@ -289,16 +313,16 @@ impl Journal {
         Ok(())
     }
     pub(crate) fn status(&self) -> Result<Metadata, ConfigError> {
-        let mut db = self.connect()?;
-        let tx = db.transaction().map_err(unavailable)?;
+        let db = self.connect()?;
+        let tx = db.unchecked_transaction().map_err(unavailable)?;
         let meta = self.validate(&tx)?;
         tx.commit().map_err(unavailable)?;
         self.check_file()?;
         Ok(meta)
     }
     pub(crate) fn discovery_inventory(&self) -> Result<(i64, Vec<(u32, String)>), ConfigError> {
-        let mut db = self.connect()?;
-        let tx = db.transaction().map_err(unavailable)?;
+        let db = self.connect()?;
+        let tx = db.unchecked_transaction().map_err(unavailable)?;
         let meta = self.validate(&tx)?;
         self.allowed(&meta)?;
         let mut rows = {
@@ -370,8 +394,8 @@ impl Journal {
         if !valid_name(name) {
             return Err(corrupt());
         }
-        let mut db = self.connect()?;
-        let tx = db.transaction().map_err(unavailable)?;
+        let db = self.connect()?;
+        let tx = db.unchecked_transaction().map_err(unavailable)?;
         self.allowed(&self.validate(&tx)?)?;
         let row: Option<(Vec<u8>, String)> = tx
             .query_row(
@@ -401,10 +425,9 @@ impl Journal {
         if !valid_name(name) || value.len() > 4096 {
             return Err(corrupt());
         }
-        let mut db = self.connect()?;
-        let tx = db
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(unavailable)?;
+        let db = self.connect()?;
+        let tx =
+            Transaction::new_unchecked(&db, TransactionBehavior::Immediate).map_err(unavailable)?;
         let meta = self.validate(&tx)?;
         self.allowed(&meta)?;
         if meta.revision == MAX_REVISION {
@@ -463,10 +486,9 @@ impl Journal {
     }
     pub(crate) fn initialize_namespace(&self, restore: bool) -> Result<Metadata, ConfigError> {
         let _guard = self.lock()?;
-        let mut db = self.connect()?;
-        let tx = db
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(unavailable)?;
+        let db = self.connect()?;
+        let tx =
+            Transaction::new_unchecked(&db, TransactionBehavior::Immediate).map_err(unavailable)?;
         let meta = self.validate(&tx)?;
         let archive = if restore && matches!(meta.legacy, LegacyState::Unverified) {
             Some(
@@ -537,7 +559,7 @@ pub(crate) fn initialize(
         .ok_or_else(corrupt)?;
     let _guard = lock_at(&parent.join("credential-recovery.lock"))?;
     let tx = Transaction::new_unchecked(db, TransactionBehavior::Immediate).map_err(unavailable)?;
-    if original_version == 15 {
+    if matches!(original_version, 15..=17) {
         // The plugin reader barrier and its schema publish together. Preserve
         // existing credential evidence and identities without recreating them.
         let meta = metadata_at(&tx, original_version)?;
@@ -548,8 +570,12 @@ pub(crate) fn initialize(
             .map_err(plugin_storage_error)?;
         crate::iam::initialize(&tx, original_version)
             .map_err(|error| plugin_storage_error(error.message))?;
-        tx.pragma_update(None, "user_version", crate::Store::SCHEMA_VERSION)
-            .map_err(unavailable)?;
+        let version = if original_version == 17 {
+            crate::iam::PROTECTED_SCHEMA_VERSION
+        } else {
+            crate::Store::SCHEMA_VERSION
+        };
+        crate::storage::publish_control_plane(&tx, version).map_err(plugin_storage_error)?;
         metadata(&tx)?;
         return tx.commit().map_err(unavailable);
     }
@@ -576,8 +602,8 @@ pub(crate) fn initialize(
             .map_err(plugin_storage_error)?;
         crate::iam::initialize(&tx, original_version)
             .map_err(|error| plugin_storage_error(error.message))?;
-        tx.pragma_update(None, "user_version", crate::Store::SCHEMA_VERSION)
-            .map_err(unavailable)?;
+        crate::storage::publish_control_plane(&tx, crate::Store::SCHEMA_VERSION)
+            .map_err(plugin_storage_error)?;
         metadata(&tx)?;
         return tx.commit().map_err(unavailable);
     }
@@ -633,8 +659,8 @@ pub(crate) fn initialize(
     crate::plugin::initialize_composition(&tx, original_version).map_err(plugin_storage_error)?;
     crate::iam::initialize(&tx, original_version)
         .map_err(|error| plugin_storage_error(error.message))?;
-    tx.pragma_update(None, "user_version", crate::Store::SCHEMA_VERSION)
-        .map_err(unavailable)?;
+    crate::storage::publish_control_plane(&tx, crate::Store::SCHEMA_VERSION)
+        .map_err(plugin_storage_error)?;
     let meta = metadata(&tx)?;
     legacy_admission::initialize(&tx, path, &meta.store_id, fresh)?;
     crate::providers::imports::operations::initialize(&tx, &meta.store_id)?;

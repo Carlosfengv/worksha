@@ -75,7 +75,42 @@ const decisionReasons: Record<string, string> = {
   "admission-failed": "发送前检查未通过",
   "outcome-unknown": "已有请求结果待确认，未尝试",
   "upstream-outcome-unconfirmed": "已尝试发送，上游结果未确认",
+  "budget-downgraded": "主池预算不足，已切换到备用服务",
 };
+
+const budgetResource = createReadResourceFamily(localConnectionsApi.attempt, {
+  interval: false,
+});
+function RequestBudget({ id }: { id: string }) {
+  const [open, setOpen] = useState(false);
+  const budget = useSharedQuery(budgetResource, id, open);
+  return (
+    <section aria-label="请求预算核查" className="space-y-2">
+      <Button
+        variant="tertiary"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
+        核查预算
+      </Button>
+      {open &&
+        (budget.error ? (
+          <p role="alert">{budget.error}</p>
+        ) : budget.loading ? (
+          <p role="status">正在读取预算证据…</p>
+        ) : budget.data?.attempt ? (
+          <BudgetReviewControls
+            key={budget.data.attempt.revision}
+            attempt={budget.data.attempt}
+            storeId={budget.data.storeId}
+            onApplied={() => void budget.invalidate()}
+          />
+        ) : (
+          <p>此尝试没有待核查额度。</p>
+        ))}
+    </section>
+  );
+}
 
 export function RequestDetail({
   id,
@@ -224,6 +259,7 @@ export function RequestDetail({
         <p>找不到此请求，可能已到期或未被记录。</p>
       ) : (
         <>
+          {!r.native && <RequestBudget key={id} id={id} />}
           {!r.native && r.attempts.length > 0 && (
             <RequestRetryWaterfall request={r} returnTo={returnTo} />
           )}
@@ -711,3 +747,7 @@ export function RequestDetail({
     </section>
   );
 }
+import { localConnectionsApi } from "@/features/agents/api";
+import { BudgetReviewControls } from "@/features/agents/components/budget-review";
+import { useSharedQuery } from "@/shared/hooks/use-shared-read";
+import { createReadResourceFamily } from "@/shared/lib/read-resource";

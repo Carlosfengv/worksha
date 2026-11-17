@@ -315,10 +315,9 @@ async fn deadline_before_send_can_retry_but_an_unknown_upstream_result_stays_pin
         .execute_batch("DROP TRIGGER fixture_send_write")
         .unwrap();
     drop(connection);
-    *fixture.state.store.lock().unwrap() = Store::open(path.parent().unwrap()).unwrap();
     assert_eq!(call("ses_deadlineafter").await.0, StatusCode::CONFLICT);
     assert_eq!(count.load(Ordering::Acquire), 2);
     assert_eq!(call("ses_recoverUnsent").await.0, StatusCode::OK);
     assert_eq!(count.load(Ordering::Acquire), 3);
-    assert_eq!(latest_outcome(), ("committed".into(), "committed".into()));
+    assert_eq!(latest_outcome(), ("committed".into(), "completed".into()));
 }

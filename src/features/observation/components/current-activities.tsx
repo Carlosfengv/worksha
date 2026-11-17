@@ -18,7 +18,6 @@ import { useAgentDirectory } from "@/shared/hooks/use-agent-directory";
 import { useTablePagination } from "@/shared/hooks/use-table-pagination";
 import { dataTablePagination } from "@/shared/ui/data-table-labels";
 import { recordAgentKey, type AgentDiscovery } from "@/shared/types/agent";
-import { bundledDshAgent } from "@/features/agents/bundled-source";
 import type { UnifiedActivityPage } from "../../../../contracts/domain/facts/types";
 import { activityGroup, nativeSamplingLabel } from "../activity-group";
 import { phaseNames, seconds, speed, timingNote } from "../display";
@@ -54,7 +53,7 @@ function measurementCell(
       return (
         <div className="text-label tabular-nums">
           <p>TTFT {seconds(timing.firstTokenMs)} 秒</p>
-          <p className="text-fg-muted">DSH 步骤首出</p>
+          <p className="text-fg-muted">{activity.agentName} · 上报首出</p>
         </div>
       );
     if (kind === "tokenRate" && timing) {
@@ -67,7 +66,9 @@ function measurementCell(
               <>
                 <p>均速 {speed(rate)} Token/s</p>
                 <p className="text-fg-muted">
-                  {running != null ? "DSH 当前步骤已上报" : "DSH 已完成步骤"}
+                  {running != null
+                    ? `${activity.agentName} · 上报当前步骤`
+                    : `${activity.agentName} · 上报已完成步骤`}
                 </p>
               </>
             )}
@@ -429,9 +430,9 @@ export function useCurrentActivities({
   const { agentNames, agentProducts, agentFamily, isSharedSource } =
     useAgentDirectory();
   const family = agentFamily(filter);
-  const dshSelected = filter === bundledDshAgent.id;
   const reportedOnly =
-    dshSelected || (filter !== "all" && sourceAgents.length > 0);
+    filter !== "all" &&
+    !!data?.agents.some((agent) => agent.id === filter && agent.sourceId);
   const nativeObservationPaused =
     !reportedOnly &&
     (data?.builtinComposition?.nativeActivityActive === false ||
@@ -585,12 +586,15 @@ export function useCurrentActivities({
   return {
     rows,
     now,
-    dshSelected,
+    sourceName: reportedOnly ? agentNames[filter] : undefined,
     overviewExpired: Boolean(overview) && snapshotExpired,
     performance: {
       summary,
       reportedTtfts,
       reportedRates,
+      reportedSourceNames: [
+        ...new Set(activeReported.map((row) => row.agentName)),
+      ],
       nativeSourceEnabled: observationEnabled,
       nativeObservationPaused,
       reportedOnly,
@@ -605,7 +609,7 @@ export function CurrentActivities({
 }: {
   activity: ReturnType<typeof useCurrentActivities>;
 }) {
-  const { rows, dshSelected, overviewExpired } = activity;
+  const { rows, sourceName, overviewExpired } = activity;
   const {
     state,
     nativeSourceEnabled: observationEnabled,
@@ -697,15 +701,15 @@ export function CurrentActivities({
                       ? "暂无活动记录"
                       : nativeObservationPaused
                         ? "原生活动采集已暂停"
-                        : dshSelected
-                          ? "尚未收到 DeepSeek Harness 活动"
+                        : reportedOnly
+                          ? `尚未收到${sourceName ?? "所选来源"}的活动`
                           : "尚未连接原生观测来源"}
                   </EmptyTitle>
                   <EmptyDescription>
                     {observationEnabled
                       ? "仅显示最近 3 小时的活动，按最后活动时间排序。"
-                      : dshSelected
-                        ? "在 DeepSeek Harness 启用只读桥接，并在连接与观测中授权读取导出的会话文件，即可显示直连任务。"
+                      : reportedOnly
+                        ? "在该 Agent 的连接与观测中授权读取来源文件，以显示上报任务。"
                         : nativeObservationPaused
                           ? "可在官方组合中恢复活动采集；本机来源的读取授权仍需单独确认。"
                           : "当前范围未开启原生会话读取，请在 Agent 的“连接与观测”中确认读取范围。网关请求经过本应用时会自动显示。"}

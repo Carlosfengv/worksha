@@ -29,4 +29,4 @@ mod model;
 mod storage;
 pub use discovery::discover_agents;
 pub use model::{AgentDiscovery, ModelCatalogSource, Provider, Settings, Snapshot};
-pub use storage::Store;
+pub use storage::{Store, StoreConnection, StoreWriter};

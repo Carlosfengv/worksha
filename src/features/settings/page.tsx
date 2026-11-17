@@ -10,6 +10,7 @@ import { SettingsPreferences } from "./components/settings-preferences";
 import { GatewayPanel } from "./gateway-panel";
 import { BackendConnection } from "./components/backend-connection";
 import { RetentionPreviewPanel } from "./components/retention-preview";
+import { RouteArchive } from "./components/route-archive";
 
 function SettingsForm({ data }: { data: Snapshot }) {
   return (
@@ -31,6 +32,12 @@ function SettingsForm({ data }: { data: Snapshot }) {
           </DetailListItem>
         </DetailList>
       </section>
+      {data.settingsWriteProtocol?.storeId && (
+        <RouteArchive
+          key={data.settingsWriteProtocol.storeId}
+          storeId={data.settingsWriteProtocol.storeId}
+        />
+      )}
       <section className="space-y-3">
         <h2 className="text-title font-medium">待开放能力</h2>
         <p className="text-body text-fg-muted">

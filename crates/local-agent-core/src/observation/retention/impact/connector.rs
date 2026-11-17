@@ -7,7 +7,10 @@ use crate::observation::retention::{ExpirationCandidate, Protection, ledger};
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
-use std::{path::Path, time::Duration as Budget};
+use std::{
+    path::Path,
+    time::{Duration as Budget, Instant},
+};
 
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,7 +36,7 @@ pub fn connector(directory: &Path, days: u16, now: DateTime<Utc>) -> Result<Tool
     )
 }
 fn unique_identity(db: &Connection) -> Result<bool, Error> {
-    let mut stmt=db.prepare("SELECT name FROM pragma_index_list('connector_calls') WHERE \"unique\"=1 AND partial=0").map_err(unavailable)?;
+    let mut stmt=db.prepare("SELECT name FROM pragma_index_list('ext_adv_connector_calls') WHERE \"unique\"=1 AND partial=0").map_err(unavailable)?;
     let mut indexes = stmt.query([]).map_err(unavailable)?;
     while let Some(row) = indexes.next().map_err(unavailable)? {
         let name: String = row.get(0).map_err(unavailable)?;
@@ -62,7 +65,7 @@ fn unique_identity(db: &Connection) -> Result<bool, Error> {
     Ok(false)
 }
 fn capacity_limit(db: &Connection) -> Result<Option<u32>, Error> {
-    let sql:Option<String>=db.query_row("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='call_retention' AND tbl_name='connector_calls'",[],|r|r.get(0)).optional().map_err(unavailable)?;
+    let sql:Option<String>=db.query_row("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='ext_adv_call_retention' AND tbl_name='ext_adv_connector_calls'",[],|r|r.get(0)).optional().map_err(unavailable)?;
     let normalized = sql.map(|s| {
         s.chars()
             .filter(|c| !c.is_whitespace())
@@ -72,7 +75,7 @@ fn capacity_limit(db: &Connection) -> Result<Option<u32>, Error> {
             .trim_end_matches(';')
             .to_owned()
     });
-    Ok((normalized.as_deref()==Some("createtriggercall_retentionafterinsertonconnector_callsbegindeletefromconnector_callswhereid<=new.id-10000;end")).then_some(10_000))
+    Ok((normalized.as_deref()==Some("createtriggerext_adv_call_retentionafterinsertonext_adv_connector_callsbegindeletefromext_adv_connector_callswhereid<=new.id-10000;end")).then_some(10_000))
 }
 fn scan(
     directory: &Path,
@@ -81,27 +84,75 @@ fn scan(
     max_records: u64,
     budget: Budget,
 ) -> Result<ToolImpact, Error> {
+    let source = ReadSource::open(directory, "local-agent.sqlite3", budget)?;
+    let result = scan_connection(&source.db, days, now, max_records, source.started, budget)?;
+    source.finish()?;
+    Ok(result)
+}
+
+impl crate::Store {
+    pub fn connector_retention_impact(
+        &self,
+        days: u16,
+        now: DateTime<Utc>,
+    ) -> Result<ToolImpact, Error> {
+        if !self.database_file_matches() {
+            return Err(Error::SourceChanged);
+        }
+        let db = &self.connection;
+        if !db.is_readonly("main").map_err(unavailable)? {
+            return Err(Error::Unavailable);
+        }
+        let started = Instant::now();
+        let budget = Budget::from_secs(MAX_SECONDS);
+        db.progress_handler(10_000, Some(move || started.elapsed() >= budget))
+            .map_err(unavailable)?;
+        let result = scan_connection(db, days, now, 1_000_000, started, budget);
+        db.progress_handler(0, None::<fn() -> bool>)
+            .map_err(unavailable)?;
+        if !self.database_file_matches() {
+            return Err(Error::SourceChanged);
+        }
+        if started.elapsed() >= budget {
+            return Err(Error::Limit);
+        }
+        result
+    }
+}
+
+fn scan_connection(
+    db: &Connection,
+    days: u16,
+    now: DateTime<Utc>,
+    max_records: u64,
+    started: Instant,
+    budget: Budget,
+) -> Result<ToolImpact, Error> {
     if ![7, 30, 90].contains(&days) {
         return Err(Error::InvalidInput);
     }
     let cutoff = now
         .checked_sub_signed(Duration::days(i64::from(days)))
         .ok_or(Error::InvalidInput)?;
-    let mut source = ReadSource::open(directory, "plugin-extensions.sqlite3", budget)?;
-    let started = source.started;
-    let tx = source.db.transaction().map_err(unavailable)?;
+    let tx = db.unchecked_transaction().map_err(unavailable)?;
     let version: u32 = tx
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .map_err(unavailable)?;
     let encoding: String = tx
         .query_row("PRAGMA encoding", [], |r| r.get(0))
         .map_err(unavailable)?;
-    if version != 0
-        || encoding != "UTF-8"
-        || !read_source::table(&tx, "extension_version", &[("version", "INTEGER", 1, 0)])?
+    if !matches!(
+        version,
+        crate::Store::SCHEMA_VERSION | crate::iam::PROTECTED_SCHEMA_VERSION
+    ) || encoding != "UTF-8"
         || !read_source::table(
             &tx,
-            "connector_calls",
+            "ext_adv_extension_version",
+            &[("version", "INTEGER", 1, 0)],
+        )?
+        || !read_source::table(
+            &tx,
+            "ext_adv_connector_calls",
             &[
                 ("id", "INTEGER", 0, 1),
                 ("plugin_id", "TEXT", 1, 0),
@@ -115,7 +166,7 @@ fn scan(
     }
     let (n, version): (i64, Option<i64>) = tx
         .query_row(
-            "SELECT COUNT(*),MIN(version) FROM extension_version",
+            "SELECT COUNT(*),MIN(version) FROM ext_adv_extension_version",
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
@@ -136,7 +187,7 @@ fn scan(
             CASE WHEN typeof(plugin_id)='text' AND octet_length(plugin_id)<=256 THEN plugin_id END,
             CASE WHEN typeof(identity)='text' AND octet_length(identity)<=8192 THEN identity END,
             CASE WHEN typeof(record)='text' AND octet_length(record)<=?1 THEN record END
-            FROM connector_calls",
+            FROM ext_adv_connector_calls",
             )
             .map_err(unavailable)?;
         let mut rows = stmt.query([MAX_ROW_BYTES]).map_err(unavailable)?;
@@ -178,7 +229,6 @@ fn scan(
         }
     }
     tx.commit().map_err(unavailable)?;
-    source.finish()?;
     Ok(result)
 }
 

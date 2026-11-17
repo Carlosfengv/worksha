@@ -1,5 +1,7 @@
 pub(crate) mod adapter;
+pub(crate) mod budget;
 pub(crate) mod capabilities;
+pub(crate) mod chat;
 pub(crate) mod codex_catalog;
 mod deepseek;
 #[cfg(test)]
@@ -46,6 +48,7 @@ pub struct Route {
 }
 pub struct Gateway {
     pub lan: crate::lan::LanGateway,
+    pub(crate) route_archive: std::sync::Arc<tokio::sync::RwLock<()>>,
     directory: PathBuf,
     pub host: String,
     routes: Mutex<HashMap<String, Route>>,
@@ -193,6 +196,7 @@ impl Gateway {
         Ok((
             Self {
                 lan: crate::lan::LanGateway::open(directory.parent().ok_or("网关目录无效")?)?,
+                route_archive: Default::default(),
                 directory,
                 host: address.to_string(),
                 routes: Mutex::new(routes),
@@ -457,8 +461,9 @@ pub async fn capture(
     let reject = || {
         (StatusCode::UNAUTHORIZED,axum::Json(serde_json::json!({"error":{"type":"authentication_error","message":"未授权的本机路由请求"}}))).into_response()
     };
-    if request.headers().get("host").and_then(|v| v.to_str().ok())
-        != Some(state.gateway.host.as_str())
+    if request.headers().get_all("host").iter().count() != 1
+        || request.headers().get("host").and_then(|v| v.to_str().ok())
+            != Some(state.gateway.host.as_str())
         || request.headers().contains_key("origin")
     {
         return reject();

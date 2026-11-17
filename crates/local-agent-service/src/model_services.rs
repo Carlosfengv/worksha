@@ -109,7 +109,7 @@ pub async fn list(State(state): State<AppState>) -> ApiResult {
     crate::blocking::run(move||{
         let m=state.providers.lock().map_err(|_|unavailable())?;
         let configs=m.inspect_configs();
-        let store=state.store.lock().map_err(|_|unavailable())?;
+        state.store_readers.read(unavailable, |store| {
         let services=store.model_services().map_err(providers::error)?;
         let bindings=store.dynamic_bindings().map_err(providers::error)?;
         let attachments=store.model_service_attachments().map_err(providers::error)?.into_iter().map(|a|{
@@ -127,13 +127,14 @@ pub async fn list(State(state): State<AppState>) -> ApiResult {
                 && !m.codex_catalog_current(&crate::gateway::codex_catalog::service_catalog_bytes(&a)));
             json!({"bindingId":a.binding_id,"serviceId":a.service_id,"installed":a.installed,"agentId":binding.map(|b|&b.agent_id),"localEndpoint":endpoint,"attached":attached,"referenced":referenced,"configurationUnknown":configuration_unknown,"directorySyncRequired":directory_sync_required})
         }).collect::<Vec<_>>();
-        let cooldowns=CooldownSnapshot::read(&state,&store);
+        let cooldowns=CooldownSnapshot::read(&state,store);
         let health=services.iter().flat_map(|s|s.models.iter().map(|m|json!({
             "serviceId":s.id,"modelId":m.id,
             "status":cooldowns.as_ref().filter(|_|m.child.is_none()).map_or_else(unknown_health,|snapshot|
-                snapshot.pool(&store,&m.provider,s.routing_policy.accounts(&m.id)))
+                snapshot.pool(store,&m.provider,s.routing_policy.accounts(&m.id)))
         }))).collect::<Vec<_>>();
         Ok(Json(json!({"services":services,"attachments":attachments,"connectionAgents":CONNECTION_AGENTS,"routingHealth":health,"writeProtocol":{"version":1,"receiptLimit":RECEIPT_LIMIT,"storeId":store.model_service_operation_store_id().map_err(providers::error)?}})))
+        })
     }).await.map_err(|e|providers::error(crate::blocking::config_error(e)))?
 }
 pub async fn save(

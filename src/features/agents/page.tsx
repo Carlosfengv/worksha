@@ -5,6 +5,7 @@ import { ConnectionEmpty } from "@/shared/ui/connection-empty";
 import { bundledDshAgent } from "./bundled-source";
 import { AgentDetail } from "./components/agent-detail";
 import { SourceAgentDetail } from "./components/source-agent-detail";
+import { LocalConnections } from "./components/local-connections";
 
 export function AgentsPage({
   data,
@@ -69,5 +70,10 @@ export function AgentsPage({
         data={data}
       />
     );
-  return <AgentList data={data} agents={agents} refresh={refresh} />;
+  return (
+    <div className="space-y-4">
+      <AgentList data={data} agents={agents} refresh={refresh} />
+      <LocalConnections />
+    </div>
+  );
 }

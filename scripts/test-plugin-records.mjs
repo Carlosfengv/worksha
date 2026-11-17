@@ -117,9 +117,9 @@ try {
   assert.equal(empty.status, 200);
   assert.deepEqual(empty.body.plans, []);
   passed("confirmed empty history remains a successful empty result");
-  db = new DatabaseSync(path.join(data, "plugin-extensions.sqlite3"));
+  db = new DatabaseSync(path.join(data, "local-agent.sqlite3"));
   const malformed = "{private-record-sentinel";
-  db.prepare("INSERT INTO plans VALUES(?,?,?)").run(
+  db.prepare("INSERT INTO ext_adv_plans VALUES(?,?,?)").run(
     "broken",
     query.pluginId,
     malformed,
@@ -131,7 +131,7 @@ try {
   });
   unreadable(restore);
   assert.equal(
-    db.prepare("SELECT record FROM plans WHERE id='broken'").get().record,
+    db.prepare("SELECT record FROM ext_adv_plans WHERE id='broken'").get().record,
     malformed,
   );
   assert.equal(hash(readFileSync(target)), original);
@@ -147,7 +147,7 @@ try {
   await start();
   unreadable(await history());
   assert.equal(
-    db.prepare("SELECT record FROM plans WHERE id='broken'").get().record,
+    db.prepare("SELECT record FROM ext_adv_plans WHERE id='broken'").get().record,
     malformed,
   );
   passed("restart preserves damaged records and their error state");
@@ -192,21 +192,21 @@ try {
     backup_ref: null,
     after_stamp: null,
   };
-  db.prepare("INSERT INTO plans VALUES(?,?,?)").run(
+  db.prepare("INSERT INTO ext_adv_plans VALUES(?,?,?)").run(
     valid.id,
     query.pluginId,
     JSON.stringify(valid),
   );
   unreadable(await history());
   assert.equal(
-    db.prepare("SELECT count(*) AS count FROM plans").get().count,
+    db.prepare("SELECT count(*) AS count FROM ext_adv_plans").get().count,
     2,
   );
   passed(
     "mixed healthy and damaged records cannot masquerade as a complete successful list",
   );
   // Remove only our injected fault; the product never deletes an unreadable row.
-  db.exec("DELETE FROM plans WHERE id='broken'");
+  db.exec("DELETE FROM ext_adv_plans WHERE id='broken'");
   const recovered = await history();
   assert.equal(recovered.status, 200);
   assert.equal(recovered.body.plans.length, 1);
@@ -214,12 +214,12 @@ try {
   passed(
     "an explicitly repaired fixture can be read again without restarting or replaying a write",
   );
-  db.exec("ALTER TABLE plans RENAME TO preserved_plans");
+  db.exec("ALTER TABLE ext_adv_plans RENAME TO preserved_plans");
   const unavailable = await history();
   assert.notEqual(unavailable.status, 200);
   assert.equal(unavailable.body.code, "unavailable");
   assert.equal((await api("/api/snapshot")).status, 200);
-  db.exec("ALTER TABLE preserved_plans RENAME TO plans");
+  db.exec("ALTER TABLE preserved_plans RENAME TO ext_adv_plans");
   assert.equal(hash(readFileSync(target)), original);
   passed("SQL query failure remains distinct from a confirmed empty history");
   report.complete = true;

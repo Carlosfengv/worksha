@@ -57,7 +57,7 @@ impl Manager {
         self.db
             .lock()?
             .query_row(
-                "SELECT public_key FROM publishers WHERE id=?1",
+                "SELECT public_key FROM ext_host_publishers WHERE id=?1",
                 [publisher],
                 |r| r.get(0),
             )
@@ -69,8 +69,13 @@ impl Manager {
         publisher: &str,
     ) -> Result<()> {
         let db = self.db.lock()?;
-        db.execute("DELETE FROM publishers WHERE id=?1", [publisher])
+        let tx = db.unchecked_transaction().checked("unavailable")?;
+        tx.execute("DELETE FROM ext_source_full_saved_sources
+            WHERE CASE WHEN json_valid(record) THEN json_extract(record,'$.publisher')=?1 ELSE 0 END",
+            [publisher]).checked("unavailable")?;
+        tx.execute("DELETE FROM ext_host_publishers WHERE id=?1", [publisher])
             .checked("unavailable")?;
+        tx.commit().checked("unavailable")?;
         // Keep the revision change under the same lock as the trust deletion, so an
         // install which already started cannot silently restore revoked trust.
         self.full_revoke_publisher(publisher);
@@ -114,7 +119,7 @@ impl Manager {
                 let saved: bool = host
                     .db()?
                     .query_row(
-                        "SELECT EXISTS(SELECT 1 FROM full_projections WHERE plugin_id=?1)",
+                        "SELECT EXISTS(SELECT 1 FROM ext_source_full_projections WHERE plugin_id=?1)",
                         [&query.plugin_id],
                         |r| r.get(0),
                     )
@@ -157,6 +162,11 @@ impl Manager {
                 .as_ref()
                 .is_some_and(|l| Some(l.publisher_revision) == revision);
         let current_stamp = grant.as_ref().and_then(|g| super::runtime::stamp(g).ok());
+        if current_stamp.is_none()
+            && let Some(grant) = &grant
+        {
+            self.invalidate_changed_watch(grant)?;
+        }
         let source_authorized = runtime_active && current_stamp.is_some();
         let max_age = p.manifest.source.as_ref().and_then(|s| s.max_age_seconds);
         let expired = max_age.is_some_and(|seconds| {
@@ -247,7 +257,7 @@ impl Manager {
         let db = host.db()?;
         let now = chrono::Utc::now().timestamp_millis();
         let mut expired = db
-            .prepare("SELECT id FROM full_reviews WHERE expires<?1")
+            .prepare("SELECT id FROM ext_source_full_reviews WHERE expires<?1")
             .checked("unavailable")?;
         let ids = expired
             .query_map([now], |r| r.get::<_, String>(0))
@@ -264,10 +274,13 @@ impl Manager {
                 Err(_) => return Err(fail("unavailable")),
             }
         }
-        db.execute("DELETE FROM full_reviews WHERE expires<?1", [now])
-            .checked("unavailable")?;
+        db.execute(
+            "DELETE FROM ext_source_full_reviews WHERE expires<?1",
+            [now],
+        )
+        .checked("unavailable")?;
         let mut statement = db
-            .prepare("SELECT record FROM full_reviews LIMIT 65")
+            .prepare("SELECT record FROM ext_source_full_reviews LIMIT 65")
             .checked("unavailable")?;
         let existing = statement
             .query_map([], |r| r.get::<_, String>(0))
@@ -309,7 +322,7 @@ impl Manager {
         }
         if db
             .execute(
-                "INSERT INTO full_reviews VALUES(?1,?2,?3)",
+                "INSERT INTO ext_source_full_reviews VALUES(?1,?2,?3)",
                 params![review.package_ref, store::encode(&review)?, now + 300_000],
             )
             .is_err()
@@ -328,7 +341,7 @@ impl Manager {
             let text: String = host
                 .db()?
                 .query_row(
-                    "SELECT record FROM full_reviews WHERE id=?1 AND expires>=?2",
+                    "SELECT record FROM ext_source_full_reviews WHERE id=?1 AND expires>=?2",
                     params![request.package_ref, chrono::Utc::now().timestamp_millis()],
                     |r| r.get(0),
                 )
@@ -408,7 +421,7 @@ impl Manager {
         }
         let current: Option<String> = db
             .query_row(
-                "SELECT public_key FROM publishers WHERE id=?1",
+                "SELECT public_key FROM ext_host_publishers WHERE id=?1",
                 [&p.manifest.publisher],
                 |r| r.get(0),
             )
@@ -422,14 +435,14 @@ impl Manager {
         }
         if current.is_none() {
             db.execute(
-                "INSERT OR IGNORE INTO publishers VALUES(?1,?2)",
+                "INSERT OR IGNORE INTO ext_host_publishers VALUES(?1,?2)",
                 params![p.manifest.publisher, p.signing_key],
             )
             .checked("unavailable")?;
         }
         let current: String = db
             .query_row(
-                "SELECT public_key FROM publishers WHERE id=?1",
+                "SELECT public_key FROM ext_host_publishers WHERE id=?1",
                 [&p.manifest.publisher],
                 |r| r.get(0),
             )

@@ -44,6 +44,12 @@ pub(in crate::observation) struct ClassifyRequest {
     recovery: Option<Arc<CooldownProbe>>,
 }
 
+#[derive(Clone)]
+pub(super) struct SendContext {
+    pub scope: Option<super::super::budget::Scope>,
+    pub key: Option<local_agent_core::routing::chat::SendFence>,
+}
+
 impl ClassifyRequest {
     pub(in crate::observation) fn admit(
         &self,
@@ -67,7 +73,7 @@ impl ClassifyRequest {
         }
         let admitted = store.service_claim_intent(&self.turn, &self.classifier.scope)?;
         if admitted && let Some(recovery) = &self.recovery {
-            CooldownProbe::begin_send(store, Some(recovery), None, None)?;
+            CooldownProbe::begin_send(store, Some(recovery), None, None, Default::default())?;
         }
         Ok(admitted)
     }
@@ -178,6 +184,7 @@ pub(super) async fn classify(
     labels: Vec<String>,
     input: Option<String>,
     turn: IntentTurn,
+    send_context: SendContext,
 ) -> Option<IntentOutcome> {
     let requested = input.is_some();
     tokio::time::timeout(Duration::from_secs(2), async {
@@ -203,7 +210,16 @@ pub(super) async fn classify(
                 });
             }
         }
-        let outcome = send(state, runtime, classifier, labels, input?, turn.clone()).await?;
+        let outcome = send(
+            state,
+            runtime,
+            classifier,
+            labels,
+            input?,
+            turn.clone(),
+            send_context,
+        )
+        .await?;
         crate::blocking::store(state.store.clone(), move |store| {
             store.service_complete_intent(&turn, &scope, &outcome)?;
             Ok(outcome)
@@ -224,6 +240,7 @@ async fn send(
     labels: Vec<String>,
     input: String,
     turn: IntentTurn,
+    send_context: SendContext,
 ) -> Option<IntentOutcome> {
     let (provider, store_id, recovery) = {
         let classifier = classifier.clone();
@@ -294,6 +311,12 @@ async fn send(
         turn,
         recovery: recovery.clone(),
     });
+    if let Some(scope) = send_context.scope {
+        request.extensions_mut().insert(scope);
+    }
+    if let Some(key) = send_context.key {
+        request.extensions_mut().insert(key);
+    }
     request
         .extensions_mut()
         .insert(SendSlots(vec![slot.clone()]));

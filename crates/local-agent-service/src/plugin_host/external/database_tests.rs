@@ -2,18 +2,74 @@ use super::*;
 use local_agent_core::providers::vault::MemoryVault;
 
 #[test]
-fn optional_extension_initialization_retries_after_a_transient_write_lock() {
+fn m1_plugin_writes_use_the_control_plane_connection() {
     let root = tempfile::tempdir().unwrap();
-    let first = Manager::for_service(root.path(), Arc::new(MemoryVault::default()));
-    first.extension_history().unwrap();
-    drop(first);
-    let held = Connection::open(root.path().join("plugin-extensions.sqlite3")).unwrap();
+    let writer =
+        local_agent_core::StoreWriter::new(local_agent_core::Store::open(root.path()).unwrap());
+    let manager = Manager::with_control_writer(
+        root.path(),
+        Arc::new(MemoryVault::default()),
+        writer.clone(),
+    );
+    writer
+        .connection()
+        .unwrap()
+        .execute_batch(
+            "CREATE TEMP TRIGGER fixture_shared_writer BEFORE INSERT ON main.ext_host_publishers
+         BEGIN SELECT RAISE(ABORT,'control writer fixture'); END;",
+        )
+        .unwrap();
+    assert!(
+        manager
+            .db
+            .lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO ext_host_publishers VALUES('fixture.local','key')",
+                [],
+            )
+            .is_err()
+    );
+    writer
+        .connection()
+        .unwrap()
+        .execute_batch("DROP TRIGGER fixture_shared_writer")
+        .unwrap();
+    assert_eq!(
+        manager
+            .db
+            .lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO ext_host_publishers VALUES('fixture.local','key')",
+                [],
+            )
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        writer
+            .connection()
+            .unwrap()
+            .query_row(
+                "SELECT public_key FROM ext_host_publishers WHERE id='fixture.local'",
+                [],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+        "key"
+    );
+}
+
+#[test]
+fn wal_readers_stay_available_during_a_control_plane_write() {
+    let root = tempfile::tempdir().unwrap();
+    let manager = Manager::open(root.path(), Arc::new(MemoryVault::default())).unwrap();
+    let held = Connection::open(root.path().join(store::CONTROL_DATABASE)).unwrap();
     held.execute_batch("BEGIN IMMEDIATE;").unwrap();
-    let manager = Manager::for_service(root.path(), Arc::new(MemoryVault::default()));
-    assert!(manager.extension_history().is_err());
-    held.execute_batch("ROLLBACK;").unwrap();
     assert!(manager.extension_history().is_ok());
     assert!(manager.list().unwrap().is_empty());
+    held.execute_batch("ROLLBACK;").unwrap();
 }
 
 #[test]
@@ -83,44 +139,29 @@ fn plugin_schema_rejects_incomplete_empty_duplicate_and_future_markers_without_r
 
 #[test]
 fn optional_hosts_preserve_unrecognized_databases_and_leave_other_plugins_available() {
-    for name in [
+    let root = tempfile::tempdir().unwrap();
+    let names = [
         "plugin-host.sqlite3",
         "plugin-extensions.sqlite3",
         "plugin-source-host.sqlite3",
         "routing-policy.sqlite3",
         "domain-host.sqlite3",
-    ] {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join(name);
-        let db = Connection::open(&path).unwrap();
-        db.execute_batch(
-            "CREATE TABLE foreign_data(value TEXT); INSERT INTO foreign_data VALUES('preserve');",
-        )
-        .unwrap();
-        drop(db);
-        let before = std::fs::read(&path).unwrap();
-        let manager = Manager::for_service(root.path(), Arc::new(MemoryVault::default()));
-        let error = match name {
-            "plugin-host.sqlite3" => manager.list().err(),
-            "plugin-extensions.sqlite3" => manager.extension_history().err(),
-            "plugin-source-host.sqlite3" => manager.full_list().err(),
-            "routing-policy.sqlite3" => manager.policy_inventory().err(),
-            "domain-host.sqlite3" => domain_store::Host::new(path.clone())
-                .consent("org.example.reader")
-                .err(),
-            _ => unreachable!(),
-        }
-        .unwrap();
-        if name == "plugin-host.sqlite3" {
-            assert!(
-                matches!(&manager.db, Database::Unavailable(reason) if reason.code == "invalid_record")
-            );
-            assert_eq!(error.code, "unavailable");
-        } else {
-            assert_eq!(error.code, "invalid_record", "{name}");
-            assert!(manager.list().unwrap().is_empty());
-        }
-        drop(manager);
-        assert_eq!(std::fs::read(path).unwrap(), before, "{name}");
+        "object-contributions.sqlite3",
+    ];
+    for name in names {
+        std::fs::write(root.path().join(name), name).unwrap();
+    }
+    let manager = Manager::for_service(root.path(), Arc::new(MemoryVault::default()));
+    assert!(manager.list().unwrap().is_empty());
+    assert!(manager.extension_history().is_ok());
+    assert!(manager.full_list().unwrap().is_empty());
+    assert!(manager.policy_inventory().unwrap().is_empty());
+    assert_eq!(manager.diagnostics(&[])["archivedDatabases"], true);
+    drop(manager);
+    for name in names {
+        assert_eq!(
+            std::fs::read(root.path().join(name)).unwrap(),
+            name.as_bytes()
+        );
     }
 }

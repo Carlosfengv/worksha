@@ -134,6 +134,7 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
             .map_err(|e| format!("钥匙串助手初始化失败：{}", e.message))?;
     }
     let store = Store::open(&directory)?;
+    store.budget_recover().map_err(|e| e.message)?;
     store
         .interrupt_service_cooldown_probes(chrono::Utc::now().timestamp_millis())
         .map_err(|e| e.message)?;
@@ -172,13 +173,6 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
         provider_vault.clone(),
     )
     .map_err(|e| e.message)?;
-    let credential_store_id = store.database_id().map_err(|e| e.message)?;
-    let credential_scope = store
-        .credential_scope(&credential_store_id)
-        .map_err(|e| e.message)?;
-    provider_manager
-        .bind_legacy_credential_source(&credential_scope)
-        .map_err(|e| e.message)?;
     let default_profile = if options.persistent {
         local_agent_core::plugin::builtin::Profile::Background
     } else {
@@ -229,20 +223,36 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
     let address = listener.local_addr()?;
+    let iam = Arc::new(iam::Iam::new(store.iam_enabled()?));
+    let store_readers = crate::blocking::StoreReaders::new(&store)?;
+    let writer = local_agent_core::StoreWriter::new(store);
+    {
+        let store = writer.lock().map_err(|_| "凭据恢复账本暂不可用")?;
+        let id = store.database_id().map_err(|e| e.message)?;
+        let scope = store.credential_scope(&id).map_err(|e| e.message)?;
+        provider_manager
+            .bind_legacy_credential_source(&scope)
+            .map_err(|e| e.message)?;
+    }
     let state = AppState {
-        iam: Arc::new(iam::Iam::new(store.iam_enabled()?)),
+        iam,
         workbench: workbench.clone(),
         provider_adapters: provider_models::adapters::builtin(),
         provider_client: state::provider_client().map_err(|_| "无法建立模型连接服务")?,
         credentials: provider_vault.clone(),
         plugins: Arc::new(
-            plugin_host::external::Manager::for_service(&directory, provider_vault)
-                .with_bundled_dsh(&source_home),
+            plugin_host::external::Manager::with_control_writer(
+                &directory,
+                provider_vault,
+                writer.clone(),
+            )
+            .with_bundled_dsh(&source_home),
         ),
         readonly: readonly.clone(),
         billing,
         gateway: Arc::new(gateway),
-        store: Arc::new(Mutex::new(store)),
+        store_readers,
+        store: writer,
         token: Arc::new(token),
         host: Arc::new(address.to_string()),
         sessions,
@@ -273,8 +283,8 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let plugins = state.plugins.clone();
         tokio::spawn(async move {
-            if let Err(error) = plugins.restore_dsh_source().await {
-                eprintln!("DSH 会话来源未恢复（{}）。", error.code);
+            if let Err(error) = plugins.restore_saved_sources().await {
+                eprintln!("会话来源未恢复（{}）。", error.code);
             }
         });
     }

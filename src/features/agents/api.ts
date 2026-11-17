@@ -94,3 +94,148 @@ export const agentConnectionApi = {
     });
   },
 };
+
+export type LocalBinding = {
+  bindingId: string;
+  name: string;
+  serviceId: string;
+  baseUrl: string;
+  keyVersion: number;
+  revoked: boolean;
+};
+export type LocalBindingReceipt = {
+  bindingId: string;
+  operationId: string;
+  keyVersion: number;
+  state: "pending" | "active" | "cancelled" | "revoked";
+};
+type LocalOperation = { storeId: string; operationId: string };
+export type BudgetWindow = "session" | "daily" | "monthly";
+export type BudgetAmounts = { tokens: number | null; usdMicros: number | null };
+export type BudgetPolicy = {
+  revision: number;
+  timezone: string;
+  fallbackServiceId: string | null;
+  warnPercent: number;
+  windows: {
+    kind: BudgetWindow;
+    primary: BudgetAmounts;
+    fallback: BudgetAmounts;
+  }[];
+};
+type Counter = { committed: number; reserved: number; uncertain: number };
+export type BudgetAttempt = {
+  attemptKey: string;
+  observationId: string;
+  bindingId: string;
+  revision: number;
+  createdAt: string;
+  model: string;
+  providerId: string;
+  upstreamRequestId: string | null;
+  tier: "primary" | "fallback";
+  frozen: BudgetAmounts;
+  windows: { kind: BudgetWindow; key: string; reserved: BudgetAmounts }[];
+};
+export type BudgetOverview = {
+  storeId: string;
+  policy: BudgetPolicy | null;
+  attempts: BudgetAttempt[];
+  windows: {
+    kind: BudgetWindow;
+    key: string;
+    tier: "primary" | "fallback";
+    limit: BudgetAmounts;
+    ledger: { tokens: Counter; usdMicros: Counter };
+    warned: boolean;
+  }[];
+};
+type ReviewMetric =
+  { kind: "settle"; amount: number } | { kind: "release" } | null;
+export type BudgetReview = LocalOperation & {
+  bindingId: string;
+  attemptKey: string;
+  expectedRevision: number;
+  upstreamRequestId: string;
+  source: string;
+  tokens: ReviewMetric;
+  usdMicros: ReviewMetric;
+};
+type ChatInput =
+  | { kind: "list" | "budgetBindings" | "budgetWarnings" }
+  | {
+      kind: "create";
+      query: LocalOperation;
+      name: string;
+      serviceId: string;
+      serviceVersion: string;
+    }
+  | {
+      kind: "rotate" | "revoke";
+      query: LocalOperation;
+      bindingId: string;
+      expectedKeyVersion: number;
+    }
+  | { kind: "resume" | "cancel"; query: LocalOperation }
+  | { kind: "readBudget"; bindingId: string }
+  | {
+      kind: "saveBudget";
+      bindingId: string;
+      storeId: string;
+      policy: BudgetPolicy;
+    }
+  | { kind: "reviewBudget"; review: BudgetReview }
+  | { kind: "requestBudget"; requestId: string };
+
+function localConnection<T>(input: ChatInput) {
+  return command<T>("local_chat_connection", { input });
+}
+
+export const localConnectionsApi = {
+  warnings: () =>
+    localConnection<{
+      warnings: { id: string; bindingId: string; createdAt: string }[];
+    }>({ kind: "budgetWarnings" }),
+  list: () =>
+    localConnection<{
+      storeId: string;
+      items: LocalBinding[];
+      pending: LocalBindingReceipt[];
+    }>({ kind: "list" }),
+  write: (input: Exclude<ChatInput, { kind: "list" | "budgetBindings" }>) =>
+    localConnection<{
+      receipt?: LocalBindingReceipt;
+      baseUrl?: string;
+      cancelled?: boolean;
+      saveError?: string;
+    }>(input),
+  budgets: () =>
+    localConnection<{
+      storeId: string;
+      items: {
+        bindingId: string;
+        agentId: string;
+        model: string;
+        revoked: boolean;
+      }[];
+    }>({ kind: "budgetBindings" }),
+  budget: (bindingId: string) =>
+    localConnection<BudgetOverview>({ kind: "readBudget", bindingId }),
+  saveBudget: (bindingId: string, storeId: string, policy: BudgetPolicy) =>
+    localConnection<BudgetPolicy>({
+      kind: "saveBudget",
+      bindingId,
+      storeId,
+      policy,
+    }),
+  review: (review: BudgetReview) =>
+    localConnection<{ attempt: BudgetAttempt }>({
+      kind: "reviewBudget",
+      review,
+    }),
+  attempt: (requestId: string) =>
+    localConnection<{ storeId: string; attempt: BudgetAttempt | null }>({
+      kind: "requestBudget",
+      requestId,
+    }),
+};

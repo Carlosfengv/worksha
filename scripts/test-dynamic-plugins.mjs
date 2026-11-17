@@ -6,6 +6,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { normalizeSession } from "../sdk/plugins/examples/dsh-desktop/bridge/normalize.js";
 const binary = path.resolve(process.env.PLUGIN_TEST_BINARY ?? "target/debug/local-agent-service");
 const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "dynamic-plugins-")));
@@ -24,7 +25,8 @@ function pack(example, name = example, edit = () => {}) {
 let child, exited, base;
 const token = randomUUID();
 async function api(route, body, status = 200, busyRetries = 0) {
-  const r = await fetch(base + route, { method: body === undefined ? "GET" : "POST", headers: { authorization: "Bearer " + token, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(20000) });
+  // A cold source worker has a 30-second host deadline plus shutdown time.
+  const r = await fetch(base + route, { method: body === undefined ? "GET" : "POST", headers: { authorization: "Bearer " + token, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(35000) });
   const value = await r.json();
   if (busyRetries > 0 && r.status === 503 && value.code === "busy") {
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -67,12 +69,13 @@ async function stop() {
   assert.equal((await exited)[0], 0);
 }
 async function waitFor(read, matches) {
-  for (let i = 0; i < 40; i++) {
+  const deadline = performance.now() + 35000;
+  while (performance.now() < deadline) {
     const value = await read();
     if (matches(value)) return value;
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw Error("DSH source did not reach the expected state");
+  throw Error("source did not reach the expected state");
 }
 try {
   await start();
@@ -80,6 +83,8 @@ try {
   const reportFile = pack("source-report", "source-report", (folder) => {
     const file = path.join(folder, "manifest.json");
     const manifest = JSON.parse(fs.readFileSync(file));
+    manifest.publisher = "org.example.report-tests";
+    manifest.id = `${manifest.publisher}.source-report`;
     manifest.views.push({ ...manifest.views[0], id: "unbound", title: "No source binding" });
     manifest.views.push({ ...manifest.views[0], id: "second", title: "Second source" });
     fs.writeFileSync(file, JSON.stringify(manifest));
@@ -102,7 +107,7 @@ try {
   const contribution = (await api("/api/plugins")).contributions.items.find((p) => p.pluginId === consumer.pluginId);
   assert.equal(contribution.navigation[0].title, "Agent 会话报表");
   pass("签名导航已注册；未授权和缺少来源时跨插件调用明确拒绝");
-  const sourceFile = pack("dsh-desktop");
+  const sourceFile = path.resolve("src-tauri/resources/dsh-desktop.laplug");
   const review = await api("/api/plugin-sources/inspect", { path: sourceFile });
   await api("/api/plugin-sources/install", { packageRef: review.packageRef, digest: review.digest, approvePublisher: true, expectedSigningKey: review.signingKey });
   const source = { pluginId: "net.worksha.dsh-desktop", digest: review.digest };
@@ -138,9 +143,10 @@ try {
   const snapshot = await api("/api/snapshot"); assert.equal(snapshot.agents.length, initial.agents.length + 1); assert(snapshot.agents.some((p) => p.id === productId && p.readonly && p.sourceId === sourceId && p.capabilities.includes("domain.activity-source@1")));
   assert.deepEqual(snapshot.agents.filter((p) => !p.readonly), initial.agents);
   writeDshObservation();
-  await api("/api/plugin-sources/refresh", source);
+  await api("/api/plugin-sources/refresh", source, 200, 20);
   const observation = await api("/api/domain/sessions", query);
   const sessionId = observation.items[0].record.id;
+  const body = await api("/api/domain/conversation", { sessionId, snapshotToken: observation.snapshotToken, cursor: null, anchor: null });
   const factQuery = { scope: query.scope, sessionId, projectId: null, responseId: null, cursor: null, snapshotToken: null };
   const executions = await api("/api/domain/facts", { ...factQuery, kind: "mcp-execution" });
   assert.equal(executions.items.length, 1);
@@ -152,7 +158,6 @@ try {
   assert(!JSON.stringify(executions).includes("private "));
   const catalog = await api("/api/domain/facts", { ...factQuery, kind: "mcp-catalog" });
   assert.equal(catalog.items.length, 0);
-  const body = await api("/api/domain/conversation", { sessionId, snapshotToken: observation.snapshotToken, cursor: null, anchor: null });
   assert.deepEqual(body.conversation.events.map(({ kind, role }) => [kind, role]), [["message", "user"], ["runtime-context", null]]);
   writeRows(1);
   await api("/api/plugin-sources/refresh", source);
@@ -166,6 +171,8 @@ try {
   await api("/api/plugin-sources/source", { package: secondSource, path: secondHistory });
   await api("/api/plugin-sources/refresh", secondSource);
   const secondConsent = await api("/api/domain/consent-review", secondSource);
+  assert.equal(secondConsent.canPersistWatch, false);
+  assert.equal((await api("/api/domain/consent", { ...secondSource, enabled: true, persistMetadata: false, persistWatch: true, reviewRef: secondConsent.reviewRef }, 400)).code, "invalid_input");
   await api("/api/domain/consent", { ...secondSource, enabled: true, persistMetadata: false, reviewRef: secondConsent.reviewRef });
   await refresh(200, "second");
   const secondView = await view("second");
@@ -173,6 +180,8 @@ try {
   assert.notEqual(secondView.snapshot, reportView.snapshot);
   assert.equal((await view()).snapshot, reportView.snapshot);
   const activity = () => api("/api/domain/activity", { scope: query.scope, rangeSeconds: 3600, productId, sessionId: null, includeGateway: false, includeHistorical: false });
+  writeRows(1);
+  await api("/api/plugin-sources/refresh", source);
   const current = (await activity()).items[0]; assert.equal(current.state, "current"); assert.equal(current.kind, "source-event"); assert.equal(current.measurements, null);
   writeRows(2);
   let found = false;
@@ -201,6 +210,7 @@ try {
   await api("/api/plugins/view", { pluginId: consumer.pluginId, viewId: "sessions", cursor: null }, 409);
   await refresh(); assert.equal((await view()).report.sources[0].sessions, "2");
   pass("来源重新授权不会复活旧报表，需重新调用能力");
+  await api("/api/plugin-sources/refresh", source);
   fs.utimesSync(history, (Date.now() - 60000) / 1000, (Date.now() - 60000) / 1000);
   assert.equal((await activity()).items[0].state, "expired");
   assert.equal((await api("/api/plugin-sources")).items.find((item) => item.digest === source.digest).problem, "source_stalled");
@@ -249,16 +259,19 @@ try {
   }
   const sourceActivity = () => api("/api/domain/activity", { scope: query.scope, rangeSeconds: 3600, productId, sessionId: null, includeGateway: false, includeHistorical: true });
   const sourceStatus = async () => (await api("/api/plugin-sources")).items.find((item) => item.digest === source.digest);
-  const authorizeHistory = async () => {
+  const authorizeHistory = async (persistWatch = true) => {
     // Startup restores the saved source in the background and can still hold its gate.
     await api("/api/plugin-sources/state", { package: source, action: "enable" }, 200, 20);
     await api("/api/plugin-sources/source", { package: source, path: history });
     const approval = await api("/api/domain/consent-review", source);
-    await api("/api/domain/consent", { ...source, enabled: true, persistMetadata: false, reviewRef: approval.reviewRef });
+    assert.equal(approval.canPersistWatch, true);
+    assert.equal(approval.persistWatch, false);
+    await api("/api/domain/consent", { ...source, enabled: true, persistMetadata: false, persistWatch, reviewRef: approval.reviewRef });
   };
+  await authorizeHistory();
   const messageTime = new Date(Date.now() - 3000).toISOString();
   writeTask("Inspect the model route", messageTime, true);
-  await authorizeHistory();
+  await api("/api/plugin-sources/refresh", source, 200, 20);
   const matchesTask = (title, state) => (page) => page.items.some((item) =>
     item.title === title && item.state === state);
   const [running] = (await waitFor(sourceActivity, matchesTask("Inspect the model route", "current"))).items;
@@ -277,6 +290,25 @@ try {
   assert.equal((await api("/api/domain/sessions", query)).items[0].record.title, "Greeting");
   pass("DSH 直连任务携带来源 TTFT、运行均速和完成用量；状态变化保留同一任务和发起时间");
 
+  // A pre-M2 persisted watch never establishes explicit authority.
+  const sql = (work) => {
+    const db = new DatabaseSync(path.join(data, "local-agent.sqlite3"));
+    try { db.exec("PRAGMA busy_timeout=1000"); return work(db); } finally { db.close(); }
+  };
+  const savedWatch = (id) => sql((db) => db.prepare("SELECT record FROM ext_source_full_saved_sources WHERE plugin_id=?").get(id));
+  assert.equal(JSON.parse(savedWatch(source.pluginId).record).persistWatch, true);
+  await stop();
+  sql((db) => db.prepare("UPDATE ext_source_full_saved_sources SET record=json_remove(record,'$.persistWatch') WHERE plugin_id=?").run(source.pluginId));
+  await start();
+  await waitFor(async () => !savedWatch(source.pluginId), Boolean);
+  assert.equal((await sourceStatus()).unifiedAuthorized, false);
+  await authorizeHistory(false);
+  await stop();
+  await start();
+  assert.equal((await sourceStatus()).unifiedAuthorized, false);
+  assert.equal(savedWatch(source.pluginId), undefined);
+  pass("旧 DSH 隐式记录与普通授权均不能跨重启恢复");
+  await authorizeHistory();
   await stop();
   await start();
   await waitFor(sourceActivity, matchesTask("Inspect the model route", "historical"));
@@ -285,7 +317,7 @@ try {
   const nextTime = new Date(Date.now() - 500).toISOString();
   writeTask("Confirm the next request", nextTime, true);
   await waitFor(sourceActivity, matchesTask("Confirm the next request", "current"));
-  pass("Worksha 服务重启后恢复此前授权，自动读取同一文件的新任务");
+  pass("随附签名 DSH 包在服务重启后恢复显式监听，自动读取同一文件的新任务");
 
   await stop();
   fs.renameSync(history, history + ".previous");
@@ -301,6 +333,108 @@ try {
   assert.equal((await sourceStatus()).unifiedAuthorized, false);
   assert.equal((await sourceActivity()).items.length, 0);
   pass("同路径换文件或撤销统一展示后，重启不会恢复旧授权");
+  const installSource = async (filename) => {
+    const read = await api("/api/plugin-sources/inspect", { path: filename });
+    await api("/api/plugin-sources/install", { packageRef: read.packageRef, digest: read.digest, approvePublisher: true, expectedSigningKey: read.signingKey });
+    return { pluginId: read.manifest.id, digest: read.digest };
+  };
+  const watchVersion = (example, version) => pack(example, example + "-watch-" + version, (folder) => {
+    const manifestFile = path.join(folder, "manifest.json");
+    const manifest = JSON.parse(fs.readFileSync(manifestFile));
+    manifest.version = version;
+    if (!manifest.requires.includes("host.source-watch@1")) manifest.requires.push("host.source-watch@1");
+    manifest.source.refreshSeconds = 5;
+    manifest.source.maxAgeSeconds = 20;
+    fs.writeFileSync(manifestFile, JSON.stringify(manifest));
+  });
+  const details = (q) => (api("/api/plugin-sources")).then(({ items }) => items.find((item) => item.digest === q.digest));
+  const action = (q, action) => api("/api/plugin-sources/state", { package: q, action }, 200, 20);
+  const approve = async (q, file, persistWatch) => {
+    await action(q, "enable");
+    await api("/api/plugin-sources/source", { package: q, path: file });
+    const review = await api("/api/domain/consent-review", q);
+    assert.equal(review.canPersistWatch, true);
+    assert.equal(review.persistWatch, false);
+    await api("/api/domain/consent", { ...q, enabled: true, persistMetadata: !persistWatch, persistWatch, reviewRef: review.reviewRef });
+    assert.equal((await api("/api/domain/consent-review", q)).persistWatch, persistWatch);
+  };
+  const writeSecondLive = (title) => {
+    const [row] = rows(1, secondProductId);
+    row.conversation[0].text = title;
+    row.activityTiming = {messageNativeId:"m0",messageStartedAtMs:Date.now()-1200,model:"other-model",firstTokenMs:40,outputTokens:"20",completedTokens:"20",completedDecodeMs:500,runningTokens:null,runningDecodeMs:null};
+    const activity = {fact:{kind:"activity",value:{nativeId:"recent",sessionRef:"s0",responseRef:null,occurredAt:new Date().toISOString(),phase:"idle",durationMs:"1000"}}};
+    const snapshot = randomUUID();
+    fs.writeFileSync(secondHistory, [{snapshot,records:2},row,activity,{commit:snapshot}].map((value) => JSON.stringify(value)).join("\n")+"\n");
+  };
+  writeSecondLive("Non-DSH reported task");
+  const firstNonDshFile = watchVersion("full-history", "1.1.0");
+  const firstNonDsh = await installSource(firstNonDshFile);
+  await approve(firstNonDsh, secondHistory, false);
+  await stop(); await start();
+  assert.equal((await details(firstNonDsh)).unifiedAuthorized, false);
+  assert.equal(savedWatch(firstNonDsh.pluginId), undefined);
+  await approve(firstNonDsh, secondHistory, true);
+  await stop(); await start();
+  await waitFor(() => details(firstNonDsh), (status) => status.unifiedAuthorized);
+  const otherActivity = () => api("/api/domain/activity", { scope:{kind:"external",sourceIds:[secondSourceId]},rangeSeconds:3600,productId:secondProductId,sessionId:null,includeGateway:false,includeHistorical:true });
+  const [otherTask] = (await waitFor(otherActivity,matchesTask("Non-DSH reported task","historical"))).items;
+  assert.deepEqual(otherTask.reportedMeasurements, {firstTokenMs:40,runningTokensPerSecond:null,completedTokensPerSecond:40,outputTokens:"20"});
+  fs.renameSync(secondHistory, secondHistory+".old");
+  writeSecondLive("Unapproved non-DSH replacement");
+  await waitFor(() => details(firstNonDsh), (status) => !status.sourceAuthorized);
+  assert.equal(savedWatch(firstNonDsh.pluginId), undefined);
+  await stop(); await start();
+  assert.equal((await otherActivity()).items.length,0);
+  pass("非 DSH 来源独立授权和恢复，通用指标可查询，换文件后立即失效");
+
+  await approve(source, history, true);
+  const bundledTicket = JSON.parse(savedWatch(source.pluginId).record).publisherTicket;
+  await action(source, "revoke-publisher");
+  assert.equal(savedWatch(source.pluginId), undefined);
+  await installSource(sourceFile);
+  await stop(); await start();
+  assert.equal((await details(source)).unifiedAuthorized, false);
+  await approve(source, history, true);
+  assert.notEqual(JSON.parse(savedWatch(source.pluginId).record).publisherTicket, bundledTicket);
+  await action(source, "revoke-publisher");
+  await action(source, "remove");
+  pass("随附签名 DSH 包的原发布者撤权再重信也无法恢复旧监听");
+
+  const dshTestFile = watchVersion("dsh-desktop", "9.0.0");
+  const dshTest = await installSource(dshTestFile);
+  for (const { q, filename, file, next } of [
+    {q:dshTest,filename:dshTestFile,file:history,next:watchVersion("dsh-desktop", "9.1.0")},
+    {q:firstNonDsh,filename:firstNonDshFile,file:secondHistory,next:watchVersion("full-history", "1.2.0")},
+  ]) {
+    await approve(q,file,true);
+    const upgraded = await installSource(next);
+    await action(upgraded,"enable");
+    assert.equal(savedWatch(q.pluginId),undefined);
+    await stop(); await start();
+    assert.equal((await details(upgraded)).sourceAuthorized,false);
+    await action(upgraded,"rollback");
+    assert.equal((await details(q)).sourceAuthorized,false);
+    await approve(q,file,true);
+    const ticket = JSON.parse(savedWatch(q.pluginId).record).publisherTicket;
+    await action(q,"revoke-publisher");
+    assert.equal(savedWatch(q.pluginId),undefined);
+    await installSource(filename);
+    await stop(); await start();
+    assert.equal((await details(q)).unifiedAuthorized,false);
+    await approve(q,file,true);
+    assert.notEqual(JSON.parse(savedWatch(q.pluginId).record).publisherTicket,ticket);
+    await action(q,"revoke-grants");
+    assert.equal(savedWatch(q.pluginId),undefined);
+    await stop(); await start();
+    assert.equal((await details(q)).sourceAuthorized,false);
+    await approve(q,file,true);
+    await action(q,"disable");
+    assert.equal(savedWatch(q.pluginId),undefined);
+    await action(q,"enable");
+    await stop(); await start();
+    assert.equal((await details(q)).sourceAuthorized,false);
+    pass(q.pluginId+" 换版与回退、发布者撤权再重信、资源撤权、停用再启用均无法继承监听授权");
+  }
   report.complete = true;
 } finally {
   if (child?.exitCode === null) { try { await api("/api/runtime/shutdown", {}); await exited; } catch { child.kill("SIGTERM"); await exited; } }

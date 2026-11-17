@@ -268,7 +268,8 @@ try {
       "claude-code-desktop",
       "codex-cli",
       "codex-desktop",
-      "opencode",
+      "opencode-cli",
+      "opencode-desktop",
     ],
   );
   assert.deepEqual(

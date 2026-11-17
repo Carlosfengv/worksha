@@ -16,12 +16,47 @@ impl Store {
         http: Option<HttpProbeClaim<'_>>,
         quota: Option<QuotaProbeClaim<'_>>,
     ) -> Result<(), ConfigError> {
-        if http.is_none() && quota.is_none() {
+        self.service_begin_scoped_send(attempt, http, quota, SendBoundary::default())
+    }
+
+    pub fn service_begin_scoped_send(
+        &self,
+        attempt: Option<(&Dispatch, i64)>,
+        http: Option<HttpProbeClaim<'_>>,
+        quota: Option<QuotaProbeClaim<'_>>,
+        boundary: SendBoundary<'_>,
+    ) -> Result<(), ConfigError> {
+        if http.is_none()
+            && quota.is_none()
+            && boundary.key.is_none()
+            && boundary.budget_attempt.is_none()
+        {
             return attempt.map_or(Ok(()), |(plan, id)| {
                 self.service_attempt_begin_send(plan, id)
             });
         }
-        let tx = self.connection.unchecked_transaction().map_err(error)?;
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.connection,
+            rusqlite::TransactionBehavior::Immediate,
+        )
+        .map_err(error)?;
+        if let Some(key) = boundary.key {
+            self.chat_key_current(&key.binding_id, key.key_version)?;
+        }
+        if let Some(key) = boundary.budget_attempt
+            && let Err(error) = self.budget_mark_sending(key)
+        {
+            if crate::routing::loop_guard::is_trip(&error) {
+                tx.commit().map_err(super::error)?;
+            }
+            return Err(error);
+        }
+        if let Some(key) = boundary.key {
+            let observation = boundary
+                .observation_id
+                .ok_or_else(|| error("missing observation id"))?;
+            self.chat_mark_sending(key, observation)?;
+        }
         if let Some((plan, attempt)) = attempt {
             self.service_attempt_begin_send(plan, attempt)?;
         }
@@ -120,6 +155,13 @@ impl Store {
         .map_err(error)?;
         tx.commit().map_err(error)
     }
+}
+
+#[derive(Default)]
+pub struct SendBoundary<'a> {
+    pub key: Option<&'a crate::routing::chat::SendFence>,
+    pub budget_attempt: Option<&'a str>,
+    pub observation_id: Option<&'a str>,
 }
 
 #[cfg(test)]

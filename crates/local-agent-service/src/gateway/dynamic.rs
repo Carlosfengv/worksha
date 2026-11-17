@@ -110,10 +110,10 @@ pub(crate) fn client(state: &AppState, b: &Binding) -> Provider {
 }
 
 fn client_protocol(agent: &str) -> &'static str {
-    if agent == "codex" {
-        "responses"
-    } else {
-        "messages"
+    match agent {
+        "codex" => "responses",
+        routing::chat::AGENT => "chat-completions",
+        _ => "messages",
     }
 }
 pub async fn connect(State(state): State<AppState>, Json(draft): Json<BindingDraft>) -> ApiResult {
@@ -252,6 +252,25 @@ pub async fn prepare(State(state): State<AppState>, Json(d): Json<Draft>) -> Api
             .store
             .lock()
             .map_err(|_| providers::error(unavailable()))?;
+        match store.dynamic_change(&d.operation_id) {
+            Ok(change) => {
+                if change.restored_from.is_some()
+                    || change.binding_id != d.binding_id
+                    || change.expected_generation != d.expected_generation
+                    || change.target.id != d.provider_id
+                    || change.target.revision != d.expected_provider_revision
+                    || change.target.model != d.model
+                {
+                    return Err(providers::error(ConfigError::new(
+                        "conflict",
+                        "操作 ID 已用于其他目标",
+                    )));
+                }
+                return json_value(change);
+            }
+            Err(error) if error.code == "not_found" => (),
+            Err(error) => return Err(providers::error(error)),
+        }
         let b = store
             .dynamic_binding(&d.binding_id)
             .map_err(providers::error)?
@@ -288,6 +307,7 @@ pub async fn prepare(State(state): State<AppState>, Json(d): Json<Draft>) -> Api
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Action {
     pub action: String,
+    pub restore_operation_id: Option<String>,
 }
 
 struct CatalogQuery {
@@ -341,6 +361,30 @@ pub async fn action(
         if a.action == "commit" && c.state == "applied" {
             return json_value(c);
         }
+        if a.action == "commit" && c.state == "cancelled" {
+            return json_value(store.dynamic_commit(&id).map_err(providers::error)?);
+        }
+        let restore_id = if a.action == "restore" {
+            let operation = a
+                .restore_operation_id
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            match store.dynamic_change(&operation) {
+                Ok(receipt) if receipt.restored_from.as_deref() == Some(&id) => {
+                    return json_value(receipt);
+                }
+                Ok(_) => {
+                    return Err(providers::error(ConfigError::new(
+                        "conflict",
+                        "操作 ID 已用于其他目标",
+                    )));
+                }
+                Err(error) if error.code == "not_found" => (),
+                Err(error) => return Err(providers::error(error)),
+            }
+            Some(operation)
+        } else {
+            None
+        };
         let b = store
             .dynamic_binding(&c.binding_id)
             .map_err(providers::error)?
@@ -349,16 +393,11 @@ pub async fn action(
         if a.action == "commit" {
             verified_target(&store, &m, &c.target).map_err(providers::error)?;
             json_value(store.dynamic_commit(&id).map_err(providers::error)?)
-        } else if a.action == "restore" && c.state == "applied" {
+        } else if let Some(restore_id) = restore_id.filter(|_| c.state == "applied") {
             verified_target(&store, &m, &c.before.provider).map_err(providers::error)?;
             json_value(
                 store
-                    .dynamic_prepare(
-                        &uuid::Uuid::new_v4().to_string(),
-                        &b.id,
-                        &b.generation,
-                        &c.before.provider,
-                    )
+                    .dynamic_prepare_restore(&restore_id, &c, &b.generation)
                     .map_err(providers::error)?,
             )
         } else {
@@ -372,22 +411,21 @@ pub async fn action(
     .map_err(worker_error)?
 }
 pub async fn capture(state: AppState, id: String, request: Request) -> Response {
-    let store = state.store.clone();
+    let readers = state.store_readers.clone();
     let plugins = state.plugins.clone();
     let credentials = state.credentials.clone();
     let result = crate::blocking::run(move || {
-        let b = store
-            .lock()
-            .map_err(|_| unavailable())?
-            .dynamic_binding(&id)?
+        let b = readers
+            .read(unavailable, |store| store.dynamic_binding(&id))?
             .ok_or_else(unavailable)?;
         let external = routing::agent_connection_digest(&b.agent_id, &b.scope);
+        let chat = b.agent_id == routing::chat::AGENT;
         let plugin_active = external.is_some_and(|digest| {
             plugins
                 .agent_connection_access(&b.agent_id, None)
                 .is_ok_and(|access| access.digest == digest && access.grant.is_some())
         });
-        if !CONNECTION_AGENTS.contains(&b.agent_id.as_str()) && !plugin_active {
+        if !chat && !CONNECTION_AGENTS.contains(&b.agent_id.as_str()) && !plugin_active {
             return Err(unavailable());
         }
         let path = request.uri().path();
@@ -398,10 +436,11 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
             && request.method() == axum::http::Method::GET
             && path == format!("{prefix}codex/models.json");
         let protocol = client_protocol(&b.agent_id);
+        let wire_path = if chat { "chat/completions" } else { protocol };
         if !catalog
             && !codex_catalog
             && (request.method() != axum::http::Method::POST
-                || path != format!("{prefix}{protocol}"))
+                || path != format!("{prefix}{wire_path}"))
         {
             return Err(unavailable());
         }
@@ -423,43 +462,51 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
             }
             None
         };
-        let token = request
-            .headers()
-            .get("authorization")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.strip_prefix("Bearer "))
-            .or_else(|| {
-                request
-                    .headers()
-                    .get("x-api-key")
-                    .and_then(|v| v.to_str().ok())
-            })
-            .unwrap_or("");
-        if token.is_empty() {
-            return Err(unavailable());
-        }
-        uuid::Uuid::parse_str(&b.credential_ref).map_err(|_| unavailable())?;
-        let key = credentials.get(&b.credential_ref)?;
-        if token.len() != key.len()
-            || token
-                .bytes()
-                .zip(key.iter())
-                .fold(0u8, |a, (b, c)| a | (b ^ c))
-                != 0
-        {
-            return Err(unavailable());
-        }
-        let service = store
-            .lock()
-            .map_err(|_| unavailable())?
-            .model_service_attachment(&b.id)?;
+        let key_version = if chat {
+            Some(
+                readers
+                    .read(unavailable, |store| {
+                        super::chat::authenticate(store, &id, request.headers())
+                    })?
+                    .ok_or_else(unavailable)?,
+            )
+        } else {
+            let token = request
+                .headers()
+                .get("authorization")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.strip_prefix("Bearer "))
+                .or_else(|| {
+                    request
+                        .headers()
+                        .get("x-api-key")
+                        .and_then(|v| v.to_str().ok())
+                })
+                .unwrap_or("");
+            if token.is_empty() {
+                return Err(unavailable());
+            }
+            uuid::Uuid::parse_str(&b.credential_ref).map_err(|_| unavailable())?;
+            let key = credentials.get(&b.credential_ref)?;
+            if token.len() != key.len()
+                || token
+                    .bytes()
+                    .zip(key.iter())
+                    .fold(0u8, |a, (b, c)| a | (b ^ c))
+                    != 0
+            {
+                return Err(unavailable());
+            }
+            None
+        };
+        let service = readers.read(unavailable, |store| store.model_service_attachment(&b.id))?;
         if service.is_none()
             && !plugin_active
             && !["claude", "opencode"].contains(&b.agent_id.as_str())
         {
             return Err(unavailable());
         }
-        Ok::<_, ConfigError>((request, b, query, codex_catalog, service))
+        Ok::<_, ConfigError>((request, b, query, codex_catalog, service, key_version))
     })
     .await;
     let result = match result {
@@ -472,7 +519,7 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
                 .into_response();
         }
     };
-    let Ok((mut request, b, query, codex_catalog, service)) = result else {
+    let Ok((mut request, b, query, codex_catalog, service, key_version)) = result else {
         return (StatusCode::UNAUTHORIZED, "未授权的动态入口").into_response();
     };
     if service.is_some() && !crate::plugin_host::features::active(&state, "builtin.model-services")
@@ -510,6 +557,9 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
             .skip(start)
             .take(query.limit)
             .map(|(id, name, capabilities)| {
+                if key_version.is_some() {
+                    return json!({"id":id,"object":"model","created":0,"owned_by":"local-agent"});
+                }
                 json!({
                     "id": model_services::client_model_id(&b.agent_id, id),
                     "display_name": name,
@@ -526,12 +576,28 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
                 })
             })
             .collect();
+        if key_version.is_some() {
+            return Json(json!({"object":"list","data":data})).into_response();
+        }
         return Json(json!({"first_id":data.first().map(|v|&v["id"]),"last_id":data.last().map(|v|&v["id"]),"has_more":start+data.len()<entries.len(),"data":data})).into_response();
+    }
+    if let Some(key_version) = key_version {
+        request.extensions_mut().insert(routing::chat::SendFence {
+            binding_id: b.id.clone(),
+            key_version,
+        });
     }
     request.extensions_mut().insert(Context {
         binding: b.clone(),
         service,
     });
+    let Ok(archive_admission) = state.gateway.route_archive.clone().try_read_owned() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "正在归档历史路由租约，请稍后重试",
+        )
+            .into_response();
+    };
     let protocol = client_protocol(&b.agent_id);
     let (agent, product) = match b.agent_id.as_str() {
         "claude-desktop" => ("claude".into(), Some("claude-code-desktop".into())),
@@ -544,9 +610,10 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
                 .into(),
             Some(b.agent_id),
         ),
+        routing::chat::AGENT => (b.agent_id, Some(b.id)),
         _ => (b.agent_id, None),
     };
-    crate::observation::proxy::forward(
+    let response = crate::observation::proxy::forward(
         state,
         crate::observation::proxy::Forward {
             agent_product_id: product,
@@ -560,7 +627,15 @@ pub async fn capture(state: AppState, id: String, request: Request) -> Response 
         },
         request,
     )
-    .await
+    .await;
+    let (parts, body) = response.into_parts();
+    Response::from_parts(
+        parts,
+        axum::body::Body::new(crate::plugin_host::intake::ScopedBody::new(
+            body,
+            archive_admission,
+        )),
+    )
 }
 
 pub fn ensure(

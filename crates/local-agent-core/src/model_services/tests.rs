@@ -326,6 +326,7 @@ fn v4_upgrade_saves_consistent_backup_and_defaults_old_policies_off() {
             [],
         )
         .unwrap();
+    crate::storage::strip_m1_fixture(&store.connection);
     store
         .connection
         .execute_batch(
@@ -620,6 +621,7 @@ fn v3_upgrade_preserves_consistent_backup_and_existing_route() {
     let store = Store::open(dir.path()).unwrap();
     let s = store.save_model_service(draft(&store)).unwrap();
     let a = attach(&store, &s);
+    crate::storage::strip_m1_fixture(&store.connection);
     store
         .connection
         .execute_batch("DROP TABLE local_token_cancellations;DROP TABLE local_token_owners;DROP TABLE local_token_values;DROP TABLE local_token_scope;DROP TABLE native_import_operations;DROP TABLE native_import_scope;DROP TABLE credential_legacy_operations;DROP TABLE credential_legacy_scope;DROP TABLE credential_recovery_values;DROP TABLE credential_recovery_scope;PRAGMA user_version=3;")
@@ -1346,6 +1348,7 @@ fn route_notices_v5_upgrade_backs_up_history_and_preserves_selected_alias() {
     let store = Store::open(dir.path()).unwrap();
     let service = store.save_model_service(draft(&store)).unwrap();
     let a = attach(&store, &service);
+    crate::storage::strip_m1_fixture(&store.connection);
     store
         .connection
         .execute_batch("DROP TABLE local_token_cancellations;DROP TABLE local_token_owners;DROP TABLE local_token_values;DROP TABLE local_token_scope;DROP TABLE native_import_operations;DROP TABLE native_import_scope;DROP TABLE credential_legacy_operations;DROP TABLE credential_legacy_scope;DROP TABLE credential_recovery_values;DROP TABLE credential_recovery_scope;DROP TABLE service_route_notices;PRAGMA user_version=5;")
@@ -1375,5 +1378,355 @@ fn route_notices_v5_upgrade_backs_up_history_and_preserves_selected_alias() {
     assert_eq!(
         store.model_service(&service.id).unwrap().default_model_id,
         service.default_model_id
+    );
+}
+
+#[test]
+fn m1_full_attempt_log_closes_superseded_failures_and_preserves_recovery() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path()).unwrap();
+    let mut config = draft(&store);
+    config.routing_policy.enabled = true;
+    let service = store.save_model_service(config).unwrap();
+    let (_, attachment) = store
+        .create_model_service_binding(
+            "opencode",
+            "scope",
+            &uuid::Uuid::new_v4().to_string(),
+            &service,
+        )
+        .unwrap();
+    let binding = &attachment.binding_id;
+    let first = turn("m1", &["one"], false);
+    let next = turn("m1", &["one", "two"], false);
+    let admit = |turn: &Turn| store.model_service_admit(binding, turn, ALIAS).unwrap();
+    let selected = admit(&first);
+    let plan = |turn: &Turn, selection: &Selection| {
+        store
+            .service_dispatch(
+                binding,
+                turn,
+                selection,
+                |_| Default::default(),
+                |_, _, _| Default::default(),
+            )
+            .unwrap()
+            .unwrap()
+    };
+    let first_plan = plan(&first, &selected);
+    let first_attempt = store.service_attempt(&first_plan, &selected).unwrap();
+    store
+        .service_attempt_result(first_attempt, 400, "rejected")
+        .unwrap();
+    store.service_dispatch_finish(&first_plan, false).unwrap();
+    assert_eq!(
+        store
+            .service_dispatch(
+                binding,
+                &first,
+                &selected,
+                |_| Default::default(),
+                |_, _, _| Default::default()
+            )
+            .unwrap_err()
+            .code,
+        "policy_cooling"
+    );
+
+    let next_selected = admit(&next);
+    let next_plan = plan(&next, &next_selected);
+    let db = &store.connection;
+    db.execute(
+        "WITH RECURSIVE x(id) AS (VALUES(2) UNION ALL SELECT id+1 FROM x WHERE id<32766)
+         INSERT INTO service_route_attempts SELECT id,?1,'m1','one',?2,'a',400,'rejected','fixture' FROM x",
+        params![binding,selected.version.id],
+    ).unwrap();
+    db.execute(
+        "INSERT INTO service_route_attempts VALUES(32767,?1,'m1','uncertain',?2,'a',504,'outcome_unknown','fixture'),
+          (32768,?1,'m1','checkpoint',?2,'a',429,'rate_limited','fixture')",
+        params![binding,selected.version.id],
+    ).unwrap();
+    db.execute_batch("UPDATE gateway_route_sequences SET sequence=32768 WHERE kind='attempt'")
+        .unwrap();
+    db.execute(
+        "INSERT INTO service_route_dispatch(binding,session,turn,owner,state,value)
+         VALUES(?1,'m1','uncertain','owner','failed','{}'),
+               (?1,'m1','checkpoint','owner','failed','{\"fallback\":{}}')",
+        [binding],
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO gateway_dispatch_sequences(binding,session,turn,seq)
+         VALUES(?1,'m1','uncertain',1),(?1,'m1','checkpoint',1)",
+        [binding],
+    )
+    .unwrap();
+    db.execute_batch(
+        "CREATE TRIGGER reject_m1_attempt BEFORE INSERT ON service_route_attempts BEGIN
+           SELECT RAISE(ABORT,'fixture');
+         END;",
+    )
+    .unwrap();
+    assert!(store.service_attempt(&next_plan, &next_selected).is_err());
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM service_route_attempts", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        32768
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM gateway_dispatch_sequences WHERE superseded_by IS NOT NULL",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+    db.execute_batch("DROP TRIGGER reject_m1_attempt").unwrap();
+    db.execute(
+        "UPDATE service_route_attempts SET outcome='outcome_unknown' WHERE id=?1",
+        [first_attempt],
+    )
+    .unwrap();
+    assert_eq!(
+        store
+            .service_attempt(&next_plan, &next_selected)
+            .unwrap_err()
+            .code,
+        "capacity"
+    );
+    db.execute(
+        "UPDATE service_route_attempts SET outcome='rejected' WHERE id=?1",
+        [first_attempt],
+    )
+    .unwrap();
+    // If an old retry acquires the write transaction first, reclaim must
+    // preserve its evidence. A retry that enters after closure is denied below.
+    db.execute(
+        "UPDATE service_route_dispatch SET retry_at=0 WHERE binding=?1 AND session='m1' AND turn='one'",
+        [binding],
+    ).unwrap();
+    let retry = plan(&first, &selected);
+    assert_eq!(
+        store
+            .service_attempt(&next_plan, &next_selected)
+            .unwrap_err()
+            .code,
+        "capacity"
+    );
+    store.service_dispatch_finish(&retry, false).unwrap();
+    assert_eq!(
+        store.service_attempt(&next_plan, &next_selected).unwrap(),
+        32769
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT group_concat(id,',') FROM (SELECT id FROM service_route_attempts ORDER BY id)",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "32767,32768,32769"
+    );
+    db.execute(
+        "INSERT INTO service_route_dispatch(binding,session,turn,owner,state,value)
+         VALUES(?1,'m1','accepted','owner','committed','{}')",
+        [binding],
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO gateway_dispatch_sequences(binding,session,turn,seq)
+         VALUES(?1,'m1','accepted',1)",
+        [binding],
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO service_route_attempts VALUES(32770,?1,'m1','accepted',?2,'a',200,'committed','fixture')",
+        params![binding, selected.version.id],
+    ).unwrap();
+    crate::routing::retention::reclaim_attempts(db, 1).unwrap();
+    assert!(
+        db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM service_route_attempts WHERE id=32770)",
+            [],
+            |r| r.get::<_, bool>(0),
+        )
+        .unwrap()
+    );
+    store.service_attempt_completed(32770).unwrap();
+    crate::routing::retention::reclaim_attempts(db, 1).unwrap();
+    assert!(
+        !db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM service_route_attempts WHERE id=32770)",
+            [],
+            |r| r.get::<_, bool>(0),
+        )
+        .unwrap()
+    );
+    crate::routing::retention::check_closed(db, binding, "m1", &["accepted"]).unwrap();
+    assert_eq!(
+        store
+            .service_dispatch(
+                binding,
+                &first,
+                &selected,
+                |_| Default::default(),
+                |_, _, _| Default::default()
+            )
+            .unwrap_err()
+            .code,
+        "route_turn_superseded"
+    );
+    assert_eq!(
+        store
+            .model_service_admit(binding, &first, ALIAS)
+            .err()
+            .unwrap()
+            .code,
+        "route_turn_superseded"
+    );
+    db.execute(
+        "DELETE FROM gateway_route_leases WHERE binding=?1 AND session='m1' AND turn='one'",
+        [binding],
+    )
+    .unwrap();
+    let binding = binding.clone();
+    drop(store);
+    let store = Store::open(dir.path()).unwrap();
+    for continuation in [false, true] {
+        let old = turn("m1", &["one"], continuation);
+        assert_eq!(
+            store
+                .model_service_admit(&binding, &old, ALIAS)
+                .err()
+                .unwrap()
+                .code,
+            "route_turn_superseded"
+        );
+        let alternate_namespace = turn("m1", &["other-hmac"], continuation);
+        assert_eq!(
+            store
+                .gateway_admit(
+                    &binding,
+                    &alternate_namespace,
+                    &[old],
+                    None,
+                    Some(ALIAS),
+                    None
+                )
+                .err()
+                .unwrap()
+                .code,
+            "route_turn_superseded"
+        );
+    }
+    assert_eq!(
+        store
+            .connection
+            .query_row(
+                "SELECT count(*) FROM service_route_attempts WHERE turn='one'",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn m1_full_version_log_reclaims_unreachable_mappings_without_orphaning_routes() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path()).unwrap();
+    let config = draft(&store);
+    let source = store.save_model_service(config.clone()).unwrap();
+    let binding = attach(&store, &source).binding_id;
+    let first = turn("versions", &["one"], false);
+    let pinned = store.model_service_admit(&binding, &first, ALIAS).unwrap();
+    let mut unrelated = config;
+    unrelated.id = uuid::Uuid::new_v4().to_string();
+    unrelated.name = "Unrelated".into();
+    let unrelated = store.save_model_service(unrelated).unwrap();
+    let db = &store.connection;
+    let missing: i64 = db
+        .query_row(
+            "SELECT 4096-count(*) FROM gateway_route_versions",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    db.execute(
+        "WITH RECURSIVE x(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM x WHERE n<?3)
+         INSERT INTO gateway_route_versions SELECT 'historical-'||n,?1,
+           json_set(v.value,'$.id','historical-'||n,'$.createdAt','2000-01-01T00:00:00Z')
+           FROM x,gateway_route_versions v WHERE v.id=?2",
+        params![binding, pinned.version.id, missing],
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO model_service_targets
+         SELECT binding,?2,id,id FROM gateway_route_versions WHERE binding=?1 AND id LIKE 'historical-%'",
+        params![binding, unrelated.version_id],
+    ).unwrap();
+    db.execute(
+        "INSERT INTO service_route_dispatch(binding,session,turn,owner,state,value)
+         VALUES(?1,'checkpoint','one','owner','failed','{\"fallback\":{\"route\":\"historical-1\"}}')",
+        [&binding],
+    ).unwrap();
+    let count = || {
+        db.query_row(
+            "SELECT count(*) FROM model_service_targets WHERE version=?1",
+            [&unrelated.version_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap()
+    };
+    let create = || {
+        store.dynamic_create(
+            "opencode",
+            "new",
+            &uuid::Uuid::new_v4().to_string(),
+            &source.models[0].provider,
+        )
+    };
+    db.execute(
+        "INSERT INTO service_route_attempts(binding,session,turn,route,model,outcome,created)
+         SELECT ?1,'budget-check',id,id,'a','outcome_unknown','fixture'
+         FROM gateway_route_versions WHERE id LIKE 'historical-%'",
+        [&binding],
+    )
+    .unwrap();
+    assert_eq!(create().unwrap_err().code, "capacity");
+    assert_eq!(count(), missing);
+    db.execute(
+        "DELETE FROM service_route_attempts WHERE route<>'historical-2'",
+        [],
+    )
+    .unwrap();
+    db.execute_batch(
+        "CREATE TRIGGER reject_m1_version BEFORE INSERT ON gateway_route_versions BEGIN
+           SELECT RAISE(ABORT,'fixture');
+         END;",
+    )
+    .unwrap();
+    assert!(create().is_err());
+    assert_eq!(count(), missing);
+    db.execute_batch("DROP TRIGGER reject_m1_version").unwrap();
+    create().unwrap();
+    assert_eq!(count(), 2);
+    assert_eq!(
+        store
+            .model_service_admit(&binding, &first, ALIAS)
+            .unwrap()
+            .version
+            .id,
+        pinned.version.id
+    );
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap(),
+        0,
     );
 }

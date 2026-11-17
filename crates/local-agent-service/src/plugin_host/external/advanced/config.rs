@@ -19,7 +19,7 @@ const MAX_PLANS: u32 = 64;
 
 pub(super) fn capacity(db: &rusqlite::Connection) -> Result<Value> {
     let used: u32 = db
-        .query_row("SELECT count(*) FROM plans", [], |r| r.get(0))
+        .query_row("SELECT count(*) FROM ext_adv_plans", [], |r| r.get(0))
         .checked("unavailable")?;
     Ok(json!({"used":used,"limit":MAX_PLANS,"remaining":MAX_PLANS.saturating_sub(used)}))
 }
@@ -191,7 +191,7 @@ impl Manager {
         let store = self.advanced.lock().checked("unavailable")?;
         let db = store.db()?;
         let mut stmt = db
-            .prepare("SELECT id, record FROM plans WHERE plugin_id=?1 ORDER BY rowid DESC LIMIT 64")
+            .prepare("SELECT id, record FROM ext_adv_plans WHERE plugin_id=?1 ORDER BY rowid DESC LIMIT 64")
             .checked("unavailable")?;
         let mut rows = stmt.query([&p.plugin_id]).checked("unavailable")?;
         let mut reused = None;
@@ -211,7 +211,7 @@ impl Manager {
         }
         let count: u32 = store
             .db()?
-            .query_row("SELECT count(*) FROM plans", [], |r| r.get(0))
+            .query_row("SELECT count(*) FROM ext_adv_plans", [], |r| r.get(0))
             .checked("unavailable")?;
         if count >= MAX_PLANS {
             return Err(fail("plan_capacity_full"));
@@ -219,7 +219,7 @@ impl Manager {
         store
             .db()?
             .execute(
-                "INSERT INTO plans VALUES(?1,?2,?3)",
+                "INSERT INTO ext_adv_plans VALUES(?1,?2,?3)",
                 params![
                     p.id,
                     p.plugin_id,
@@ -236,7 +236,9 @@ impl Manager {
             .lock()
             .checked("unavailable")?
             .db()?
-            .query_row("SELECT record FROM plans WHERE id=?1", [id], |r| r.get(0))
+            .query_row("SELECT record FROM ext_adv_plans WHERE id=?1", [id], |r| {
+                r.get(0)
+            })
             .optional()
             .checked("unavailable")?;
         let p: Plan =
@@ -256,7 +258,9 @@ impl Manager {
         let store = self.advanced.lock().checked("unavailable")?;
         let text: Option<String> = store
             .db()?
-            .query_row("SELECT record FROM plans WHERE id=?1", [id], |r| r.get(0))
+            .query_row("SELECT record FROM ext_adv_plans WHERE id=?1", [id], |r| {
+                r.get(0)
+            })
             .optional()
             .checked("unavailable")?;
         let text = text.ok_or(fail("not_found"))?;
@@ -273,7 +277,7 @@ impl Manager {
         let changed = store
             .db()?
             .execute(
-                "DELETE FROM plans WHERE id=?1 AND plugin_id=?2 AND record=?3",
+                "DELETE FROM ext_adv_plans WHERE id=?1 AND plugin_id=?2 AND record=?3",
                 params![id, q.plugin_id, text],
             )
             .checked("unavailable")?;
@@ -291,7 +295,7 @@ impl Manager {
             .checked("unavailable")?
             .db()?
             .execute(
-                "UPDATE plans SET record=?2 WHERE id=?1",
+                "UPDATE ext_adv_plans SET record=?2 WHERE id=?1",
                 params![p.id, serde_json::to_string(p).checked("invalid_input")?],
             )
             .checked("unavailable")?;
@@ -582,7 +586,7 @@ mod isolation_tests {
                 .unwrap()
                 .db()
                 .unwrap()
-                .query_row("SELECT count(*) FROM plans", [], |r| r.get(0))
+                .query_row("SELECT count(*) FROM ext_adv_plans", [], |r| r.get(0))
                 .unwrap();
             if change == "unchanged" {
                 assert_eq!(result.unwrap()["planId"], "valid-plan");

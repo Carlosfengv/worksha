@@ -1,7 +1,8 @@
 //! Separate opt-in domain state. Creating Manager performs no domain database I/O.
+use super::store::{ControlConnection, ControlDatabase};
 use super::{Cached, Checked, Result, fail};
 use local_agent_core::{domain as d, plugin::external::SessionCandidate};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -57,7 +58,7 @@ pub(super) struct ConsentReview {
 }
 pub(super) struct Host {
     path: PathBuf,
-    db: Option<Connection>,
+    db: ControlDatabase,
     pub queries: BTreeMap<String, FrozenQuery>,
     pub facts: BTreeMap<String, FrozenFacts>,
     pub catalog_signature: String,
@@ -68,8 +69,8 @@ pub(super) struct Host {
 impl Host {
     pub fn new(path: PathBuf) -> Self {
         Self {
+            db: ControlDatabase::new(path.clone()),
             path,
-            db: None,
             queries: BTreeMap::new(),
             facts: BTreeMap::new(),
             catalog_signature: String::new(),
@@ -78,39 +79,15 @@ impl Host {
             reviews: BTreeMap::new(),
         }
     }
-    fn db(&mut self, create: bool) -> Result<Option<&mut Connection>> {
-        if self.db.is_none() {
-            if !self.path.try_exists().checked("unavailable")? && !create {
-                return Ok(None);
-            }
-            use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-            let file = std::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(create)
-                .truncate(false)
-                .mode(0o600)
-                .custom_flags(libc::O_NOFOLLOW)
-                .open(&self.path)
-                .checked("permission_denied")?;
-            let metadata = file.metadata().checked("permission_denied")?;
-            if !metadata.is_file() || metadata.nlink() != 1 {
-                return Err(fail("permission_denied"));
-            }
-            let db = Connection::open(&self.path).checked("unavailable")?;
-            db.busy_timeout(Duration::from_millis(200))
-                .checked("unavailable")?;
-            let exists:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='domain_version')",[],|r|r.get(0)).checked("invalid_record")?;
-            if !exists && !create {
-                return Err(fail("invalid_record"));
-            }
-            super::store::initialize_database(&db, "domain_version", "version", &["source_consents", "source_projections"], "CREATE TABLE IF NOT EXISTS domain_version(version INTEGER NOT NULL);
-                    INSERT INTO domain_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM domain_version);
-                    CREATE TABLE IF NOT EXISTS source_consents(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);
-                    CREATE TABLE IF NOT EXISTS source_projections(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);")?;
-            self.db = Some(db);
+    pub fn with_writer(mut self, writer: Option<local_agent_core::StoreWriter>) -> Self {
+        self.db.set_writer(writer);
+        self
+    }
+    fn db(&self, create: bool) -> Result<Option<ControlConnection<'_>>> {
+        if !create && !self.path.try_exists().checked("unavailable")? {
+            return Ok(None);
         }
-        Ok(self.db.as_mut())
+        self.db.lock().map(Some)
     }
     pub fn consent(&mut self, id: &str) -> Result<Option<Consent>> {
         let Some(db) = self.db(false)? else {
@@ -118,7 +95,7 @@ impl Host {
         };
         let text: Option<String> = db
             .query_row(
-                "SELECT record FROM source_consents WHERE plugin_id=?1",
+                "SELECT record FROM ext_domain_source_consents WHERE plugin_id=?1",
                 [id],
                 |r| r.get(0),
             )
@@ -129,12 +106,16 @@ impl Host {
     }
     pub fn grant(&mut self, id: &str, consent: &Consent) -> Result<()> {
         let db = self.db(true)?.ok_or(fail("unavailable"))?;
-        let tx = db.transaction().checked("unavailable")?;
-        tx.execute("INSERT INTO source_consents(plugin_id,record) VALUES(?1,?2) ON CONFLICT(plugin_id) DO UPDATE SET record=excluded.record",
+        let tx = db.unchecked_transaction().checked("unavailable")?;
+        tx.execute("INSERT INTO ext_domain_source_consents(plugin_id,record) VALUES(?1,?2) ON CONFLICT(plugin_id) DO UPDATE SET record=excluded.record",
             params![id,serde_json::to_string(consent).checked("invalid_input")?]).checked("unavailable")?;
-        tx.execute("DELETE FROM source_projections WHERE plugin_id=?1", [id])
-            .checked("unavailable")?;
+        tx.execute(
+            "DELETE FROM ext_domain_source_projections WHERE plugin_id=?1",
+            [id],
+        )
+        .checked("unavailable")?;
         tx.commit().checked("unavailable")?;
+        drop(db);
         self.queries.clear();
         self.facts.clear();
         self.persistence_errors.remove(id);
@@ -154,14 +135,14 @@ impl Host {
         if text.len() > 16 * 1024 * 1024 {
             return Err(fail("resource_limit"));
         }
-        self.db(true)?.ok_or(fail("unavailable"))?.execute("INSERT INTO source_projections(plugin_id,record) VALUES(?1,?2) ON CONFLICT(plugin_id) DO UPDATE SET record=excluded.record",params![id,text]).checked("unavailable")?;
+        self.db(true)?.ok_or(fail("unavailable"))?.execute("INSERT INTO ext_domain_source_projections(plugin_id,record) VALUES(?1,?2) ON CONFLICT(plugin_id) DO UPDATE SET record=excluded.record",params![id,text]).checked("unavailable")?;
         Ok(())
     }
     pub fn projection(&mut self, id: &str) -> Result<Option<Cached>> {
         let Some(db) = self.db(false)? else {
             return Ok(None);
         };
-        let text:Option<String>=db.query_row("SELECT record FROM source_projections WHERE plugin_id=?1 AND length(record)<=16777216",[id],|r|r.get(0)).optional().checked("invalid_record")?;
+        let text:Option<String>=db.query_row("SELECT record FROM ext_domain_source_projections WHERE plugin_id=?1 AND length(record)<=16777216",[id],|r|r.get(0)).optional().checked("invalid_record")?;
         let Some(text) = text else { return Ok(None) };
         let p: Projection = serde_json::from_str(&text).checked("invalid_record")?;
         if p.sessions.len() > 10240
@@ -205,6 +186,7 @@ impl Host {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusqlite::Connection;
     fn consent() -> Consent {
         Consent {
             digest: "a".repeat(64),
@@ -216,9 +198,9 @@ mod tests {
         }
     }
     #[test]
-    fn domain_reads_are_lazy_and_consent_isolated_from_legacy_databases() {
+    fn domain_consent_persists_in_the_control_plane_without_creating_sidecars() {
         let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("domain-host.sqlite3");
+        let path = root.path().join(super::super::store::CONTROL_DATABASE);
         let mut host = Host::new(path.clone());
         assert!(host.consent("org.example.reader").unwrap().is_none());
         assert!(!path.exists());
@@ -235,15 +217,15 @@ mod tests {
         host.grant("org.example.reader", &revoked).unwrap();
         assert!(!host.consent("org.example.reader").unwrap().unwrap().enabled);
         assert!(!root.path().join("plugin-host.sqlite3").exists());
-        assert!(!root.path().join("local-agent.sqlite3").exists());
+        assert!(!root.path().join("domain-host.sqlite3").exists());
     }
     #[test]
     fn domain_future_and_corrupt_stores_fail_closed_without_schema_writes() {
         let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("domain-host.sqlite3");
+        let path = root.path().join(super::super::store::CONTROL_DATABASE);
         let db = Connection::open(&path).unwrap();
         db.execute_batch(
-            "CREATE TABLE domain_version(version INTEGER);INSERT INTO domain_version VALUES(2)",
+            "PRAGMA user_version=99;CREATE TABLE foreign_data(record TEXT);INSERT INTO foreign_data VALUES('preserve')",
         )
         .unwrap();
         drop(db);

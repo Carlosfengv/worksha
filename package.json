@@ -40,6 +40,8 @@
     "test:local-token-cancellation": "node scripts/test-local-token-cancellation.mjs",
     "test:dynamic-routing": "cargo build --locked -p local-agent-service --target-dir .work/provider-tests-target && node scripts/test-dynamic-routing.mjs",
     "test:model-services": "cargo build --locked -p local-agent-service && node scripts/test-model-services.mjs",
+    "test:agent-budgets": "node scripts/test-agent-budgets.mjs",
+    "test:loop-guards": "node scripts/test-loop-guards.mjs",
     "lint": "eslint src tests/frontend --max-warnings 0",
     "check": "pnpm typecheck && pnpm lint && pnpm check:ui && pnpm check:architecture && pnpm check:plugins && pnpm check:domain && pnpm format:check",
     "check:domain": "node scripts/plugin-bindings.mjs --domain && node scripts/plugin-bindings.mjs --facts && node scripts/plugin-bindings.mjs --provider && node scripts/plugin-bindings.mjs --config && node scripts/plugin-bindings.mjs --protocol && node scripts/plugin-bindings.mjs --provider-access && node scripts/plugin-bindings.mjs --provider-connection && node scripts/plugin-bindings.mjs --provider-source && node scripts/plugin-bindings.mjs --provider-source-operation && node scripts/plugin-bindings.mjs --provider-draft-catalog && node scripts/plugin-bindings.mjs --provider-draft-grant && node scripts/plugin-bindings.mjs --provider-draft-recovery && node scripts/plugin-bindings.mjs --provider-presets && node scripts/plugin-bindings.mjs --routing-policy && node scripts/plugin-bindings.mjs --object-summary && node scripts/plugin-bindings.mjs --request-export && node scripts/plugin-bindings.mjs --policy-recovery",

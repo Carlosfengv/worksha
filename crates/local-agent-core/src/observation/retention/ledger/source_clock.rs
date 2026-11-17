@@ -28,7 +28,7 @@ pub(super) struct Marker {
 }
 
 pub(super) fn no_shadows(db: &Connection) -> Result<(), LedgerError> {
-    let shadows: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM temp.sqlite_master WHERE lower(name) GLOB 'retention_*' OR lower(name) IN ('model_observations','connector_calls','extension_version','observation_content_epoch'))", [], |r|r.get(0)).map_err(unavailable)?;
+    let shadows: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM temp.sqlite_master WHERE lower(name) GLOB 'retention_*' OR lower(name) IN ('model_observations','ext_adv_connector_calls','ext_adv_extension_version','observation_content_epoch'))", [], |r|r.get(0)).map_err(unavailable)?;
     if shadows {
         return Err(LedgerError::InvalidRecord);
     }

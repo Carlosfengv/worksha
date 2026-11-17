@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 
 fn source_db(path: &std::path::Path) -> Connection {
     let db = Connection::open(path).unwrap();
-    db.execute_batch("PRAGMA journal_mode=WAL;CREATE TABLE extension_version(version INTEGER NOT NULL);INSERT INTO extension_version VALUES(1);CREATE TABLE connector_calls(id INTEGER PRIMARY KEY,plugin_id TEXT NOT NULL,identity TEXT NOT NULL,record TEXT NOT NULL,UNIQUE(plugin_id,identity));CREATE TRIGGER call_retention AFTER INSERT ON connector_calls BEGIN DELETE FROM connector_calls WHERE id<=NEW.id-10000;END;").unwrap();
+    db.execute_batch("PRAGMA journal_mode=WAL;CREATE TABLE ext_adv_extension_version(version INTEGER NOT NULL);INSERT INTO ext_adv_extension_version VALUES(1);CREATE TABLE ext_adv_connector_calls(id INTEGER PRIMARY KEY,plugin_id TEXT NOT NULL,identity TEXT NOT NULL,record TEXT NOT NULL,UNIQUE(plugin_id,identity));CREATE TRIGGER ext_adv_call_retention AFTER INSERT ON ext_adv_connector_calls BEGIN DELETE FROM ext_adv_connector_calls WHERE id<=NEW.id-10000;END;").unwrap();
     db
 }
 fn raw(id: i64, state: &str, duration: Option<f64>, at: &str) -> Value {
@@ -13,7 +13,7 @@ fn raw(id: i64, state: &str, duration: Option<f64>, at: &str) -> Value {
 }
 fn insert(db: &Connection, id: i64, plugin: &str, value: &Value) {
     db.execute(
-        "INSERT INTO connector_calls VALUES(?1,?2,?3,?4)",
+        "INSERT INTO ext_adv_connector_calls VALUES(?1,?2,?3,?4)",
         params![
             id,
             plugin,
@@ -24,7 +24,7 @@ fn insert(db: &Connection, id: i64, plugin: &str, value: &Value) {
     .unwrap();
 }
 fn sources(db: &Connection) -> Vec<(i64, String, String, String)> {
-    db.prepare("SELECT id,plugin_id,identity,record FROM connector_calls ORDER BY id")
+    db.prepare("SELECT id,plugin_id,identity,record FROM ext_adv_connector_calls ORDER BY id")
         .unwrap()
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
         .unwrap()
@@ -212,7 +212,7 @@ fn tool_expiration_protects_active_incomplete_and_unknown_time_without_deleting_
             Err(LedgerError::InvalidQuery)
         );
         assert_eq!(sources(&db), original);
-        assert!(exists(&db, "connector_calls").unwrap());
+        assert!(exists(&db, "ext_adv_connector_calls").unwrap());
     }
 }
 
@@ -238,8 +238,11 @@ fn tool_facts_reopen_idempotently_and_follow_exact_raw_bytes_without_recounting(
             |r| r.get(0),
         )
         .unwrap();
-    db.execute("UPDATE connector_calls SET record=record || ' '", [])
-        .unwrap();
+    db.execute(
+        "UPDATE ext_adv_connector_calls SET record=record || ' '",
+        [],
+    )
+    .unwrap();
     assert_eq!(ledger.stage_tool_batch(&[1]).unwrap().updated, 1);
     let after: String = db
         .query_row(
@@ -289,7 +292,7 @@ fn absent_or_reused_source_locators_never_create_partial_or_duplicate_tool_facts
     let mut changed = raw(2, "success", Some(0.0), "2026-10-27T00:00:00Z");
     changed["tool"] = json!("other");
     db.execute(
-        "UPDATE connector_calls SET identity=?1,record=?2 WHERE id=1",
+        "UPDATE ext_adv_connector_calls SET identity=?1,record=?2 WHERE id=1",
         params![changed["identity"].as_str().unwrap(), changed.to_string()],
     )
     .unwrap();
@@ -332,7 +335,7 @@ fn tool_batches_roll_back_on_ignored_and_failed_inserts_and_updates() {
         .query_row("SELECT value FROM retention_tool_staging", [], |r| r.get(0))
         .unwrap();
     db.execute(
-        "UPDATE connector_calls SET record=replace(record,'success','tool_error') WHERE id=1",
+        "UPDATE ext_adv_connector_calls SET record=replace(record,'success','tool_error') WHERE id=1",
         [],
     )
     .unwrap();
@@ -372,7 +375,7 @@ fn unknown_source_fields_content_or_usage_are_preserved_instead_of_silently_disc
     ] {
         let mut r = raw(2, "success", Some(0.0), "2026-10-27T00:00:00Z");
         r[field] = value;
-        db.execute("DELETE FROM connector_calls WHERE id=2", [])
+        db.execute("DELETE FROM ext_adv_connector_calls WHERE id=2", [])
             .unwrap();
         insert(&db, 2, "a", &r);
         let original = sources(&db);
@@ -447,14 +450,14 @@ fn malformed_future_or_sealed_tool_facts_are_never_skipped_or_overwritten() {
 fn unsupported_connector_schema_and_orphan_facts_never_get_a_replacement_identity() {
     let temp = tempfile::tempdir().unwrap();
     let db = source_db(&temp.path().join("plugin.db"));
-    db.execute("UPDATE extension_version SET version=2", [])
+    db.execute("UPDATE ext_adv_extension_version SET version=2", [])
         .unwrap();
     assert_eq!(
         FactLedger::for_connector_store(&db, STORE).err().unwrap(),
         LedgerError::UnsupportedVersion
     );
     assert!(!exists(&db, "retention_fact_scope").unwrap());
-    db.execute("UPDATE extension_version SET version=1", [])
+    db.execute("UPDATE ext_adv_extension_version SET version=1", [])
         .unwrap();
     let ledger = FactLedger::for_connector_store(&db, STORE).unwrap();
     let namespace = ledger.namespace.clone();
@@ -502,7 +505,7 @@ fn tool_staging_limits_count_and_bytes_without_partially_applying_a_batch() {
         Err(LedgerError::InvalidQuery)
     );
     db.execute(
-        "UPDATE connector_calls SET record=record || ?1",
+        "UPDATE ext_adv_connector_calls SET record=record || ?1",
         [" ".repeat(8 * 1024 * 1024)],
     )
     .unwrap();

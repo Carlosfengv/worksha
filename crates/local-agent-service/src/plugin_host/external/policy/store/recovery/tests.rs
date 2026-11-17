@@ -123,7 +123,7 @@ fn lose(h: &Host, scope: &Scope) {
     h.db()
         .unwrap()
         .execute(
-            "DELETE FROM policy_controls WHERE scope=?1",
+            "DELETE FROM ext_policy_policy_controls WHERE scope=?1",
             [Host::scope(&scope.store_id, &scope.service_id)],
         )
         .unwrap();
@@ -206,12 +206,12 @@ fn native_recovery_preserves_history_retires_authority_and_is_idempotent() {
         .db()
         .unwrap()
         .query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE name='policy_scope_recoveries'",
+            "SELECT COUNT(*) FROM sqlite_master WHERE name='ext_policy_policy_scope_recoveries'",
             [],
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(tables, 0);
+    assert_eq!(tables, 1);
     let reference = inspection.reference.unwrap();
     let revision = h
         .recovery_resolve(&core, reference.clone(), Mode::Native {})
@@ -244,7 +244,7 @@ fn native_recovery_preserves_history_retires_authority_and_is_idempotent() {
         .db()
         .unwrap()
         .query_row(
-            "SELECT record FROM policy_scope_recoveries WHERE id=?1",
+            "SELECT record FROM ext_policy_policy_scope_recoveries WHERE id=?1",
             [&reference.reference_id],
             |r| r.get(0),
         )
@@ -555,7 +555,7 @@ fn corrupt_pending_data_and_foreign_store_cannot_be_overwritten() {
     h.db()
         .unwrap()
         .execute(
-            "INSERT INTO policy_intents VALUES(?1,?2)",
+            "INSERT INTO ext_policy_policy_intents VALUES(?1,?2)",
             params![id(), "{broken original record"],
         )
         .unwrap();
@@ -570,7 +570,9 @@ fn corrupt_pending_data_and_foreign_store_cannot_be_overwritten() {
     let original: String = h
         .db()
         .unwrap()
-        .query_row("SELECT record FROM policy_intents", [], |r| r.get(0))
+        .query_row("SELECT record FROM ext_policy_policy_intents", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(original, "{broken original record");
 }
@@ -751,7 +753,7 @@ fn full_recovery_receipts_reject_new_changes_but_keep_the_exact_known_result() {
         .db()
         .unwrap()
         .query_row(
-            "SELECT record FROM policy_scope_recoveries WHERE id=?1",
+            "SELECT record FROM ext_policy_policy_scope_recoveries WHERE id=?1",
             [&reference.reference_id],
             |r| r.get(0),
         )
@@ -762,7 +764,7 @@ fn full_recovery_receipts_reject_new_changes_but_keep_the_exact_known_result() {
         h.db()
             .unwrap()
             .execute(
-                "INSERT INTO policy_scope_recoveries VALUES(?1,?2)",
+                "INSERT INTO ext_policy_policy_scope_recoveries VALUES(?1,?2)",
                 params![receipt.reference.reference_id, encode(&receipt).unwrap()],
             )
             .unwrap();
@@ -794,16 +796,18 @@ fn full_recovery_receipts_reject_new_changes_but_keep_the_exact_known_result() {
     let count: u32 = h
         .db()
         .unwrap()
-        .query_row("SELECT COUNT(*) FROM policy_scope_recoveries", [], |r| {
-            r.get(0)
-        })
+        .query_row(
+            "SELECT COUNT(*) FROM ext_policy_policy_scope_recoveries",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(count, 256);
     let unchanged: String = h
         .db()
         .unwrap()
         .query_row(
-            "SELECT record FROM policy_scope_recoveries WHERE id=?1",
+            "SELECT record FROM ext_policy_policy_scope_recoveries WHERE id=?1",
             [&reference.reference_id],
             |r| r.get(0),
         )

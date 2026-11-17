@@ -25,7 +25,7 @@ mod upstream_balance;
 pub use account_order::{
     AccountAffinity, AccountPlanningHint, AccountStrategy, access_scopes, scopes,
 };
-pub use cooldown_probes::HttpProbeClaim;
+pub use cooldown_probes::{HttpProbeClaim, SendBoundary};
 pub use openrouter_rejections::{OpenRouterBudgetRejection, OpenRouterBudgetScope};
 pub use quota::AccountQuotaHint;
 pub use quota_probes::{QuotaProbeClaim, QuotaProbeSource, QuotaProbeState};
@@ -752,6 +752,7 @@ impl Store {
             choice.pending_child = model.child.clone();
             let candidate = Selection {
                 fresh: false,
+                advances_session_head: false,
                 version: target,
                 reason: boundary.into(),
                 service: Some(choice),
@@ -848,8 +849,21 @@ impl Store {
             return Ok(None);
         }
         let session = turn.session.as_deref().unwrap_or("unknown");
-        let tx = self.connection.unchecked_transaction().map_err(error)?;
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.connection,
+            rusqlite::TransactionBehavior::Immediate,
+        )
+        .map_err(error)?;
+        crate::routing::retention::check_closed(&tx, binding, session, &[turn.digest.as_str()])?;
         let old = tx.query_row("SELECT state,value,retry_at FROM service_route_dispatch WHERE binding=?1 AND session=?2 AND turn=?3", params![binding,session,turn.digest], |r| Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?))).optional().map_err(error)?;
+        let old = if selected.reason == "budget_downgraded"
+            && old.is_some()
+            && crate::routing::budget::can_replan_fallback(&tx, binding, session, &turn.digest)?
+        {
+            None
+        } else {
+            old
+        };
         let mut plan = if let Some((state, value, retry_at)) = old {
             if state == "committed" {
                 if selected.fresh {
@@ -937,6 +951,9 @@ impl Store {
         };
         plan.owner = uuid::Uuid::new_v4().to_string();
         tx.execute("INSERT INTO service_route_dispatch(binding,session,turn,owner,state,value) VALUES(?1,?2,?3,?4,'pending',?5) ON CONFLICT(binding,session,turn) DO UPDATE SET owner=excluded.owner,state='pending',value=excluded.value",params![binding,session,turn.digest,plan.owner,serde_json::to_string(&plan).map_err(error)?]).map_err(error)?;
+        tx.execute("INSERT OR IGNORE INTO gateway_dispatch_sequences(binding,session,turn,seq)
+         SELECT binding,session,turn,seq FROM gateway_route_leases WHERE binding=?1 AND session=?2 AND turn=?3",
+         params![binding,session,turn.digest]).map_err(error)?;
         tx.commit().map_err(error)?;
         Ok(Some(plan))
     }
@@ -953,7 +970,11 @@ impl Store {
         {
             return fail("invalid_child_service", "子服务尚未选定实际模型");
         }
-        let tx = self.connection.unchecked_transaction().map_err(error)?;
+        let tx = rusqlite::Transaction::new_unchecked(
+            &self.connection,
+            rusqlite::TransactionBehavior::Immediate,
+        )
+        .map_err(error)?;
         let owns: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM service_route_dispatch WHERE binding=?1 AND session=?2 AND turn=?3 AND owner=?4 AND state='pending')",params![plan.binding,plan.session,plan.turn,plan.owner],|r|r.get(0)).map_err(error)?;
         if !owns {
             return fail("conflict", "请求路由归属已变化，未重复发送");
@@ -964,14 +985,22 @@ impl Store {
             })
             .map_err(error)?;
         if count >= 32768 {
-            return fail("capacity", "路由尝试记录已满，保留现有历史");
+            crate::routing::retention::reclaim_attempts(&tx, count - 28672)?;
+            let remaining: i64 = tx
+                .query_row("SELECT count(*) FROM service_route_attempts", [], |r| {
+                    r.get(0)
+                })
+                .map_err(error)?;
+            if remaining >= 32768 {
+                return fail("capacity", "路由尝试记录已满，保留待核查及恢复证据");
+            }
         }
         let changed=tx.execute("UPDATE gateway_route_leases SET version=?4,service_selection=?5 WHERE binding=?1 AND session=?2 AND turn=?3",params![plan.binding,plan.session,plan.turn,selected.version.id,serde_json::to_string(&selected.service).map_err(error)?]).map_err(error)?;
         if changed != 1 {
             return fail("conflict", "轮次原路由无法匹配，未发送新目标请求");
         }
-        tx.execute("INSERT INTO service_route_attempts(binding,session,turn,route,model,outcome,created) VALUES(?1,?2,?3,?4,?5,'preparing',?6)",params![plan.binding,plan.session,plan.turn,selected.version.id,selected.service.as_ref().map(|s|s.model_id.as_str()).unwrap_or(""),chrono::Utc::now().to_rfc3339()]).map_err(error)?;
-        let id = tx.last_insert_rowid();
+        let id = crate::routing::retention::sequence(&tx, "attempt")?;
+        tx.execute("INSERT INTO service_route_attempts(id,binding,session,turn,route,model,outcome,created) VALUES(?1,?2,?3,?4,?5,?6,'preparing',?7)",params![id,plan.binding,plan.session,plan.turn,selected.version.id,selected.service.as_ref().map(|s|s.model_id.as_str()).unwrap_or(""),chrono::Utc::now().to_rfc3339()]).map_err(error)?;
         tx.commit().map_err(error)?;
         Ok(id)
     }
@@ -1004,6 +1033,16 @@ impl Store {
             .execute(
                 "UPDATE service_route_attempts SET status=?2,outcome=?3 WHERE id=?1",
                 params![id, status, outcome],
+            )
+            .map_err(error)?;
+        Ok(())
+    }
+
+    pub fn service_attempt_completed(&self, id: i64) -> Result<(), ConfigError> {
+        self.connection
+            .execute(
+                "UPDATE service_route_attempts SET outcome='completed' WHERE id=?1 AND outcome='committed'",
+                [id],
             )
             .map_err(error)?;
         Ok(())

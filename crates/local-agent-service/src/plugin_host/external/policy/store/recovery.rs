@@ -94,7 +94,7 @@ fn bounded_rows(
     Ok(rows)
 }
 impl Host {
-    fn recovery_db(&self) -> Result<&Connection> {
+    fn recovery_db(&self) -> Result<ControlConnection<'_>> {
         // Never create an optional repository just by opening recovery.
         let m = std::fs::symlink_metadata(&self.db_path).checked("unavailable")?;
         if !m.is_file() || m.file_type().is_symlink() || m.nlink() != 1 {
@@ -137,14 +137,14 @@ impl Host {
         drop(cache);
         if self.db_path.exists() {
             match self.recovery_db().and_then(|db| {
-                let mut query = db.prepare("SELECT * FROM (SELECT CASE WHEN length(scope)<=128 THEN scope ELSE '' END FROM policy_controls LIMIT 257) UNION ALL SELECT * FROM (SELECT CASE WHEN length(record)<=2097152 AND json_valid(record) THEN CASE WHEN json_type(record,'$.status.storeId')='text' AND json_type(record,'$.status.serviceId')='text' AND length(json_extract(record,'$.status.storeId'))<=64 AND length(json_extract(record,'$.status.serviceId'))<=64 THEN json_extract(record,'$.status.storeId')||':'||json_extract(record,'$.status.serviceId') ELSE '' END ELSE '' END FROM policy_intents LIMIT 257)").checked("unavailable")?;
+                let mut query = db.prepare("SELECT * FROM (SELECT CASE WHEN length(scope)<=128 THEN scope ELSE '' END FROM ext_policy_policy_controls LIMIT 257) UNION ALL SELECT * FROM (SELECT CASE WHEN length(record)<=2097152 AND json_valid(record) THEN CASE WHEN json_type(record,'$.status.storeId')='text' AND json_type(record,'$.status.serviceId')='text' AND length(json_extract(record,'$.status.storeId'))<=64 AND length(json_extract(record,'$.status.serviceId'))<=64 THEN json_extract(record,'$.status.storeId')||':'||json_extract(record,'$.status.serviceId') ELSE '' END ELSE '' END FROM ext_policy_policy_intents LIMIT 257)").checked("unavailable")?;
                 let mut keys = query.query_map([], |r| r.get::<_, String>(0)).checked("unavailable")?.collect::<std::result::Result<Vec<_>,_>>().checked("invalid_record")?;
                 // Startup has already identified missing scopes. Check those
                 // bounded identities through the covering index rather than
                 // scanning every historical version to list a scope once.
                 for id in unknown {
                     let key = Self::scope(store,&id);
-                    let exists: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM policy_bindings WHERE scope=?1)",[&key],|r|r.get(0)).checked("unavailable")?;
+                    let exists: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM ext_policy_policy_bindings WHERE scope=?1)",[&key],|r|r.get(0)).checked("unavailable")?;
                     if exists { keys.push(key); }
                 }
                 Ok(keys)
@@ -221,7 +221,7 @@ impl Host {
         valid_scope(scope)?;
         let core_value = core_state(core, scope)?;
         let scope_key = Self::scope(&scope.store_id, &scope.service_id);
-        let control: Option<String> = db.query_row("SELECT CASE WHEN length(record)<=4096 THEN record END FROM policy_controls WHERE scope=?1",[&scope_key],|r| r.get::<_,Option<String>>(0)).optional().checked("unavailable")?.map(|v| v.ok_or(fail("resource_limit"))).transpose()?;
+        let control: Option<String> = db.query_row("SELECT CASE WHEN length(record)<=4096 THEN record END FROM ext_policy_policy_controls WHERE scope=?1",[&scope_key],|r| r.get::<_,Option<String>>(0)).optional().checked("unavailable")?.map(|v| v.ok_or(fail("resource_limit"))).transpose()?;
         let path = self
             .root
             .join(marker_name(&scope.store_id, &scope.service_id)?);
@@ -240,14 +240,14 @@ impl Host {
         };
         let bindings = bounded_rows(
             db,
-            "SELECT version,CASE WHEN length(record)<=16384 THEN record END FROM policy_bindings WHERE scope=?1 ORDER BY version LIMIT 257",
+            "SELECT version,CASE WHEN length(record)<=16384 THEN record END FROM ext_policy_policy_bindings WHERE scope=?1 ORDER BY version LIMIT 257",
             &[&scope_key],
         )?;
         // All original publication identities must be readable, including any
         // that malformed scope data would otherwise hide from a WHERE filter.
         let all_intents = bounded_rows(
             db,
-            "SELECT id,CASE WHEN length(record)<=2097152 THEN record END FROM policy_intents ORDER BY id LIMIT 257",
+            "SELECT id,CASE WHEN length(record)<=2097152 THEN record END FROM ext_policy_policy_intents ORDER BY id LIMIT 257",
             &[],
         )?;
         let mut intents = vec![];
@@ -477,7 +477,7 @@ impl Host {
         valid_scope(&scope)?;
         let result = self
             .recovery_db()
-            .and_then(|db| self.recovery_snapshot(db, core, &scope));
+            .and_then(|db| self.recovery_snapshot(&db, core, &scope));
         self.recovery_references
             .retain(|_, r| r.created.elapsed().as_secs() < 60 && r.scope != scope);
         let mut snapshot = match result {
@@ -544,11 +544,12 @@ impl Host {
         valid_scope(&reference.scope)?;
         uuid(&reference.reference_id)?;
         let db = self.recovery_db()?;
-        let tx = rusqlite::Transaction::new_unchecked(db, rusqlite::TransactionBehavior::Immediate)
-            .checked("unavailable")?;
-        let has_table: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='policy_scope_recoveries')",[],|r|r.get(0)).checked("unavailable")?;
+        let tx =
+            rusqlite::Transaction::new_unchecked(&db, rusqlite::TransactionBehavior::Immediate)
+                .checked("unavailable")?;
+        let has_table: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='ext_policy_policy_scope_recoveries')",[],|r|r.get(0)).checked("unavailable")?;
         let saved: Option<String> = if has_table {
-            tx.query_row("SELECT CASE WHEN length(record)<=2097152 THEN record END FROM policy_scope_recoveries WHERE id=?1",[&reference.reference_id],|r|r.get::<_,Option<String>>(0)).optional().checked("unavailable")?.map(|v|v.ok_or(fail("invalid_record"))).transpose()?
+            tx.query_row("SELECT CASE WHEN length(record)<=2097152 THEN record END FROM ext_policy_policy_scope_recoveries WHERE id=?1",[&reference.reference_id],|r|r.get::<_,Option<String>>(0)).optional().checked("unavailable")?.map(|v|v.ok_or(fail("invalid_record"))).transpose()?
         } else {
             None
         };
@@ -599,9 +600,11 @@ impl Host {
             }
             .ok_or(fail("result_pending"))?;
             let count: u32 = if has_table {
-                tx.query_row("SELECT COUNT(*) FROM policy_scope_recoveries", [], |r| {
-                    r.get(0)
-                })
+                tx.query_row(
+                    "SELECT COUNT(*) FROM ext_policy_policy_scope_recoveries",
+                    [],
+                    |r| r.get(0),
+                )
                 .checked("unavailable")?
             } else {
                 0
@@ -620,14 +623,14 @@ impl Host {
                 },
                 control,
             };
-            tx.execute_batch("CREATE TABLE IF NOT EXISTS policy_scope_recoveries(id TEXT PRIMARY KEY,record TEXT NOT NULL)").checked("unavailable")?;
+            tx.execute_batch("CREATE TABLE IF NOT EXISTS ext_policy_policy_scope_recoveries(id TEXT PRIMARY KEY,record TEXT NOT NULL)").checked("unavailable")?;
             tx.execute(
-                "INSERT INTO policy_scope_recoveries VALUES(?1,?2)",
+                "INSERT INTO ext_policy_policy_scope_recoveries VALUES(?1,?2)",
                 params![reference.reference_id, encode(&receipt)?],
             )
             .checked("unavailable")?;
             tx.execute(
-                "INSERT OR REPLACE INTO policy_controls VALUES(?1,?2)",
+                "INSERT OR REPLACE INTO ext_policy_policy_controls VALUES(?1,?2)",
                 params![
                     Self::scope(&reference.scope.store_id, &reference.scope.service_id),
                     encode(&receipt.control)?
@@ -639,6 +642,7 @@ impl Host {
         // The durable backup and control commit together. Failure from here is
         // explicitly unknown; the exact receipt supports an idempotent finish.
         tx.commit().checked("scope_recovery_unknown")?;
+        drop(db);
         self.recovery_marker(&receipt.control)
             .map_err(|_| fail("scope_recovery_unknown"))?;
         self.recovery_references.remove(&reference.reference_id);

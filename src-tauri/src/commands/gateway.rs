@@ -1,10 +1,20 @@
 use crate::backend::Backend;
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
+pub(crate) mod local_chat;
 mod operations;
 mod save;
 mod scoped_save;
 mod status;
+
+#[tauri::command]
+pub(crate) async fn local_chat_connection(
+    app: tauri::AppHandle,
+    backend: tauri::State<'_, Backend>,
+    input: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    local_chat::run(app, backend, input).await
+}
 
 #[tauri::command]
 pub(crate) async fn get_gateway_client_operation(

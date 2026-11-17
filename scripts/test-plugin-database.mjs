@@ -14,6 +14,7 @@ const binary = path.resolve(
 );
 const previous = process.env.PLUGIN_DATABASE_PREVIOUS_BINARY;
 const rollback = process.env.PLUGIN_DATABASE_ROLLBACK_BINARY;
+const preControlPlane = process.env.PLUGIN_DATABASE_PRE_CONTROL_PLANE_BINARY;
 const root = fs.realpathSync(
   fs.mkdtempSync(path.join(tmpdir(), "plugin-database-")),
 );
@@ -27,6 +28,7 @@ const report = {
   binarySha256: hash(binary),
   previousBinarySha256: previous ? hash(previous) : null,
   rollbackBinarySha256: rollback ? hash(rollback) : null,
+  preControlPlaneBinarySha256: preControlPlane ? hash(preControlPlane) : null,
   actualDowngradeVerified: false,
   sameSchemaRollbackVerified: false,
   cases: [],
@@ -158,6 +160,22 @@ function sql(data, action) {
     db.close();
   }
 }
+function previousControlPlane(db, version) {
+  const tables = db
+    .prepare(
+      "SELECT name FROM sqlite_schema WHERE type='table' AND name GLOB 'ext_*' ORDER BY rowid DESC",
+    )
+    .all();
+  for (const { name } of tables) db.exec(`DROP TABLE "${name}"`);
+  for (const table of [
+    "gateway_route_change_archive",
+    "gateway_dispatch_sequences",
+    "gateway_session_watermarks",
+    "gateway_route_sequences",
+  ])
+    db.exec(`DROP TABLE ${table}`);
+  db.exec(`DROP INDEX service_attempt_turn; PRAGMA user_version=${version}`);
+}
 function evidence(data) {
   return sql(data, (db) => ({
     version: db.prepare("PRAGMA user_version").get().user_version,
@@ -165,6 +183,10 @@ function evidence(data) {
     sources: db.prepare("SELECT * FROM native_sources ORDER BY agent_id").all(),
     identity: db.prepare("SELECT * FROM model_service_operation_scope").all(),
     credentials: db.prepare("SELECT * FROM credential_recovery_scope").all(),
+    credentialValues: db
+      .prepare("SELECT * FROM credential_recovery_values ORDER BY domain,name")
+      .all(),
+    localTokenScope: db.prepare("SELECT * FROM local_token_scope").all(),
     state: db.prepare("SELECT * FROM builtin_plugin_composition").all(),
     receipts: db
       .prepare("SELECT * FROM builtin_plugin_operations ORDER BY sequence")
@@ -172,6 +194,81 @@ function evidence(data) {
   }));
 }
 try {
+  for (const oldVersion of [16, 17]) {
+    const upgradeData = path.join(root, `v${oldVersion}-upgrade`);
+    const seed = await boot(upgradeData, preControlPlane ?? binary);
+    await changeComposition(seed, { disabledPluginIds: ["builtin.projects"] });
+    await stop(seed.child);
+    sql(upgradeData, (db) => {
+      if (!preControlPlane) previousControlPlane(db, 16);
+      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 16);
+      if (oldVersion === 17)
+        db.exec(`
+        INSERT INTO iam_accounts VALUES('owner','owner','Owner','fixture','active',1,1);
+        INSERT INTO iam_memberships VALUES('local','owner','owner');
+        UPDATE iam_mode SET enabled=1,recovery_hash='fixture',recovery_owner='owner';
+        PRAGMA user_version=17;
+      `);
+      db.exec("CREATE VIEW gateway_session_watermarks AS SELECT 1");
+    });
+    const owned = evidence(upgradeData);
+    await boot(upgradeData, binary, true);
+    assert.deepEqual(evidence(upgradeData), owned);
+    assert.equal(
+      sql(
+        upgradeData,
+        (db) =>
+          db
+            .prepare(
+              "SELECT COUNT(*) n FROM sqlite_schema WHERE name GLOB 'ext_*'",
+            )
+            .get().n,
+      ),
+      0,
+    );
+    sql(upgradeData, (db) => db.exec("DROP VIEW gateway_session_watermarks"));
+    const upgraded = await boot(upgradeData);
+    await stop(upgraded.child);
+    const upgradedEvidence = { ...owned, version: oldVersion + 2 };
+    assert.deepEqual(evidence(upgradeData), upgradedEvidence);
+    assert.equal(
+      sql(
+        upgradeData,
+        (db) => db.prepare("SELECT enabled FROM iam_mode").get().enabled,
+      ),
+      Number(oldVersion === 17),
+    );
+    const backupPath = path.join(
+      upgradeData,
+      `local-agent.pre-single-control-v${oldVersion}.sqlite3`,
+    );
+    assert.equal(fs.statSync(backupPath).mode & 0o777, 0o600);
+    const backup = new DatabaseSync(backupPath, { readOnly: true });
+    try {
+      assert.equal(
+        backup.prepare("PRAGMA user_version").get().user_version,
+        oldVersion,
+      );
+      assert.equal(
+        backup.prepare("PRAGMA quick_check").get().quick_check,
+        "ok",
+      );
+      assert.deepEqual(
+        backup.prepare("SELECT * FROM credential_recovery_scope").all(),
+        owned.credentials,
+      );
+    } finally {
+      backup.close();
+    }
+    if (preControlPlane) {
+      assert.match(await boot(upgradeData, preControlPlane, true), /更新版本/);
+      assert.deepEqual(evidence(upgradeData), upgradedEvidence);
+      report.actualDowngradeVerified = true;
+    }
+    passed(
+      `v${oldVersion} rollback, retry and verified private backup preserve credential, token and composition state`,
+    );
+  }
   const data = path.join(root, "upgrade");
   // Simulate schema 15 with historical composition evidence. The actual older
   // process below predates the composition API and seeds its own database.
@@ -207,7 +304,7 @@ try {
   assert.equal(changed.status, 200);
   const receipt = changed.body.receipt;
   await stop(current.child);
-  sql(data, (db) => db.exec("PRAGMA user_version=15"));
+  sql(data, (db) => previousControlPlane(db, 15));
   const before = evidence(data);
   assert.equal(before.version, 15);
   assert.equal(before.providers.length, 1);
@@ -218,7 +315,7 @@ try {
   );
   current = await boot(data);
   const after = evidence(data);
-  assert.deepEqual(after, { ...before, version: 16 });
+  assert.deepEqual(after, { ...before, version: 18 });
   const active = (await api(current, "/api/builtin-plugins")).body;
   assert.equal(active.storeId, catalog.storeId);
   assert.deepEqual(active.composition, request.composition);
@@ -232,7 +329,7 @@ try {
   });
   assert.deepEqual(queried.body.receipt, receipt);
   passed(
-    "15→16 preserves exact plugin state, receipts, identity, Provider and credential metadata; removed functionality stays stopped",
+    "15→18 preserves exact plugin state, receipts, identity, Provider and credential metadata; removed functionality stays stopped",
   );
   const backupFile = path.join(
     data,
@@ -369,8 +466,10 @@ try {
   await stop(current.child);
   const held = new DatabaseSync(path.join(walData, "local-agent.sqlite3"));
   try {
+    held.exec("PRAGMA wal_autocheckpoint=0");
+    previousControlPlane(held, 15);
     held.exec(
-      "PRAGMA wal_autocheckpoint=0; PRAGMA user_version=15; UPDATE providers SET value=json_set(value,'$.name','WAL migration fixture') WHERE id=(SELECT id FROM providers LIMIT 1)",
+      "UPDATE providers SET value=json_set(value,'$.name','WAL migration fixture') WHERE id=(SELECT id FROM providers LIMIT 1)",
     );
     held
       .prepare("INSERT INTO providers(id,value) VALUES(?,?)")
@@ -461,7 +560,7 @@ try {
     current = await boot(oldData);
     await stop(current.child);
     const upgraded = evidence(oldData);
-    assert.equal(upgraded.version, 16);
+    assert.equal(upgraded.version, 18);
     assert.deepEqual(upgraded.providers, original);
     assert.match(await boot(oldData, previous, true), /数据库来自更新版本/);
     assert.deepEqual(evidence(oldData), upgraded);

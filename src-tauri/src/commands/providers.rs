@@ -395,6 +395,7 @@ pub(crate) async fn dynamic_route_action(
     backend: tauri::State<'_, Backend>,
     change_id: String,
     action: String,
+    restore_operation_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
     uuid::Uuid::parse_str(&change_id).map_err(|_| "动态操作 ID 无效")?;
     if !["commit", "cancel", "restore"].contains(&action.as_str()) {
@@ -404,7 +405,7 @@ pub(crate) async fn dynamic_route_action(
         .request(
             reqwest::Method::POST,
             &format!("/api/dynamic-routes/{change_id}"),
-            Some(serde_json::json!({"action":action})),
+            Some(serde_json::json!({"action":action,"restoreOperationId":restore_operation_id})),
         )
         .await
 }

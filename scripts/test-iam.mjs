@@ -181,7 +181,7 @@ try {
     headers: { Origin: "https://example.invalid" },
     expected: 401,
   });
-  checkVersion(16);
+  checkVersion(18);
   assert.equal(
     (
       await change(
@@ -277,7 +277,7 @@ try {
   await stop();
   removeAccountPoolTables();
   await start();
-  checkVersion(16);
+  checkVersion(18);
   await checkLegacy();
   pass("IAM 关闭的旧结构数据库重启后保留单连接发布、数据库身份和回执");
 
@@ -289,8 +289,8 @@ try {
     (await action("initialize", setup, undefined, 409)).code,
     "iam_locked",
   );
-  checkVersion(17);
-  checkVersion(16, "local-agent.pre-iam-v16.sqlite3");
+  checkVersion(19);
+  checkVersion(18, "local-agent.pre-iam-v18.sqlite3");
   await api("/api/snapshot", { expected: 401 });
   await api("/api/iam/admission", { expected: 401 });
   const owner = await action("login", {
@@ -359,7 +359,7 @@ try {
   await stop();
   removeAccountPoolTables();
   await start();
-  checkVersion(17);
+  checkVersion(19);
   await api("/api/snapshot", { session: admin, expected: 401 });
   admin = (await action("login", { username: "owner", password })).session;
   await checkLegacy(admin);
@@ -389,6 +389,14 @@ try {
   assert.deepEqual(await action("resources", {}, bSession), []);
   await api("/api/iam/admission", { session: aSession, expected: 403 });
   await api("/api/model-services", { session: aSession, expected: 403 });
+  await api("/api/agents/local-connections", { session: aSession, expected: 403 });
+  await api("/api/agents/budgets", { session: aSession, expected: 403 });
+  await api("/api/agents/budget-review", { body: {}, session: aSession, expected: 403 });
+  await api("/api/agents/budget-review", { body: {}, expected: 401 });
+  await api("/api/observation/loop-guards", { session: aSession, expected: 403 });
+  await api("/api/observation/loop-guards/override", { body: {}, session: aSession, expected: 403 });
+  await api("/api/observation/loop-guards/override", { body: {}, expected: 401 });
+  assert.deepEqual((await api("/api/observation/loop-guards", { session: admin })).alerts, []);
   await api("/api/builtin-plugins", { session: aSession, expected: 403 });
   const serviceCatalog = await api("/api/model-services", { session: admin });
   const poolPath = `/api/provider-upstream-accounts/${provider.id}`;
@@ -609,7 +617,7 @@ try {
 
   await stop();
   await start();
-  checkVersion(17);
+  checkVersion(19);
   await api("/api/snapshot", { session: admin, expected: 401 });
   const again = await action("login", { username: "owner", password });
   assert.equal(

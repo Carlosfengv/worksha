@@ -1,3 +1,4 @@
+mod budget;
 mod codex_desktop;
 mod context_budget;
 #[cfg(test)]
@@ -5,6 +6,8 @@ mod cost_tests;
 mod delivery;
 mod dynamic_turn;
 mod hub;
+mod loop_batch;
+pub(crate) mod loop_guards;
 mod message;
 mod native_publication;
 mod persistence;

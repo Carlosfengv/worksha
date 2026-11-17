@@ -18,7 +18,7 @@ fn seed(host: &Host, p: &Installed, enabled: bool) -> Selection {
     host.db()
         .unwrap()
         .execute(
-            "INSERT INTO full_packages VALUES(?1,?2,?3,0)",
+            "INSERT INTO ext_source_full_packages VALUES(?1,?2,?3,0)",
             params![p.digest, p.manifest.id, super::store::encode(p).unwrap()],
         )
         .unwrap();
@@ -30,7 +30,7 @@ fn seed(host: &Host, p: &Installed, enabled: bool) -> Selection {
     s
 }
 fn commit_failure(host: &Host) {
-    host.db().unwrap().execute_batch("PRAGMA foreign_keys=ON;CREATE TABLE commit_parent(id INTEGER PRIMARY KEY);CREATE TABLE commit_child(parent INTEGER REFERENCES commit_parent(id) DEFERRABLE INITIALLY DEFERRED);CREATE TRIGGER reject_commit AFTER INSERT ON full_selections BEGIN INSERT INTO commit_child VALUES(42); END;").unwrap();
+    host.db().unwrap().execute_batch("PRAGMA foreign_keys=ON;CREATE TABLE commit_parent(id INTEGER PRIMARY KEY);CREATE TABLE commit_child(parent INTEGER REFERENCES commit_parent(id) DEFERRABLE INITIALLY DEFERRED);CREATE TRIGGER reject_commit AFTER INSERT ON ext_source_full_selections BEGIN INSERT INTO commit_child VALUES(42); END;").unwrap();
 }
 
 #[test]
@@ -43,7 +43,7 @@ fn failed_commit_restores_marker_selection_projection_and_selected_package() {
         host.db()
             .unwrap()
             .execute(
-                "INSERT INTO full_projections VALUES(?1,'old metadata')",
+                "INSERT INTO ext_source_full_projections VALUES(?1,'old metadata')",
                 [&p.manifest.id],
             )
             .unwrap();
@@ -64,7 +64,9 @@ fn failed_commit_restores_marker_selection_projection_and_selected_package() {
         let saved: String = host
             .db()
             .unwrap()
-            .query_row("SELECT record FROM full_projections", [], |r| r.get(0))
+            .query_row("SELECT record FROM ext_source_full_projections", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(saved, "old metadata");
         assert!(
@@ -95,14 +97,14 @@ fn failed_unselected_removal_preserves_previous_version_and_current_projection()
     host.db()
         .unwrap()
         .execute(
-            "INSERT INTO full_projections VALUES(?1,'current metadata')",
+            "INSERT INTO ext_source_full_projections VALUES(?1,'current metadata')",
             [&current.manifest.id],
         )
         .unwrap();
     host.db()
         .unwrap()
         .execute(
-            "INSERT INTO full_packages VALUES(?1,?2,?3,0)",
+            "INSERT INTO ext_source_full_packages VALUES(?1,?2,?3,0)",
             params![
                 old.digest,
                 old.manifest.id,
@@ -123,7 +125,9 @@ fn failed_unselected_removal_preserves_previous_version_and_current_projection()
     let saved: String = host
         .db()
         .unwrap()
-        .query_row("SELECT record FROM full_projections", [], |r| r.get(0))
+        .query_row("SELECT record FROM ext_source_full_projections", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(saved, "current metadata");
     assert!(
@@ -139,7 +143,7 @@ fn failed_unselected_removal_preserves_previous_version_and_current_projection()
 fn failed_package_insert_cleans_new_archive_without_trusting_or_selecting_it() {
     let data = tempfile::tempdir().unwrap();
     let host = Host::new(data.path());
-    host.db().unwrap().execute_batch("CREATE TRIGGER reject_package BEFORE INSERT ON full_packages BEGIN SELECT RAISE(ABORT,'storage failure'); END;").unwrap();
+    host.db().unwrap().execute_batch("CREATE TRIGGER reject_package BEFORE INSERT ON ext_source_full_packages BEGIN SELECT RAISE(ABORT,'storage failure'); END;").unwrap();
     let mut p = package(1);
     p.digest = super::super::package::hash(b"owned archive");
     p.compressed_bytes = b"owned archive".len() as u64;
@@ -199,7 +203,7 @@ fn reopening_reaps_only_uncommitted_owned_archives_and_expires_old_review_refs()
     host.db()
         .unwrap()
         .execute(
-            "INSERT INTO full_reviews VALUES(?1,'review',9999999999999)",
+            "INSERT INTO ext_source_full_reviews VALUES(?1,'review',9999999999999)",
             [&review],
         )
         .unwrap();
@@ -212,7 +216,9 @@ fn reopening_reaps_only_uncommitted_owned_archives_and_expires_old_review_refs()
     let reviews: i64 = reopened
         .db()
         .unwrap()
-        .query_row("SELECT count(*) FROM full_reviews", [], |r| r.get(0))
+        .query_row("SELECT count(*) FROM ext_source_full_reviews", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(reviews, 0);
 }
@@ -229,9 +235,9 @@ fn transient_optional_store_lock_is_bounded_and_retries_without_restart() {
     let host = Host::new(data.path());
     seed(&host, &package(1), false);
     drop(host);
-    let lock = rusqlite::Connection::open(data.path().join("plugin-source-host.sqlite3")).unwrap();
-    lock.execute_batch("BEGIN IMMEDIATE;").unwrap();
     let manager = Manager::open(data.path(), Arc::new(MemoryVault::default())).unwrap();
+    let lock = rusqlite::Connection::open(data.path().join("local-agent.sqlite3")).unwrap();
+    lock.execute_batch("BEGIN IMMEDIATE;").unwrap();
     let started = Instant::now();
     assert_eq!(manager.full_list().unwrap_err().code, "unavailable");
     assert!(started.elapsed() < Duration::from_secs(1));
@@ -280,7 +286,7 @@ fn activation_never_records_a_removed_version_or_itself_as_a_rollback_target() {
     );
     host.db()
         .unwrap()
-        .execute("UPDATE full_packages SET removed=1", [])
+        .execute("UPDATE ext_source_full_packages SET removed=1", [])
         .unwrap();
     assert_eq!(
         host.previous_for_activation(&current.manifest.id, &selection, &next.digest)
@@ -292,7 +298,7 @@ fn activation_never_records_a_removed_version_or_itself_as_a_rollback_target() {
     host.db()
         .unwrap()
         .execute(
-            "INSERT INTO full_packages VALUES(?1,?2,?3,0)",
+            "INSERT INTO ext_source_full_packages VALUES(?1,?2,?3,0)",
             params![
                 next.digest,
                 next.manifest.id,

@@ -7,6 +7,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { createInterface } from "node:readline";
 import { once } from "node:events";
 import http from "node:http";
+import { DatabaseSync } from "node:sqlite";
 
 const dir = realpathSync(mkdtempSync(path.join(tmpdir(), "local-agent-dynamic-")));
 const home = path.join(dir,"home");
@@ -91,6 +92,54 @@ try {
   assert.equal(status.dynamicBindings.find(b=>b.id===t.routing.id).generation,"3");
   assert(status.dynamicLeases.some(l=>l.routeVersionId!==status.dynamicBindings.find(b=>b.id===t.routing.id).target.id));
   assert.equal(hash(),installedHash);
+  const restoreOperationId=randomUUID();
+  const restoredRoute=await api(`/api/dynamic-routes/${change.id}`,{action:"restore",restoreOperationId});
+  assert.equal(restoredRoute.id,restoreOperationId);
+  assert.equal(restoredRoute.state,"pending");
+  await api(`/api/dynamic-routes/${restoreOperationId}`,{action:"cancel"});
+  const restoreReplay=await api(`/api/dynamic-routes/${change.id}`,{action:"restore",restoreOperationId});
+  assert.equal(restoreReplay.state,"cancelled");
+
+  // The storage tests exercise actual capacity and closure. Seed their persisted
+  // evidence here to check that the HTTP entry point sends nothing on replay.
+  const db=new DatabaseSync(path.join(dir,"app/local-agent.sqlite3"));
+  const leases=db.prepare("SELECT seq,session,turn FROM gateway_route_leases WHERE binding=? AND session='opencode:ses_first' ORDER BY seq").all(t.routing.id);
+  assert(leases.length>=3);
+  const [evicted,closed]=leases;
+  db.prepare("UPDATE gateway_session_watermarks SET max_evicted_seq=? WHERE binding=? AND session=?").run(evicted.seq,t.routing.id,evicted.session);
+  db.prepare("DELETE FROM gateway_route_leases WHERE seq=?").run(evicted.seq);
+  db.prepare("INSERT INTO gateway_dispatch_sequences VALUES(?,?,?,?,?)").run(t.routing.id,closed.session,closed.turn,closed.seq,leases.at(-1).seq);
+  const reject=async(messages,code)=>{
+    const count=seen.length;
+    const response=await fetch(route,{method:"POST",headers:{Authorization:`Bearer ${local.apiKey}`,"Content-Type":"application/json","x-opencode-session":"ses_first"},body:JSON.stringify({model:"local-agent-default",max_tokens:30,messages})});
+    assert.equal(response.status,409);
+    assert.equal((await response.json()).error.code,code);
+    assert.equal(seen.length,count);
+  };
+  await reject(toolHistory,"stale_or_evicted_continuation");
+  await reject(second,"route_turn_superseded");
+  const snapshot=await api("/api/snapshot");
+  const storeId=snapshot.settingsWriteProtocol.storeId;
+  const archivePath="/api/settings/route-archive";
+  const firstPreview=await api(archivePath,{storeId});
+  assert(firstPreview.sessions>0 && firstPreview.leases>=firstPreview.sessions);
+  hold=true;
+  const waiting=new Promise(resolve=>arrive=resolve);
+  const inFlight=request(first,"ses_archivestream");
+  await waiting;
+  await api(archivePath,{storeId,confirmation:firstPreview.confirmation},409);
+  release();
+  await inFlight;
+  await api(archivePath,{storeId,confirmation:firstPreview.confirmation},409);
+  const preview=await api(archivePath,{storeId});
+  const archived=await api(archivePath,{storeId,confirmation:preview.confirmation});
+  assert.equal(archived.leases,preview.leases);
+  await api(archivePath,{storeId,confirmation:preview.confirmation},409);
+  await reject(third,"session_lease_archived");
+  assert.equal((await request([...third,{role:"user",content:"four"}])).model,"a2");
+  db.prepare("DELETE FROM gateway_route_leases WHERE seq=?").run(closed.seq);
+  db.close();
+  await reject(second,"route_turn_superseded");
   const restored=await api(`/api/provider-switches/${t.id}/restore`,{});
   await api(`/api/provider-switches/${restored.id}/apply`,{});
   assert.equal(readFileSync(file,"utf8"),original);

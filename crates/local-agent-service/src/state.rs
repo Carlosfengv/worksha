@@ -1,5 +1,5 @@
 use crate::{billing, gateway, observation};
-use local_agent_core::{Store, sessions::NativeSessions};
+use local_agent_core::sessions::NativeSessions;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
@@ -11,7 +11,8 @@ pub(crate) struct AppState {
     pub(crate) plugins: Arc<crate::plugin_host::external::Manager>,
     pub(crate) readonly: Arc<crate::plugin_host::ReadonlyRuntime>,
     pub(crate) iam: Arc<crate::iam::Iam>,
-    pub(crate) store: Arc<Mutex<Store>>,
+    pub(crate) store: local_agent_core::StoreWriter,
+    pub(crate) store_readers: crate::blocking::StoreReaders,
     pub(crate) token: Arc<String>,
     pub(crate) host: Arc<String>,
     pub(crate) sessions: Arc<NativeSessions>,

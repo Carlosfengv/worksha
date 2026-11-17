@@ -221,8 +221,8 @@ try {
   const partial=await fetch(local.baseURL+"/messages",{method:"POST",headers:headersFor("ses_"+randomUUID().replaceAll("-","")),body:JSON.stringify({model:"local-agent-default",max_tokens:100,stream:true,messages:[user("external policy partial stream")]})});
   const partialBody=await partial.text();assert.equal(partial.status,200,partialBody);assert(partialBody.includes("PARTIAL_A"));assert.deepEqual(seen.map(r=>r.i),[2]);faults[2]=0;await pause(1100);add("external policy cannot retry another candidate after partial streamed content");
   // Durable publication delegates the original operation ID; queries never replay it.
-  const preparationDb=new DatabaseSync(path.join(dir,"app/routing-policy.sqlite3"));
-  preparationDb.exec("CREATE TRIGGER deny_begin_publication BEFORE INSERT ON policy_intents WHEN json_extract(NEW.record,'$.status.state')='committing' BEGIN SELECT RAISE(FAIL,'owned preparation pause'); END");
+  const preparationDb=new DatabaseSync(path.join(dir,"app/local-agent.sqlite3"));
+  preparationDb.exec("CREATE TRIGGER deny_begin_publication BEFORE INSERT ON ext_policy_policy_intents WHEN json_extract(NEW.record,'$.status.state')='committing' BEGIN SELECT RAISE(FAIL,'owned preparation pause'); END");
   const cancelledRequest={storeId,operationId:randomUUID(),action:{kind:"save",draft:{...draft,revision:service.revision,name:"Cancelled preparation"}}};
   seen.length=0;const preparation=await publishRaw({kind:"publish",request:cancelledRequest,expectedBindingRevision:binding.revision,package:good,failureMode:"reject"});assert.notEqual(preparation.status,200);
   assert.equal((await policy({kind:"query-publish",operationId:cancelledRequest.operationId})).status.state,"prepared");
@@ -235,19 +235,19 @@ try {
   const published=await policy({kind:"publish",request,expectedBindingRevision:binding.revision,package:good,failureMode:"reject"});assert.equal(published.status.state,"committed");binding=published.status.binding;bindingRevision=binding.revision;service=(await api("/api/model-services")).services.find(s=>s.id===service.id);draft={...draft,revision:service.revision,name:service.name};
   const original=await api(`/api/model-service-operations/${request.operationId}?storeId=${storeId}`);assert.equal(original.service.versionId,service.versionId);const query=await policy({kind:"query-publish",operationId:request.operationId});assert.equal(query.status.binding.revision,binding.revision);assert.equal((await api("/api/model-services")).services[0].revision,service.revision);add("publish and query preserve original core receipt without duplicate publication");
   // Inspect the independently persisted publication record.
-  const policyDb=new DatabaseSync(path.join(dir,"app/routing-policy.sqlite3"));const coreDb=new DatabaseSync(path.join(dir,"app/local-agent.sqlite3"));
-  const savedIntent=JSON.parse(policyDb.prepare("SELECT record FROM policy_intents WHERE id=?").get(request.operationId).record);assert.equal(savedIntent.status.state,"committed");
+  const policyDb=new DatabaseSync(path.join(dir,"app/local-agent.sqlite3"));const coreDb=new DatabaseSync(path.join(dir,"app/local-agent.sqlite3"));
+  const savedIntent=JSON.parse(policyDb.prepare("SELECT record FROM ext_policy_policy_intents WHERE id=?").get(request.operationId).record);assert.equal(savedIntent.status.state,"committed");
   policyDb.close();coreDb.close();
 
-  const failureDb=new DatabaseSync(path.join(dir,"app/routing-policy.sqlite3"));
+  const failureDb=new DatabaseSync(path.join(dir,"app/local-agent.sqlite3"));
   const bindingScope=storeId+":"+service.id;
-  const originalBindingRecord=failureDb.prepare("SELECT record FROM policy_bindings WHERE scope=? AND version=?").get(bindingScope,service.versionId).record;
-  const redirectedBinding=JSON.parse(originalBindingRecord);redirectedBinding.status.serviceId=randomUUID();failureDb.prepare("UPDATE policy_bindings SET record=? WHERE scope=? AND version=?").run(JSON.stringify(redirectedBinding),bindingScope,service.versionId);
+  const originalBindingRecord=failureDb.prepare("SELECT record FROM ext_policy_policy_bindings WHERE scope=? AND version=?").get(bindingScope,service.versionId).record;
+  const redirectedBinding=JSON.parse(originalBindingRecord);redirectedBinding.status.serviceId=randomUUID();failureDb.prepare("UPDATE ext_policy_policy_bindings SET record=? WHERE scope=? AND version=?").run(JSON.stringify(redirectedBinding),bindingScope,service.versionId);
   const damagedInventory=await policy({kind:"list"});assert.equal(damagedInventory.bindings[0].authorized,false);assert.equal(damagedInventory.bindings[0].errorCode,"invalid_record");const damagedPublication=damagedInventory.publishes.find(p=>p.operationId===request.operationId);assert(damagedPublication);assert.equal(damagedPublication.state,"committed");assert.equal(damagedPublication.binding.authorized,false);
   assert.equal((await policy({kind:"resume-publish",operationId:request.operationId})).status.state,"committed");seen.length=0;await send([user("stored binding cannot redirect its scope")],undefined,"local-agent-default",503);assert.equal(seen.length,0);
-  failureDb.prepare("UPDATE policy_bindings SET record=? WHERE scope=? AND version=?").run(originalBindingRecord,bindingScope,service.versionId);assert.equal((await policy({kind:"list"})).bindings[0].authorized,true);assert.equal((await api("/api/model-services")).services[0].revision,service.revision);
+  failureDb.prepare("UPDATE ext_policy_policy_bindings SET record=? WHERE scope=? AND version=?").run(originalBindingRecord,bindingScope,service.versionId);assert.equal((await policy({kind:"list"})).bindings[0].authorized,true);assert.equal((await api("/api/model-services")).services[0].revision,service.revision);
   add("mis-scoped stored bindings remain unauthorized without hiding publication history or replaying it");
-  failureDb.exec("CREATE TRIGGER deny_policy_finalize BEFORE INSERT ON policy_intents WHEN json_extract(NEW.record,'$.status.state')='committed' BEGIN SELECT RAISE(FAIL,'owned finalize failure'); END");
+  failureDb.exec("CREATE TRIGGER deny_policy_finalize BEFORE INSERT ON ext_policy_policy_intents WHEN json_extract(NEW.record,'$.status.state')='committed' BEGIN SELECT RAISE(FAIL,'owned finalize failure'); END");
   const finalizeRequest={storeId,operationId:randomUUID(),action:{kind:"save",draft:{...draft,revision:service.revision,name:"Finalize recovery"}}};
   const finalFailed=await publishRaw({kind:"publish",request:finalizeRequest,expectedBindingRevision:binding.revision,package:good,failureMode:"reject"});assert.notEqual(finalFailed.status,200);
   const mainCommitted=await api("/api/model-service-operations/"+finalizeRequest.operationId+"?storeId="+storeId);assert.equal(mainCommitted.committedRevision,service.revision+1);
@@ -286,7 +286,7 @@ try {
   add("explicit original resume is idempotent under concurrent requests and never renews policy authorization");
   const configBefore=readFileSync(config);const unbound=await policy({kind:"unbind",serviceId:service.id,expectedBindingRevision:binding.revision});bindingRevision=unbound.revision;binding=undefined;seen.length=0;assert.equal((await send([user("explicit unbind restores builtin")])).model,"m0");assert.deepEqual(seen.map(r=>r.i),[0]);assert.deepEqual(readFileSync(config),configBefore);add("explicit unbind restores native ordering without changing Agent configuration");
   await bind(good);
-  const restartDb=new DatabaseSync(path.join(dir,"app/routing-policy.sqlite3"));restartDb.exec("CREATE TRIGGER deny_restart_finalize BEFORE INSERT ON policy_intents WHEN json_extract(NEW.record,'$.status.state')='committed' BEGIN SELECT RAISE(FAIL,'owned restart finalize failure'); END");
+  const restartDb=new DatabaseSync(path.join(dir,"app/local-agent.sqlite3"));restartDb.exec("CREATE TRIGGER deny_restart_finalize BEFORE INSERT ON ext_policy_policy_intents WHEN json_extract(NEW.record,'$.status.state')='committed' BEGIN SELECT RAISE(FAIL,'owned restart finalize failure'); END");
   const restartRequest={storeId,operationId:randomUUID(),action:{kind:"save",draft:{...draft,revision:service.revision,name:"Restart finalization"}}};
   const restartFailed=await publishRaw({kind:"publish",request:restartRequest,expectedBindingRevision:binding.revision,package:good,failureMode:"reject"});assert.notEqual(restartFailed.status,200);
   const restartReceipt=await api("/api/model-service-operations/"+restartRequest.operationId+"?storeId="+storeId);restartDb.exec("DROP TRIGGER deny_restart_finalize");restartDb.close();
@@ -311,7 +311,7 @@ try {
     gatewaySendAfterRestartVerified = true;
     add("the original Keychain-backed gateway entry works after restart and explicit rebind");
   }
-  const schemaDb=new DatabaseSync(path.join(data,"local-agent.sqlite3"));const mainSchemaVersion=schemaDb.prepare("PRAGMA user_version").get().user_version;schemaDb.close();assert.equal(mainSchemaVersion,16);console.log(JSON.stringify({complete:true,cases,realModelCalls:0,systemKeychain,mainSchemaVersion,externalUnknownSendAttemptVerified,gatewaySendAfterRestartVerified,...(!systemKeychain && {realKeychainCalls:0,restartLimit:"MemoryVault intentionally does not persist local entry credentials; policy metadata reauthorization verified, real Keychain restart unverified"})}));
+  const schemaDb=new DatabaseSync(path.join(data,"local-agent.sqlite3"));const mainSchemaVersion=schemaDb.prepare("PRAGMA user_version").get().user_version;schemaDb.close();assert.equal(mainSchemaVersion,18);console.log(JSON.stringify({complete:true,cases,realModelCalls:0,systemKeychain,mainSchemaVersion,externalUnknownSendAttemptVerified,gatewaySendAfterRestartVerified,...(!systemKeychain && {realKeychainCalls:0,restartLimit:"MemoryVault intentionally does not persist local entry credentials; policy metadata reauthorization verified, real Keychain restart unverified"})}));
 } finally {
   release?.();if(child&&child.exitCode===null){child.kill("SIGTERM");await once(child,"exit");}
   for(const server of servers)await new Promise(r=>server.close(r));

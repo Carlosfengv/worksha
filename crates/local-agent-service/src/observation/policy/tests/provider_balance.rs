@@ -335,7 +335,6 @@ async fn official_provider_balance_rejections_fall_back_and_probe_after_refresh(
     assert!(body.contains("首选来源额度不可用"));
     assert_eq!(state(0), BalanceState::Exhausted);
     assert_eq!(state(1), BalanceState::Open);
-    *fixture.state.store.lock().unwrap() = Store::open(&fixture.root.path().join("data")).unwrap();
     display(0, json!("exhausted")).await;
     display(1, serde_json::Value::Null).await;
     play(

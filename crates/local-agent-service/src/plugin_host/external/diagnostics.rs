@@ -217,7 +217,19 @@ impl Manager {
                 "snapshot":{"state":snapshot,"observedAt":saved.map(|c|&c.observed_at),
                     "records":saved.filter(|_|s.manifest.capabilities.iter().any(|c|c=="session.source@1")).map(|c|c.sessions.len().to_string())}})
         }).collect();
-        serde_json::json!({"version":1,"available":true,"scope":"service-lifetime","since":self.diagnostics.since,"dropped":state.dropped.to_string(),"items":rows})
+        let archived = self.root.parent().is_some_and(|data| {
+            [
+                "plugin-host.sqlite3",
+                "plugin-extensions.sqlite3",
+                "plugin-source-host.sqlite3",
+                "domain-host.sqlite3",
+                "routing-policy.sqlite3",
+                "object-contributions.sqlite3",
+            ]
+            .iter()
+            .any(|name| super::store::has_archived_database(data, name))
+        });
+        serde_json::json!({"version":1,"available":true,"scope":"service-lifetime","since":self.diagnostics.since,"dropped":state.dropped.to_string(),"items":rows,"archivedDatabases":archived})
     }
 }
 impl Cached {

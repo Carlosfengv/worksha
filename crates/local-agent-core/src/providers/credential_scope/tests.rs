@@ -1,4 +1,32 @@
 use super::*;
+
+#[test]
+fn m1_credential_journal_writes_use_the_control_plane_connection() {
+    let root = tempfile::tempdir().unwrap();
+    let writer = crate::StoreWriter::new(crate::Store::open(root.path()).unwrap());
+    let store = writer.lock().unwrap();
+    let scope = store
+        .credential_scope(&store.database_id().unwrap())
+        .unwrap();
+    let journal = &scope.journal;
+    let name = format!("operations/{}.json", uuid::Uuid::new_v4());
+    writer.connection().unwrap().execute_batch(
+        "CREATE TEMP TRIGGER fixture_shared_writer BEFORE INSERT ON main.credential_recovery_values
+         BEGIN SELECT RAISE(ABORT,'control writer fixture'); END;",
+    ).unwrap();
+    assert!(journal.write(&name, b"owned test fixture").is_err());
+    assert!(journal.read(&name).unwrap().is_none());
+    writer
+        .connection()
+        .unwrap()
+        .execute_batch("DROP TRIGGER fixture_shared_writer")
+        .unwrap();
+    journal.write(&name, b"owned test fixture").unwrap();
+    assert_eq!(
+        journal.read(&name).unwrap().as_deref(),
+        Some(b"owned test fixture".as_slice())
+    );
+}
 use crate::{
     Store,
     providers::vault::{MemoryVault, Vault},
@@ -120,6 +148,7 @@ impl Fixture {
         }
     }
     fn version9(&self) {
+        crate::storage::strip_m1_fixture(&self.store.connection);
         self.store.connection.execute_batch("DROP TABLE local_token_cancellations;DROP TABLE local_token_owners;DROP TABLE local_token_values;DROP TABLE local_token_scope;DROP TABLE native_import_operations;DROP TABLE native_import_scope;DROP TABLE credential_legacy_operations;DROP TABLE credential_legacy_scope;DROP TABLE credential_recovery_values;DROP TABLE credential_recovery_scope;PRAGMA user_version=9;").unwrap();
     }
     fn reopen(&self) -> Store {

@@ -294,7 +294,7 @@ async fn quota_reset_serializes_gateway_recovery_across_strategies_and_pinned_tu
         .unwrap()
         .clear();
     let reopen_budget = || {
-        let mut store = fixture.state.store.lock().unwrap();
+        let store = fixture.state.store.lock().unwrap();
         let mut billing = fixture.state.billing.lock().unwrap();
         let epoch = billing.sources.lease("openrouter").unwrap().epoch;
         billing.persist_openrouter(&store, epoch).unwrap();
@@ -305,7 +305,6 @@ async fn quota_reset_serializes_gateway_recovery_across_strategies_and_pinned_tu
             .unwrap();
         let mut cold = crate::billing::Billing::new(fixture.root.path().join("home"), &data);
         cold.restore_openrouter(&reopened);
-        *store = reopened;
         *billing = cold;
     };
     let new_budget_timeline = || {

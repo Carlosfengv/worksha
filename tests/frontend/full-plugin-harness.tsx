@@ -8,24 +8,28 @@ import type { Manifest, Status } from "../../contracts/plugins/sources/types";
 import "@/styles/globals.css";
 
 const manifest = manifestJson as Manifest;
+const canPersistWatch = new URLSearchParams(window.location.search).has(
+  "watch",
+);
+let persistWatch = false;
 let status: Status = {
   manifest,
   digest: "a".repeat(64),
   signingKey: "b".repeat(64),
-  enabled: false,
-  runtimeActive: false,
+  enabled: canPersistWatch,
+  runtimeActive: canPersistWatch,
   publisherTrusted: true,
   activationEpoch: "1",
   grantRevision: "1",
-  sourceAuthorized: false,
-  sourceLabel: null,
+  sourceAuthorized: canPersistWatch,
+  sourceLabel: canPersistWatch ? "/managed/fixture.jsonl" : null,
   unifiedAuthorized: false,
   persistMetadata: false,
   freshness: "unread",
   factSummary: null,
   problem: null,
 };
-let installed = false;
+let installed = canPersistWatch;
 const calls: { operation: string; input?: unknown }[] = [];
 fullPluginsApi.list = async () => {
   calls.push({ operation: "list" });
@@ -85,11 +89,14 @@ domainApi.prepareConsent = async (query) => ({
   sourceAuthorized: status.sourceAuthorized,
   unifiedAuthorized: status.unifiedAuthorized,
   persistMetadata: status.persistMetadata,
+  canPersistWatch,
+  persistWatch,
 });
 domainApi.consent = async (input) => {
   calls.push({ operation: "consent", input });
   status.unifiedAuthorized = input.enabled;
   status.persistMetadata = input.persistMetadata;
+  persistWatch = input.persistWatch ?? false;
   return { updated: true };
 };
 declare global {

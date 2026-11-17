@@ -134,6 +134,7 @@ const op = (input) =>
 const snapshot = () => api("/api/snapshot");
 const active = (value) =>
   value.host.plugins.filter((plugin) => plugin.runtimeActive);
+const pluginIds = (plugins) => plugins.map((plugin) => plugin.id).sort();
 try {
   await start();
   await api("/api/builtin-plugins", undefined, 401, "GET", {
@@ -162,7 +163,17 @@ try {
   passed("新目录与操作沿用令牌、Host、Origin 保护");
   let current = await catalog();
   assert.equal(current.schemaVersion, 1);
-  assert.equal(active(current).length, 18);
+  const defaultPlugins = active(current);
+  const desktopIds = pluginIds(defaultPlugins);
+  const backgroundIds = pluginIds(
+    defaultPlugins.filter(
+      (plugin) =>
+        !plugin.capabilities.some(
+          (capability) => capability.address.name === "collector",
+        ),
+    ),
+  );
+  assert(desktopIds.includes("builtin.providers"));
   const projects = current.host.plugins.find((plugin) => plugin.id === "builtin.projects");
   assert(projects.optIn && !projects.runtimeActive);
   assert(
@@ -250,7 +261,7 @@ try {
   passed("独立进程重启后保存配置、来源撤销与原回执一致");
   const restore = await request({ profile: "desktop", disabledPluginIds: [] });
   const restored = await change(restore);
-  assert.equal(active(restored.catalog).length, 18);
+  assert.deepEqual(pluginIds(active(restored.catalog)), desktopIds);
   assert((await snapshot()).sessionSources.every((source) => !source.enabled));
   assert.equal(
     (await change(disable)).catalog.revision,
@@ -316,15 +327,17 @@ try {
     kind: "save",
     provider,
   };
-  const records = (file, sql) => {
-    const db = new DatabaseSync(path.join(data, file), { readOnly: true });
+  const records = (sql) => {
+    const db = new DatabaseSync(path.join(data, "local-agent.sqlite3"), {
+      readOnly: true,
+    });
     try {
       return db.prepare(sql).all();
     } finally {
       db.close();
     }
   };
-  const providerRows = () => records("local-agent.sqlite3", "SELECT * FROM providers ORDER BY id");
+  const providerRows = () => records("SELECT * FROM providers ORDER BY id");
   const beforeProviders = providerRows();
   await change(await request({
     profile: "desktop",
@@ -342,7 +355,7 @@ try {
   }
   assert.equal((await api("/api/plugins/action", createPreset, 400)).code, "plugin_disabled");
   assert.deepEqual(providerRows(), beforeProviders);
-  assert.deepEqual(records("plugin-host.sqlite3", "SELECT * FROM provider_presets"), []);
+  assert.deepEqual(records("SELECT * FROM ext_host_provider_presets"), []);
   await change(await request({ profile: "desktop", disabledPluginIds: [] }));
   const created = await api("/api/plugins/action", createPreset);
   assert(providerRows().some((row) => row.id === created.providerId));
@@ -368,7 +381,7 @@ try {
   const background = await change(
     await request({ profile: "background", disabledPluginIds: [] }),
   );
-  assert.equal(active(background.catalog).length, 16);
+  assert.deepEqual(pluginIds(active(background.catalog)), backgroundIds);
   assert.equal(
     (await snapshot()).builtinComposition.nativeActivityActive,
     false,
@@ -508,7 +521,7 @@ try {
   await stop();
   await start(true, path.join(root, "headless-data"));
   assert.equal((await catalog()).effectiveProfile, "background");
-  assert.equal(active(await catalog()).length, 16);
+  assert.deepEqual(pluginIds(active(await catalog())), backgroundIds);
   assert.equal(
     (await snapshot()).builtinComposition.nativeActivityActive,
     false,

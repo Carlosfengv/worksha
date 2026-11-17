@@ -57,7 +57,7 @@ impl Manager {
     pub(crate) fn preset_inventory(&self) -> (Vec<PresetAdvice>, Vec<PresetIssue>) {
         let rows = (|| -> Result<Vec<(String, String, String)>> {
             let db = self.db.lock().checked("unavailable")?;
-            let mut stmt = db.prepare("SELECT plugin_id,digest,status FROM selections WHERE enabled=1 ORDER BY plugin_id LIMIT 65").checked("unavailable")?;
+            let mut stmt = db.prepare("SELECT plugin_id,digest,status FROM ext_host_selections WHERE enabled=1 ORDER BY plugin_id LIMIT 65").checked("unavailable")?;
             let rows = stmt
                 .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
                 .checked("unavailable")?
@@ -229,9 +229,10 @@ mod tests {
         let db = host.db.lock().unwrap();
         assert_eq!(db.total_changes(), changes);
         assert_eq!(
-            db.query_row("SELECT count(*) FROM provider_presets", [], |r| r
-                .get::<_, i64>(0))
-                .unwrap(),
+            db.query_row("SELECT count(*) FROM ext_host_provider_presets", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .unwrap(),
             0
         );
         assert!(!host.root.join("provider-catalog").exists());
@@ -250,7 +251,7 @@ mod tests {
             .lock()
             .unwrap()
             .execute(
-                "UPDATE packages SET manifest=?1 WHERE digest=?2",
+                "UPDATE ext_host_packages SET manifest=?1 WHERE digest=?2",
                 rusqlite::params![serde_json::to_string(&cached).unwrap(), s.digest],
             )
             .unwrap();
@@ -297,7 +298,7 @@ mod tests {
             .lock()
             .unwrap()
             .execute(
-                "UPDATE packages SET manifest='{}' WHERE digest=?1",
+                "UPDATE ext_host_packages SET manifest='{}' WHERE digest=?1",
                 [a.digest],
             )
             .unwrap();
@@ -349,8 +350,9 @@ mod tests {
                 .db
                 .lock()
                 .unwrap()
-                .query_row("SELECT count(*) FROM provider_presets", [], |r| r
-                    .get::<_, i64>(0))
+                .query_row("SELECT count(*) FROM ext_host_provider_presets", [], |r| {
+                    r.get::<_, i64>(0)
+                })
                 .unwrap(),
             0
         );

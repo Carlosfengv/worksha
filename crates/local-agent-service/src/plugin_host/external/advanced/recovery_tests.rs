@@ -47,7 +47,7 @@ fn host_restore_recovers_both_commit_sides_without_a_plugin_or_a_second_write() 
                     .db()
                     .unwrap()
                     .execute(
-                        "INSERT INTO plans VALUES('recovery',?1,?2)",
+                        "INSERT INTO ext_adv_plans VALUES('recovery',?1,?2)",
                         params![q.plugin_id, record.to_string()],
                     )
                     .unwrap();
@@ -57,7 +57,7 @@ fn host_restore_recovers_both_commit_sides_without_a_plugin_or_a_second_write() 
                 }
                 let reopened = Manager::for_service(&root, vault);
                 if corrupt_catalog {
-                    assert!(reopened.list().is_err());
+                    assert!(reopened.list().is_ok());
                 } else {
                     assert!(reopened.list().unwrap().is_empty());
                 }
@@ -110,7 +110,7 @@ fn original_bytes_with_changed_permissions_do_not_confirm_an_interrupted_restore
         .db()
         .unwrap()
         .execute(
-            "INSERT INTO plans VALUES('permissions',?1,?2)",
+            "INSERT INTO ext_adv_plans VALUES('permissions',?1,?2)",
             params![q.plugin_id, record.to_string()],
         )
         .unwrap();

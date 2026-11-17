@@ -200,7 +200,7 @@ pub(super) fn apply(
     let Ok(request) = serde_json::from_slice::<Value>(request) else {
         return response;
     };
-    if request.get("input").is_some() {
+    if request.get("input").is_some() && selected.reason != "budget_downgraded" {
         return response;
     }
     let claim = Claim {
@@ -244,6 +244,17 @@ fn rewrite_json(bytes: Vec<u8>, claim: &impl Fn(bool) -> Option<String>) -> Vec<
     let Ok(mut value) = serde_json::from_slice::<Value>(&bytes) else {
         return bytes;
     };
+    if value["object"] == "chat.completion"
+        && value["choices"][0]["finish_reason"] != "tool_calls"
+        && let Some(message) = value.pointer_mut("/choices/0/message/content")
+        && let Some(text) = message.as_str()
+    {
+        if let Some(notice) = claim(plain_prefix(text) == Some(true)) {
+            *message = json!(format!("{notice}{text}"));
+            return serde_json::to_vec(&value).unwrap_or(bytes);
+        }
+        return bytes;
+    }
     if value["type"] != "message" || value["role"] != "assistant" || value.get("error").is_some() {
         return bytes;
     }
@@ -322,6 +333,36 @@ impl Rewriter {
         let Some(mut value) = parse_frame(&raw) else {
             return vec![raw];
         };
+        let responses = value["type"] == "response.output_text.delta";
+        if value["object"] == "chat.completion.chunk" || responses {
+            if self.decided {
+                return vec![raw];
+            }
+            if value["choices"][0]["delta"]["tool_calls"].is_array() {
+                self.decided = true;
+                return vec![raw];
+            }
+            let path = if responses {
+                "/delta"
+            } else {
+                "/choices/0/delta/content"
+            };
+            if let Some(content) = value.pointer_mut(path)
+                && let Some(text) = content.as_str()
+                && let Some(allow) = plain_prefix(text)
+            {
+                self.decided = true;
+                if let Some(notice) = claim(allow) {
+                    *content = json!(format!("{notice}{text}"));
+                    return vec![if responses {
+                        event(&value)
+                    } else {
+                        format!("data: {value}\n\n").into_bytes()
+                    }];
+                }
+            }
+            return vec![raw];
+        }
         if value["type"] == "message_start" {
             self.started = value["message"]["role"] == "assistant";
         }

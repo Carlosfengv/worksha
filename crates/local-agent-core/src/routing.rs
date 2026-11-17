@@ -8,6 +8,12 @@ use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+pub mod budget;
+pub mod chat;
+pub mod loop_guard;
+pub(crate) mod retention;
+pub use retention::{ArchivePreview, ArchiveRequest};
+
 pub const ALIAS: &str = "local-agent-default";
 pub const AGENT_CONNECTION_SCOPE: &str = "agent-connection@1:";
 
@@ -66,6 +72,20 @@ fn db_error(error: rusqlite::Error) -> ConfigError {
     db(error)
 }
 
+fn lookup_change(db: &Connection, id: &str) -> Result<Option<Change>, ConfigError> {
+    db.query_row(
+        "SELECT value FROM gateway_route_changes WHERE id=?1
+         UNION ALL SELECT value FROM gateway_route_change_archive WHERE id=?1",
+        [id],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(db_error)?
+    .as_deref()
+    .map(decode)
+    .transpose()
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Version {
@@ -95,6 +115,8 @@ pub struct Change {
     pub before: Version,
     pub target: Provider,
     pub published: Option<Version>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restored_from: Option<String>,
     pub created_at: String,
 }
 #[derive(Clone, Debug, Serialize)]
@@ -119,6 +141,16 @@ pub struct OpenCodeRouteProof {
     pub legacy_title_turns: Vec<String>,
 }
 
+pub struct GatewayAdmission<'a, 'route> {
+    pub compatible: &'a [Turn],
+    pub opencode_proof: Option<&'route OpenCodeRouteProof>,
+    pub model: Option<&'route str>,
+    pub requested_output: Option<u64>,
+    pub auxiliary_title: bool,
+}
+
+const AUXILIARY_TITLE: &str = "auxiliary_title";
+
 struct PriorLease {
     seq: i64,
     version: String,
@@ -137,9 +169,9 @@ fn previous_lease(
 ) -> Result<Option<PriorLease>, ConfigError> {
     db.query_row(
         "SELECT seq,version,chain,trusted,service_selection,reason,turn FROM gateway_route_leases
-         WHERE binding=?1 AND session=?2 AND output_validated=1 AND (?3 IS NULL OR seq<?3)
+         WHERE binding=?1 AND session=?2 AND output_validated=1 AND reason<>?4 AND (?3 IS NULL OR seq<?3)
          ORDER BY seq DESC LIMIT 1",
-        params![binding, session, before],
+        params![binding, session, before, AUXILIARY_TITLE],
         |r| {
             Ok(PriorLease {
                 seq: r.get(0)?,
@@ -189,6 +221,8 @@ pub enum UncommittedDispatch {
 pub struct Selection {
     #[serde(skip)]
     pub fresh: bool,
+    #[serde(skip)]
+    pub advances_session_head: bool,
     pub version: Version,
     pub reason: String,
     pub service: Option<crate::model_services::ServiceSelection>,
@@ -260,7 +294,7 @@ fn inherited_service_route(
            ON d.binding=l.binding AND d.session=l.session AND d.turn=l.turn
          WHERE l.binding=?1 AND l.session=?2 AND l.seq<=?3
            AND l.output_validated=1
-           AND l.reason NOT IN ('history_requires_original_route','session_boundary_unconfirmed')
+           AND l.reason NOT IN ('history_requires_original_route','session_boundary_unconfirmed','auxiliary_title')
          ORDER BY l.seq DESC LIMIT 1",
             params![binding, session, sequence],
             |row| {
@@ -308,6 +342,7 @@ fn inherited_service_route(
     }
     Ok(Selection {
         fresh: false,
+        advances_session_head: false,
         version: version(db, &version_id)?,
         reason,
         service,
@@ -348,13 +383,30 @@ pub(crate) fn insert_version(
     binding_id: &str,
     provider: &Provider,
 ) -> Result<Version, ConfigError> {
+    insert_version_for_turn(db, binding_id, provider, "")
+}
+
+fn insert_version_for_turn(
+    db: &Connection,
+    binding_id: &str,
+    provider: &Provider,
+    session: &str,
+) -> Result<Version, ConfigError> {
     let count: i64 = db
         .query_row("SELECT count(*) FROM gateway_route_versions", [], |r| {
             r.get(0)
         })
         .map_err(db_error)?;
     if count >= MAX_VERSIONS {
-        return fail("capacity", "动态路由版本已达上限；旧版本与恢复引用保留");
+        retention::reclaim_versions(db, binding_id, session)?;
+        let remaining: i64 = db
+            .query_row("SELECT count(*) FROM gateway_route_versions", [], |r| {
+                r.get(0)
+            })
+            .map_err(db_error)?;
+        if remaining >= MAX_VERSIONS {
+            return fail("capacity", "动态路由版本已达上限；旧版本与恢复引用保留");
+        }
     }
     let v = Version {
         id: uuid::Uuid::new_v4().to_string(),
@@ -406,6 +458,7 @@ fn create_binding(
     uuid::Uuid::parse_str(id).map_err(self::db)?;
     if !crate::model_services::CONNECTION_AGENTS.contains(&agent)
         && agent_connection_digest(agent, scope).is_none()
+        && (agent, scope) != (chat::AGENT, chat::SCOPE)
     {
         return fail("unsupported", "此 Agent 尚未支持模型服务接入");
     }
@@ -675,7 +728,12 @@ impl Store {
     pub fn dynamic_changes(&self) -> Result<Vec<Change>, ConfigError> {
         let mut stmt = self
             .connection
-            .prepare("SELECT value FROM gateway_route_changes ORDER BY rowid DESC LIMIT 100")
+            .prepare(
+                "SELECT value FROM (
+                SELECT id,value FROM gateway_route_changes
+                UNION ALL SELECT id,value FROM gateway_route_change_archive
+              ) ORDER BY json_extract(value,'$.createdAt') DESC,id DESC LIMIT 100",
+            )
             .map_err(db_error)?;
         let values = stmt
             .query_map([], |r| r.get::<_, String>(0))
@@ -685,17 +743,8 @@ impl Store {
         values.iter().map(|v| decode(v)).collect()
     }
     pub fn dynamic_change(&self, id: &str) -> Result<Change, ConfigError> {
-        let value = self
-            .connection
-            .query_row(
-                "SELECT value FROM gateway_route_changes WHERE id=?1",
-                [id],
-                |r| r.get::<_, String>(0),
-            )
-            .optional()
-            .map_err(db_error)?
-            .ok_or_else(|| ConfigError::new("not_found", "动态切换操作不存在"))?;
-        decode(&value)
+        lookup_change(&self.connection, id)?
+            .ok_or_else(|| ConfigError::new("not_found", "动态切换操作不存在"))
     }
     pub fn dynamic_prepare(
         &self,
@@ -704,29 +753,66 @@ impl Store {
         generation: &str,
         target: &Provider,
     ) -> Result<Change, ConfigError> {
+        self.prepare_route_change(id, binding_id, generation, target, None)
+    }
+    pub fn dynamic_prepare_restore(
+        &self,
+        id: &str,
+        source: &Change,
+        generation: &str,
+    ) -> Result<Change, ConfigError> {
+        if source.state != "applied" || id == source.id {
+            return fail("conflict", "恢复操作需要已应用的原回执和新的操作 ID");
+        }
+        self.prepare_route_change(
+            id,
+            &source.binding_id,
+            generation,
+            &source.before.provider,
+            Some(&source.id),
+        )
+    }
+    fn prepare_route_change(
+        &self,
+        id: &str,
+        binding_id: &str,
+        generation: &str,
+        target: &Provider,
+        restored_from: Option<&str>,
+    ) -> Result<Change, ConfigError> {
         uuid::Uuid::parse_str(id).map_err(db)?;
         validate_source(target)?;
-        if let Ok(old) = self.dynamic_change(id) {
+        let tx = Transaction::new_unchecked(&self.connection, TransactionBehavior::Immediate)
+            .map_err(db_error)?;
+        if let Some(old) = lookup_change(&tx, id)? {
             if old.binding_id == binding_id
                 && old.expected_generation == generation
+                && old.restored_from.as_deref() == restored_from
                 && fingerprint(&old.target) == fingerprint(target)
             {
                 return Ok(old);
             }
             return fail("conflict", "操作 ID 已用于其他目标");
         }
-        let b = required(&self.connection, binding_id)?;
+        let b = required(&tx, binding_id)?;
         if b.generation != generation {
             return fail("conflict", "动态目标已变化，请重新预览");
         }
-        let count: i64 = self
-            .connection
+        let pending: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM gateway_route_changes WHERE binding=?1 AND state='pending')",
+            [binding_id],
+            |row| row.get(0),
+        ).map_err(db_error)?;
+        if pending {
+            return fail("conflict", "此绑定已有待确认操作，请先确认或撤销");
+        }
+        let count: i64 = tx
             .query_row("SELECT count(*) FROM gateway_route_changes", [], |r| {
                 r.get(0)
             })
             .map_err(db_error)?;
         if count >= 4096 {
-            return fail("capacity", "动态操作记录已达上限，历史与恢复记录保留");
+            retention::reclaim_changes(&tx)?;
         }
         let c = Change {
             id: id.into(),
@@ -736,18 +822,22 @@ impl Store {
             before: b.target,
             target: target.clone(),
             published: None,
+            restored_from: restored_from.map(str::to_owned),
             created_at: chrono::Utc::now().to_rfc3339(),
         };
-        self.connection
-            .execute(
-                "INSERT INTO gateway_route_changes VALUES(?1,?2,'pending',?3)",
-                params![id, binding_id, encode(&c)?],
-            )
-            .map_err(|_| ConfigError::new("conflict", "此绑定已有待确认操作，请先确认或撤销"))?;
+        tx.execute(
+            "INSERT INTO gateway_route_changes VALUES(?1,?2,'pending',?3)",
+            params![id, binding_id, encode(&c)?],
+        )
+        .map_err(db_error)?;
+        tx.commit().map_err(db_error)?;
         Ok(c)
     }
     pub fn dynamic_cancel(&self, id: &str) -> Result<Change, ConfigError> {
-        let mut c = self.dynamic_change(id)?;
+        let tx = Transaction::new_unchecked(&self.connection, TransactionBehavior::Immediate)
+            .map_err(db_error)?;
+        let mut c = lookup_change(&tx, id)?
+            .ok_or_else(|| ConfigError::new("not_found", "动态切换操作不存在"))?;
         if c.state == "cancelled" {
             return Ok(c);
         }
@@ -755,18 +845,21 @@ impl Store {
             return fail("conflict", "已提交路由请使用恢复操作");
         }
         c.state = "cancelled".into();
-        self.connection.execute("UPDATE gateway_route_changes SET state='cancelled',value=?2 WHERE id=?1 AND state='pending'",params![id,encode(&c)?]).map_err(db_error)?;
+        tx.execute("UPDATE gateway_route_changes SET state='cancelled',value=?2 WHERE id=?1 AND state='pending'",params![id,encode(&c)?]).map_err(db_error)?;
+        tx.commit().map_err(db_error)?;
         Ok(c)
     }
     pub fn dynamic_commit(&self, id: &str) -> Result<Change, ConfigError> {
-        let mut c = self.dynamic_change(id)?;
+        let tx = Transaction::new_unchecked(&self.connection, TransactionBehavior::Immediate)
+            .map_err(db_error)?;
+        let mut c = lookup_change(&tx, id)?
+            .ok_or_else(|| ConfigError::new("not_found", "动态切换操作不存在"))?;
         if c.state == "applied" {
             return Ok(c);
         }
         if c.state != "pending" {
             return fail("conflict", "此动态操作已结束");
         }
-        let tx = self.connection.unchecked_transaction().map_err(db_error)?;
         let b = required(&tx, &c.binding_id)?;
         if b.generation != c.expected_generation {
             return fail("conflict", "目标版本已变化，未覆盖");
@@ -827,8 +920,8 @@ impl Store {
         self.connection
             .query_row(
                 "SELECT reason='session_boundary_unconfirmed' FROM gateway_route_leases
-             WHERE binding=?1 AND session=?2 AND output_validated=1 ORDER BY seq DESC LIMIT 1",
-                params![binding, session],
+             WHERE binding=?1 AND session=?2 AND output_validated=1 AND reason<>?3 ORDER BY seq DESC LIMIT 1",
+                params![binding, session, AUXILIARY_TITLE],
                 |row| row.get::<_, bool>(0),
             )
             .optional()
@@ -846,8 +939,36 @@ impl Store {
         model: Option<&str>,
         requested_output: Option<u64>,
     ) -> Result<(Selection, &'a Turn), ConfigError> {
-        let tx = self.connection.unchecked_transaction().map_err(db_error)?;
+        self.gateway_admit_request(
+            id,
+            turn,
+            GatewayAdmission {
+                compatible,
+                opencode_proof,
+                model,
+                requested_output,
+                auxiliary_title: false,
+            },
+        )
+    }
+
+    pub fn gateway_admit_request<'a>(
+        &self,
+        id: &str,
+        turn: &'a Turn,
+        admission: GatewayAdmission<'a, '_>,
+    ) -> Result<(Selection, &'a Turn), ConfigError> {
+        let GatewayAdmission {
+            compatible,
+            opencode_proof,
+            model,
+            requested_output,
+            auxiliary_title,
+        } = admission;
+        let tx = Transaction::new_unchecked(&self.connection, TransactionBehavior::Immediate)
+            .map_err(db_error)?;
         let b = required(&tx, id)?;
+        let auxiliary_title = auxiliary_title && b.agent_id == "opencode" && turn.session.is_some();
         let attachment = crate::model_services::attachment(&tx, id)?;
         if let Some(model) = model
             && !attachment.as_ref().is_some_and(|a| a.accepts(model))
@@ -866,6 +987,11 @@ impl Store {
         } else {
             "unknown"
         };
+        let digests: Vec<_> = std::iter::once(digest)
+            .chain(compatible.iter().map(|turn| turn.digest.as_str()))
+            .collect();
+        retention::check_closed(&tx, id, session, &digests)?;
+        retention::check_archived(&tx, id, session, turn, identities())?;
         let exact = tx
             .query_row(
                 "SELECT l.seq,l.version,l.reason,l.service_selection,l.trusted,d.state,l.turn,l.output_validated
@@ -877,11 +1003,7 @@ impl Store {
                 params![
                     id,
                     session,
-                    encode(
-                        &std::iter::once(digest)
-                            .chain(compatible.iter().map(|turn| turn.digest.as_str()))
-                            .collect::<Vec<_>>()
-                    )?
+                    encode(&digests)?
                 ],
                 |r| {
                     Ok((
@@ -909,7 +1031,7 @@ impl Store {
             if !output_valid(requested_output, service.as_ref()) {
                 return Err(output_limit_error());
             }
-            let selected = if model.is_some()
+            let mut selected = if model.is_some()
                 && inherits_route(&reason)
                 && let Some(snapshot) = &snapshot
             {
@@ -937,6 +1059,7 @@ impl Store {
                 }
                 Selection {
                     fresh,
+                    advances_session_head: false,
                     version: version(&tx, &version_id)?,
                     reason: boundary.map_or(reason, str::to_owned),
                     service,
@@ -949,8 +1072,20 @@ impl Store {
                     [seq],
                 )
                 .map_err(db_error)?;
-                tx.commit().map_err(db_error)?;
             }
+            let advances = !validated
+                && trusted
+                && !effective.continuation
+                && effective.portable
+                && matches!(selected.reason.as_str(), "new_session" | "new_user_turn");
+            loop_guard::check_advance(&tx, id, session, advances.then_some(seq))?;
+            retention::note_lease(&tx, id, session, seq, advances)?;
+            if advances {
+                budget::note_head(&tx, id, session, &saved_digest, seq)?;
+                loop_guard::note_head(&tx, id, session, &saved_digest, seq)?;
+            }
+            selected.advances_session_head = advances;
+            tx.commit().map_err(db_error)?;
             return Ok((selected, effective));
         }
         let proof = opencode_proof.filter(|_| {
@@ -974,18 +1109,29 @@ impl Store {
         } else {
             proof
         };
-        let mut old = previous_lease(&tx, id, session, None)?;
+        let guarded = loop_guard::tripped_sequence(&tx, id, session)?;
+        let mut old = if auxiliary_title {
+            None
+        } else {
+            previous_lease(&tx, id, session, guarded.and_then(|seq| seq.checked_add(1)))?
+        };
         if model.is_some()
             && let (Some(proof), Some(latest)) = (proof, old.as_ref())
             && let Some(previous) = before_rejected_opencode_title(&tx, id, session, latest, proof)?
         {
             old = Some(previous);
         }
+        let old_seq = old.as_ref().map(|lease| lease.seq);
         let mut selected = b.target;
         let mut service = None;
         let mut pinned = false;
-        let mut trusted = turn.session.is_some() && !turn.chain.is_empty();
-        let mut reason = "new_session".to_string();
+        let mut trusted = !auxiliary_title && turn.session.is_some() && !turn.chain.is_empty();
+        let mut reason = if auxiliary_title {
+            AUXILIARY_TITLE
+        } else {
+            "new_session"
+        }
+        .to_string();
         if let Some(PriorLease {
             seq,
             version: old_id,
@@ -1000,6 +1146,15 @@ impl Store {
             let matching_identity =
                 |saved: &[String]| identities().position(|turn| turn.chain.starts_with(saved));
             let matched = matching_identity(&chain);
+            if turn.continuation
+                && identities().all(|candidate| candidate.chain != chain)
+                && retention::session_was_evicted(&tx, id, session)?
+            {
+                return fail(
+                    "stale_or_evicted_continuation",
+                    "历史轮次的原路由已归档，无法继续旧轮工具续调",
+                );
+            }
             let appended = !turn.continuation && turn.chain.len() > chain.len();
             let mut confirmed = was_trusted;
             let prefixes = proof.map(|proof| &proof.prefixes);
@@ -1059,6 +1214,7 @@ impl Store {
                         reason.clone(),
                     )?;
                     if inherited.uncommitted_dispatch.is_some() {
+                        loop_guard::check_advance(&tx, id, session, None)?;
                         return Ok((inherited, turn));
                     }
                     selected = inherited.version;
@@ -1095,7 +1251,7 @@ impl Store {
             selected = if let Some(route) = route {
                 version(&tx, &route)?
             } else {
-                let v = insert_version(&tx, id, &target.provider)?;
+                let v = insert_version_for_turn(&tx, id, &target.provider, session)?;
                 tx.execute(
                     "INSERT INTO model_service_targets VALUES(?1,?2,?3,?4)",
                     params![id, published.version_id, target.id, v.id],
@@ -1107,15 +1263,25 @@ impl Store {
         }
         // Preserve the publication for a corrected exact retry, without anchoring later turns.
         let output_validated = output_valid(requested_output, service.as_ref());
+        if !fresh || !output_validated {
+            loop_guard::check_advance(&tx, id, session, None)?;
+        }
         let count: i64 = tx
             .query_row("SELECT count(*) FROM gateway_route_leases", [], |r| {
                 r.get(0)
             })
             .map_err(db_error)?;
         if count >= MAX_LEASES {
-            return fail("capacity", "轮次路由记录已达上限；不会驱逐旧工具续调");
+            retention::reclaim_attempts(&tx, 4096)?;
+            retention::reclaim_lease(&tx, id, session, old_seq)?;
         }
-        tx.execute("INSERT INTO gateway_route_leases(binding,session,turn,version,chain,trusted,reason,service_selection,output_validated) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",params![id,session,digest,selected.id,encode(&turn.chain)?,trusted,saved_reason,service.as_ref().map(encode).transpose()?,output_validated]).map_err(db_error)?;
+        let seq = retention::sequence(&tx, "lease")?;
+        tx.execute("INSERT INTO gateway_route_leases(seq,binding,session,turn,version,chain,trusted,reason,service_selection,output_validated) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",params![seq,id,session,digest,selected.id,encode(&turn.chain)?,trusted,saved_reason,service.as_ref().map(encode).transpose()?,output_validated]).map_err(db_error)?;
+        retention::note_lease(&tx, id, session, seq, fresh && output_validated)?;
+        if fresh && output_validated {
+            budget::note_head(&tx, id, session, digest, seq)?;
+            loop_guard::note_head(&tx, id, session, digest, seq)?;
+        }
         if classifiable {
             tx.execute(
                 "INSERT INTO service_route_intents(binding,session,turn) VALUES(?1,?2,?3)",
@@ -1130,6 +1296,7 @@ impl Store {
         Ok((
             Selection {
                 fresh,
+                advances_session_head: fresh && output_validated,
                 version: selected,
                 reason,
                 service,
@@ -1142,5 +1309,7 @@ impl Store {
 
 #[cfg(test)]
 mod binding_creation_tests;
+#[cfg(test)]
+mod budget_tests;
 #[cfg(test)]
 mod tests;

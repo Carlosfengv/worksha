@@ -293,7 +293,9 @@ impl Manager {
             path,
             device: metadata.dev(),
             inode: metadata.ino(),
+            created: metadata.created().ok(),
             unified: false,
+            persist_watch: false,
             connection: None,
         };
         runtime::stamp(&grant)?;
@@ -336,6 +338,21 @@ impl Manager {
             let manager = self.clone();
             let code = error.code;
             super::super::run_sync(move || {
+                if matches!(code, "grant_revoked" | "permission_denied") {
+                    let grant = manager
+                        .full
+                        .lock()
+                        .checked("unavailable")?
+                        .grants
+                        .get(&q.plugin_id)
+                        .filter(|grant| grant.lease == lease)
+                        .cloned();
+                    if let Some(grant) = grant
+                        && runtime::stamp(&grant).is_err()
+                    {
+                        manager.invalidate_changed_watch(&grant)?;
+                    }
+                }
                 let mut host = manager.full.lock().checked("unavailable")?;
                 if host.active.get(&q.plugin_id) == Some(&lease) {
                     host.failures.insert(q.plugin_id, (lease, code));
@@ -397,11 +414,8 @@ impl Manager {
             if live_snapshot {
                 runtime::verify_live_frame(source, facts.records.len())?;
             }
-            let dsh_tasks = if live_snapshot
-                && source.grant.unified
-                && super::dsh::is_source(&context.package.manifest)
-            {
-                super::dsh::latest_tasks(&source.text)
+            let reported_tasks = if live_snapshot && source.grant.unified {
+                super::activity::latest_tasks(&source.text)
             } else {
                 Default::default()
             };
@@ -442,7 +456,7 @@ impl Manager {
                 summary,
                 source_stamp,
                 captured_source,
-                dsh_tasks: Arc::new(dsh_tasks),
+                reported_tasks: Arc::new(reported_tasks),
             };
             if bytes.saturating_add(projection.resident_bytes()) > 64 * 1_048_576 {
                 return Err(fail("resource_limit"));
@@ -456,7 +470,7 @@ impl Manager {
                 }
                 host.db()?
                     .execute(
-                        "INSERT OR REPLACE INTO full_projections VALUES(?1,?2)",
+                        "INSERT OR REPLACE INTO ext_source_full_projections VALUES(?1,?2)",
                         params![q.plugin_id, super::store::encode(&saved)?],
                     )
                     .checked("unavailable")?;

@@ -76,6 +76,7 @@ fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 /// Fixed host schemas only. Unknown or incomplete repositories are preserved;
 /// initial DDL and its format marker commit atomically, including on SQLITE_FULL.
+#[cfg(test)]
 pub(super) fn initialize_database(
     db: &Connection,
     version_table: &str,
@@ -133,27 +134,197 @@ pub(super) fn initialize_database(
     validate(&tx)?;
     tx.commit().checked("unavailable")
 }
+pub(super) const CONTROL_DATABASE: &str = "local-agent.sqlite3";
+
+pub(super) fn has_archived_database(data: &Path, name: &str) -> bool {
+    std::fs::symlink_metadata(data.join(name)).is_ok()
+}
+
+pub(super) struct ControlDatabase {
+    path: PathBuf,
+    writer: Option<local_agent_core::StoreWriter>,
+    #[cfg(test)]
+    fixture: std::sync::OnceLock<Box<parking_lot::ReentrantMutex<Connection>>>,
+}
+
+pub(super) enum ControlConnection<'a> {
+    Shared {
+        db: local_agent_core::StoreConnection<'a>,
+        previous_timeout: std::time::Duration,
+    },
+    #[cfg(test)]
+    Fixture(parking_lot::ReentrantMutexGuard<'a, Connection>),
+}
+
+impl std::ops::Deref for ControlConnection<'_> {
+    type Target = Connection;
+    fn deref(&self) -> &Connection {
+        match self {
+            Self::Shared { db, .. } => db,
+            #[cfg(test)]
+            Self::Fixture(db) => db,
+        }
+    }
+}
+
+impl Drop for ControlConnection<'_> {
+    fn drop(&mut self) {
+        match self {
+            Self::Shared {
+                db,
+                previous_timeout,
+            } => {
+                // The checkout still owns the writer while restoring the
+                // timeout for the next control-plane operation.
+                let _ = db.busy_timeout(*previous_timeout);
+            }
+            #[cfg(test)]
+            Self::Fixture(_) => (),
+        }
+    }
+}
+
+impl ControlDatabase {
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            writer: None,
+            #[cfg(test)]
+            fixture: Default::default(),
+        }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn set_writer(&mut self, writer: Option<local_agent_core::StoreWriter>) {
+        self.writer = writer;
+    }
+
+    pub fn lock(&self) -> Result<ControlConnection<'_>> {
+        if let Some(writer) = &self.writer {
+            let db = writer.connection().checked("unavailable")?;
+            let path = checked_control_path(&self.path)?;
+            if db.path() != path.to_str() {
+                return Err(fail("invalid_record"));
+            }
+            let previous_ms = db
+                .pragma_query_value(None, "busy_timeout", |row| row.get::<_, u32>(0))
+                .checked("unavailable")?;
+            db.busy_timeout(std::time::Duration::from_millis(250))
+                .checked("unavailable")?;
+            return Ok(ControlConnection::Shared {
+                db,
+                previous_timeout: std::time::Duration::from_millis(u64::from(previous_ms)),
+            });
+        }
+        #[cfg(test)]
+        {
+            if self.fixture.get().is_none() {
+                let db = open_control_plane(&self.path, false)?;
+                let _ = self
+                    .fixture
+                    .set(Box::new(parking_lot::ReentrantMutex::new(db)));
+            }
+            Ok(ControlConnection::Fixture(
+                self.fixture.get().ok_or(fail("unavailable"))?.lock(),
+            ))
+        }
+        #[cfg(not(test))]
+        Err(fail("unavailable"))
+    }
+}
+
+fn checked_control_path(path: &Path) -> Result<PathBuf> {
+    use std::os::unix::fs::MetadataExt;
+    let path = path
+        .parent()
+        .ok_or(fail("invalid_record"))?
+        .canonicalize()
+        .checked("unavailable")?
+        .join(path.file_name().ok_or(fail("invalid_record"))?);
+    let metadata = std::fs::symlink_metadata(&path).checked("unavailable")?;
+    if !metadata.is_file() || metadata.nlink() != 1 || metadata.uid() != unsafe { libc::geteuid() }
+    {
+        return Err(fail("invalid_record"));
+    }
+    Ok(path)
+}
+
+pub(super) fn open_control_plane(path: &Path, readonly: bool) -> Result<Connection> {
+    #[cfg(test)]
+    if !readonly && !path.exists() {
+        local_agent_core::Store::open(path.parent().ok_or(fail("invalid_record"))?)
+            .checked("unavailable")?;
+    }
+    let path = checked_control_path(path)?;
+    #[cfg(not(test))]
+    if !readonly {
+        return Err(fail("unavailable"));
+    }
+    let flags = if readonly {
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+    } else {
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
+    };
+    let db = Connection::open_with_flags(path, flags | rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW)
+        .checked("unavailable")?;
+    db.busy_timeout(std::time::Duration::from_millis(250))
+        .checked("unavailable")?;
+    let version: u32 = db
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .checked("invalid_record")?;
+    if !matches!(
+        version,
+        local_agent_core::Store::SCHEMA_VERSION | local_agent_core::iam::PROTECTED_SCHEMA_VERSION
+    ) {
+        return Err(fail("incompatible_api"));
+    }
+    db.pragma_update(None, "foreign_keys", true)
+        .checked("unavailable")?;
+    Ok(db)
+}
+
 impl Manager {
+    #[cfg(test)]
     pub(crate) fn for_service(data: &Path, vault: Arc<dyn Vault>) -> Self {
-        match Self::open(data, vault.clone()) {
+        Self::open_for_service(data, vault, None)
+    }
+    pub(crate) fn with_control_writer(
+        data: &Path,
+        vault: Arc<dyn Vault>,
+        writer: local_agent_core::StoreWriter,
+    ) -> Self {
+        Self::open_for_service(data, vault, Some(writer))
+    }
+    fn open_for_service(
+        data: &Path,
+        vault: Arc<dyn Vault>,
+        writer: Option<local_agent_core::StoreWriter>,
+    ) -> Self {
+        match Self::open_inner(data, vault.clone(), writer.clone()) {
             Ok(manager) => manager,
             Err(error) => {
                 eprintln!(
                     "外部插件数据不可用（{}）；保留原文件，内置功能继续可用。",
                     error.code
                 );
-                let policy = super::policy::Host::new(data);
+                let policy = super::policy::Host::new(data).with_writer(writer.clone());
                 let policy_presence = policy.presence.clone();
                 Self {
-                    objects: Mutex::new(super::object_contributions::Host::new(data)),
+                    objects: Mutex::new(
+                        super::object_contributions::Host::new(data).with_writer(writer.clone()),
+                    ),
                     policy: Mutex::new(policy),
                     policy_presence,
                     installation: Mutex::new(()),
-                    full: Mutex::new(super::full::Host::new(data)),
+                    full: Mutex::new(super::full::Host::new(data).with_writer(writer.clone())),
                     full_publisher_revisions: Mutex::new(BTreeMap::new()),
-                    domain: Mutex::new(super::domain_store::Host::new(
-                        data.join("domain-host.sqlite3"),
-                    )),
+                    domain: Mutex::new(
+                        super::domain_store::Host::new(data.join(CONTROL_DATABASE))
+                            .with_writer(writer.clone()),
+                    ),
                     diagnostics: super::diagnostics::Diagnostics::default(),
                     root: data.join("plugins"),
                     db: Database::Unavailable(error),
@@ -172,71 +343,54 @@ impl Manager {
                     stopping: AtomicBool::new(false),
                     advanced: Mutex::new(
                         super::advanced::Store::open(data)
-                            .expect("extension store initialization performs no I/O"),
+                            .expect("extension store initialization performs no I/O")
+                            .with_writer(writer),
                     ),
                 }
             }
         }
     }
+    #[cfg(test)]
     pub(crate) fn open(data: &Path, vault: Arc<dyn Vault>) -> Result<Self> {
+        Self::open_inner(data, vault, None)
+    }
+    fn open_inner(
+        data: &Path,
+        vault: Arc<dyn Vault>,
+        writer: Option<local_agent_core::StoreWriter>,
+    ) -> Result<Self> {
         let root = data.join("plugins");
         directory(&root)?;
         for name in ["packages", "staging"] {
             directory(&root.join(name))?;
         }
-        let db_path = data.join("plugin-host.sqlite3");
-        use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(0o600)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(&db_path)
-            .checked("permission_denied")?;
-        let metadata = file.metadata().checked("permission_denied")?;
-        if !metadata.is_file() || metadata.nlink() != 1 {
-            return Err(fail("permission_denied"));
-        }
-        let db = Connection::open(&db_path).checked("unavailable")?;
-        db.busy_timeout(std::time::Duration::from_millis(250))
-            .checked("unavailable")?;
-        initialize_database(&db, "host_version", "version", &["publishers", "packages", "selections", "private_settings", "provider_presets", "operations", "audit"], "
-          CREATE TABLE IF NOT EXISTS host_version(version INTEGER NOT NULL);
-          INSERT INTO host_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM host_version);
-          CREATE TABLE IF NOT EXISTS publishers(id TEXT PRIMARY KEY, public_key TEXT NOT NULL);
-          CREATE TABLE IF NOT EXISTS publisher_source_tickets(publisher TEXT PRIMARY KEY REFERENCES publishers(id) ON DELETE CASCADE, ticket TEXT NOT NULL);
-          CREATE TABLE IF NOT EXISTS packages(digest TEXT PRIMARY KEY,plugin_id TEXT NOT NULL,version TEXT NOT NULL,manifest TEXT NOT NULL,public_key TEXT,bytes INTEGER NOT NULL,removed INTEGER NOT NULL DEFAULT 0);
-          CREATE TABLE IF NOT EXISTS selections(plugin_id TEXT PRIMARY KEY,digest TEXT NOT NULL,previous TEXT,enabled INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'installed',error TEXT,epoch INTEGER NOT NULL DEFAULT 1,revision INTEGER NOT NULL DEFAULT 1,source TEXT,connection TEXT,report INTEGER NOT NULL DEFAULT 0);
-          CREATE TABLE IF NOT EXISTS private_settings(digest TEXT PRIMARY KEY,settings TEXT NOT NULL);
-          CREATE TABLE IF NOT EXISTS provider_presets(plugin_id TEXT NOT NULL,digest TEXT NOT NULL,preset TEXT NOT NULL,provider_id TEXT NOT NULL,PRIMARY KEY(plugin_id,digest,preset));
-          CREATE TABLE IF NOT EXISTS operations(id TEXT PRIMARY KEY,digest TEXT NOT NULL,phase TEXT NOT NULL,review TEXT NOT NULL);
-          CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,plugin_id TEXT NOT NULL,digest TEXT NOT NULL,action TEXT NOT NULL,at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);")?;
-        db.execute_batch("CREATE TRIGGER IF NOT EXISTS audit_retention AFTER INSERT ON audit BEGIN DELETE FROM audit WHERE id <= NEW.id-10000; END;
-          DELETE FROM operations WHERE phase NOT IN ('inspected','publishing') AND rowid < (SELECT coalesce(max(rowid),0)-256 FROM operations);").checked("unavailable")?;
-        let version: u32 = db
-            .query_row("SELECT version FROM host_version", [], |r| r.get(0))
-            .checked("unavailable")?;
-        if version != 1 {
-            return Err(fail("incompatible_api"));
-        }
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(db_path, std::fs::Permissions::from_mode(0o600))
-            .checked("unavailable")?;
+        let mut database = ControlDatabase::new(data.join(CONTROL_DATABASE));
+        database.set_writer(writer.clone());
+        let db = database.lock()?;
+        db.execute(
+            "DELETE FROM ext_host_operations WHERE phase NOT IN ('inspected','publishing')
+          AND rowid < (SELECT coalesce(max(rowid),0)-256 FROM ext_host_operations)",
+            [],
+        )
+        .checked("unavailable")?;
         // A published-but-uncommitted package is never selected, trusted or activated.
         db.execute(
-            "UPDATE operations SET phase='interrupted' WHERE phase='publishing'",
+            "UPDATE ext_host_operations SET phase='interrupted' WHERE phase='publishing'",
             [],
         )
         .checked("unavailable")?;
         // Review references expire across restarts; no partially published package is trusted.
         db.execute(
-            "UPDATE operations SET phase='expired' WHERE phase='inspected'",
+            "UPDATE ext_host_operations SET phase='expired' WHERE phase='inspected'",
             [],
         )
         .checked("unavailable")?;
+        // Files from the previous repository are not owned by the new catalog.
+        let archived = has_archived_database(data, "plugin-host.sqlite3");
         for entry in std::fs::read_dir(root.join("staging")).checked("unavailable")? {
+            if archived {
+                break;
+            }
             let entry = entry.checked("unavailable")?;
             if uuid::Uuid::parse_str(&entry.file_name().to_string_lossy()).is_ok()
                 && entry.file_type().checked("unavailable")?.is_dir()
@@ -249,6 +403,9 @@ impl Manager {
             }
         }
         for author in std::fs::read_dir(root.join("packages")).checked("unavailable")? {
+            if archived {
+                break;
+            }
             let author = author.checked("unavailable")?;
             if !author.file_type().checked("unavailable")?.is_dir() {
                 continue;
@@ -266,7 +423,7 @@ impl Manager {
                     let name = digest.file_name().to_string_lossy().into_owned();
                     let exists: bool = db
                         .query_row(
-                            "SELECT EXISTS(SELECT 1 FROM packages WHERE digest=?1 AND removed=0)",
+                            "SELECT EXISTS(SELECT 1 FROM ext_host_packages WHERE digest=?1 AND removed=0)",
                             [&name],
                             |r| r.get(0),
                         )
@@ -281,21 +438,25 @@ impl Manager {
                 }
             }
         }
-        let policy = super::policy::Host::new(data);
+        drop(db);
+        let policy = super::policy::Host::new(data).with_writer(writer.clone());
         let policy_presence = policy.presence.clone();
         let host = Self {
-            objects: Mutex::new(super::object_contributions::Host::new(data)),
+            objects: Mutex::new(
+                super::object_contributions::Host::new(data).with_writer(writer.clone()),
+            ),
             policy: Mutex::new(policy),
             policy_presence,
             installation: Mutex::new(()),
-            full: Mutex::new(super::full::Host::new(data)),
+            full: Mutex::new(super::full::Host::new(data).with_writer(writer.clone())),
             full_publisher_revisions: Mutex::new(BTreeMap::new()),
-            domain: Mutex::new(super::domain_store::Host::new(
-                data.join("domain-host.sqlite3"),
-            )),
+            domain: Mutex::new(
+                super::domain_store::Host::new(data.join(CONTROL_DATABASE))
+                    .with_writer(writer.clone()),
+            ),
             diagnostics: super::diagnostics::Diagnostics::default(),
             root,
-            db: Database::Ready(Mutex::new(db)),
+            db: Database::Ready(database),
             development: std::env::var("LOCAL_AGENT_PLUGIN_DEVELOPMENT").as_deref() == Ok("1"),
             cache: Default::default(),
             gates: Mutex::new(BTreeMap::new()),
@@ -308,7 +469,7 @@ impl Manager {
             catalog_instance: uuid::Uuid::new_v4().to_string(),
             vault,
             stopping: AtomicBool::new(false),
-            advanced: Mutex::new(super::advanced::Store::open(data)?),
+            advanced: Mutex::new(super::advanced::Store::open(data)?.with_writer(writer)),
         };
         // Validate persisted selections without spawning guests or accessing their sources.
         let selected = host.list()?;
@@ -359,7 +520,7 @@ impl Manager {
         let db = self.db.lock().checked("unavailable")?;
         let count: i64 = db
             .query_row(
-                "SELECT count(*) FROM operations WHERE phase='inspected'",
+                "SELECT count(*) FROM ext_host_operations WHERE phase='inspected'",
                 [],
                 |r| r.get(0),
             )
@@ -367,7 +528,7 @@ impl Manager {
         if count >= 8 {
             let old: String = db
                 .query_row(
-                    "SELECT id FROM operations WHERE phase='inspected' ORDER BY rowid LIMIT 1",
+                    "SELECT id FROM ext_host_operations WHERE phase='inspected' ORDER BY rowid LIMIT 1",
                     [],
                     |r| r.get(0),
                 )
@@ -378,12 +539,15 @@ impl Manager {
                 std::fs::remove_file(stage.join("package.laplug")).checked("unavailable")?;
                 std::fs::remove_dir(stage).checked("unavailable")?;
             }
-            db.execute("UPDATE operations SET phase='expired' WHERE id=?1", [old])
-                .checked("unavailable")?;
+            db.execute(
+                "UPDATE ext_host_operations SET phase='expired' WHERE id=?1",
+                [old],
+            )
+            .checked("unavailable")?;
         }
         let trusted: Option<String> = db
             .query_row(
-                "SELECT public_key FROM publishers WHERE id=?1",
+                "SELECT public_key FROM ext_host_publishers WHERE id=?1",
                 [&p.manifest.publisher],
                 |r| r.get(0),
             )
@@ -413,7 +577,7 @@ impl Manager {
             expanded_bytes: p.expanded,
         };
         db.execute(
-            "INSERT INTO operations(id,digest,phase,review) VALUES(?1,?2,'inspected',?3)",
+            "INSERT INTO ext_host_operations(id,digest,phase,review) VALUES(?1,?2,'inspected',?3)",
             params![
                 reference,
                 p.digest,
@@ -433,10 +597,10 @@ impl Manager {
         };
         full_inventory.extend(self.policy_inventory()?);
         uuid::Uuid::parse_str(&request.package_ref).checked("invalid_input")?;
-        let mut db = self.db.lock().checked("unavailable")?;
+        let db = self.db.lock().checked("unavailable")?;
         let (digest, phase, review): (String, String, String) = db
             .query_row(
-                "SELECT digest,phase,review FROM operations WHERE id=?1",
+                "SELECT digest,phase,review FROM ext_host_operations WHERE id=?1",
                 [&request.package_ref],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
@@ -460,7 +624,7 @@ impl Manager {
         }
         let trusted: Option<String> = db
             .query_row(
-                "SELECT public_key FROM publishers WHERE id=?1",
+                "SELECT public_key FROM ext_host_publishers WHERE id=?1",
                 [&package.manifest.publisher],
                 |r| r.get(0),
             )
@@ -503,7 +667,7 @@ impl Manager {
         directory(&parent)?;
         let target = parent.join(&package.digest);
         db.execute(
-            "UPDATE operations SET phase='publishing' WHERE id=?1",
+            "UPDATE ext_host_operations SET phase='publishing' WHERE id=?1",
             [&request.package_ref],
         )
         .checked("unavailable")?;
@@ -527,17 +691,17 @@ impl Manager {
                 .sync_all()
                 .checked("unavailable")?;
         }
-        let tx = db.transaction().checked("unavailable")?;
+        let tx = db.unchecked_transaction().checked("unavailable")?;
         if let Some(key) = &package.signing_key {
             tx.execute(
-                "INSERT OR IGNORE INTO publishers(id,public_key) VALUES(?1,?2)",
+                "INSERT OR IGNORE INTO ext_host_publishers(id,public_key) VALUES(?1,?2)",
                 params![package.manifest.publisher, key],
             )
             .checked("unavailable")?;
         }
-        tx.execute("INSERT INTO packages(digest,plugin_id,version,manifest,public_key,bytes) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(digest) DO UPDATE SET removed=0",params![package.digest,package.manifest.id,package.manifest.version,serde_json::to_string(&package.manifest).checked("invalid_input")?,package.signing_key,bytes.len() as i64]).checked("unavailable")?;
-        tx.execute("INSERT OR IGNORE INTO selections(plugin_id,digest,status) VALUES(?1,?2,'awaiting_permission')",params![package.manifest.id,package.digest]).checked("unavailable")?;
-        let previous_settings: Option<String> = tx.query_row("SELECT p.settings FROM private_settings p JOIN selections s ON s.digest=p.digest WHERE s.plugin_id=?1",[&package.manifest.id],|r|r.get(0)).optional().checked("unavailable")?;
+        tx.execute("INSERT INTO ext_host_packages(digest,plugin_id,version,manifest,public_key,bytes) VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(digest) DO UPDATE SET removed=0",params![package.digest,package.manifest.id,package.manifest.version,serde_json::to_string(&package.manifest).checked("invalid_input")?,package.signing_key,bytes.len() as i64]).checked("unavailable")?;
+        tx.execute("INSERT OR IGNORE INTO ext_host_selections(plugin_id,digest,status) VALUES(?1,?2,'awaiting_permission')",params![package.manifest.id,package.digest]).checked("unavailable")?;
+        let previous_settings: Option<String> = tx.query_row("SELECT p.settings FROM ext_host_private_settings p JOIN ext_host_selections s ON s.digest=p.digest WHERE s.plugin_id=?1",[&package.manifest.id],|r|r.get(0)).optional().checked("unavailable")?;
         let previous_settings: BTreeMap<String, String> = previous_settings
             .map(|v| serde_json::from_str(&v))
             .transpose()
@@ -559,7 +723,7 @@ impl Manager {
             })
             .collect();
         tx.execute(
-            "INSERT OR IGNORE INTO private_settings(digest,settings) VALUES(?1,?2)",
+            "INSERT OR IGNORE INTO ext_host_private_settings(digest,settings) VALUES(?1,?2)",
             params![
                 package.digest,
                 serde_json::to_string(&defaults).checked("invalid_input")?
@@ -567,12 +731,12 @@ impl Manager {
         )
         .checked("unavailable")?;
         tx.execute(
-            "UPDATE operations SET phase='committed' WHERE id=?1",
+            "UPDATE ext_host_operations SET phase='committed' WHERE id=?1",
             [&request.package_ref],
         )
         .checked("unavailable")?;
         tx.execute(
-            "INSERT INTO audit(plugin_id,digest,action) VALUES(?1,?2,'installed')",
+            "INSERT INTO ext_host_audit(plugin_id,digest,action) VALUES(?1,?2,'installed')",
             params![package.manifest.id, package.digest],
         )
         .checked("unavailable")?;
@@ -585,7 +749,7 @@ impl Manager {
             return Err(fail("invalid_input"));
         }
         let db = self.db.lock().checked("unavailable")?;
-        let (manifest,key):(String,Option<String>)=db.query_row("SELECT manifest,public_key FROM packages WHERE plugin_id=?1 AND digest=?2 AND removed=0",params![id,digest],|r|Ok((r.get(0)?,r.get(1)?))).checked("not_found")?;
+        let (manifest,key):(String,Option<String>)=db.query_row("SELECT manifest,public_key FROM ext_host_packages WHERE plugin_id=?1 AND digest=?2 AND removed=0",params![id,digest],|r|Ok((r.get(0)?,r.get(1)?))).checked("not_found")?;
         let manifest: Manifest = serde_json::from_str(&manifest).checked("invalid_input")?;
         let path = self
             .root
@@ -625,7 +789,7 @@ impl Manager {
                 .lock()
                 .checked("unavailable")?
                 .query_row(
-                    "SELECT public_key FROM publishers WHERE id=?1",
+                    "SELECT public_key FROM ext_host_publishers WHERE id=?1",
                     [&package.manifest.publisher],
                     |r| r.get(0),
                 )
@@ -642,7 +806,7 @@ impl Manager {
         Self::read_selection(&db, id)
     }
     fn read_selection(db: &Connection, id: &str) -> Result<Selection> {
-        db.query_row("SELECT digest,previous,enabled,status,error,epoch,revision,source,connection,report FROM selections WHERE plugin_id=?1",[id],|r|{
+        db.query_row("SELECT digest,previous,enabled,status,error,epoch,revision,source,connection,report FROM ext_host_selections WHERE plugin_id=?1",[id],|r|{
             let source:Option<String>=r.get(7)?;let connection:Option<String>=r.get(8)?;
             Ok(Selection{report:r.get(9)?,digest:r.get(0)?,previous:r.get(1)?,enabled:r.get(2)?,status:r.get(3)?,error:r.get(4)?,epoch:r.get::<_,i64>(5)? as u64,revision:r.get::<_,i64>(6)? as u64,source:source.and_then(|s|serde_json::from_str(&s).ok()),connection:connection.and_then(|s|serde_json::from_str(&s).ok())})
         }).checked("not_found")
@@ -656,7 +820,7 @@ impl Manager {
             .lock()
             .checked("unavailable")?
             .query_row(
-                "SELECT settings FROM private_settings WHERE digest=?1",
+                "SELECT settings FROM ext_host_private_settings WHERE digest=?1",
                 [digest],
                 |r| r.get(0),
             )
@@ -694,7 +858,7 @@ impl Manager {
     pub(crate) fn list(&self) -> Result<Vec<Status>> {
         let rows: Vec<(String, String)> = {
             let db = self.db.lock().checked("unavailable")?;
-            let mut stmt=db.prepare("SELECT plugin_id,digest FROM packages WHERE removed=0 ORDER BY plugin_id,version,digest").checked("unavailable")?;
+            let mut stmt=db.prepare("SELECT plugin_id,digest FROM ext_host_packages WHERE removed=0 ORDER BY plugin_id,version,digest").checked("unavailable")?;
             stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
                 .checked("unavailable")?
                 .collect::<std::result::Result<_, _>>()
@@ -707,7 +871,7 @@ impl Manager {
     pub(crate) fn mark_failed(&self, id: &str, code: &'static str) -> Result<()> {
         let db = self.db.lock().checked("unavailable")?;
         db.execute(
-            "UPDATE selections SET status='failed',error=?2,epoch=epoch+1 WHERE plugin_id=?1",
+            "UPDATE ext_host_selections SET status='failed',error=?2,epoch=epoch+1 WHERE plugin_id=?1",
             params![id, code],
         )
         .checked("unavailable")?;
@@ -889,11 +1053,11 @@ impl Manager {
         digest: String,
     ) -> Result<Status> {
         self.ensure_running()?;
-        let mut db = self.db.lock().checked("unavailable")?;
-        let tx = db.transaction().checked("unavailable")?;
+        let db = self.db.lock().checked("unavailable")?;
+        let tx = db.unchecked_transaction().checked("unavailable")?;
         let present: bool = tx
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM packages WHERE digest=?1 AND removed=0)",
+                "SELECT EXISTS(SELECT 1 FROM ext_host_packages WHERE digest=?1 AND removed=0)",
                 [&digest],
                 |r| r.get(0),
             )
@@ -904,7 +1068,7 @@ impl Manager {
         if let Some(key) = &candidate.signing_key {
             let trusted: bool = tx
                 .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM publishers WHERE id=?1 AND public_key=?2)",
+                    "SELECT EXISTS(SELECT 1 FROM ext_host_publishers WHERE id=?1 AND public_key=?2)",
                     params![candidate.manifest.publisher, key],
                     |r| r.get(0),
                 )
@@ -922,7 +1086,7 @@ impl Manager {
                 if !visited.insert(id.to_owned()) {
                     continue;
                 }
-                let manifest:Option<String>=tx.query_row("SELECT p.manifest FROM selections s JOIN packages p ON p.digest=s.digest WHERE s.plugin_id=?1 AND s.enabled=1 AND s.status='active' AND p.removed=0",[id],|r|r.get(0)).optional().checked("unavailable")?;
+                let manifest:Option<String>=tx.query_row("SELECT p.manifest FROM ext_host_selections s JOIN ext_host_packages p ON p.digest=s.digest WHERE s.plugin_id=?1 AND s.enabled=1 AND s.status='active' AND p.removed=0",[id],|r|r.get(0)).optional().checked("unavailable")?;
                 let manifest: Manifest =
                     serde_json::from_str(&manifest.ok_or(fail("dependency_missing"))?)
                         .checked("invalid_input")?;
@@ -934,12 +1098,12 @@ impl Manager {
         } else {
             selected.previous
         };
-        let changed=tx.execute("UPDATE selections SET digest=?2,previous=?3,enabled=1,status='active',error=NULL,epoch=epoch+1,revision=revision+1,source=NULL,connection=NULL,report=0 WHERE plugin_id=?1 AND digest=?4 AND epoch=?5 AND revision=?6",params![request.plugin_id,digest,previous,selected.digest,i64::try_from(selected.epoch).checked("resource_limit")?,i64::try_from(selected.revision).checked("resource_limit")?]).checked("unavailable")?;
+        let changed=tx.execute("UPDATE ext_host_selections SET digest=?2,previous=?3,enabled=1,status='active',error=NULL,epoch=epoch+1,revision=revision+1,source=NULL,connection=NULL,report=0 WHERE plugin_id=?1 AND digest=?4 AND epoch=?5 AND revision=?6",params![request.plugin_id,digest,previous,selected.digest,i64::try_from(selected.epoch).checked("resource_limit")?,i64::try_from(selected.revision).checked("resource_limit")?]).checked("unavailable")?;
         if changed != 1 {
             return Err(fail("grant_revoked"));
         }
         tx.execute(
-            "INSERT INTO audit(plugin_id,digest,action) VALUES(?1,?2,'activated')",
+            "INSERT INTO ext_host_audit(plugin_id,digest,action) VALUES(?1,?2,'activated')",
             params![request.plugin_id, digest],
         )
         .checked("unavailable")?;
@@ -989,11 +1153,11 @@ impl Manager {
                         .lock()
                         .checked("unavailable")?
                         .execute(
-                            "UPDATE packages SET removed=1 WHERE digest=?1",
+                            "UPDATE ext_host_packages SET removed=1 WHERE digest=?1",
                             [&request.digest],
                         )
                         .checked("unavailable")?;
-                    self.db.lock().checked("unavailable")?.execute("UPDATE selections SET previous=NULL WHERE plugin_id=?1 AND previous=?2",params![request.plugin_id,request.digest]).checked("unavailable")?;
+                    self.db.lock().checked("unavailable")?.execute("UPDATE ext_host_selections SET previous=NULL WHERE plugin_id=?1 AND previous=?2",params![request.plugin_id,request.digest]).checked("unavailable")?;
                     if installed.path.exists() {
                         std::fs::remove_file(&installed.path).checked("unavailable")?;
                     }
@@ -1043,7 +1207,7 @@ impl Manager {
                         .lock()
                         .checked("unavailable")?
                         .execute(
-                            "UPDATE packages SET removed=1 WHERE digest=?1",
+                            "UPDATE ext_host_packages SET removed=1 WHERE digest=?1",
                             [&request.digest],
                         )
                         .checked("unavailable")?;
@@ -1085,7 +1249,7 @@ impl Manager {
         if s.digest != digest {
             return Err(fail("grant_revoked"));
         }
-        db.execute("UPDATE selections SET source=NULL,connection=NULL,report=0,revision=revision+1,epoch=epoch+1,enabled=CASE WHEN ?2 THEN 0 ELSE enabled END,status=CASE WHEN ?2 THEN 'disabled' ELSE status END WHERE plugin_id=?1",params![id,disable]).checked("unavailable")?;
+        db.execute("UPDATE ext_host_selections SET source=NULL,connection=NULL,report=0,revision=revision+1,epoch=epoch+1,enabled=CASE WHEN ?2 THEN 0 ELSE enabled END,status=CASE WHEN ?2 THEN 'disabled' ELSE status END WHERE plugin_id=?1",params![id,disable]).checked("unavailable")?;
         self.cache.lock().checked("unavailable")?.remove(id);
         drop(db);
         self.cancel_connector(id)?;
@@ -1093,7 +1257,7 @@ impl Manager {
             .lock()
             .checked("unavailable")?
             .execute(
-                "INSERT INTO audit(plugin_id,digest,action) VALUES(?1,?2,?3)",
+                "INSERT INTO ext_host_audit(plugin_id,digest,action) VALUES(?1,?2,?3)",
                 params![
                     id,
                     digest,
@@ -1191,11 +1355,11 @@ impl Manager {
             return Err(fail("invalid_input"));
         }
         {
-            let mut db = self.db.lock().checked("unavailable")?;
-            let tx = db.transaction().checked("unavailable")?;
+            let db = self.db.lock().checked("unavailable")?;
+            let tx = db.unchecked_transaction().checked("unavailable")?;
             let changed = tx
                 .execute(
-                    "UPDATE private_settings SET settings=?2 WHERE digest=?1 AND settings!=?2",
+                    "UPDATE ext_host_private_settings SET settings=?2 WHERE digest=?1 AND settings!=?2",
                     params![
                         digest,
                         serde_json::to_string(values).checked("invalid_input")?
@@ -1204,7 +1368,7 @@ impl Manager {
                 .checked("unavailable")?;
             if changed > 0 {
                 tx.execute(
-                    "UPDATE selections SET revision=revision+1 WHERE plugin_id=?1 AND digest=?2",
+                    "UPDATE ext_host_selections SET revision=revision+1 WHERE plugin_id=?1 AND digest=?2",
                     params![id, digest],
                 )
                 .checked("unavailable")?;
@@ -1261,7 +1425,7 @@ impl Manager {
         // exact validated lease under the same lock as the authorization write.
         let db = self.db.lock().checked("unavailable")?;
         let changed = db.execute(
-            &format!("UPDATE selections SET {fields},revision=revision+1 WHERE plugin_id=?2 AND digest=?3 AND epoch=?4 AND revision=?5 AND enabled=1"),
+            &format!("UPDATE ext_host_selections SET {fields},revision=revision+1 WHERE plugin_id=?2 AND digest=?3 AND epoch=?4 AND revision=?5 AND enabled=1"),
             params![value, id, before.digest, i64::try_from(before.epoch).checked("resource_limit")?, i64::try_from(before.revision).checked("resource_limit")?],
         ).checked("unavailable")?;
         if changed != 1 {
@@ -1317,7 +1481,7 @@ impl Manager {
         preset: &str,
     ) -> Result<String> {
         let db = self.db.lock().checked("unavailable")?;
-        db.execute("INSERT OR IGNORE INTO provider_presets(plugin_id,digest,preset,provider_id) VALUES(?1,?2,?3,?4)",params![id,digest,preset,format!("custom-{}",uuid::Uuid::new_v4())]).checked("unavailable")?;
-        db.query_row("SELECT provider_id FROM provider_presets WHERE plugin_id=?1 AND digest=?2 AND preset=?3",params![id,digest,preset],|r|r.get(0)).checked("unavailable")
+        db.execute("INSERT OR IGNORE INTO ext_host_provider_presets(plugin_id,digest,preset,provider_id) VALUES(?1,?2,?3,?4)",params![id,digest,preset,format!("custom-{}",uuid::Uuid::new_v4())]).checked("unavailable")?;
+        db.query_row("SELECT provider_id FROM ext_host_provider_presets WHERE plugin_id=?1 AND digest=?2 AND preset=?3",params![id,digest,preset],|r|r.get(0)).checked("unavailable")
     }
 }

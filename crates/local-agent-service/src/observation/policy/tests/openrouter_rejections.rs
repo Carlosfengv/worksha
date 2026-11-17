@@ -164,7 +164,6 @@ async fn official_budget_rejections_pause_only_the_proven_key_and_preserve_retry
         hold(),
         [("workspace_default_member".into(), Some(reset.timestamp()))]
     );
-    *fixture.state.store.lock().unwrap() = Store::open(&fixture.root.path().join("data")).unwrap();
     play(
         &fixed,
         "ses_replybudgetCold",

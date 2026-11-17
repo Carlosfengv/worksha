@@ -23,6 +23,7 @@ export function DomainConsentControls({
 }) {
   const [open, setOpen] = useState(false);
   const [persist, setPersist] = useState<boolean | null>(null);
+  const [watch, setWatch] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const review = useSharedQuery(
@@ -33,8 +34,7 @@ export function DomainConsentControls({
   const current =
     !review.loading && !review.error && !error ? review.data : null;
   const persistMetadata = persist ?? current?.persistMetadata ?? false;
-  const remembersSource =
-    fullFacts && sourceId === "net.worksha.dsh-desktop:desktop";
+  const persistWatch = watch ?? current?.persistWatch ?? false;
   const save = async (enabled: boolean) => {
     if (busy || !current || error) return;
     setBusy(true);
@@ -45,8 +45,12 @@ export function DomainConsentControls({
         digest,
         enabled,
         persistMetadata: fullFacts && !enabled ? false : persistMetadata,
+        persistWatch:
+          enabled && current.canPersistWatch === true && persistWatch,
         reviewRef: current.reviewRef,
       });
+      setPersist(null);
+      setWatch(null);
       await Promise.all([
         review.invalidate(),
         domainDirectoryResource.invalidate(),
@@ -63,7 +67,11 @@ export function DomainConsentControls({
       <Button
         variant="tertiary"
         aria-expanded={open}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          setPersist(null);
+          setWatch(null);
+          setOpen(!open);
+        }}
       >
         统一会话展示
       </Button>
@@ -73,17 +81,11 @@ export function DomainConsentControls({
             {fullFacts
               ? "将已读取的项目、会话、响应、活动及 MCP 证据加入统一查询。"
               : "将已授权来源的会话标题、时间和用量加入统一查询。"}
-            {remembersSource
-              ? "桥接更新后会自动读取所选文件。"
-              : "不会扩大插件读取范围，也不会自动刷新来源。"}
           </p>
           <p className="text-label text-fg-muted">
-            {remembersSource
-              ? "Worksha 会记住所选文件和展示授权，重开时核对后自动恢复。替换来源文件后需要重新授权。"
-              : fullFacts
-                ? "默认仅保留本次运行的元数据；保存的元数据重开后标记过期，需重新启用、选择资源并授权展示后才能读取。"
-                : "默认仅保留本次运行的元数据；重开后需手动刷新。可选择保存元数据，重开时旧记录会标记过期。"}
-            正文始终按需读取，不另存副本。
+            {current?.canPersistWatch &&
+              "持续监听只读取选定的文件，替换文件后需重新授权。"}
+            正文按需读取。
           </p>
           {review.loading && (
             <p role="status" className="text-label text-fg-muted">
@@ -98,8 +100,8 @@ export function DomainConsentControls({
           {current?.unifiedAuthorized && (
             <p role="status" className="text-label">
               已加入统一展示 ·{" "}
-              {remembersSource
-                ? "重开时恢复"
+              {current.persistWatch
+                ? "重启后继续监听"
                 : current.persistMetadata
                   ? "保存元数据"
                   : "仅本次运行"}
@@ -111,12 +113,18 @@ export function DomainConsentControls({
               disabled={busy || !current || !!error}
               onCheckedChange={(value) => setPersist(value === true)}
             />
-            {remembersSource
-              ? "保存会话元数据"
-              : fullFacts
-                ? "保存元数据（重开后需要重新授权）"
-                : "保存元数据供重开读取"}
+            {fullFacts ? "保存会话元数据" : "保存元数据供重开读取"}
           </label>
+          {current?.canPersistWatch && (
+            <label className="flex items-center gap-2 text-label">
+              <Checkbox
+                checked={persistWatch}
+                disabled={busy || !current.sourceAuthorized}
+                onCheckedChange={(value) => setWatch(value === true)}
+              />
+              允许应用重启后继续自动读取并监听此文件
+            </label>
+          )}
           {current && !current.sourceAuthorized && (
             <p className="text-label text-fg-muted">请先选择并授权来源文件。</p>
           )}
@@ -145,6 +153,7 @@ export function DomainConsentControls({
                 onClick={() => {
                   setError(null);
                   setPersist(null);
+                  setWatch(null);
                   void review.invalidate();
                 }}
               >
@@ -160,7 +169,9 @@ export function DomainConsentControls({
             </Button>
           </div>
           <p className="text-label text-fg-subtle">
-            停止统一展示会使对应统一查询失效，保留原来源授权与扩展视图。
+            {current?.persistWatch
+              ? "停止统一展示会同时撤销跨重启监听，保留本次运行的来源授权与扩展视图。"
+              : "停止统一展示会使对应统一查询失效，保留原来源授权与扩展视图。"}
           </p>
           {(error || review.error) && (
             <p role="alert" className="text-label text-fg-muted">

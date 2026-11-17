@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +34,9 @@ export function DynamicRouteControl({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
+  const restoreRequest = useRef<{ source: string; operation: string } | null>(
+    null,
+  );
   const binding = config ? dynamicBindingFor(status, config) : undefined;
   const changes =
     status.dynamicChanges?.filter((c) => c.bindingId === binding?.id) ?? [];
@@ -47,7 +50,22 @@ export function DynamicRouteControl({
     setBusy(true);
     setError(null);
     try {
-      const result = await providersApi.dynamicRouteAction(change, action);
+      let operationId: string | undefined;
+      if (action === "restore") {
+        if (restoreRequest.current?.source !== change.id) {
+          restoreRequest.current = {
+            source: change.id,
+            operation: crypto.randomUUID(),
+          };
+        }
+        operationId = restoreRequest.current.operation;
+      }
+      const result = await providersApi.dynamicRouteAction(
+        change,
+        action,
+        operationId,
+      );
+      if (action === "restore") restoreRequest.current = null;
       setDismissed(null);
       setPreview(result.state === "pending" ? result : null);
       setNotice(

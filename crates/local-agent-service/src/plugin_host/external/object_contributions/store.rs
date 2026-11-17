@@ -1,16 +1,16 @@
 //! Separate metadata grants. Missing data grants no authority; damaged files are retained.
+use super::super::store::ControlDatabase;
 use super::super::{Checked, Result, fail, package};
 use local_agent_core::{domain::Decimal, plugin::object_contributions as c};
-use rusqlite::{Connection, OpenFlags, TransactionBehavior, params};
+use rusqlite::{Connection, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 use std::{
-    fs::{self, OpenOptions},
-    os::unix::fs::{MetadataExt, OpenOptionsExt},
+    fs,
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
-    time::{Duration, UNIX_EPOCH},
+    time::UNIX_EPOCH,
 };
 
-const MAX_DATABASE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_GRANTS: i64 = 64 * 16;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,9 +61,10 @@ pub(super) struct Status {
 }
 pub(super) struct Store {
     path: PathBuf,
+    #[cfg(test)]
     legacy: PathBuf,
     legacy_scope: Option<String>,
-    own_scope: Option<String>,
+    db: ControlDatabase,
     instance: String,
 }
 fn file_scope(path: &Path) -> Result<Option<String>> {
@@ -104,35 +105,26 @@ impl Store {
     pub(super) fn new(data: &Path) -> Self {
         let resolved = fs::canonicalize(data).unwrap_or_else(|_| data.to_path_buf());
         let data = resolved.as_path();
-        let legacy = data.join("plugin-host.sqlite3");
-        let path = data.join("object-contributions.sqlite3");
+        let legacy = data.join(super::super::store::CONTROL_DATABASE);
+        let path = data.join(super::super::store::CONTROL_DATABASE);
         Self {
             legacy_scope: file_scope(&legacy).ok().flatten(),
-            own_scope: file_scope(&path).ok().flatten(),
+            db: ControlDatabase::new(path.clone()),
+            #[cfg(test)]
             legacy,
             path,
             instance: uuid::Uuid::new_v4().to_string(),
         }
     }
-    fn scopes(&mut self) -> Result<Scopes> {
-        let current = file_scope(&self.legacy)?.ok_or(fail("invalid_record"))?;
+    pub(super) fn set_writer(&mut self, writer: Option<local_agent_core::StoreWriter>) {
+        self.db.set_writer(writer);
+    }
+    fn scopes(&self) -> Result<Scopes> {
+        let current = file_scope(&self.path)?.ok_or(fail("invalid_record"))?;
         if self.legacy_scope.as_ref() != Some(&current) {
             return Err(fail("invalid_record"));
         }
-        let own = file_scope(&self.path)?;
-        if self
-            .own_scope
-            .as_ref()
-            .is_some_and(|previous| own.as_ref() != Some(previous))
-        {
-            return Err(fail("invalid_record"));
-        }
-        if let Some(scope) = &own {
-            if fs::metadata(&self.path).checked("unavailable")?.len() > MAX_DATABASE_BYTES {
-                return Err(fail("resource_limit"));
-            }
-            self.own_scope = Some(scope.clone());
-        }
+        let own = Some(current.clone());
         for suffix in ["-wal", "-shm"] {
             let mut name = self.path.as_os_str().to_os_string();
             name.push(suffix);
@@ -140,9 +132,6 @@ impl Store {
                 Ok(meta) => {
                     if !meta.is_file() || meta.file_type().is_symlink() || meta.nlink() != 1 {
                         return Err(fail("invalid_record"));
-                    }
-                    if meta.len() > MAX_DATABASE_BYTES * 2 {
-                        return Err(fail("resource_limit"));
                     }
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -155,51 +144,8 @@ impl Store {
             instance: self.instance.clone(),
         })
     }
-    fn connection(&mut self, create: bool) -> Result<Option<Connection>> {
-        let before = self.scopes()?;
-        if before.own.is_none() && !create {
-            return Ok(None);
-        }
-        let fresh = before.own.is_none();
-        if fresh {
-            OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create_new(true)
-                .mode(0o600)
-                .open(&self.path)
-                .map_err(|e| {
-                    if e.kind() == std::io::ErrorKind::AlreadyExists {
-                        fail("stale_snapshot")
-                    } else {
-                        fail("unavailable")
-                    }
-                })?;
-            self.own_scope = file_scope(&self.path)?;
-        }
-        let db = sql(Connection::open_with_flags(
-            &self.path,
-            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NOFOLLOW,
-        ))?;
-        sql(db.busy_timeout(Duration::from_millis(25)))?;
-        if fresh {
-            sql(db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; BEGIN IMMEDIATE; CREATE TABLE object_grants(plugin_id TEXT NOT NULL,slot_id TEXT NOT NULL,record TEXT NOT NULL,PRIMARY KEY(plugin_id,slot_id)); PRAGMA user_version=1; COMMIT;"))?;
-        } else {
-            let version: i64 = sql(db.pragma_query_value(None, "user_version", |r| r.get(0)))?;
-            if version != 1 {
-                return Err(fail("invalid_record"));
-            }
-            let mode: String = sql(db.pragma_query_value(None, "journal_mode", |r| r.get(0)))?;
-            if mode != "wal" {
-                return Err(fail("invalid_record"));
-            }
-            sql(db.pragma_update(None, "synchronous", "FULL"))?;
-        }
-        self.scopes()?;
-        Ok(Some(db))
-    }
     fn read(db: &Connection, slot: &c::ObjectSlotQuery) -> Result<Option<Record>> {
-        let mut stmt=sql(db.prepare("SELECT CASE WHEN length(CAST(record AS BLOB))<=4096 THEN record ELSE NULL END FROM object_grants WHERE plugin_id=?1 AND slot_id=?2 LIMIT 2"))?;
+        let mut stmt=sql(db.prepare("SELECT CASE WHEN length(CAST(record AS BLOB))<=4096 THEN record ELSE NULL END FROM ext_obj_object_grants WHERE plugin_id=?1 AND slot_id=?2 LIMIT 2"))?;
         let rows = sql(stmt.query_map(params![slot.plugin_id, slot.slot_id], |r| {
             r.get::<_, Option<String>>(0)
         }))?;
@@ -217,10 +163,8 @@ impl Store {
     }
     pub(super) fn get(&mut self, slot: &c::ObjectSlotQuery) -> Result<Option<Record>> {
         slot.validate().checked("invalid_input")?;
-        let Some(db) = self.connection(false)? else {
-            return Ok(None);
-        };
-        sql(db.pragma_update(None, "query_only", true))?;
+        self.scopes()?;
+        let db = self.db.lock()?;
         let record = Self::read(&db, slot)?;
         self.scopes()?;
         Ok(record)
@@ -259,17 +203,22 @@ impl Store {
         if Self::identity(&owner, &before, old.as_ref())? != expected_context {
             return Err(fail("stale_snapshot"));
         }
-        let mut db = self.connection(true)?.ok_or(fail("unavailable"))?;
+        let db = self.db.lock()?;
         let scopes = self.scopes()?;
-        let tx = sql(db.transaction_with_behavior(TransactionBehavior::Immediate))?;
+        let tx = sql(rusqlite::Transaction::new_unchecked(
+            &db,
+            TransactionBehavior::Immediate,
+        ))?;
         let current = Self::read(&tx, &owner.slot)?;
         if current.as_ref().map(|r| &r.revision) != old.as_ref().map(|r| &r.revision) {
             return Err(fail("stale_snapshot"));
         }
         if current.is_none()
-            && sql(tx.query_row("SELECT count(*) FROM object_grants", [], |r| {
-                r.get::<_, i64>(0)
-            }))? >= MAX_GRANTS
+            && sql(
+                tx.query_row("SELECT count(*) FROM ext_obj_object_grants", [], |r| {
+                    r.get::<_, i64>(0)
+                }),
+            )? >= MAX_GRANTS
         {
             return Err(fail("resource_limit"));
         }
@@ -281,7 +230,7 @@ impl Store {
             authorized,
         };
         record.validate(&record.owner.slot)?;
-        sql(tx.execute("INSERT INTO object_grants VALUES(?1,?2,?3) ON CONFLICT(plugin_id,slot_id) DO UPDATE SET record=excluded.record",params![record.owner.slot.plugin_id,record.owner.slot.slot_id,serde_json::to_string(&record).checked("invalid_record")?]))?;
+        sql(tx.execute("INSERT INTO ext_obj_object_grants VALUES(?1,?2,?3) ON CONFLICT(plugin_id,slot_id) DO UPDATE SET record=excluded.record",params![record.owner.slot.plugin_id,record.owner.slot.slot_id,serde_json::to_string(&record).checked("invalid_record")?]))?;
         self.scopes()?;
         sql(tx.commit())?;
         Ok(record)
@@ -293,11 +242,7 @@ mod tests {
     use super::*;
     fn root() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(
-            dir.path().join("plugin-host.sqlite3"),
-            b"owned legacy identity",
-        )
-        .unwrap();
+        local_agent_core::Store::open(dir.path()).unwrap();
         dir
     }
     fn owner() -> Owner {
@@ -319,7 +264,7 @@ mod tests {
         let owner = owner();
         let first = s.status(&owner).unwrap();
         assert!(!first.authorized);
-        assert!(!s.path.exists());
+        assert!(!root.path().join("object-contributions.sqlite3").exists());
         s.apply(owner.clone(), &first.context_identity, true)
             .unwrap();
         let granted = s.status(&owner).unwrap();
@@ -347,7 +292,10 @@ mod tests {
         let owner = owner();
         let ctx = s.status(&owner).unwrap().context_identity;
         s.apply(owner.clone(), &ctx, true).unwrap();
-        fs::write(&s.legacy, b"ordinary legacy metadata write").unwrap();
+        let db = Connection::open(&s.path).unwrap();
+        db.execute("CREATE TABLE unrelated_fixture(value TEXT)", [])
+            .unwrap();
+        drop(db);
         assert!(s.status(&owner).unwrap().authorized);
         let mut reopened = Store::new(root.path());
         assert!(reopened.status(&owner).unwrap().authorized);
@@ -356,7 +304,7 @@ mod tests {
             "stale_snapshot"
         );
         fs::rename(&s.legacy, root.path().join("legacy-retained")).unwrap();
-        fs::write(&s.legacy, b"replacement legacy database").unwrap();
+        local_agent_core::Store::open(root.path()).unwrap();
         assert_eq!(s.status(&owner).err().unwrap().code, "invalid_record");
         let mut after = Store::new(root.path());
         assert!(!after.status(&owner).unwrap().authorized);
@@ -364,27 +312,30 @@ mod tests {
     #[test]
     fn future_or_malformed_data_is_preserved_and_scoped_records_cannot_redirect_grants() {
         let root = root();
-        let path = root.path().join("object-contributions.sqlite3");
+        let path = root
+            .path()
+            .join(super::super::super::store::CONTROL_DATABASE);
         let db = Connection::open(&path).unwrap();
-        db.pragma_update(None, "user_version", 7).unwrap();
+        db.pragma_update(None, "user_version", 99).unwrap();
         drop(db);
         let before = fs::read(&path).unwrap();
         let mut s = Store::new(root.path());
-        assert_eq!(s.status(&owner()).err().unwrap().code, "invalid_record");
+        assert_eq!(s.status(&owner()).err().unwrap().code, "incompatible_api");
         assert_eq!(fs::read(&path).unwrap(), before);
         fs::rename(&path, root.path().join("future-retained")).unwrap();
+        local_agent_core::Store::open(root.path()).unwrap();
         let mut s = Store::new(root.path());
         let owner = owner();
         let ctx = s.status(&owner).unwrap().context_identity;
         s.apply(owner.clone(), &ctx, true).unwrap();
         let db = Connection::open(&path).unwrap();
         let raw: String = db
-            .query_row("SELECT record FROM object_grants", [], |r| r.get(0))
+            .query_row("SELECT record FROM ext_obj_object_grants", [], |r| r.get(0))
             .unwrap();
         let mut record: Record = serde_json::from_str(&raw).unwrap();
         record.owner.slot.plugin_id = "org.other.details".into();
         db.execute(
-            "UPDATE object_grants SET record=?1",
+            "UPDATE ext_obj_object_grants SET record=?1",
             [serde_json::to_string(&record).unwrap()],
         )
         .unwrap();
@@ -417,7 +368,7 @@ mod tests {
             let mut row = record.clone();
             row.owner.slot.slot_id = format!("slot{i}");
             tx.execute(
-                "INSERT INTO object_grants VALUES(?1,?2,?3)",
+                "INSERT INTO ext_obj_object_grants VALUES(?1,?2,?3)",
                 params![
                     row.owner.slot.plugin_id,
                     row.owner.slot.slot_id,
@@ -442,19 +393,19 @@ mod tests {
     #[test]
     fn linked_files_are_never_opened_as_authority_or_reset() {
         let root = root();
+        let path = root
+            .path()
+            .join(super::super::super::store::CONTROL_DATABASE);
+        let original = root.path().join("original");
+        fs::rename(&path, &original).unwrap();
         let target = root.path().join("retained-data");
         fs::write(&target, b"keep this").unwrap();
-        std::os::unix::fs::symlink(&target, root.path().join("object-contributions.sqlite3"))
-            .unwrap();
+        std::os::unix::fs::symlink(&target, &path).unwrap();
         let mut s = Store::new(root.path());
         assert_eq!(s.status(&owner()).err().unwrap().code, "invalid_record");
         assert_eq!(fs::read(&target).unwrap(), b"keep this");
-        fs::remove_file(root.path().join("object-contributions.sqlite3")).unwrap();
-        fs::hard_link(
-            root.path().join("plugin-host.sqlite3"),
-            root.path().join("legacy-link"),
-        )
-        .unwrap();
+        fs::remove_file(&path).unwrap();
+        fs::hard_link(original, &path).unwrap();
         let mut s = Store::new(root.path());
         assert_eq!(s.status(&owner()).err().unwrap().code, "invalid_record");
     }

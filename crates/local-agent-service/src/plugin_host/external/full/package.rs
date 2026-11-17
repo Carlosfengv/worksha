@@ -102,3 +102,17 @@ pub(crate) fn pack(root: &Path, key: &SigningKey) -> Result<Vec<u8>> {
 }
 #[cfg(test)]
 mod tests;
+pub(super) fn can_persist_watch(manifest: &Manifest) -> bool {
+    manifest
+        .requires
+        .iter()
+        .any(|feature| feature == "host.source-watch@1")
+        && manifest.source.as_ref().is_some_and(|source| {
+            source.refresh_seconds.is_some_and(|refresh| {
+                (5..=300).contains(&refresh)
+                    && source
+                        .max_age_seconds
+                        .is_some_and(|age| (refresh * 2..=900).contains(&age))
+            })
+        })
+}

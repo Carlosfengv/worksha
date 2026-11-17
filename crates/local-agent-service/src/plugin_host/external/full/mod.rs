@@ -1,8 +1,9 @@
 //! Additive source package and fact host. Legacy package and database formats stay separate.
+mod activity;
 pub(super) mod api;
 mod connection;
 mod consent;
-mod dsh;
+mod saved_watch;
 pub(super) use connection::BundledDshConnection;
 pub(crate) use connection::ConnectionAccess;
 mod view;

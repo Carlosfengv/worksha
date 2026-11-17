@@ -18,8 +18,8 @@ import { createInterface } from "node:readline";
 import { DatabaseSync } from "node:sqlite";
 import { readCoreSchema } from "./lib/core-schema.mjs";
 
-// Optional stores must never prevent access to the original data. All files,
-// future schemas, and linked targets below are disposable synthetic fixtures.
+// Archived sidecars are ignored. Faults in active plugin data retain their
+// existing failure boundaries. Every fixture below is disposable.
 const binary = path.resolve(
   process.env.PLUGIN_TEST_BINARY ?? "target/debug/local-agent-service",
 );
@@ -115,6 +115,10 @@ try {
   assert.equal(capabilities.value.apiVersion, "1.0.0");
   assert.equal(capabilities.value.externalProtocol, "explicit-binding");
   assert.equal(capabilities.value.dsh, "unverified");
+  const emptyExtension = await initial.request("/api/plugin-extensions/status", {
+    pluginId: "",
+    digest: "",
+  });
   await initial.stop();
   const coreSchema = readCoreSchema(path.join(baseline, "local-agent.sqlite3"));
   assert(coreSchema.version > 0);
@@ -129,7 +133,10 @@ try {
   ]) {
     const data = path.join(root, name);
     cpSync(baseline, data, { recursive: true });
+    const main = path.join(data, "local-agent.sqlite3");
     const extensions = name.endsWith("extensions");
+    const archived =
+      name !== "blocked-plugin-directory" && name !== "invalid-basic-selection";
     const file = path.join(
       data,
       extensions ? "plugin-extensions.sqlite3" : "plugin-host.sqlite3",
@@ -140,9 +147,10 @@ try {
       writeFileSync(path.join(data, "plugins"), "preserve non-directory");
       watched = path.join(data, "plugins");
     } else if (name === "invalid-basic-selection") {
-      const db = new DatabaseSync(file);
+      watched = main;
+      const db = new DatabaseSync(main);
       db.prepare(
-        "INSERT INTO packages(digest,plugin_id,version,manifest,bytes) VALUES(?,?,?,?,?)",
+        "INSERT INTO ext_host_packages(digest,plugin_id,version,manifest,bytes) VALUES(?,?,?,?,?)",
       ).run("a".repeat(64), "org.example.damaged", "1.0.0", "{invalid", 0);
       db.close();
     } else {
@@ -167,39 +175,68 @@ try {
         extensions ? "/api/plugin-extensions/status" : "/api/plugins",
         extensions ? { pluginId: "", digest: "" } : undefined,
       );
-      assert.notEqual(optional.status, 200, name);
-      assert.equal(
-        optional.value.code,
-        name === "future-extensions" ? "incompatible_api" : "unavailable",
-        name,
-      );
+      if (archived) {
+        if (extensions) {
+          assert.equal(optional.status, emptyExtension.status, name);
+          assert.equal(optional.value.code, emptyExtension.value.code, name);
+        } else {
+          assert.equal(optional.status, 200, name);
+          assert.deepEqual(optional.value.items, capabilities.value.items, name);
+        }
+      } else {
+        assert.notEqual(optional.status, 200, name);
+        assert.equal(optional.value.code, "unavailable", name);
+      }
       assert.equal((await service.request("/api/runtime")).status, 200, name);
     } finally {
       await service.stop();
     }
     if (name !== "invalid-basic-selection")
       assert.equal(digest(watched), before, name);
-    const core = new DatabaseSync(path.join(data, "local-agent.sqlite3"), {
+    const core = new DatabaseSync(main, {
       readOnly: true,
     });
-    assert.deepEqual(readCoreSchema(path.join(data, "local-agent.sqlite3")), coreSchema, name);
+    assert.deepEqual(readCoreSchema(main), coreSchema, name);
     assert.equal(
       core.prepare("PRAGMA integrity_check").get().integrity_check,
       "ok",
     );
+    if (name === "invalid-basic-selection") {
+      assert.equal(
+        core
+          .prepare("SELECT manifest FROM ext_host_packages WHERE digest=?")
+          .get("a".repeat(64)).manifest,
+        "{invalid",
+      );
+    }
     core.close();
     report.cases.push({
       name,
       originalFeaturesAvailable: true,
-      optionalFailureExplicit: true,
+      archivedSidecarIgnored: archived,
+      optionalFailureExplicit: !archived,
       originalDataPreserved: true,
     });
     save();
   }
+  const futureControl = path.join(root, "future-control-plane");
+  cpSync(baseline, futureControl, { recursive: true });
+  const futureMain = path.join(futureControl, "local-agent.sqlite3");
+  const db = new DatabaseSync(futureMain);
+  db.exec("UPDATE ext_host_host_version SET version=99");
+  db.close();
+  const before = digest(futureMain);
+  await assert.rejects(start(futureControl), /控制面数据库结构无效/);
+  assert.equal(digest(futureMain), before);
+  report.cases.push({
+    name: "future-control-plane",
+    startupRejected: true,
+    originalDataPreserved: true,
+  });
   report.complete = true;
   save();
   console.log(
-    "Optional plugin store failure isolation and future-schema preservation passed.",
+    "Archived sidecar preservation and active plugin failure isolation passed.",
   );
 } catch (error) {
   report.error = error.message;

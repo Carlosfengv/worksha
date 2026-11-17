@@ -121,14 +121,24 @@ try {
   assert.equal((await call(c.key)).status, 403);
   checks.push("independent client keys, hashed persistence, management and model planes isolated, origin/host/model/protocol restrictions");
   const catalog = await fetch(`${lanBase}/v1/models`, { headers: headers(a.key) });
+  const localPaths = [
+    ["POST", "/v1/chat/completions"],
+    ["GET", `/gateway/${randomUUID()}/v1/models`],
+  ];
+  for (const [method, route] of localPaths) {
+    const response = await fetch(lanBase + route, { method, headers: headers(a.key) });
+    assert.equal(response.status, 404);
+  }
+  checks.push("the LAN listener exposes neither Chat Completions nor loopback binding paths");
   assert.equal(catalog.status, 200);
   assert.equal((await catalog.json()).data.length, 3);
   const codexCatalog = await fetch(`${lanBase}/v1/codex/models.json?client_version=0.163.0`, { headers: headers(c.key) });
   assert.equal(codexCatalog.status, 200);
   assert.equal((await codexCatalog.json()).models.length, 3);
   assert.equal((await fetch(`${lanBase}/v1/codex/models.json?client_version=0.166.0`, { headers: headers(c.key) })).status, 200);
-  assert.equal((await fetch(`${lanBase}/v1/codex/models.json?client_version=0.167.0`, { headers: headers(c.key) })).status, 400);
-  assert.equal((await fetch(`${lanBase}/v1/codex/models.json?client_version=0.100.0`, { headers: headers(c.key) })).status, 400);
+  assert.equal((await fetch(`${lanBase}/v1/codex/models.json?client_version=0.167.0`, { headers: headers(c.key) })).status, 200);
+  assert.equal((await fetch(`${lanBase}/v1/codex/models.json?client_version=0.100.0`, { headers: headers(c.key) })).status, 200);
+  assert.equal((await fetch(`${lanBase}/v1/codex/models.json?client_version=invalid`, { headers: headers(c.key) })).status, 400);
   await expectOk(await call(a.key, "fast", { headers: { "content-type": "application/json", "x-api-key": a.key } }));
   await expectOk(await call(d.key));
   await expectOk(await call(a.key));

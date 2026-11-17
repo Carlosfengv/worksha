@@ -102,6 +102,19 @@ try {
     }),
   ]).finally(() => clearTimeout(readyTimer));
   base = `http://127.0.0.1:${ready.port}`;
+  const catalog = await api("/api/builtin-plugins");
+  assert.equal(catalog.status, 200);
+  const projects = await api("/api/builtin-plugins/changes", {
+    operationId: randomUUID(),
+    storeId: catalog.body.storeId,
+    expectedRevision: catalog.body.revision,
+    expectedGeneration: catalog.body.host.generation,
+    composition: {
+      ...catalog.body.composition,
+      optedInPluginIds: ["builtin.projects"],
+    },
+  });
+  assert.equal(projects.status, 200);
   const snapshot = await api("/api/snapshot");
   assert.equal(snapshot.status, 200);
   const provider = { ...snapshot.body.providers[0], name: "Admission fixture" };
@@ -132,21 +145,24 @@ try {
       "fixture writer finished before saturation",
     );
     pending.push(
-      api("/api/model-services").then((result) => {
-        if (locked) diagnostics.readsBeforeRelease++;
+      api("/api/snapshot").then((result) => {
+        if (locked) {
+          diagnostics.readsBeforeRelease++;
+          if (diagnostics.probes.length < 10) {
+            diagnostics.probes.push({
+              status: result.status,
+              code: result.body.code,
+            });
+          }
+          if (result.body.code === "busy") {
+            assert.equal(result.status, 503);
+            saturated = true;
+          }
+        }
         return result;
       }),
     );
     submittedReads++;
-    await pause(2);
-    const probe = await api("/api/plugins", undefined, "GET", 1000);
-    if (diagnostics.probes.length < 10)
-      diagnostics.probes.push({ status: probe.status, code: probe.body.code });
-    if (probe.body.code === "busy") {
-      assert.equal(probe.status, 503);
-      saturated = true;
-      break;
-    }
     await pause(5);
   }
   assert(
@@ -325,7 +341,7 @@ try {
       .every(
         (value) =>
           value.status === 200 ||
-          (value.status === 409 && value.body.code === "busy"),
+          (value.status === 503 && value.body.code === "busy"),
       ),
   );
   report.submittedReadCalls = submittedReads;

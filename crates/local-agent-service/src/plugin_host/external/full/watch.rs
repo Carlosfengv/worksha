@@ -1,5 +1,5 @@
 use super::super::{Checked, Manager, Result, fail};
-use super::{dsh, runtime};
+use super::runtime;
 use local_agent_core::plugin::full as f;
 use std::{
     sync::{Arc, atomic::Ordering},
@@ -11,7 +11,7 @@ impl Manager {
         if !self.full_query(&query.plugin_id, &query.digest)? {
             return Ok(());
         }
-        let (interval, lease) = {
+        let (interval, lease, live) = {
             let host = self.full.lock().checked("unavailable")?;
             let p = host.installed(&query)?;
             let Some(seconds) = p.manifest.source.as_ref().and_then(|s| s.refresh_seconds) else {
@@ -29,12 +29,12 @@ impl Manager {
             {
                 return Err(fail("permission_denied"));
             }
-            let interval = if query.plugin_id == dsh::PLUGIN {
-                Duration::from_secs(1)
-            } else {
-                Duration::from_secs(seconds.into())
-            };
-            (interval, lease)
+            let live = p
+                .manifest
+                .source
+                .as_ref()
+                .is_some_and(|source| source.max_age_seconds.is_some());
+            (Duration::from_secs(seconds.into()), lease, live)
         };
         let weak = Arc::downgrade(self);
         let id = query.plugin_id.clone();
@@ -64,7 +64,7 @@ impl Manager {
                 }) else {
                     break;
                 };
-                if query.plugin_id == dsh::PLUGIN
+                if live
                     && stamp.as_ref().is_some_and(|stamp| {
                         runtime::stamp(&grant).is_ok_and(|current| &current == stamp)
                     })

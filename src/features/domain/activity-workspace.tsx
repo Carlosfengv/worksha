@@ -145,7 +145,7 @@ export function ActivityWorkspace({
             row.kind === "source-event"
               ? reportedRate == null
                 ? "不提供实时采样"
-                : `${reportedRate.toLocaleString("zh-CN", { maximumFractionDigits: 2 })} Token/s · DSH ${reportedRunning != null ? "当前步骤均速" : "已完成步骤均速"}`
+                : `${reportedRate.toLocaleString("zh-CN", { maximumFractionDigits: 2 })} Token/s · ${reportedRunning != null ? "上报当前步骤均速" : "上报已完成步骤均速"}`
               : rate === null
                 ? "实时速率未知"
                 : `${rate.toLocaleString("zh-CN", { maximumFractionDigits: 2 })} Token/s · 5 秒窗口`,
@@ -327,7 +327,7 @@ export function ActivityWorkspace({
               <p className="text-label">{active.rateLabel}</p>
               {active.reportedMeasurements?.firstTokenMs != null && (
                 <p className="text-label">
-                  DSH 步骤首出{" "}
+                  {active.sourceName} · 上报首出{" "}
                   {active.reportedMeasurements.firstTokenMs.toLocaleString(
                     "zh-CN",
                   )}{" "}

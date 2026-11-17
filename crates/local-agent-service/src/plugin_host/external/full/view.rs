@@ -26,11 +26,11 @@ impl SourceView {
     pub fn live_report_window(&self) -> Option<u32> {
         self.manifest.source.as_ref()?.max_age_seconds
     }
-    pub fn dsh_task(&self, native_session: &str) -> Option<&super::dsh::Task> {
+    pub fn reported_task(&self, native_session: &str) -> Option<&super::activity::Task> {
         if self.source.status.authorization != d::Authorization::Authorized {
             return None;
         }
-        self.projection.as_ref()?.dsh_tasks.get(native_session)
+        self.projection.as_ref()?.reported_tasks.get(native_session)
     }
     pub fn has_agent_connection(&self) -> bool {
         self.manifest.has_agent_connection()
@@ -197,9 +197,11 @@ impl Manager {
                     .get(&status.manifest.id)
                     .filter(|p| Some(&p.lease) == lease.as_ref())
                     .cloned();
-                let mut statement = host
-                    .db()?
-                    .prepare("SELECT id FROM full_hidden_projects ORDER BY id LIMIT 4097")
+                let db = host.db()?;
+                let mut statement = db
+                    .prepare(
+                        "SELECT id FROM ext_source_full_hidden_projects ORDER BY id LIMIT 4097",
+                    )
                     .checked("unavailable")?;
                 let hidden = statement
                     .query_map([], |r| r.get::<_, String>(0))
@@ -307,23 +309,25 @@ impl Manager {
         if input.hidden {
             let count: i64 = host
                 .db()?
-                .query_row("SELECT count(*) FROM full_hidden_projects", [], |r| {
-                    r.get(0)
-                })
+                .query_row(
+                    "SELECT count(*) FROM ext_source_full_hidden_projects",
+                    [],
+                    |r| r.get(0),
+                )
                 .checked("unavailable")?;
             if count >= 4096 && !view.hidden_projects.contains(&input.project_id) {
                 return Err(fail("resource_limit"));
             }
             host.db()?
                 .execute(
-                    "INSERT OR IGNORE INTO full_hidden_projects VALUES(?1)",
+                    "INSERT OR IGNORE INTO ext_source_full_hidden_projects VALUES(?1)",
                     [&input.project_id],
                 )
                 .checked("unavailable")?;
         } else {
             host.db()?
                 .execute(
-                    "DELETE FROM full_hidden_projects WHERE id=?1",
+                    "DELETE FROM ext_source_full_hidden_projects WHERE id=?1",
                     [&input.project_id],
                 )
                 .checked("unavailable")?;

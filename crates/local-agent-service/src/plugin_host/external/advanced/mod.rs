@@ -12,12 +12,13 @@ mod runtime;
 #[cfg(test)]
 mod tests;
 
+use super::store::{ControlConnection, ControlDatabase};
 use super::{Checked, Manager, Result, fail, package};
 use local_agent_core::plugin::{
     advanced::*,
     external::{Manifest, Permission, Runtime, Status, ViewKind},
 };
-use rusqlite::{Connection as Db, OptionalExtension, params};
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -176,7 +177,8 @@ pub(super) struct FileGrant {
     pub target: Option<String>,
 }
 pub(crate) struct Store {
-    db: std::sync::OnceLock<Db>,
+    db: ControlDatabase,
+    #[cfg(test)]
     data: PathBuf,
     bindings_path: PathBuf,
 }
@@ -191,7 +193,8 @@ impl Store {
         // No extension database work on the original startup / request path.
         // A failed first use retains the damaged file and fails only extensions.
         Ok(Self {
-            db: std::sync::OnceLock::new(),
+            db: ControlDatabase::new(data.join(super::store::CONTROL_DATABASE)),
+            #[cfg(test)]
             data: data.to_owned(),
             bindings_path: data.join("plugin-protocol-bindings.json"),
         })
@@ -199,15 +202,12 @@ impl Store {
     fn ready(&self) -> Result<()> {
         self.db().map(|_| ())
     }
-    fn db(&self) -> Result<&Db> {
-        if let Some(db) = self.db.get() {
-            return Ok(db);
-        }
-        // Manager's extension mutex serializes initialization. Transient disk
-        // and lock failures remain retryable; corrupt records stay untouched.
-        let db = Self::open_db(&self.data)?;
-        let _ = self.db.set(db);
-        self.db.get().ok_or(fail("unavailable"))
+    pub(super) fn with_writer(mut self, writer: Option<local_agent_core::StoreWriter>) -> Self {
+        self.db.set_writer(writer);
+        self
+    }
+    fn db(&self) -> Result<ControlConnection<'_>> {
+        self.db.lock()
     }
     fn bindings(&self) -> Result<BTreeMap<String, protocol::Binding>> {
         let snapshot =
@@ -225,43 +225,9 @@ impl Store {
         )
         .checked("unavailable")
     }
-    fn open_db(data: &Path) -> Result<Db> {
-        use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-        let path = data.join("plugin-extensions.sqlite3");
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(0o600)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(&path)
-            .checked("permission_denied")?;
-        if !file.metadata().checked("permission_denied")?.is_file()
-            || file.metadata().checked("permission_denied")?.nlink() != 1
-        {
-            return Err(fail("permission_denied"));
-        }
-        let db = Db::open(path).checked("unavailable")?;
-        db.busy_timeout(std::time::Duration::from_millis(250))
-            .checked("unavailable")?;
-        super::store::initialize_database(
-            &db,
-            "extension_version",
-            "version",
-            &["resources", "protocols", "plans", "connector_calls"],
-            "CREATE TABLE IF NOT EXISTS extension_version(version INTEGER NOT NULL);INSERT INTO extension_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM extension_version);CREATE TABLE IF NOT EXISTS resources(plugin_id TEXT PRIMARY KEY,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS protocols(provider_id TEXT PRIMARY KEY,plugin_id TEXT NOT NULL,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS plans(id TEXT PRIMARY KEY,plugin_id TEXT NOT NULL,record TEXT NOT NULL);CREATE TABLE IF NOT EXISTS connector_calls(id INTEGER PRIMARY KEY,plugin_id TEXT NOT NULL,identity TEXT NOT NULL,record TEXT NOT NULL,UNIQUE(plugin_id,identity));CREATE TRIGGER IF NOT EXISTS call_retention AFTER INSERT ON connector_calls BEGIN DELETE FROM connector_calls WHERE id<=NEW.id-10000;END;",
-        )?;
-        let version: u32 = db
-            .query_row("SELECT version FROM extension_version", [], |r| r.get(0))
-            .checked("unavailable")?;
-        if version != 1 {
-            return Err(fail("incompatible_api"));
-        }
-        Ok(db)
-    }
 }
 impl Manager {
+    #[cfg(test)]
     pub(crate) fn retention_tool_impact(
         &self,
         days: u16,
@@ -312,7 +278,7 @@ impl Manager {
         let grant: Option<String> = store
             .db()?
             .query_row(
-                "SELECT record FROM resources WHERE plugin_id=?1",
+                "SELECT record FROM ext_adv_resources WHERE plugin_id=?1",
                 [&q.plugin_id],
                 |r| r.get(0),
             )
@@ -335,9 +301,11 @@ impl Manager {
             .filter(|(_, b)| b.lease.id == q.plugin_id)
             .map(|(id, _)| id)
             .collect();
-        let mut statement = store
-            .db()?
-            .prepare("SELECT record FROM plans WHERE plugin_id=?1 ORDER BY rowid DESC LIMIT 32")
+        let db = store.db()?;
+        let mut statement = db
+            .prepare(
+                "SELECT record FROM ext_adv_plans WHERE plugin_id=?1 ORDER BY rowid DESC LIMIT 32",
+            )
             .checked("unavailable")?;
         let plans: Vec<Value> = statement
             .query_map([&q.plugin_id], |r| r.get::<_, String>(0))
@@ -351,10 +319,8 @@ impl Manager {
                     .map(|p| p.public())
             })
             .collect::<Result<_>>()?;
-        let mut statement = store
-            .db()?
-            .prepare(
-                "SELECT record FROM connector_calls WHERE plugin_id=?1 ORDER BY id DESC LIMIT 100",
+        let mut statement = db.prepare(
+                "SELECT record FROM ext_adv_connector_calls WHERE plugin_id=?1 ORDER BY id DESC LIMIT 100",
             )
             .checked("unavailable")?;
         let calls: Vec<Value> = statement
@@ -366,7 +332,7 @@ impl Manager {
             .map(|r| serde_json::from_str(&r).checked("invalid_record"))
             .collect::<Result<_>>()?;
         Ok(
-            json!({"apiVersion":API_VERSION,"policy":policy,"resourceLabel":label,"resourceTarget":grant.as_ref().and_then(|g|g.target.as_ref()),"resourceAuthorized":authorized,"protocolBindings":bindings,"plans":plans,"planCapacity":config::capacity(store.db()?)?,"connector":self.connectors.lock().checked("unavailable")?.get(&q.plugin_id).map(|s|s.public()),"calls":calls,"cleanup":"unsupported","redemption":"unsupported"}),
+            json!({"apiVersion":API_VERSION,"policy":policy,"resourceLabel":label,"resourceTarget":grant.as_ref().and_then(|g|g.target.as_ref()),"resourceAuthorized":authorized,"protocolBindings":bindings,"plans":plans,"planCapacity":config::capacity(&db)?,"connector":self.connectors.lock().checked("unavailable")?.get(&q.plugin_id).map(|s|s.public()),"calls":calls,"cleanup":"unsupported","redemption":"unsupported"}),
         )
     }
     pub(crate) fn grant_extension_file(&self, q: &Query, path: &Path) -> Result<Value> {
@@ -410,7 +376,7 @@ impl Manager {
         }
         let meta = std::fs::symlink_metadata(path).checked("permission_denied")?;
         lease.check(self)?;
-        let changed=self.db.lock().checked("unavailable")?.execute("UPDATE selections SET epoch=epoch+1,revision=revision+1 WHERE plugin_id=?1 AND digest=?2 AND enabled=1 AND epoch=?3 AND revision=?4",params![lease.id,lease.digest,lease.epoch,lease.revision]).checked("unavailable")?;
+        let changed=self.db.lock().checked("unavailable")?.execute("UPDATE ext_host_selections SET epoch=epoch+1,revision=revision+1 WHERE plugin_id=?1 AND digest=?2 AND enabled=1 AND epoch=?3 AND revision=?4",params![lease.id,lease.digest,lease.epoch,lease.revision]).checked("unavailable")?;
         if changed != 1 {
             return Err(fail("grant_revoked"));
         }
@@ -430,7 +396,7 @@ impl Manager {
             .checked("unavailable")?
             .db()?
             .execute(
-                "INSERT OR REPLACE INTO resources VALUES(?1,?2)",
+                "INSERT OR REPLACE INTO ext_adv_resources VALUES(?1,?2)",
                 params![
                     q.plugin_id,
                     serde_json::to_string(&grant).checked("invalid_input")?
@@ -445,7 +411,7 @@ impl Manager {
         let text: Option<String> = store
             .db()?
             .query_row(
-                "SELECT record FROM resources WHERE plugin_id=?1",
+                "SELECT record FROM ext_adv_resources WHERE plugin_id=?1",
                 [&q.plugin_id],
                 |r| r.get(0),
             )

@@ -105,6 +105,7 @@ export interface PluginDiagnostics {
   scope: "service-lifetime";
   since: string;
   dropped: string;
+  archivedDatabases?: boolean;
   items: PluginDiagnostic[];
 }
 const decimal = (v: unknown) =>
@@ -123,6 +124,8 @@ export function parseDiagnostics(value: unknown): PluginDiagnostics {
     value.scope !== "service-lifetime" ||
     !timestamp(value.since) ||
     !decimal(value.dropped) ||
+    (value.archivedDatabases !== undefined &&
+      typeof value.archivedDatabases !== "boolean") ||
     !Array.isArray(value.items) ||
     value.items.length > 64
   ) {
