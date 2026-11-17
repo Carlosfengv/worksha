@@ -426,7 +426,8 @@ fn usage_facts_are_lazy_incremental_and_atomic_without_changing_payloads() {
     assert_eq!(
         count(
             &sql,
-            "SELECT count(*) FROM sqlite_temp_master WHERE name LIKE '%_facts'"
+            "SELECT count(*) FROM sqlite_temp_master
+             WHERE name IN ('provider_facts','model_facts','native_provider_facts','native_model_facts')"
         ),
         0
     );

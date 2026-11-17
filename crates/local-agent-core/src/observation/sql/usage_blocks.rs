@@ -7,6 +7,12 @@ use chrono::{DateTime, Utc};
 
 const BLOCK: i64 = 4096;
 
+pub(super) struct BlockWindow {
+    pub days: Option<u16>,
+    pub now: DateTime<Utc>,
+    pub linked_expires_at: Option<i64>,
+}
+
 impl History {
     pub(super) fn usage_block_tables(&self, kind: &str, facts: &str) -> Result<(), String> {
         let base = format!("native_{kind}_blocks");
@@ -21,15 +27,61 @@ impl History {
         )).map_err(fail)
     }
 
+    pub(super) fn unified_model_block_links(&self) -> Result<(), String> {
+        self.db.execute_batch(&format!(
+            "CREATE INDEX IF NOT EXISTS temp.request_attempt_match ON record_meta(attempt_match) WHERE attempt_match IS NOT NULL;
+             CREATE TEMP TRIGGER IF NOT EXISTS model_blocks_native_link AFTER UPDATE OF v ON current
+               WHEN new.kind='native' AND old.v<>new.v BEGIN
+                 INSERT INTO native_model_blocks_dirty
+                 SELECT w.scope,f.source_order/{BLOCK} FROM native_model_blocks_clock w, native_model_facts f
+                 WHERE w.scope LIKE '[\"unified\",%' AND f.id=new.id
+                 AND NOT EXISTS(SELECT 1 FROM native_model_blocks_dirty d WHERE d.scope=w.scope AND d.bucket=f.source_order/{BLOCK});
+               END;
+             CREATE TEMP TRIGGER IF NOT EXISTS model_blocks_native_removed AFTER DELETE ON current
+               WHEN old.kind='native' BEGIN
+                 INSERT INTO native_model_blocks_dirty
+                 SELECT w.scope,f.source_order/{BLOCK} FROM native_model_blocks_clock w, native_model_facts f
+                 WHERE w.scope LIKE '[\"unified\",%' AND f.id=old.id
+                 AND NOT EXISTS(SELECT 1 FROM native_model_blocks_dirty d WHERE d.scope=w.scope AND d.bucket=f.source_order/{BLOCK});
+               END;
+             CREATE TEMP TRIGGER IF NOT EXISTS model_blocks_native_added AFTER INSERT ON current
+               WHEN new.kind='native' BEGIN
+                 INSERT INTO native_model_blocks_dirty
+                 SELECT w.scope,f.source_order/{BLOCK} FROM native_model_blocks_clock w, native_model_facts f
+                 WHERE w.scope LIKE '[\"unified\",%' AND f.id=new.id
+                 AND NOT EXISTS(SELECT 1 FROM native_model_blocks_dirty d WHERE d.scope=w.scope AND d.bucket=f.source_order/{BLOCK});
+               END;"
+        )).map_err(fail)?;
+        for (event, row) in [("INSERT", "new"), ("DELETE", "old")] {
+            self.db.execute_batch(&format!(
+                "CREATE TEMP TRIGGER IF NOT EXISTS model_blocks_attempt_{event} AFTER {event} ON model_facts
+                 WHEN EXISTS(SELECT 1 FROM native_model_blocks_clock WHERE scope LIKE '[\"unified\",%') BEGIN
+                   INSERT INTO native_model_blocks_dirty
+                   SELECT DISTINCT w.scope,f.source_order/{BLOCK}
+                   FROM native_model_blocks_clock w, record_meta r
+                   JOIN current c ON c.v=r.v AND c.kind='native'
+                   JOIN native_model_facts f ON f.id=c.id
+                   WHERE w.scope LIKE '[\"unified\",%' AND r.attempt_match={row}.id
+                   AND NOT EXISTS(SELECT 1 FROM native_model_blocks_dirty d WHERE d.scope=w.scope AND d.bucket=f.source_order/{BLOCK});
+                 END;"
+            )).map_err(fail)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn usage_blocks(
         &self,
         kind: &str,
         full: &str,
         in_time: &str,
         scope: &str,
-        days: Option<u16>,
-        now: DateTime<Utc>,
+        window: BlockWindow,
     ) -> Result<String, String> {
+        let BlockWindow {
+            days,
+            now,
+            linked_expires_at,
+        } = window;
         let base = format!("native_{kind}_blocks");
         let key = quote(scope);
         let previous: Option<(String, i64)> = self
@@ -98,7 +150,10 @@ impl History {
             }
             // Millisecond boundaries expire conservatively; the raw predicate
             // still compares RFC3339 nanoseconds on either edge of the range.
-            let expires = usage::range_expiry(&self.db, full, days, now)?;
+            let expires = usage::range_expiry(&self.db, full, days, now)?
+                .into_iter()
+                .chain(linked_expires_at)
+                .min();
             self.db
                 .execute_batch(&format!("DELETE FROM {base}_dirty WHERE scope={key};"))
                 .map_err(fail)?;

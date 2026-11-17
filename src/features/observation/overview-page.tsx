@@ -27,7 +27,8 @@ import {
 import { seconds, speed } from "@/features/observation/display";
 import { useOverview } from "@/features/observation/hooks/use-overview";
 import type { Overview, OverviewQuery } from "@/features/observation/types";
-import { date } from "@/features/sessions/display";
+import { collectorLabel, date } from "@/features/sessions/display";
+import { useAgentDirectory } from "@/shared/hooks/use-agent-directory";
 import { recordAgentKey } from "@/shared/types/agent";
 import { ConnectionEmpty } from "@/shared/ui/connection-empty";
 import { useMemo, useState } from "react";
@@ -52,12 +53,13 @@ export function OverviewPage({
   data: Snapshot | null;
   navigate: (page: Page) => void;
 }) {
+  const { familyNames } = useAgentDirectory();
   const [selectedAgent, setAgent] = useState("all");
   const [range, setRange] = useState("24");
   const [metric, setMetric] = useState<OverviewQuery["metric"]>("calls");
   const [dimension, setDimension] =
     useState<OverviewQuery["dimension"]>("agent");
-  const [source, setSource] = useState<OverviewQuery["source"]>("gateway");
+  const [source, setSource] = useState<OverviewQuery["source"]>("unified");
   const warnings = useSharedRead(budgetWarnings, isDesktopRuntime());
   const budgetAlerts = new Set(
     warnings.data?.warnings
@@ -150,6 +152,9 @@ export function OverviewPage({
       data?.sessionSources,
       data?.builtinComposition?.nativeActivityActive,
     ],
+  );
+  const nativeSources = overview?.analysis.nativeSources?.filter(
+    (source) => agent === "all" || directoryAgent?.family === source.agentId,
   );
   const activity = useCurrentActivities({
     data,
@@ -257,6 +262,7 @@ export function OverviewPage({
                 >
                   <SelectTrigger aria-label="调用统计来源" />
                   <SelectContent>
+                    <SelectItem value="unified">全部来源</SelectItem>
                     <SelectItem value="native">原生响应记录</SelectItem>
                     <SelectItem value="gateway">网关请求</SelectItem>
                   </SelectContent>
@@ -312,7 +318,33 @@ export function OverviewPage({
               </p>
             )}
             {overview ? (
-              <CallAnalysisCharts analysis={overview.analysis} />
+              <>
+                {overview.analysis.sourceCounts && (
+                  <p className="text-label text-fg-muted">
+                    网关逻辑请求 {overview.analysis.sourceCounts.gateway} 条 ·
+                    原生响应 {overview.analysis.sourceCounts.native} 条
+                  </p>
+                )}
+                {overview.analysis.nativeSourceError && (
+                  <p role="status" className="text-label text-fg-muted">
+                    {overview.analysis.nativeSourceError}
+                  </p>
+                )}
+                {Boolean(nativeSources?.length) && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-label text-fg-muted">
+                    {nativeSources?.map((source) => (
+                      <span
+                        key={source.agentId}
+                        title={source.error ?? undefined}
+                      >
+                        {familyNames[source.agentId] ?? source.agentId} ·{" "}
+                        {collectorLabel(source.status)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <CallAnalysisCharts analysis={overview.analysis} />
+              </>
             ) : (
               <ConnectionEmpty
                 title={

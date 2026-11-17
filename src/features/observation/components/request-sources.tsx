@@ -7,22 +7,9 @@ import {
   AccordionTrigger,
   AccordionContent,
 } from "@/components/ui/accordion";
-import { date, number } from "@/features/sessions/display";
+import { collectorLabel, date, number } from "@/features/sessions/display";
 import { compactNumber } from "@/shared/lib/format";
 import type { SourceReport } from "../request-types";
-const states: Record<string, string> = {
-  disabled: "未授权",
-  pending: "等待索引",
-  scanning: "扫描中",
-  ready: "可读取",
-  available: "可读取",
-  partial: "部分可读取",
-  not_found: "未发现记录",
-  permission_denied: "无权限",
-  error: "读取失败",
-  unsupported: "版本不支持",
-  empty: "暂无记录",
-};
 export function RequestSources({
   source,
   report,
@@ -33,6 +20,7 @@ export function RequestSources({
   onChange: (source: string) => void;
 }) {
   const { familyNames } = useAgentDirectory();
+  const unified = source === "unified" ? report?.unified : undefined;
   return (
     <section aria-label="来源与跨源统计" className="min-w-0 space-y-3">
       <Tabs
@@ -42,6 +30,7 @@ export function RequestSources({
         color="default"
       >
         <TabsList aria-label="请求数据来源">
+          <TabItem value="unified" label="全部来源" />
           <TabItem value="gateway" label="网关请求" />
           <TabItem value="native" label="原生响应" />
           <TabItem value="linked" label="跨来源精确匹配" />
@@ -55,15 +44,37 @@ export function RequestSources({
           <span title={number(report.gateway.requests)}>
             网关 {compactNumber(report.gateway.requests)}
           </span>
-          <span title={number(report.native.requests)}>
-            原生响应 {compactNumber(report.native.requests)}
+          <span
+            title={number(
+              report.native.requests - (unified?.foldedNative ?? 0),
+            )}
+          >
+            原生响应{" "}
+            {compactNumber(
+              report.native.requests - (unified?.foldedNative ?? 0),
+            )}
           </span>
-          <span title={number(report.linked.requests)}>
-            精确匹配 {compactNumber(report.linked.requests)}
-          </span>
-          <span>各来源独立统计，不直接相加</span>
+          {unified ? (
+            <span>已折叠 {number(unified.foldedNative)} 条原生响应</span>
+          ) : (
+            <>
+              <span title={number(report.linked.requests)}>
+                精确匹配 {compactNumber(report.linked.requests)}
+              </span>
+              <span>各来源独立统计，不直接相加</span>
+            </>
+          )}
         </div>
       )}
+      {unified &&
+        report &&
+        report.gateway.requests > 0 &&
+        report.unlinkedNative > 0 && (
+          <p role="status" className="text-label text-fg-muted">
+            {number(report.unlinkedNative)}{" "}
+            条原生响应可能与网关请求重叠，已分别保留。
+          </p>
+        )}
       {source === "linked" && (
         <p className="text-label text-fg-muted">
           按响应 ID
@@ -72,7 +83,7 @@ export function RequestSources({
         </p>
       )}
       {report?.collectors.length &&
-      !report.collectors.some((c) => c.enabled) ? (
+      report.collectors.every((c) => !c.enabled && c.status !== "stopped") ? (
         <p role="status" className="text-label text-fg-muted">
           原生来源尚未授权。可在 Agents 的连接与观测中选择允许读取的来源。
         </p>
@@ -80,11 +91,15 @@ export function RequestSources({
       {report?.collectors
         .filter(
           (c) =>
-            c.enabled &&
-            (c.error ||
-              ["partial", "error", "permission_denied", "unsupported"].includes(
-                c.status,
-              )),
+            c.status === "stopped" ||
+            (c.enabled &&
+              (c.error ||
+                [
+                  "partial",
+                  "error",
+                  "permission_denied",
+                  "unsupported",
+                ].includes(c.status))),
         )
         .map((c) => (
           <p
@@ -92,8 +107,7 @@ export function RequestSources({
             role="status"
             className="break-words text-label text-fg-muted"
           >
-            {familyNames[c.agentId] ?? c.agentId} ·{" "}
-            {states[c.status] ?? c.status}
+            {familyNames[c.agentId] ?? c.agentId} · {collectorLabel(c.status)}
             {c.error ? `：${c.error}` : ""}
           </p>
         ))}
@@ -139,17 +153,23 @@ export function RequestSources({
                   ))}
                 </div>
                 <p className="text-label text-fg-muted">
-                  {report.unlinkedNative} 条原生响应重叠未排除 ·{" "}
-                  {report.ambiguousNative} 条身份冲突或多候选 ·{" "}
+                  {unified
+                    ? `仅原生侧命中的精确关联 ${unified.nativeOnlyExact} 条 · 缺响应 ID ${unified.missingResponseId} 条 · 无网关候选 ${unified.noGatewayCandidate} 条 · 多候选 ${unified.ambiguous} 条 · 身份冲突 ${unified.identityConflict} 条 · `
+                    : `${report.unlinkedNative} 条原生响应重叠未排除 · ${report.ambiguousNative} 条身份冲突或多候选 · `}
                   {report.usageConflicts} 条用量冲突 ·{" "}
-                  {report.nativeMissingTime} 条缺少时间。{report.scope}
+                  {report.nativeMissingTime} 条缺少时间。
+                  {!unified && report.scope}
                 </p>
                 <div className="flex flex-wrap gap-3 text-label text-fg-muted">
                   {report.collectors.map((c) => (
                     <span key={c.agentId}>
                       {familyNames[c.agentId] ?? c.agentId}：
-                      {!c.enabled ? "未授权" : (states[c.status] ?? c.status)} ·{" "}
-                      {date(c.asOf)}
+                      {collectorLabel(
+                        !c.enabled && c.status !== "stopped"
+                          ? "disabled"
+                          : c.status,
+                      )}{" "}
+                      · {date(c.asOf)}
                       {c.skippedFiles
                         ? ` · ${c.skippedFiles} 个文件未读取`
                         : ""}

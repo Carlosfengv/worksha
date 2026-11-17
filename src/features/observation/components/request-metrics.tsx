@@ -20,25 +20,27 @@ import { compactNumber } from "@/shared/lib/format";
 export function RequestMetrics({
   summary: s,
   nativeView = false,
+  unifiedView = false,
   onResult,
   onIssue,
 }: {
   summary: RequestSummary;
   nativeView?: boolean;
+  unifiedView?: boolean;
   onResult: (status: string) => void;
   onIssue: (issue: string) => void;
 }) {
   const cards = [
     {
-      label: nativeView ? "模型响应记录" : "请求量",
+      label: unifiedView ? "观测记录" : nativeView ? "模型响应记录" : "请求量",
       value: compactNumber(s.requests),
       exact: number(s.requests),
       note: nativeView
         ? "逐条响应，不代表已确认 HTTP 请求"
-        : `${s.attempts} 次尝试 · ${s.provisional} 条进行中`,
+        : `${s.attempts} 次网关尝试 · ${s.provisional} 条进行中`,
     },
     {
-      label: nativeView ? "HTTP 成功率" : "成功率",
+      label: unifiedView ? "网关成功率" : nativeView ? "HTTP 成功率" : "成功率",
       value:
         s.successRate === null ? "—" : `${(s.successRate * 100).toFixed(2)}%`,
       note: nativeView
@@ -57,7 +59,9 @@ export function RequestMetrics({
       exact: providerCosts(s.cost),
       note: nativeView
         ? `${s.cost.unknownCalls} 次计价未知，缺少历史账单证据`
-        : "实际与估算分列 · 未知次数按尝试统计",
+        : unifiedView
+          ? `${s.cost.unknownCalls} 次计价未知 · 实际与估算分列`
+          : "实际与估算分列 · 未知次数按尝试统计",
     },
     {
       label: "首次输出 P50",
@@ -121,7 +125,9 @@ export function RequestMetrics({
         segments={results}
         valueText={`当前筛选结果分布：${Object.entries(s.statuses)
           .map(([id, value]) => `${requestStates[id] ?? id} ${value}`)
-          .join("，")}；共 ${s.requests} 条${nativeView ? "响应记录" : "请求"}`}
+          .join(
+            "，",
+          )}；共 ${s.requests} 条${unifiedView ? "观测记录" : nativeView ? "响应记录" : "请求"}`}
       />
       <ChartLegend
         aria-label="请求结果筛选"

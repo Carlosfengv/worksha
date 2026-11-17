@@ -576,22 +576,36 @@ pub async fn overview(
         .map_err(error)?;
     crate::blocking::query(state.query_capacity.clone(), move ||{
         let native_authorization=if query.source=="native"{Some(crate::sessions::authorizations(&state)?)}else{None};
-        let (analysis,stats,now)=state.observation.hub.query(|history|{
+        let (mut analysis,stats,now,source)=state.observation.hub.query(|history|{
             history.use_directory(state.sessions.directory())?;
+            let source = if query.source == "unified" {
+                Some(request_query::prepare_unified_sources(&state, history)?)
+            } else {
+                None
+            };
             if query.source=="native" {
                 let revision=state.sessions.revision().map_err(|e|e.message)?;
                 if !history.native_analysis_matches(revision){history.sync_native_analysis(&state.sessions.project_catalog().map_err(|e|e.message)?)?;}
             }
             let now=chrono::Utc::now();
-            Ok((history.analysis(&query,now)?,history.timing_stats(&query,now)?,now))
+            Ok((history.analysis(&query,now)?,history.timing_stats(&query,now)?,now,source))
         }).map_err(error)?;
-        let sources=state.sessions.sources().map_err(crate::native_error)?;
+        let sources = if let Some(source) = &source {
+            source.sources.clone()
+        } else {
+            state.sessions.sources().map_err(crate::native_error)?
+        };
         let native=state.observation.native.lock().map_err(|_|error("原生活动不可用".into()))?.rows.iter().filter(|a|state.sessions.directory().matches(query.agent.as_deref(),&a.agent_id,a.agent_product_id.as_deref())&&state.observation.native_collecting.load(std::sync::atomic::Ordering::Acquire)&&state.sessions.source_active(&a.agent_id)&&sources.iter().any(|s|s.agent_id==a.agent_id&&s.enabled)).cloned().collect::<Vec<_>>();
         let activities=state.observation.hub.activities().into_iter().filter(|a|state.sessions.directory().matches(query.agent.as_deref(),&a.request.agent_id,a.request.agent_product_id.as_deref())).collect::<Vec<_>>();
         let watch=state.observation.native_watch.lock().map_err(|_|error("采集器状态不可用".into()))?;
         let context_ids = native.iter().filter(|a| !a.stale && ["processing", "thinking", "tool_requested", "tool_returned"].contains(&a.phase.as_str())).map(|a| a.session_id.clone()).chain(activities.iter().filter(|a| !a.stale && a.request.status == "in_progress").filter_map(|a| a.request.session_id.clone()));
         let contexts = if state.observation.native_collecting.load(std::sync::atomic::Ordering::Acquire) { watch.context_samples(&state.sessions, context_ids).map_err(crate::native_error)? } else { Vec::new() };
         if let Some(authorization)=native_authorization && authorization!=crate::sessions::authorizations(&state)?{return Err(error("原生来源已更新，请刷新统计".into()));}
+        if let Some(source) = source {
+            source.check_consent(&state.sessions).map_err(error)?;
+            analysis["nativeSourceError"] = serde_json::json!(source.error);
+            analysis["nativeSources"] = source.collectors();
+        }
         Ok(Json(serde_json::json!({"analysis":analysis,"timings":stats,"nativeActivities":native,"gatewayActivities":activities,"sessionContexts":contexts,"collector":{"checkedAt":watch.checked_at,"error":if state.observation.native_collecting.load(std::sync::atomic::Ordering::Acquire){watch.error.clone()}else{Some("原生活动采集器已停止".to_string())},"persistenceError":state.observation.hub.error(),"persistence":state.observation.hub.health()},"bindings":state.observation.statuses(),"asOf":now.to_rfc3339()})))
     }).await
 }

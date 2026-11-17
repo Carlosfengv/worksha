@@ -22,7 +22,7 @@ export interface MemorySnapshot {
 
 export interface AgentUsageQuery {
   agent: string;
-  source: "native" | "gateway";
+  source: "native" | "gateway" | "unified";
   days?: number;
   provider?: string;
   model?: string;
@@ -42,6 +42,8 @@ export interface AgentUsage {
   asOf: string;
   sourceAsOf: string;
   sourceState: string;
+  nativeSourceState?: string;
+  nativeSourceError?: string | null;
   summary: ModelUsageTotals;
   providers: {
     id: string;
@@ -50,6 +52,7 @@ export interface AgentUsage {
     routeRevision: number | null;
   }[];
   items: {
+    source?: "native" | "gateway";
     providerId: string;
     routeRevision: number | null;
     provider: string | null;

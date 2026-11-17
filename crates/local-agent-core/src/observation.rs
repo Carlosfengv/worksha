@@ -297,7 +297,7 @@ impl OverviewQuery {
             || ![6, 12, 24, 168].contains(&self.range)
             || !["calls", "tokens", "cost"].contains(&self.metric.as_str())
             || !["agent", "model"].contains(&self.dimension.as_str())
-            || !["native", "gateway"].contains(&self.source.as_str())
+            || !["native", "gateway", "unified"].contains(&self.source.as_str())
         {
             return Err("调用分析筛选无效".into());
         }

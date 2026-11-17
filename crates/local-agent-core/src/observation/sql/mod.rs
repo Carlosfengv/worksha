@@ -199,7 +199,7 @@ impl History {
           CREATE TEMP VIEW native_options AS SELECT v,id,model,provider,json_object('provider',label) value FROM native_base;
           CREATE INDEX temp.native_base_response ON native_base(family,response);
           CREATE TEMP TABLE contexts(id TEXT PRIMARY KEY,value TEXT);
-          CREATE TEMP TABLE record_meta(v INTEGER PRIMARY KEY,kind TEXT NOT NULL,id TEXT NOT NULL,stats TEXT NOT NULL,time INTEGER,agent TEXT,family TEXT,product TEXT,status TEXT,model TEXT,provider TEXT,session TEXT,project TEXT,search TEXT,linked INTEGER NOT NULL DEFAULT 0,cache_in TEXT,cache_read TEXT,cost_value REAL,ttft_sample REAL,duration_sample REAL,throughput_sample REAL,started TEXT,instant TEXT,association TEXT,usage_conflict INTEGER,domain_usage TEXT NOT NULL,domain_link_count INTEGER NOT NULL,domain_link_conflicts INTEGER NOT NULL,domain_duration REAL,domain_ttft REAL);
+          CREATE TEMP TABLE record_meta(v INTEGER PRIMARY KEY,kind TEXT NOT NULL,id TEXT NOT NULL,stats TEXT NOT NULL,time INTEGER,agent TEXT,family TEXT,product TEXT,status TEXT,model TEXT,provider TEXT,session TEXT,project TEXT,search TEXT,linked INTEGER NOT NULL DEFAULT 0,cache_in TEXT,cache_read TEXT,cost_value REAL,ttft_sample REAL,duration_sample REAL,throughput_sample REAL,started TEXT,instant TEXT,association TEXT,usage_conflict INTEGER,domain_usage TEXT NOT NULL,domain_link_count INTEGER NOT NULL,domain_link_conflicts INTEGER NOT NULL,domain_duration REAL,domain_ttft REAL,native_response TEXT,gateway_match TEXT,attempt_match TEXT);
           CREATE TEMP TABLE record_payloads(v INTEGER PRIMARY KEY,value TEXT NOT NULL);
           CREATE TEMP VIEW records AS SELECT m.*,(SELECT p.value FROM record_payloads p WHERE p.v=m.v) value FROM record_meta m;
           CREATE TEMP TABLE current(kind TEXT,id TEXT,v INTEGER UNIQUE,PRIMARY KEY(kind,id));
@@ -275,7 +275,7 @@ impl History {
         self.provider_cache
             .retain(|c| c.value["query"]["source"] != "native");
         self.model_cache
-            .retain(|c| c.value["query"]["source"] != "native");
+            .retain(|c| c.value["query"]["source"] == "gateway");
     }
     /// Bounded decoding during cold start; subsequent work touches changed IDs/groups only.
     pub fn refresh(&mut self, live: &[ModelObservation]) -> Result<(), String> {
@@ -707,7 +707,13 @@ impl History {
         )
         .to_lowercase();
         let raw = encode(row)?;
-        execute(&self.db,"INSERT INTO record_meta(kind,id,stats,time,agent,family,product,status,model,provider,session,project,search,linked,cache_in,cache_read,cost_value,ttft_sample,duration_sample,throughput_sample,started,instant,association,usage_conflict,domain_usage,domain_link_count,domain_link_conflicts,domain_duration,domain_ttft) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,instant_key(?21),?22,?23,?24,?25,?26,?27,?28)",params![row.source,row.id,encode(&stats)?,timestamp(&row.started_at),self.directory.group(&row.agent_id,row.agent_product_id.as_deref()),row.agent_id,row.agent_product_id,row.status,row.model,row.provider_key,row.session_id,row.project_id,search,!row.native_links.is_empty(),input.to_string(),cached.to_string(),aggregates::cost_metric(&row.cost,"USD"),stats.ttft.p50,stats.duration.p50,stats.throughput.p50,row.started_at,row.native.as_ref().map(|n|n.association.as_str()),row.native.as_ref().map(|n|n.usage_conflict),unified_requests::usage_metadata(row),i64::try_from(row.native_links.len()).map_err(fail)?,i64::try_from(row.native_links.iter().filter(|l|l.usage_conflict).count()).map_err(fail)?,row.duration_ms.filter(|v|v.is_finite()),row.ttft_ms.filter(|v|v.is_finite())]).map_err(fail)?;
+        let native = row.native.as_ref();
+        execute(&self.db,"INSERT INTO record_meta(kind,id,stats,time,agent,family,product,status,model,provider,session,project,search,linked,cache_in,cache_read,cost_value,ttft_sample,duration_sample,throughput_sample,started,instant,association,usage_conflict,domain_usage,domain_link_count,domain_link_conflicts,domain_duration,domain_ttft,native_response,gateway_match,attempt_match)
+            VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,instant_key(?21),?22,?23,?24,?25,?26,?27,?28,?29,?30,?31)",
+            params![row.source,row.id,encode(&stats)?,timestamp(&row.started_at),
+                self.directory.group(&row.agent_id,row.agent_product_id.as_deref()),row.agent_id,row.agent_product_id,row.status,row.model,row.provider_key,row.session_id,row.project_id,search,!row.native_links.is_empty(),input.to_string(),cached.to_string(),aggregates::cost_metric(&row.cost,"USD"),stats.ttft.p50,stats.duration.p50,stats.throughput.p50,row.started_at,
+                native.map(|n|n.association.as_str()),native.map(|n|n.usage_conflict),unified_requests::usage_metadata(row),i64::try_from(row.native_links.len()).map_err(fail)?,i64::try_from(row.native_links.iter().filter(|l|l.usage_conflict).count()).map_err(fail)?,row.duration_ms.filter(|v|v.is_finite()),row.ttft_ms.filter(|v|v.is_finite()),
+                native.and_then(|n|n.response_id.as_deref()),native.and_then(|n|n.gateway_request_id.as_deref()),native.and_then(|n|n.matched_attempt_id.as_deref())]).map_err(fail)?;
         let version = self.db.last_insert_rowid();
         execute(
             &self.db,

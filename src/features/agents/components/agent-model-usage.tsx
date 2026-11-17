@@ -26,7 +26,12 @@ import {
 import { agentsApi } from "@/features/agents/api";
 import type { AgentUsage, AgentUsageQuery } from "@/features/agents/types";
 import { usageNumber } from "@/features/agents/usage-display";
-import { date, number, sessionLink } from "@/features/sessions/display";
+import {
+  collectorLabel,
+  date,
+  number,
+  sessionLink,
+} from "@/features/sessions/display";
 import { usePollingResource } from "@/shared/hooks/use-polling-resource";
 import { type AgentProductId } from "@/shared/types/agent";
 import type { Usage } from "@/shared/types/usage";
@@ -44,17 +49,9 @@ const usageFields: [keyof Usage, string][] = [
 ];
 type UsageItem = AgentUsage["items"][number];
 
-export function AgentModelUsage({
-  agentId,
-  nativeEnabled,
-}: {
-  agentId: AgentProductId;
-  nativeEnabled: boolean;
-}) {
+export function AgentModelUsage({ agentId }: { agentId: AgentProductId }) {
   const { agentFamily, isSharedSource } = useAgentDirectory();
-  const [source, setSource] = useState<AgentUsageQuery["source"]>(
-    nativeEnabled ? "native" : "gateway",
-  );
+  const [source, setSource] = useState<AgentUsageQuery["source"]>("unified");
   const [days, setDays] = useState("all");
   const [attribution, setAttribution] = useState("current");
   const queryAgent =
@@ -84,7 +81,12 @@ export function AgentModelUsage({
     loader,
   );
   const data = resource.data;
-  const countLabel = source === "native" ? "已识别模型响应" : "网关请求尝试";
+  const countLabel =
+    source === "unified"
+      ? "网关尝试与原生响应"
+      : source === "native"
+        ? "已识别模型响应"
+        : "网关请求尝试";
   const stale =
     Boolean(resource.error) ||
     Boolean(data && Date.now() - Date.parse(data.asOf) > 30000);
@@ -136,6 +138,7 @@ export function AgentModelUsage({
         >
           <SelectTrigger aria-label="模型用量来源" />
           <SelectContent>
+            <SelectItem value="unified">全部来源</SelectItem>
             <SelectItem value="native">原生记录 · 官方 / 第三方</SelectItem>
             <SelectItem value="gateway">本地网关 · 上游服务</SelectItem>
           </SelectContent>
@@ -206,6 +209,16 @@ export function AgentModelUsage({
             {resource.error} {data ? "保留上次快照。" : ""}
           </AlertDescription>
         </Alert>
+      )}
+      {data?.nativeSourceError && (
+        <p role="status" className="text-label text-fg-muted">
+          {data.nativeSourceError}
+        </p>
+      )}
+      {data?.nativeSourceState && !data.nativeSourceError && (
+        <p className="text-label text-fg-muted">
+          原生来源 · {collectorLabel(data.nativeSourceState)}
+        </p>
       )}
       <div className="flex flex-wrap gap-2">
         <Badge
@@ -323,17 +336,19 @@ export function AgentModelUsage({
           <AccordionContent>
             <div className="space-y-2 text-label text-fg-muted">
               <p>
-                {source === "native"
-                  ? "按模型响应时间统计，历史登录方式可能未知。"
-                  : "按网关请求开始时间统计，包含重试与已报告用量的失败请求。"}{" "}
-                两种来源可能重复，不可相加。
+                {source === "unified"
+                  ? "已按当前筛选折叠精确关联的原生响应。网关按尝试计数，原生按响应计数。"
+                  : source === "native"
+                    ? "按模型响应时间统计，历史登录方式可能未知。"
+                    : "按网关请求开始时间统计，包含重试与已报告用量的失败请求。"}
               </p>
               <p>
                 只计入来源明确的调用；无法归属的记录可切换“同家客户端来源未知”查看。当前配置不用于分配历史用量。
               </p>
               <p>
-                原生来源仅将唯一响应 ID
-                对应的网关费用计入该响应；未确认关联的费用未知。网关来源按尝试计费，不与原生来源相加。
+                {source === "unified"
+                  ? "网关费用按入选尝试统计，原生代表记录的费用保留未知。"
+                  : "原生来源仅包含已精确关联的网关费用。两种单源统计可能重叠。"}
               </p>
               <p>模型用量与账户额度分开统计，订阅不折算 API 费用。</p>
             </div>
@@ -380,8 +395,13 @@ export function AgentModelUsage({
                 ))}
               </dl>
               <p className="text-label text-fg-muted">
-                {countLabel} {number(selected.row.totals.attempts)} · 总 Token
-                未报告 {number(selected.row.totals.missingUsage)} · 最近记录{" "}
+                {selected.row.source === "native"
+                  ? "原生响应"
+                  : selected.row.source === "gateway"
+                    ? "网关尝试"
+                    : countLabel}{" "}
+                {number(selected.row.totals.attempts)} · 总 Token 未报告{" "}
+                {number(selected.row.totals.missingUsage)} · 最近记录{" "}
                 {date(selected.row.lastSeen)} · 快照 {date(selected.asOf)}
               </p>
               <p className="text-label text-fg-muted">

@@ -114,6 +114,14 @@ export interface SourceReport {
   ambiguousNative: number;
   usageConflicts: number;
   nativeMissingTime: number;
+  unified?: {
+    foldedNative: number;
+    nativeOnlyExact: number;
+    missingResponseId: number;
+    noGatewayCandidate: number;
+    ambiguous: number;
+    identityConflict: number;
+  };
   sourceAsOf: string | null;
   collectors: {
     agentId: string;

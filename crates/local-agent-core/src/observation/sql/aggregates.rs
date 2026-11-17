@@ -253,7 +253,10 @@ pub(in crate::observation) fn register(db: &Connection) -> Result<(), String> {
     })
     .map_err(fail)?;
     db.create_scalar_function("instant_cmp", 2, flags, |c| {
-        let parse = |s: String| chrono::DateTime::parse_from_rfc3339(&s).ok();
+        let parse = |s: Option<String>| {
+            s.as_deref()
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        };
         Ok(parse(c.get(0)?)
             .zip(parse(c.get(1)?))
             .map(|(a, b)| match a.cmp(&b) {

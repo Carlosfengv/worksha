@@ -47,10 +47,13 @@ export function RequestTrends({
   const { agentNames } = useAgentDirectory();
   const metric = data.query.metric ?? "calls",
     dimension = data.query.dimension ?? "agent";
-  const metricLabel =
-    metric === "calls" && data.query.source === "native"
-      ? "模型响应记录"
-      : requestMetrics[metric];
+  const countLabel =
+    data.query.source === "unified"
+      ? "观测记录"
+      : data.query.source === "native"
+        ? "模型响应记录"
+        : requestMetrics.calls;
+  const metricLabel = metric === "calls" ? countLabel : requestMetrics[metric];
   const performance = ["ttft", "duration", "throughput"].includes(metric);
   const series = useMemo(
     () => (performance ? [] : data.groups.slice(0, 5)),
@@ -103,9 +106,7 @@ export function RequestTrends({
             <SelectContent>
               {Object.entries(requestMetrics).map(([id, label]) => (
                 <SelectItem key={id} value={id}>
-                  {id === "calls" && data.query.source === "native"
-                    ? "模型响应记录"
-                    : label}
+                  {id === "calls" ? countLabel : label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -294,7 +295,7 @@ export function RequestTrends({
             label: agentNames[g.label] ?? g.label,
             value: g.value,
             color: chartColor(g.id),
-            detail: `${g.samples} ${performance ? "个有效样本" : data.query.source === "native" ? "条响应记录" : "条请求"}${g.missing ? ` · ${g.missing} 次缺失` : ""}`,
+            detail: `${g.samples} ${performance ? "个有效样本" : `条${countLabel}`}${g.missing ? ` · ${g.missing} 次缺失` : ""}`,
           }))}
           formatValue={(value) =>
             `${requestValue(value, metric)}${metric === "cost" ? ` ${data.query.currency ?? "USD"}` : ""}`

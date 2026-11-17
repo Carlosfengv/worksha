@@ -20,6 +20,7 @@ const FIELDS: &[&str] = &[
     "usageConflicts",
     "unlinkedNative",
     "nativeMissingTime",
+    "unified",
 ];
 
 pub(super) fn query_key(query: &requests::Query) -> Result<String, String> {
@@ -71,7 +72,9 @@ impl History {
             .find(|c| c.key == key && c.epoch == epoch && now >= c.created && now < c.expires)
         {
             for field in FIELDS {
-                report[*field] = cache.values[*field].clone();
+                if let Some(value) = cache.values.get(*field) {
+                    report[*field] = value.clone();
+                }
             }
             return Ok(true);
         }
@@ -87,7 +90,9 @@ impl History {
         let key = query_key(query)?;
         let mut values = json!({});
         for field in FIELDS {
-            values[*field] = report[*field].clone();
+            if let Some(value) = report.get(*field) {
+                values[*field] = value.clone();
+            }
         }
         let entry = Report {
             key: key.clone(),

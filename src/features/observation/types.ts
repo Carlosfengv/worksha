@@ -172,7 +172,7 @@ export interface OverviewQuery {
   range: number;
   metric: "calls" | "tokens" | "cost";
   dimension: "agent" | "model";
-  source: "native" | "gateway";
+  source: "native" | "gateway" | "unified";
 }
 
 export interface AnalysisValue {
@@ -183,6 +183,14 @@ export interface AnalysisValue {
 }
 
 export interface CallAnalysis {
+  sourceCounts?: { gateway: number; native: number };
+  nativeSourceError?: string | null;
+  nativeSources?: {
+    agentId: string;
+    enabled: boolean;
+    status: string;
+    error?: string | null;
+  }[];
   cost?: {
     actualUsd: number | null;
     estimatedUsd: number | null;

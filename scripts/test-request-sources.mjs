@@ -36,6 +36,9 @@ try {
  const frozen={...native.query,snapshot:native.snapshot};const next=await dashboard({...frozen,cursor:native.nextCursor});assert.equal(next.items.length,8);assert.ok(next.items.every(b=>native.items.every(a=>a.id!==b.id)));
  const csv=await api('/api/request-export?snapshot='+native.snapshot);assert.equal(csv.count,48);assert.ok(csv.csv.includes('模型响应记录'));assert.ok(csv.csv.includes('时间未知'));assert.ok(!csv.csv.includes('fixture-native-text'));
  const linked=await dashboard({source:'linked'});assert.equal(linked.total,2);assert.equal(linked.summary.usage.totalTokens,74);assert.equal(linked.summary.attempts,2);assert.equal(linked.items[0].nativeLinks.length,1);
+ const unified=await dashboard({source:'unified'});assert.equal(unified.total,50);assert.equal(unified.summary.attempts,4);assert.equal(unified.sourceReport.unified.foldedNative,2);assert.equal(unified.sourceReport.unified.ambiguous,1);
+ const unifiedFrozen={...unified.query,snapshot:unified.snapshot};const unifiedNext=await dashboard({...unifiedFrozen,cursor:unified.nextCursor});assert.equal(unifiedNext.items.length,10);assert.ok(unifiedNext.items.every(b=>unified.items.every(a=>a.id!==b.id)));
+ const unifiedCsv=await api('/api/request-export?snapshot='+unified.snapshot);assert.equal(unifiedCsv.count,50);assert.equal(unifiedCsv.csv.split('\r\n').filter(Boolean).length,51);
  const day=await dashboard({source:'native',start:'2026-10-19T00:00:00+08:00',end:'2026-10-20T00:00:00+08:00'});assert.equal(day.total,47);assert.equal(day.missingTime,1);
  const n=await api('/api/request-detail?id='+encodeURIComponent(native.items[0].id));assert.equal(n.request.source,'native');assert.ok(n.request.native.eventId);assert.equal(n.request.attempts.length,0);
  const exportId=randomUUID();await api('/api/request-exports',{method:'POST',body:JSON.stringify({operationId:exportId,snapshot:native.snapshot})});
@@ -44,6 +47,8 @@ try {
  assert.equal((await request('/api/request-exports/'+exportId+'/finish',{method:'POST',body:JSON.stringify({after:47,rows:48})})).status,409,'final confirmation must reject revoked consent');
  assert.equal((await request('/api/request-exports/'+exportId+'?after=-1')).status,409,'revoked export resources cannot resume');
  assert.equal((await request('/api/request-export?snapshot='+native.snapshot)).status,409);assert.equal((await request('/api/request-dashboard?'+new URLSearchParams(frozen))).status,409);
+ assert.equal((await request('/api/request-export?snapshot='+unified.snapshot)).status,409);assert.equal((await request('/api/request-dashboard?'+new URLSearchParams(unifiedFrozen))).status,409);
+ assert.equal((await dashboard({source:'unified'})).total,4);
  assert.equal((await api('/api/request-detail?id='+encodeURIComponent(n.request.id))).request,null);assert.equal((await dashboard({source:'native'})).total,0);
  assert.equal((await request('/api/request-dashboard?source=all')).status,400);
  await api('/api/session-sources',{method:'PUT',body:JSON.stringify({agentId:'claude',enabled:true})});

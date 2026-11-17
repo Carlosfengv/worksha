@@ -24,7 +24,7 @@ impl UsageQuery {
         directory: &crate::agents::AgentDirectory,
     ) -> Result<(), &'static str> {
         if !directory.valid_filter(&self.agent)
-            || !["native", "gateway"].contains(&self.source.as_str())
+            || !["native", "gateway", "unified"].contains(&self.source.as_str())
             || self.days.is_some_and(|days| ![1, 7, 30].contains(&days))
             || self
                 .provider

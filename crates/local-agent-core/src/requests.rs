@@ -66,7 +66,7 @@ impl Query {
         if self
             .source
             .as_deref()
-            .is_some_and(|s| !["gateway", "native", "linked"].contains(&s))
+            .is_some_and(|s| !["gateway", "native", "linked", "unified"].contains(&s))
             || self
                 .start
                 .as_ref()

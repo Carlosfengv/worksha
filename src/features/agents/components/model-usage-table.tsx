@@ -48,8 +48,20 @@ export function ModelUsageTable({
         },
       },
       {
+        id: "source",
+        header: "来源",
+        enableSorting: false,
+        cell: ({ row }) =>
+          (row.original.item.source ?? source) === "native" ? "原生" : "网关",
+      },
+      {
         id: "attempts",
-        header: () => <>{source === "native" ? "响应数" : "尝试数"}</>,
+        header:
+          source === "unified"
+            ? "记录数"
+            : source === "native"
+              ? "响应数"
+              : "尝试数",
         enableSorting: false,
         cell: ({ row }) => {
           const { item: rowData } = row.original;
@@ -126,6 +138,7 @@ export function ModelUsageTable({
     columns,
     getRowId: (row) =>
       JSON.stringify([
+        row.item.source ?? source,
         row.item.providerId,
         row.item.routeRevision,
         row.item.model,

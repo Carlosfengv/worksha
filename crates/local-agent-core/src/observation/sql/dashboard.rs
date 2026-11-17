@@ -164,6 +164,34 @@ fn base(kind: &str, predicate: &str) -> String {
     )
 }
 
+// The outer native candidate uses `n`; the existing filter applies to the
+// gateway counterpart as `r`. Only globally exact links participate.
+fn selected_gateway_for_native(predicate: &str) -> String {
+    format!(
+        "CASE WHEN n.association='response_id' THEN EXISTS(
+            SELECT 1 FROM current g JOIN records r ON r.v=g.v
+            WHERE g.kind='gateway' AND g.id=n.gateway_match
+              AND {predicate}
+        ) ELSE 0 END"
+    )
+}
+
+pub(super) fn native_request_scope(predicate: &str, unified: bool, block_scan: bool) -> String {
+    let join = if block_scan {
+        "records r NOT INDEXED CROSS JOIN current c"
+    } else {
+        "records r JOIN current c"
+    };
+    let native =
+        format!("(SELECT r.* FROM {join} ON c.v=r.v WHERE r.kind='native' AND ({predicate}))");
+    if unified {
+        let matched = selected_gateway_for_native(predicate);
+        format!("(SELECT n.* FROM {native} n WHERE NOT ({matched}))")
+    } else {
+        native
+    }
+}
+
 pub(super) fn native_provider_options(db: &Connection, from: &str) -> Result<Vec<Value>, String> {
     // With a single MAX and unique native IDs, SQLite carries v from the winning
     // row. Join by this primary key so provider count cannot multiply a full scan.
@@ -505,6 +533,9 @@ impl History {
                         v["projectId"] = json!(c.as_ref().and_then(|c| c.project_id.as_ref()));
                         v["projectName"] = json!(c.as_ref().and_then(|c| c.project_name.as_ref()));
                         if v != original {
+                            if v["sessionId"] != original["sessionId"] {
+                                execute(&self.db,"INSERT OR IGNORE INTO dirty_links SELECT family,response FROM attempts WHERE logical=?1 AND response IS NOT NULL", [&id]).map_err(fail)?;
+                            }
                             self.replace_value("gateway", &id, &v)?;
                         }
                     }
@@ -726,6 +757,7 @@ impl History {
             } else {
                 "gateway"
             };
+            let unified = q.source.as_deref() == Some("unified");
             let predicate = filter(q, now, true);
             let linked = if q.source.as_deref() == Some("linked") {
                 " AND r.linked=1"
@@ -745,10 +777,13 @@ impl History {
             } else {
                 "ASC"
             };
-            let source = format!(
-                "records r JOIN current c ON c.v=r.v WHERE r.kind={} AND {predicate}{linked}",
-                quote(kind)
-            );
+            let gateway = base("gateway", &predicate);
+            let selected_raw = if unified {
+                let native = native_request_scope(&predicate, true, false);
+                format!("(SELECT * FROM {gateway} UNION ALL SELECT * FROM {native})")
+            } else {
+                base(kind, &format!("{predicate}{linked}"))
+            };
             let position_id: i64 = self
                 .db
                 .query_row(
@@ -761,29 +796,46 @@ impl History {
             // million-row membership index compact and never reuse empty owners.
             // Snapshot positions reference immutable record versions, not copies of
             // whole JSON histories. Cursor seeks use the compound primary key.
-            execute(&self.db,&format!("INSERT INTO positions SELECT ?1,row_number() OVER(ORDER BY ({order}) IS NULL,({order}) {descending},r.id)-1,r.v FROM {source}"),[position_id]).map_err(fail)?;
+            execute(&self.db,&format!("INSERT INTO positions SELECT ?1,row_number() OVER(ORDER BY ({order}) IS NULL,({order}) {descending},r.id,r.kind)-1,r.v FROM {selected_raw} r"),[position_id]).map_err(fail)?;
             // All aggregates are computed inside the same serialized query as
             // position allocation. Reuse its current scope directly; probing
             // million-row positions again for every chart adds no isolation.
             // Public pagination still references the immutable versions above.
-            let selected = if kind == "native" {
-                self.native_request_cells(q, now)?
-                    .unwrap_or_else(|| format!("(SELECT r.* FROM {source})"))
+            let layout = self.request_layout(&selected_raw, q, now)?;
+            let selected = if unified {
+                let columns = "id,v,time,started,instant,agent,model,provider,value,stats,cache_in,cache_read,ttft_sample,duration_sample,throughput_sample";
+                self.native_request_cells_for(q, now, Some(layout), true)?
+                    .map(|cells| format!("(SELECT 'gateway' kind,{columns} FROM {gateway} UNION ALL SELECT 'native' kind,{columns} FROM {cells})"))
+                    .unwrap_or_else(|| selected_raw.clone())
+            } else if kind == "native" {
+                self.native_request_cells_for(q, now, Some(layout), false)?
+                    .unwrap_or_else(|| selected_raw.clone())
             } else {
-                format!("(SELECT r.* FROM {source})")
+                selected_raw
             };
             let report_key = match q.source.as_deref() {
                 Some("native") => "native",
                 Some("linked") => "linked",
                 _ => "gateway",
             };
-            let s = if report[report_key].is_object() {
+            let mut s = if !unified && report[report_key].is_object() {
                 serde_json::from_value::<requests::Summary>(report[report_key].clone())
                     .map_err(fail)?
             } else {
                 summary(&self.db, &selected)?
             };
-            let rawscope = base(kind, if linked.is_empty() { "1" } else { "r.linked=1" });
+            if unified {
+                s.success_rate = if report["gateway"].is_object() {
+                    report["gateway"]["successRate"].as_f64()
+                } else {
+                    aggregates::summary_base(&self.db, &gateway)?.success_rate
+                };
+            }
+            let rawscope = if unified {
+                "(SELECT r.* FROM records r JOIN current c ON c.v=r.v)".into()
+            } else {
+                base(kind, if linked.is_empty() { "1" } else { "r.linked=1" })
+            };
             let (start, end): (Option<i64>, Option<i64>) = self
                 .db
                 .query_row(
@@ -803,13 +855,25 @@ impl History {
                     |r| sql_count(r, 0),
                 )
                 .map_err(fail)?;
+            let gateway_scope = if unified {
+                base("gateway", "1")
+            } else {
+                rawscope.clone()
+            };
             let options = format!(
-                "(SELECT r.id,0 pos,r.model,r.provider,json_extract(r.value,'$.provider') label FROM {rawscope} r WHERE r.kind='native' UNION ALL SELECT r.id,CAST(a.key AS INTEGER),coalesce(json_extract(a.value,'$.routedModel'),json_extract(a.value,'$.model')),json_extract(a.value,'$.providerKey'),json_extract(a.value,'$.provider') FROM {rawscope} r,json_each(r.value,'$.attempts') a)"
+                "(SELECT r.id,CAST(a.key AS INTEGER) pos,coalesce(json_extract(a.value,'$.routedModel'),json_extract(a.value,'$.model')) model,json_extract(a.value,'$.providerKey') provider,json_extract(a.value,'$.provider') label FROM {gateway_scope} r,json_each(r.value,'$.attempts') a)"
             );
             let models = aggregates::list(
                 &self.db,
                 &if kind == "native" {
                     "SELECT json_quote(model) FROM native_base WHERE model IS NOT NULL GROUP BY model ORDER BY model".into()
+                } else if unified {
+                    format!(
+                        "SELECT json_quote(model) FROM (
+                        SELECT model FROM {options} WHERE model IS NOT NULL GROUP BY model
+                        UNION SELECT model FROM native_base WHERE model IS NOT NULL GROUP BY model
+                    ) ORDER BY model"
+                    )
                 } else {
                     format!(
                         "SELECT json_quote(model) FROM {options} WHERE model IS NOT NULL GROUP BY model ORDER BY model"
@@ -819,6 +883,13 @@ impl History {
             let providers = if kind == "native" {
                 native_provider_options(&self.db, "native_options")?
             } else {
+                let options = if unified {
+                    format!("(SELECT * FROM {options} UNION ALL
+                        SELECT n.id,0,NULL,n.provider,n.label FROM native_base n
+                        JOIN (SELECT v,max(id) FROM native_base GROUP BY provider) latest ON latest.v=n.v)")
+                } else {
+                    options
+                };
                 aggregates::list(
                     &self.db,
                     &format!(
@@ -833,6 +904,9 @@ impl History {
                 "linked" => {
                     "仅明确响应 ID 关联的网关逻辑请求；每次消费计一份，采用网关用量与计时，未关联原生不纳入"
                 }
+                "unified" => {
+                    "网关逻辑请求与已授权原生响应分别筛选；精确关联且两侧命中时保留网关记录"
+                }
                 _ => "已记录网关逻辑请求；原生记录和本地拒绝未相加，跨来源关联见下方",
             };
             let iso = |v: Option<i64>, descending: bool| -> Result<Option<String>, String> {
@@ -846,7 +920,7 @@ impl History {
                     Ok(None)
                 }
             };
-            let mut dashboard = json!({"query":q,"asOf":now.to_rfc3339(),"snapshot":id,"summary":s,"buckets":self.buckets(&selected,q,now)?,"groups":self.groups(&selected,q)?,"items":[],"total":s.requests,"nextCursor":null,"models":models,"providers":providers,"sourceError":error,"coverage":coverage,"recordedStart":iso(start,false)?,"recordedEnd":iso(end,true)?,"missingTime":missing,"sourceReport":report,"heatmap":self.heatmap(&selected,q,now)?});
+            let mut dashboard = json!({"query":q,"asOf":now.to_rfc3339(),"snapshot":id,"summary":s,"buckets":self.buckets(&selected,q,layout)?,"groups":self.groups(&selected,q)?,"items":[],"total":s.requests,"nextCursor":null,"models":models,"providers":providers,"sourceError":error,"coverage":coverage,"recordedStart":iso(start,false)?,"recordedEnd":iso(end,true)?,"missingTime":missing,"sourceReport":report,"heatmap":self.heatmap(&selected,q,now)?});
             dashboard["query"]["snapshot"] = Value::Null;
             dashboard["query"]
                 .as_object_mut()
@@ -1017,21 +1091,41 @@ impl History {
         let cells = self.native_request_cells(q, now)?;
         let from = cells.clone().unwrap_or_else(|| base("native", &scope));
         let count_expressions = if cells.is_some() {
-            "coalesce(sum(matched),0),coalesce(sum(ambiguous),0),coalesce(sum(conflicts),0)"
+            "coalesce(sum(matched),0),coalesce(sum(ambiguous),0),coalesce(sum(conflicts),0),
+             coalesce(sum(missing_response),0),coalesce(sum(no_gateway),0),coalesce(sum(identity_conflict),0)"
         } else {
-            "count(*) FILTER(WHERE association='response_id'),count(*) FILTER(WHERE association IN ('ambiguous','identity_conflict')),count(*) FILTER(WHERE usage_conflict=1)"
+            "count(*) FILTER(WHERE association='response_id'),count(*) FILTER(WHERE association IN ('ambiguous','identity_conflict')),count(*) FILTER(WHERE usage_conflict=1),
+             count(*) FILTER(WHERE native_response IS NULL),
+             count(*) FILTER(WHERE native_response IS NOT NULL AND association='unlinked'),
+             count(*) FILTER(WHERE association='identity_conflict')"
         };
-        let counts: (usize, usize, usize) = self
+        let [
+            matched,
+            ambiguous,
+            conflicts,
+            missing_response,
+            no_gateway,
+            identity_conflict,
+        ] = self
             .db
             .query_row(
                 &format!("SELECT {count_expressions} FROM {from}"),
                 [],
-                |r| Ok((sql_count(r, 0)?, sql_count(r, 1)?, sql_count(r, 2)?)),
+                |r| {
+                    Ok([
+                        sql_count(r, 0)?,
+                        sql_count(r, 1)?,
+                        sql_count(r, 2)?,
+                        sql_count(r, 3)?,
+                        sql_count(r, 4)?,
+                        sql_count(r, 5)?,
+                    ])
+                },
             )
             .map_err(fail)?;
-        report["matchedNative"] = json!(counts.0);
-        report["ambiguousNative"] = json!(counts.1);
-        report["usageConflicts"] = json!(counts.2);
+        report["matchedNative"] = json!(matched);
+        report["ambiguousNative"] = json!(ambiguous);
+        report["usageConflicts"] = json!(conflicts);
         report["unlinkedNative"] = json!(
             report["native"]["requests"]
                 .as_u64()
@@ -1050,6 +1144,30 @@ impl History {
                 )
                 .map_err(fail)?
         );
+        if q.source.as_deref() == Some("unified") {
+            let native = native_request_scope(&scope, true, false);
+            let gateway = base("gateway", &scope);
+            let full = format!("(SELECT * FROM {gateway} UNION ALL SELECT * FROM {native})");
+            let layout = self.request_layout(&full, q, now)?;
+            let retained = self.native_request_cells_for(q, now, Some(layout), true)?;
+            let count = if let Some(cells) = retained {
+                format!("SELECT coalesce(sum(matched),0) FROM {cells}")
+            } else {
+                format!("SELECT count(*) FROM {native} WHERE association='response_id'")
+            };
+            let native_only = self
+                .db
+                .query_row(&count, [], |r| sql_count(r, 0))
+                .map_err(fail)?;
+            report["unified"] = json!({
+                "foldedNative":matched.saturating_sub(native_only),
+                "nativeOnlyExact":native_only,
+                "missingResponseId":missing_response,
+                "noGatewayCandidate":no_gateway,
+                "ambiguous":ambiguous.saturating_sub(identity_conflict),
+                "identityConflict":identity_conflict
+            });
+        }
         self.remember_request_report(q, now, &report)?;
         Ok(report)
     }
@@ -1081,6 +1199,14 @@ impl History {
     fn groups(&self, from: &str, q: &requests::Query) -> Result<Value, String> {
         let metric = q.metric.as_deref().unwrap_or("calls");
         let dimension = q.dimension.as_deref().unwrap_or("agent");
+        if q.source.as_deref() == Some("unified") {
+            return self.unified_groups(
+                from,
+                metric,
+                dimension,
+                q.currency.as_deref().unwrap_or("USD"),
+            );
+        }
         if q.source.as_deref() == Some("native") && ["calls", "tokens", "cost"].contains(&metric) {
             // Native records contain one response, without gateway attempt
             // fragments. Group their own narrow fields once instead of joining
@@ -1205,6 +1331,110 @@ impl History {
         });
         Ok(json!(groups))
     }
+
+    fn unified_groups(
+        &self,
+        from: &str,
+        metric: &str,
+        dimension: &str,
+        currency: &str,
+    ) -> Result<Value, String> {
+        let (key, label) = match dimension {
+            "provider" => ("r.provider", "json_extract(r.value,'$.provider')"),
+            "model" => (
+                "coalesce(r.model,'模型未知')",
+                "coalesce(r.model,'模型未知')",
+            ),
+            _ => ("r.agent", "r.agent"),
+        };
+        let sample = match metric {
+            "ttft" => Some("r.ttft_sample"),
+            "duration" => Some("r.duration_sample"),
+            "throughput" => Some("r.throughput_sample"),
+            _ => None,
+        };
+        let dim = if sample.is_none() && dimension != "agent" {
+            format!("{dimension}Parts")
+        } else {
+            dimension.to_owned()
+        };
+        let measured = sample.unwrap_or("NULL");
+        let inputs = format!(
+            "SELECT r.v,f.key,f.label,coalesce(f.stats,r.stats) stats,{measured} sample
+             FROM {from} r JOIN fragments f ON f.v=r.v AND f.dimension={}
+             WHERE r.kind='gateway'
+             UNION ALL
+             SELECT r.v,{key},{label},r.stats,{measured}
+             FROM {from} r WHERE r.kind='native'",
+            quote(&dim)
+        );
+        let aggregate = if sample.is_some() {
+            format!(
+                "WITH inputs AS ({inputs}), ranks AS (
+                SELECT *,row_number() OVER(PARTITION BY key ORDER BY sample IS NULL,sample) rank,
+                         count(sample) OVER(PARTITION BY key) measured
+                FROM inputs
+             )
+             SELECT key,min(label),sum(json_extract(stats,'$.requests')),max(measured),
+                    max(sample) FILTER(WHERE rank=(measured+1)/2)
+             FROM ranks GROUP BY key"
+            )
+        } else if metric == "calls" {
+            format!(
+                "WITH inputs AS ({inputs})
+                 SELECT key,min(label),sum(CAST(json_extract(stats,'$.requests') AS INTEGER))
+                 FROM inputs GROUP BY key"
+            )
+        } else {
+            format!(
+                "WITH inputs AS ({inputs})
+                SELECT key,min(label),summary_sum(stats,'0','0'{}) FROM inputs GROUP BY key",
+                if metric == "cost" { " ORDER BY v" } else { "" }
+            )
+        };
+        let mut statement = self.db.prepare(&aggregate).map_err(fail)?;
+        let mut rows = statement.query([]).map_err(fail)?;
+        let mut groups = vec![];
+        while let Some(row) = rows.next().map_err(fail)? {
+            let key: String = row.get(0).map_err(fail)?;
+            let label: String = row.get(1).map_err(fail)?;
+            let (v, samples, missing) = if sample.is_some() {
+                let total = sql_count(row, 2).map_err(fail)?;
+                let measured = sql_count(row, 3).map_err(fail)?;
+                (
+                    row.get::<_, Option<f64>>(4).map_err(fail)?,
+                    measured,
+                    total.saturating_sub(measured),
+                )
+            } else if metric == "calls" {
+                let count = sql_count(row, 2).map_err(fail)?;
+                (Some(count as f64), count, 0)
+            } else {
+                let raw: String = row.get(2).map_err(fail)?;
+                let summary: requests::Summary = serde_json::from_str(&raw).map_err(fail)?;
+                let missing = match metric {
+                    "tokens" => summary.usage_missing,
+                    "cost" => summary.cost.unknown_calls,
+                    _ => 0,
+                };
+                (summary.metric(metric, currency), summary.requests, missing)
+            };
+            groups.push(requests::Group {
+                id: key,
+                label,
+                value: v,
+                samples,
+                missing,
+            });
+        }
+        groups.sort_by(|a, b| {
+            b.value
+                .unwrap_or(-1.0)
+                .total_cmp(&a.value.unwrap_or(-1.0))
+                .then(a.id.cmp(&b.id))
+        });
+        value(&groups)
+    }
     pub(super) fn request_layout(
         &self,
         from: &str,
@@ -1265,9 +1495,8 @@ impl History {
         &self,
         from: &str,
         q: &requests::Query,
-        now: DateTime<Utc>,
+        (start, end, step): (DateTime<Utc>, DateTime<Utc>, Duration),
     ) -> Result<Value, String> {
-        let (start, end, step) = self.request_layout(from, q, now)?;
         let metric = q.metric.as_deref().unwrap_or("calls");
         let mut buckets = vec![];
         let mut at = start;
@@ -1279,7 +1508,19 @@ impl History {
                 quote(&at.to_rfc3339()),
                 quote(&next.to_rfc3339())
             );
-            let s = if metric == "calls" && q.source.as_deref() != Some("native") {
+            let s = if metric == "calls" && q.source.as_deref() == Some("unified") {
+                let requests = self.db.query_row(
+                    &format!("SELECT coalesce(sum(CAST(json_extract(stats,'$.requests') AS INTEGER)),0) FROM {scope}"),
+                    [],
+                    |r| sql_count(r, 0),
+                ).map_err(fail)?;
+                requests::Summary {
+                    requests,
+                    ..Default::default()
+                }
+            } else if metric == "calls"
+                && !matches!(q.source.as_deref(), Some("native" | "unified"))
+            {
                 let requests = self
                     .db
                     .query_row(&format!("SELECT count(*) FROM {scope}"), [], |r| {
@@ -1355,7 +1596,7 @@ impl History {
                 .query_row(
                     &format!(
                         "SELECT {} FROM {from} WHERE time<{outside}",
-                        if q.source.as_deref() == Some("native") {
+                        if matches!(q.source.as_deref(), Some("native" | "unified")) {
                             "coalesce(sum(json_extract(stats,'$.requests')),0)"
                         } else {
                             "count(*)"
@@ -1371,7 +1612,7 @@ impl History {
                 .query_row(
                     &format!(
                         "SELECT {} FROM {from} WHERE time IS NULL",
-                        if q.source.as_deref() == Some("native") {
+                        if matches!(q.source.as_deref(), Some("native" | "unified")) {
                             "coalesce(sum(json_extract(stats,'$.requests')),0)"
                         } else {
                             "count(*)"

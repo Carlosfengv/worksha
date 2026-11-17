@@ -205,8 +205,30 @@ impl History {
             .as_ref()
             .map(|a| format!("agent_group_matches({},agent)", quote(a)))
             .unwrap_or("1".into());
-        let full = format!("analyses WHERE kind={} AND {agent}", quote(&q.source));
-        let from = format!("(SELECT * FROM {full} AND time>={start} AND time<{end})");
+        let interval = format!("time>={start} AND time<{end}");
+        let unified = q.source == "unified";
+        let (full, from, gateway_from) = if unified {
+            let native_projection =
+                "id,'native' kind,agent,model,time,tokens,partial,0 provisional,
+                '{\"unknownAttempts\":1}' cost,0 attempts";
+            let native_matching = request_cells::overview_scope(&agent, start, end, true, false);
+            let gateway = "SELECT * FROM analyses WHERE kind='gateway'";
+            let scoped_gateway = format!("{gateway} AND {agent} AND {interval}");
+            (
+                format!(
+                    "({gateway} UNION ALL SELECT {native_projection} FROM native_overview_facts) WHERE {agent}"
+                ),
+                format!(
+                    "({scoped_gateway}
+                    UNION ALL SELECT {native_projection} FROM {native_matching})"
+                ),
+                Some(format!("({scoped_gateway})")),
+            )
+        } else {
+            let full = format!("analyses WHERE kind={} AND {agent}", quote(&q.source));
+            let from = format!("(SELECT * FROM {full} AND {interval})");
+            (full, from, None)
+        };
         let expr = match q.metric.as_str() {
             "calls" => "1",
             "tokens" => "CAST(tokens AS REAL)",
@@ -230,40 +252,91 @@ impl History {
                 json!({"value":if count==0 {Some(0.0)} else if known>0 {r.get::<_,Option<f64>>(offset+2)?} else {None},"samples":count,"missing":missing,"reported":count-missing}),
             )
         };
-        let total = self
-            .db
-            .query_row(&format!("SELECT {columns} FROM {from}"), [], |r| {
-                totals(r, 0)
-            })
-            .map_err(fail)?;
+        let raw_total = || {
+            let sources = if unified {
+                ",count(*) FILTER(WHERE kind='gateway')"
+            } else {
+                ",0"
+            };
+            self.db
+                .query_row(&format!("SELECT {columns}{sources} FROM {from}"), [], |r| {
+                    Ok((totals(r, 0)?, sql_count(r, 4)?))
+                })
+                .map_err(fail)
+        };
         // Small nonnegative integer sums are exact in f64, so their dimension
         // and chart summaries can share one compact pass. Money and large token
         // totals retain the original row order to preserve floating additions.
         let raw_from = from.clone();
-        let compact = q.source == "native"
-            && matches!(q.metric.as_str(), "calls" | "tokens")
-            && total["value"]
-                .as_f64()
-                .is_none_or(|n| n <= 9_007_199_254_740_991.0);
-        let compact = if compact {
-            self.db.execute_batch("CREATE TEMP TABLE IF NOT EXISTS analysis_cells(agent TEXT,model TEXT,time INTEGER,samples INTEGER,known INTEGER,total REAL,missing INTEGER);DELETE FROM analysis_cells;").map_err(fail)?;
-            execute(&self.db,&format!("INSERT INTO analysis_cells SELECT agent,model,min(time),{columns} FROM {from} GROUP BY agent,model,(time-{start})/{} LIMIT 65537",seconds*1000),[]).map_err(fail)?;
-            self.db
-                .query_row("SELECT count(*)<=65536 FROM analysis_cells", [], |r| {
-                    r.get::<_, bool>(0)
+        let compact_columns =
+            "coalesce(sum(samples),0),coalesce(sum(known),0),sum(total),coalesce(sum(missing),0)";
+        let compact = if q.source != "gateway" && matches!(q.metric.as_str(), "calls" | "tokens") {
+            self.db.execute_batch("CREATE TEMP TABLE IF NOT EXISTS analysis_cells(agent TEXT,model TEXT,time INTEGER,samples INTEGER,known INTEGER,total REAL,missing INTEGER,gateway INTEGER);DELETE FROM analysis_cells;").map_err(fail)?;
+            let sources = if unified {
+                "count(*) FILTER(WHERE kind='gateway')"
+            } else {
+                "0"
+            };
+            let bucket = format!("(time-{start})/{}", seconds * 1000);
+            let compact_native = if let Some(gateway) = &gateway_from {
+                let start_at = DateTime::from_timestamp_millis(start).ok_or("统计日期越界")?;
+                let end_at = DateTime::from_timestamp_millis(end).ok_or("统计日期越界")?;
+                let query = requests::Query {
+                    source: Some("unified".into()),
+                    agent: q.agent.clone(),
+                    start: Some(start_at.to_rfc3339()),
+                    end: Some(end_at.to_rfc3339()),
+                    ..Default::default()
+                };
+                self.native_overview_cells(
+                    &query, now, (start_at, end_at, Duration::seconds(seconds)),
+                )?.map(|native| {
+                    let count = "CAST(json_extract(stats,'$.requests') AS INTEGER)";
+                    let (known, total, missing) = if q.metric == "tokens" {
+                        ("known_tokens", "CAST(json_extract(stats,'$.usage.totalTokens') AS REAL)", "missing_tokens")
+                    } else {
+                        (count, count, "0")
+                    };
+                    format!("WITH inputs(agent,model,time,samples,known,total,missing,gateway) AS (
+                      SELECT agent,model,min(time),{columns},count(*) FROM {gateway} GROUP BY agent,model,{bucket}
+                      UNION ALL
+                      SELECT agent,model,time,{count},{known},{total},{missing},0 FROM {native}
+                    )
+                    INSERT INTO analysis_cells SELECT agent,model,min(time),{compact_columns},sum(gateway)
+                    FROM inputs GROUP BY agent,model,{bucket} LIMIT 65537")
                 })
-                .map_err(fail)?
+            } else {
+                None
+            };
+            let insert = compact_native.unwrap_or_else(|| format!(
+                "INSERT INTO analysis_cells SELECT agent,model,min(time),{columns},{sources} FROM {from} GROUP BY agent,model,{bucket} LIMIT 65537"
+            ));
+            execute(&self.db, &insert, []).map_err(fail)?;
+            self.db.query_row(
+                &format!("SELECT {compact_columns},coalesce(sum(gateway),0),count(*)<=65536 FROM analysis_cells"),
+                [],
+                |r| {
+                    let total = totals(r, 0)?;
+                    let reusable = r.get::<_, bool>(5)?
+                        && total["value"].as_f64().is_none_or(|n| n <= 9_007_199_254_740_991.0);
+                    Ok(reusable.then_some((total, sql_count(r, 4)?)))
+                },
+            ).map_err(fail)?
         } else {
-            false
+            None
         };
-        let from = if compact {
+        let reuse_cells = compact.is_some();
+        let (total, gateway_count) = match compact {
+            Some(tuple) => tuple,
+            None => raw_total()?,
+        };
+        let from = if reuse_cells {
             "analysis_cells".into()
         } else {
             from
         };
-        let columns = if compact {
-            "coalesce(sum(samples),0),coalesce(sum(known),0),sum(total),coalesce(sum(missing),0)"
-                .into()
+        let columns = if reuse_cells {
+            compact_columns.into()
         } else {
             columns
         };
@@ -350,7 +423,16 @@ impl History {
                 .collect();
             buckets.push(json!({"start":DateTime::from_timestamp_millis(at).unwrap().to_rfc3339(),"end":DateTime::from_timestamp_millis(next).unwrap().to_rfc3339(),"groups":groups,"value":total["value"],"missing":total["missing"]}));
         }
-        let cost=self.db.query_row(&format!("SELECT sum(json_extract(cost,'$.actualUsd')),sum(json_extract(cost,'$.estimatedUsd')),coalesce(sum(json_extract(cost,'$.unknownAttempts')),0),coalesce(sum(provisional),0) FROM {raw_from}"),[],|r|Ok((r.get::<_,Option<f64>>(0)?,r.get::<_,Option<f64>>(1)?,sql_count(r,2)?,sql_count(r,3)?))).map_err(fail)?;
+        let cost_from = gateway_from.as_deref().unwrap_or(&raw_from);
+        let native_count = if unified {
+            total["samples"]
+                .as_u64()
+                .unwrap_or(0)
+                .saturating_sub(gateway_count as u64)
+        } else {
+            0
+        };
+        let cost=self.db.query_row(&format!("SELECT sum(json_extract(cost,'$.actualUsd')),sum(json_extract(cost,'$.estimatedUsd')),coalesce(sum(json_extract(cost,'$.unknownAttempts')),0),coalesce(sum(provisional),0) FROM {cost_from}"),[],|r|Ok((r.get::<_,Option<f64>>(0)?,r.get::<_,Option<f64>>(1)?,sql_count(r,2)? as u64+native_count,sql_count(r,3)?))).map_err(fail)?;
         let missing: usize = self
             .db
             .query_row(
@@ -359,7 +441,10 @@ impl History {
                 |r| sql_count(r, 0),
             )
             .map_err(fail)?;
-        let result = json!({"cost":{"actualUsd":cost.0,"estimatedUsd":cost.1,"unknownAttempts":cost.2},"asOf":now.to_rfc3339(),"windowStart":DateTime::from_timestamp_millis(start).unwrap().to_rfc3339(),"query":q,"total":total["value"],"samples":total["samples"],"reported":total["reported"],"missing":total["missing"],"missingTime":missing,"provisional":cost.3,"agents":agents,"models":models,"buckets":buckets,"coverage":"partial","unit":match q.metric.as_str(){"tokens"=>"Token","cost"=>"USD",_=>"次"}});
+        let mut result = json!({"cost":{"actualUsd":cost.0,"estimatedUsd":cost.1,"unknownAttempts":cost.2},"asOf":now.to_rfc3339(),"windowStart":DateTime::from_timestamp_millis(start).unwrap().to_rfc3339(),"query":q,"total":total["value"],"samples":total["samples"],"reported":total["reported"],"missing":total["missing"],"missingTime":missing,"provisional":cost.3,"agents":agents,"models":models,"buckets":buckets,"coverage":"partial","unit":match q.metric.as_str(){"tokens"=>"Token","cost"=>"USD",_ if unified=>"条",_=>"次"}});
+        if unified {
+            result["sourceCounts"] = json!({"gateway":gateway_count,"native":native_count});
+        }
         self.remember_analysis(q, now, &full, seconds * 1000, &result)?;
         Ok(result)
     }

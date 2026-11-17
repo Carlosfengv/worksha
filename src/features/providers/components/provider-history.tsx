@@ -370,6 +370,7 @@ export function ProviderHistory({
       <ProviderUsageFilters
         value={filters}
         onChange={(value) => {
+          if (value.source !== filters.source) setModel("all");
           (onFiltersChange ?? setLocalFilters)(value);
           reset();
         }}

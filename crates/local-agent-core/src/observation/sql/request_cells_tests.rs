@@ -29,6 +29,234 @@ fn catalog(files: usize, calls: usize) -> crate::projects::ProjectCatalog {
     c.revision += 1;
     c
 }
+
+#[test]
+fn unified_requests_filter_each_side_before_folding_and_freeze_the_result() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = ObservationStore::open(dir.path()).unwrap();
+    let mut history = History::open(dir.path()).unwrap();
+    let mut catalog = catalog(1, 2);
+    let calls = Arc::make_mut(&mut catalog.calls.chunks[0]);
+    let before = "2026-10-01T23:59:00Z";
+    let after = "2026-10-02T00:01:00Z";
+    calls[0].timestamp = Some(after.into());
+    calls[0].model = Some("native-model".into());
+    calls[1].timestamp = Some(after.into());
+    calls[1].model = Some("other-model".into());
+    calls[1].response_id = None;
+    let native_id = calls[0].id.clone();
+    let other_id = calls[1].id.clone();
+    let mut gateway = row(0);
+    gateway.agent_id = calls[0].agent_id.clone();
+    gateway.agent_product_id = calls[0].agent_product_id.clone();
+    gateway.session_id = Some(calls[0].session_id.clone());
+    gateway.response_id = calls[0].response_id.clone();
+    gateway.model = Some("gateway-model".into());
+    gateway.started_at = before.into();
+    gateway.ended_at = Some("2026-10-01T23:59:01Z".into());
+    gateway.usage = Usage {
+        input_tokens: Some(8),
+        output_tokens: Some(2),
+        total_tokens: Some(10),
+        ..Default::default()
+    };
+    store.save(&gateway).unwrap();
+    history.refresh(&[]).unwrap();
+    history
+        .sync_native_catalog("both".into(), &HashMap::new(), &catalog.calls)
+        .unwrap();
+
+    let at = DateTime::parse_from_rfc3339("2026-10-02T03:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    let q = requests::Query {
+        source: Some("unified".into()),
+        start: Some("2026-10-01T00:00:00Z".into()),
+        end: Some(at.to_rfc3339()),
+        ..Default::default()
+    };
+    let page = |h: &mut History, q: &requests::Query| {
+        let report = h.source_report(q, at, vec![], None).unwrap();
+        h.request_page(q, at, report, None).unwrap()
+    };
+    let both = page(&mut history, &q);
+    assert_eq!(both["total"], 2);
+    assert_eq!(both["summary"]["usage"]["totalTokens"], 22);
+    assert_eq!(both["summary"]["ttft"]["samples"], 1);
+    assert_eq!(both["sourceReport"]["unified"]["foldedNative"], 1);
+    assert_eq!(both["sourceReport"]["unified"]["missingResponseId"], 1);
+    assert_eq!(both["sourceReport"]["usageConflicts"], 1);
+    assert_eq!(both["items"][0]["id"], other_id);
+    assert_eq!(both["items"][1]["id"], gateway.id);
+    let snapshot = both["snapshot"].as_str().unwrap();
+    let csv = history.frozen_csv(snapshot, at).unwrap();
+    assert_eq!(csv["count"], 2);
+    assert_eq!(
+        both["buckets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|bucket| bucket["samples"].as_u64().unwrap())
+            .sum::<u64>(),
+        2
+    );
+
+    let next_day = page(
+        &mut history,
+        &requests::Query {
+            start: Some("2026-10-02T00:00:00Z".into()),
+            ..q.clone()
+        },
+    );
+    assert_eq!(next_day["total"], 2);
+    assert_eq!(next_day["summary"]["usage"]["totalTokens"], 24);
+    assert_eq!(next_day["summary"]["ttft"]["samples"], 0);
+    assert_eq!(next_day["sourceReport"]["unified"]["nativeOnlyExact"], 1);
+    assert_eq!(next_day["items"][0]["native"]["association"], "response_id");
+    let by_model = requests::Query {
+        model: Some("native-model".into()),
+        metric: Some("ttft".into()),
+        dimension: Some("model".into()),
+        ..q.clone()
+    };
+    let native_model = page(&mut history, &by_model);
+    assert_eq!(native_model["total"], 1);
+    assert_eq!(native_model["items"][0]["id"], native_id);
+    assert_eq!(native_model["groups"][0]["value"], Value::Null);
+    assert_eq!(native_model["groups"][0]["missing"], 1);
+
+    let legacy_gateway = page(
+        &mut history,
+        &requests::Query {
+            source: None,
+            ..q.clone()
+        },
+    );
+    assert_eq!(legacy_gateway["total"], 1);
+    let native = page(
+        &mut history,
+        &requests::Query {
+            source: Some("native".into()),
+            ..q.clone()
+        },
+    );
+    assert_eq!(native["total"], 2);
+    let linked = page(
+        &mut history,
+        &requests::Query {
+            source: Some("linked".into()),
+            ..q.clone()
+        },
+    );
+    assert_eq!(linked["total"], 1);
+
+    let analysis = super::super::super::OverviewQuery {
+        agent: None,
+        range: 6,
+        source: "unified".into(),
+        dimension: "model".into(),
+        metric: "tokens".into(),
+    };
+    let overview = history.analysis(&analysis, at).unwrap();
+    assert_eq!(overview["total"], 22.0);
+    assert_eq!(overview["sourceCounts"], json!({"gateway": 1, "native": 1}));
+    let overview = history
+        .analysis(&analysis, at + chrono::Duration::hours(3))
+        .unwrap();
+    assert_eq!(overview["total"], 24.0);
+    assert_eq!(overview["sourceCounts"], json!({"gateway": 0, "native": 2}));
+
+    history
+        .sync_native_models(&catalog, &gateway.agent_id)
+        .unwrap();
+    let usage = crate::model_usage::UsageQuery {
+        agent: gateway.agent_id.clone(),
+        source: "unified".into(),
+        days: None,
+        provider: None,
+        model: None,
+        cursor: None,
+    };
+    let models = history
+        .model_usage(usage.clone(), at.to_rfc3339(), "ready".into(), at)
+        .unwrap();
+    assert_eq!(models["summary"]["usage"]["totalTokens"], 22);
+    assert_eq!(models["items"][0]["source"], "native");
+    assert_eq!(models["items"][1]["source"], "gateway");
+    let model_usage = |h: &mut History| {
+        h.model_usage(
+            crate::model_usage::UsageQuery {
+                model: Some("native-model".into()),
+                ..usage.clone()
+            },
+            at.to_rfc3339(),
+            "ready".into(),
+            at,
+        )
+        .unwrap()
+    };
+    let models = model_usage(&mut history);
+    assert_eq!(models["total"], 1);
+    assert_eq!(models["summary"]["usage"]["totalTokens"], 12);
+    assert_eq!(models["items"][0]["totals"]["cost"]["unknownCalls"], 1);
+
+    // The ID stays exact while the gateway starts/stops matching the scope.
+    // Both native statistics caches must invalidate even if the linked row
+    // and its cost do not change.
+    let mut updated = gateway.clone();
+    updated.model = Some("native-model".into());
+    updated.revision += 1;
+    store.save(&updated).unwrap();
+    history.refresh(&[]).unwrap();
+    history.refresh_native().unwrap();
+    let changed = page(&mut history, &by_model);
+    assert_eq!(changed["total"], 1);
+    assert_eq!(changed["items"][0]["id"], gateway.id);
+    assert_eq!(changed["summary"]["usage"]["totalTokens"], 10);
+    assert_eq!(
+        model_usage(&mut history)["summary"]["usage"]["totalTokens"],
+        10
+    );
+    let mut restored = gateway.clone();
+    restored.revision = updated.revision + 1;
+    store.save(&restored).unwrap();
+    history.refresh(&[]).unwrap();
+    history.refresh_native().unwrap();
+    assert_eq!(page(&mut history, &by_model)["items"][0]["id"], native_id);
+    assert_eq!(
+        model_usage(&mut history)["summary"]["usage"]["totalTokens"],
+        12
+    );
+    assert_eq!(history.frozen_csv(snapshot, at).unwrap(), csv);
+
+    let mut duplicate = gateway.clone();
+    duplicate.id = "other-gateway".into();
+    store.save(&duplicate).unwrap();
+    history.refresh(&[]).unwrap();
+    history.refresh_native().unwrap();
+    let ambiguous = page(&mut history, &q);
+    assert_eq!(ambiguous["total"], 4);
+    assert_eq!(ambiguous["sourceReport"]["unified"]["ambiguous"], 1);
+    assert_eq!(ambiguous["sourceReport"]["unified"]["foldedNative"], 0);
+
+    // An unrestricted window still includes native responses with no timestamp.
+    let mut undated = (*catalog.calls.chunks[0]).clone();
+    undated[1].timestamp = None;
+    catalog.calls.chunks[0] = Arc::new(undated);
+    history
+        .sync_native_catalog("undated".into(), &HashMap::new(), &catalog.calls)
+        .unwrap();
+    let all = page(
+        &mut history,
+        &requests::Query {
+            source: Some("unified".into()),
+            ..Default::default()
+        },
+    );
+    assert_eq!(all["total"], 4);
+    assert_eq!(all["missingTime"], 1);
+}
+
 #[test]
 fn native_request_cells_reuse_untouched_blocks_recover_saturation_and_keep_public_freezes() {
     let dir = tempfile::tempdir().unwrap();

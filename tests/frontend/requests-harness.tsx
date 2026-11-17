@@ -139,16 +139,28 @@ function sourceDashboard(query: RequestQuery): RequestDashboard {
   const availableNative = new URLSearchParams(location.search).has("noConsent")
     ? []
     : nativeRows;
+  const gatewayMatches = requestDashboard(
+    { ...query, cursor: undefined },
+    rows,
+  );
+  const matched = linkedRows.filter(
+    (row) => requestDashboard({ ...query, cursor: undefined }, [row]).total,
+  );
+  const folded = availableNative.filter((row) =>
+    matched.some((gateway) => gateway.id === row.native?.gatewayRequestId),
+  );
   const all =
     query.source === "native"
       ? availableNative
       : query.source === "linked"
         ? linkedRows
-        : rows;
+        : query.source === "unified"
+          ? [...rows, ...availableNative.filter((r) => !folded.includes(r))]
+          : rows;
   const result = requestDashboard(query, all);
   const native = requestDashboard(query, availableNative);
   result.sourceReport = {
-    gateway: requestDashboard(query, rows).summary,
+    gateway: gatewayMatches.summary,
     native: native.summary,
     linked: requestDashboard(query, linkedRows).summary,
     matchedNative: linkedRows.length,
@@ -156,6 +168,17 @@ function sourceDashboard(query: RequestQuery): RequestDashboard {
     ambiguousNative: 1,
     usageConflicts: 1,
     nativeMissingTime: 1,
+    unified:
+      query.source === "unified"
+        ? {
+            foldedNative: requestDashboard(query, folded).total,
+            nativeOnlyExact: 0,
+            missingResponseId: Math.max(0, native.total - 1),
+            noGatewayCandidate: 0,
+            ambiguous: 0,
+            identityConflict: 0,
+          }
+        : undefined,
     sourceAsOf: result.asOf,
     collectors: [
       {
@@ -344,7 +367,7 @@ observationApi.exportRequests = async (snapshot) => {
   if (outcome === "fail") throw new Error("磁盘空间不足");
   return {
     status: outcome === "cancel" ? "cancelled" : "saved",
-    count: window.requestQueries.at(-1)?.source === "native" ? 45 : 85,
+    count: sourceDashboard(window.requestQueries.at(-1) ?? {}).total,
     fileName: "requests.csv",
   };
 };

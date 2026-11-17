@@ -76,11 +76,21 @@ pub fn native_records_iter<'a>(
 fn native_record(c: CallSummary, contexts: &HashMap<String, Context>) -> Request {
     let context = contexts.get(&c.session_id);
     let usage = c.usage.unwrap_or_default();
-    let provider = c.provider.unwrap_or("Provider 未报告".into());
+    let recorded_provider = c.provider.as_deref();
     let provider_key = format!(
         "native-provider-{:x}",
-        Sha256::digest(format!("{}\0{provider}", c.agent_id))
+        Sha256::digest(format!(
+            "{}\0{}",
+            c.agent_id,
+            recorded_provider.unwrap_or("Provider 未报告")
+        ))
     );
+    let provider = c.provider.unwrap_or_else(|| {
+        let name = crate::agents::builtin_directory()
+            .source(&c.agent_id)
+            .map_or(c.agent_id.as_str(), |source| source.name.as_str());
+        format!("{name} 原生观测 · 上游未区分")
+    });
     let status = match c.status.as_str() {
         "error" | "failed" => "failed",
         "cancelled" => "cancelled",

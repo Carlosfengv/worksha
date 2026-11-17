@@ -7,31 +7,70 @@ use axum::{
 use local_agent_core::{
     observation::sql::History,
     requests::{self, Context},
+    sessions::{NativeSessions, SourceStatus},
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
 pub(crate) struct Sources {
-    pub sources: Vec<local_agent_core::sessions::SourceStatus>,
+    pub sources: Vec<SourceStatus>,
     pub as_of: Option<String>,
+    pub catalog_revision: Option<u64>,
     pub error: Option<String>,
 }
-fn effective_sources(
-    sessions: &local_agent_core::sessions::NativeSessions,
-) -> Result<Vec<local_agent_core::sessions::SourceStatus>, String> {
+impl Sources {
+    pub(crate) fn collectors(&self) -> Value {
+        Value::Array(
+            self.sources
+                .iter()
+                .map(|source| {
+                    json!({
+                        "agentId": source.agent_id,
+                        "enabled": source.enabled,
+                        "authorizationRevision": source.authorization_revision,
+                        "status": source.status,
+                        "error": source.error,
+                    })
+                })
+                .collect(),
+        )
+    }
+
+    pub(crate) fn check_consent(&self, sessions: &NativeSessions) -> Result<(), String> {
+        check_authorizations(
+            sessions,
+            self.sources
+                .iter()
+                .filter(|source| source.enabled)
+                .map(|source| {
+                    (
+                        Some(source.agent_id.as_str()),
+                        Some(source.authorization_revision),
+                    )
+                }),
+        )
+    }
+}
+fn effective_sources(sessions: &NativeSessions) -> Result<Vec<SourceStatus>, String> {
     let mut sources = sessions.sources().map_err(|e| e.message)?;
     for source in &mut sources {
-        source.enabled &= sessions.source_active(&source.agent_id);
+        if source.enabled && source.runtime_active == Some(false) {
+            source.enabled = false;
+            source.status = "stopped".into();
+            source.error = None;
+        }
     }
     Ok(sources)
 }
 /// The current metadata key only; unlike prepare_sources this never syncs history.
-pub(crate) fn native_metadata_key(
-    sessions: &local_agent_core::sessions::NativeSessions,
-) -> Result<String, String> {
+pub(crate) fn native_metadata_key(sessions: &NativeSessions) -> Result<String, String> {
     let sources = effective_sources(sessions)?;
     let (revision, _) = sessions.catalog_status().map_err(|e| e.message)?;
+    source_key(revision, &sources)
+}
+
+fn source_key(revision: u64, sources: &[SourceStatus]) -> Result<String, String> {
     serde_json::to_string(&(
         revision,
         sources
@@ -45,14 +84,7 @@ pub(crate) fn prepare_sources(state: &AppState, history: &mut History) -> Result
     history.use_directory(state.sessions.directory())?;
     let sources = effective_sources(&state.sessions)?;
     let (revision, as_of) = state.sessions.catalog_status().map_err(|e| e.message)?;
-    let key = serde_json::to_string(&(
-        revision,
-        sources
-            .iter()
-            .map(|s| (&s.agent_id, s.enabled, s.authorization_revision))
-            .collect::<Vec<_>>(),
-    ))
-    .map_err(|_| "来源版本不可用")?;
+    let key = source_key(revision, &sources)?;
     if !history.native_matches(&key) {
         let mut catalog = state.sessions.project_catalog().map_err(|e| e.message)?;
         let mut contexts = HashMap::new();
@@ -83,30 +115,72 @@ pub(crate) fn prepare_sources(state: &AppState, history: &mut History) -> Result
     Ok(Sources {
         sources,
         as_of: Some(as_of),
+        catalog_revision: Some(revision),
         error: None,
     })
 }
-pub(super) fn check_consent(state: &AppState, report: &Value) -> Result<(), String> {
+
+pub(crate) fn prepare_unified_sources(
+    state: &AppState,
+    history: &mut History,
+) -> Result<Sources, String> {
+    match prepare_sources(state, history) {
+        Ok(sources) => Ok(sources),
+        Err(reason) => unavailable_sources(history, reason),
+    }
+}
+
+pub(crate) fn unavailable_sources(
+    history: &mut History,
+    reason: String,
+) -> Result<Sources, String> {
+    // Do not publish the last native projection or its links when the current
+    // authorization or native catalog could not be read.
+    if !history.native_matches("unavailable") {
+        history.sync_native("unavailable".into(), &HashMap::new(), [])?;
+    }
+    Ok(Sources {
+        sources: vec![],
+        as_of: None,
+        catalog_revision: None,
+        error: Some(format!("原生来源当前不可读取：{reason}")),
+    })
+}
+
+pub(crate) fn check_consent(state: &AppState, report: &Value) -> Result<(), String> {
     check_source_consent(&state.sessions, report)
 }
-fn check_source_consent(
-    sessions: &local_agent_core::sessions::NativeSessions,
-    report: &Value,
-) -> Result<(), String> {
-    let current = effective_sources(sessions).map_err(|_| "原生授权状态读取失败")?;
-    if report["collectors"]
+fn check_source_consent(sessions: &NativeSessions, report: &Value) -> Result<(), String> {
+    let enabled = report["collectors"]
         .as_array()
         .into_iter()
         .flatten()
-        .any(|old| {
-            old["enabled"] == true
-                && !current.iter().any(|now| {
-                    Some(now.agent_id.as_str()) == old["agentId"].as_str()
-                        && now.enabled
-                        && Some(now.authorization_revision) == old["authorizationRevision"].as_u64()
-                })
+        .filter(|source| source["enabled"] == true)
+        .map(|source| {
+            (
+                source["agentId"].as_str(),
+                source["authorizationRevision"].as_u64(),
+            )
+        });
+    check_authorizations(sessions, enabled)
+}
+
+fn check_authorizations<'a>(
+    sessions: &NativeSessions,
+    enabled: impl Iterator<Item = (Option<&'a str>, Option<u64>)>,
+) -> Result<(), String> {
+    let mut enabled = enabled.peekable();
+    if enabled.peek().is_none() {
+        return Ok(());
+    }
+    let current = effective_sources(sessions).map_err(|_| "原生授权状态读取失败")?;
+    if enabled.any(|(agent_id, revision)| {
+        !current.iter().any(|now| {
+            Some(now.agent_id.as_str()) == agent_id
+                && now.enabled
+                && Some(now.authorization_revision) == revision
         })
-    {
+    }) {
         return Err("原生来源授权已变化，请刷新；旧快照已停止提供".into());
     }
     Ok(())
@@ -114,7 +188,6 @@ fn check_source_consent(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use local_agent_core::sessions::NativeSessions;
     #[test]
     fn stopping_an_enabled_source_invalidates_its_frozen_request_report() {
         let dir = tempfile::tempdir().unwrap();
@@ -126,7 +199,14 @@ mod tests {
             .find(|s| s.agent_id == "claude")
             .unwrap();
         assert!(source.enabled && sessions.source_active("claude"));
-        let report = json!({"collectors":[{"agentId":source.agent_id,"enabled":source.enabled,"authorizationRevision":source.authorization_revision}]});
+        let sources = Sources {
+            sources: vec![source],
+            as_of: None,
+            catalog_revision: None,
+            error: None,
+        };
+        let report = json!({"collectors":sources.collectors()});
+        sources.check_consent(&sessions).unwrap();
         check_source_consent(&sessions, &report).unwrap();
         sessions.stop_source_plugin("claude").unwrap();
         assert!(
@@ -139,7 +219,10 @@ mod tests {
                 .enabled,
             "saved enable intent is unchanged"
         );
-        assert!(check_source_consent(&sessions, &report).is_err());
+        assert_eq!(
+            sources.check_consent(&sessions).unwrap_err(),
+            check_source_consent(&sessions, &report).unwrap_err(),
+        );
     }
     #[test]
     fn a_fresh_report_excludes_stopped_readers_but_preserves_healthy_readers_and_enable_intent() {
@@ -208,7 +291,11 @@ pub async fn dashboard(
             .observation
             .hub
             .query(|history| {
-                let source = prepare_sources(&state, history)?;
+                let source = if query.source.as_deref() == Some("unified") {
+                    prepare_unified_sources(&state, history)?
+                } else {
+                    prepare_sources(&state, history)?
+                };
                 let now = chrono::Utc::now();
                 let report = history.source_report(&query, now, source.sources, source.as_of)?;
                 check_consent(&state, &report)?;

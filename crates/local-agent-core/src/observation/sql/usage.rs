@@ -1,4 +1,5 @@
 use super::aggregates::{percentile, quote};
+use super::usage_blocks::BlockWindow;
 use super::*;
 use chrono::{DateTime, Duration, Utc};
 use sha2::{Digest, Sha256};
@@ -474,8 +475,11 @@ impl History {
                     q.days,
                     configured.iter().map(|p| &p.id).collect::<Vec<_>>(),
                 ))?,
-                q.days,
-                now,
+                BlockWindow {
+                    days: q.days,
+                    now,
+                    linked_expires_at: None,
+                },
             )?)
         } else {
             None
@@ -757,8 +761,10 @@ impl History {
     ) -> Result<Value, String> {
         q.validate_with_directory(&self.directory)
             .map_err(str::to_owned)?;
-        let table = self.usage_table("model", q.source == "native");
-        let family = if q.source == "gateway" || self.native_model.is_some() {
+        let native = q.source == "native";
+        let unified = q.source == "unified";
+        let table = self.usage_table("model", native);
+        let family = if !native || self.native_model.is_some() {
             format!("agent_matches({},agent,product)", quote(&q.agent))
         } else {
             "1".into()
@@ -772,7 +778,16 @@ impl History {
             &q.model,
             &source_state,
         ))?;
-        let clock = self.usage_kind_clock("model", q.source == "native")?;
+        let clock = self.usage_kind_clock("model", native)?;
+        let clock = if unified {
+            encode(&(
+                clock,
+                self.usage_kind_clock("model", true)?,
+                self.request_epoch()?,
+            ))?
+        } else {
+            clock.to_string()
+        };
         let cache_key = encode(&(&q.agent, &q.source, q.days, &q.provider, &q.model))?;
         let fingerprint = format!("{:x}", Sha256::digest(format!("{cache_key}\0{clock}")));
         if let Some(cache) = self
@@ -817,8 +832,7 @@ impl History {
                 return Ok(result);
             }
         }
-        let facts = self.usage_facts("model", q.source == "native")?;
-        let full = format!("(SELECT * FROM {facts} WHERE {family})");
+        let facts = self.usage_facts("model", native)?;
         let in_time = time_range(time, q.days, now, false);
         let provider = q
             .provider
@@ -835,25 +849,86 @@ impl History {
                 )
             })
             .unwrap_or("1".into());
+        let native_rows = if unified {
+            let native_facts = self.usage_facts("model", true)?;
+            self.unified_model_block_links()?;
+            format!("(
+              SELECT 'native' source,f.source_order,f.id,f.time,f.time_text,f.agent,f.product,f.pid,f.model,
+                json_set(f.stats,'$.cost',json_object('actual',json_array(),'estimated',json_array(),'unknownCalls',1)) stats,
+                f.t,f.ord,CASE WHEN r.association='response_id' THEN r.attempt_match END matched_attempt
+              FROM {native_facts} f
+              JOIN current c ON c.kind='native' AND c.id=f.id
+              JOIN record_meta r ON r.v=c.v
+              WHERE agent_matches({},f.agent,f.product)
+            )", quote(&q.agent))
+        } else {
+            String::new()
+        };
+        let primary = format!(
+            "(SELECT {} source,* FROM {facts} WHERE {family})",
+            quote(if native { "native" } else { "gateway" })
+        );
+        let full = if unified {
+            format!(
+                "(SELECT *,NULL matched_attempt FROM {primary} UNION ALL SELECT * FROM {native_rows})"
+            )
+        } else {
+            primary.clone()
+        };
         let range = format!("(SELECT * FROM {full} WHERE {in_time})");
+        let fold = if unified {
+            format!(
+                "AND (matched_attempt IS NULL OR NOT EXISTS(
+                SELECT 1 FROM {facts} g WHERE g.id=matched_attempt AND {family}
+                  AND {in_time} AND {provider} AND {model}
+            ))"
+            )
+        } else {
+            String::new()
+        };
         let selected = format!("(SELECT * FROM {range} WHERE {provider} AND {model})");
-        let compact = if q.source == "native" {
+        let compact = if native {
             let blocks = self.usage_blocks(
                 "model",
                 &full,
                 &in_time,
                 &encode(&(&q.agent, q.days))?,
-                q.days,
-                now,
+                BlockWindow {
+                    days: q.days,
+                    now,
+                    linked_expires_at: None,
+                },
             )?;
-            format!("(SELECT *,provider pid FROM {blocks})")
+            format!("(SELECT 'native' source,*,provider pid FROM {blocks})")
         } else {
             range.clone()
         };
-        let compact_selected = format!("(SELECT * FROM {compact} WHERE {provider} AND {model})");
+        let compact_selected = if unified {
+            let blocks = self.usage_blocks(
+                "model",
+                &native_rows,
+                &format!("{in_time} AND {provider} AND {model} {fold}"),
+                &encode(&("unified", &q.agent, q.days, &q.provider, &q.model))?,
+                BlockWindow {
+                    days: q.days,
+                    now,
+                    linked_expires_at: range_expiry(&self.db, &primary, q.days, now)?,
+                },
+            )?;
+            format!(
+                "(
+                SELECT source,source_order,id,pid,model,stats,t,ord FROM {primary}
+                WHERE {in_time} AND {provider} AND {model}
+                UNION ALL
+                SELECT 'native',NULL,id,provider,model,stats,t,ord FROM {blocks}
+            )"
+            )
+        } else {
+            format!("(SELECT * FROM {compact} WHERE {provider} AND {model})")
+        };
         // Regrouping floating-point charges can change their addition order.
         // Preserve the existing exact order whenever a selected charge exists.
-        let has_money = q.source == "native"
+        let has_money = native
             && self
                 .db
                 .query_row(
@@ -862,7 +937,7 @@ impl History {
                     |r| r.get::<_, bool>(0),
                 )
                 .map_err(fail)?;
-        let totals_from = if q.source == "native" && !has_money {
+        let totals_from = if unified || (native && !has_money) {
             compact_selected.clone()
         } else {
             selected.clone()
@@ -870,31 +945,71 @@ impl History {
         let empty = value(&crate::model_usage::UsageTotals::default())?;
         let summary = stats_column(
             &self.db,
-            &if q.source == "native" && !has_money {
+            &if native && !has_money {
                 totals_from.clone()
             } else {
-                format!("(SELECT * FROM {selected} ORDER BY source_order)")
+                format!("(SELECT * FROM {totals_from} ORDER BY source_order)")
             },
             "stats",
             empty.clone(),
         )?;
+        let native_table = self.usage_table("model", true);
+        let payload_join = |row: &str| {
+            if unified {
+                format!(
+                    "LEFT JOIN attempts a ON {row}.source='gateway' AND a.id={row}.id
+                         LEFT JOIN {native_table} n ON {row}.source='native' AND n.id={row}.id"
+                )
+            } else {
+                format!("JOIN {table} a ON a.id={row}.id")
+            }
+        };
+        let payload = if unified {
+            "coalesce(a.model_record,n.model_record)"
+        } else {
+            "a.model_record"
+        };
         let providers = aggregates::list(
             &self.db,
             &format!(
-                "SELECT json_object('id',s.pid,'name',json_extract(a.model_record,'$.provider'),'endpoint',json_extract(a.model_record,'$.endpoint'),'routeRevision',json(a.model_record -> '$.routeRevision')) FROM (SELECT pid,id FROM {compact} GROUP BY pid) s JOIN {table} a ON a.id=s.id ORDER BY s.pid"
+                "SELECT json_object('id',s.pid,'name',json_extract({payload},'$.provider'),'endpoint',json_extract({payload},'$.endpoint'),'routeRevision',json({payload} -> '$.routeRevision')) FROM (SELECT source,pid,id FROM {compact} GROUP BY pid) s {} ORDER BY s.pid",
+                payload_join("s")
             ),
         )?;
         // Aggregate each provider/model pair once; select latest references
         // with SQL ranks instead of scanning all attempts once per model.
         self.db.execute_batch("CREATE TEMP TABLE IF NOT EXISTS model_groups(id TEXT,model TEXT,value TEXT,tokens TEXT);DELETE FROM model_groups;").map_err(fail)?;
-        let tie = if q.source == "native" {
+        let tie = if native {
             "CASE WHEN t IS NULL THEN ord END DESC,CASE WHEN t IS NOT NULL THEN ord END ASC,id"
+        } else if unified {
+            "CASE WHEN source='native' AND t IS NULL THEN ord END DESC,
+             CASE WHEN source='native' AND t IS NOT NULL THEN ord END ASC,
+             CASE WHEN source='native' OR t IS NULL THEN id END ASC,id DESC"
         } else {
             "CASE WHEN t IS NULL THEN id END ASC,id DESC"
         };
-        execute(&self.db,&format!("WITH ranked AS (SELECT id,pid,model,t,row_number() OVER(PARTITION BY pid,model ORDER BY t IS NULL,t DESC,{tie}) rank FROM {compact_selected}),
-          totals AS (SELECT pid,model,stats_sum(stats) stats FROM {totals_from} GROUP BY pid,model)
-          INSERT INTO model_groups SELECT g.pid,g.model,json_object('providerId',g.pid,'provider',json_extract(a.model_record,'$.provider'),'endpoint',json_extract(a.model_record,'$.endpoint'),'routeRevision',json(a.model_record -> '$.routeRevision'),'model',g.model,'totals',json(g.stats),'lastSeen',CASE WHEN l.t IS NOT NULL THEN json_extract(a.model_record,'$.time') END,'sessionId',json_extract(a.model_record,'$.sessionId'),'requestId',json_extract(a.model_record,'$.requestId')),json_extract(g.stats,'$.usage.totalTokens') FROM totals g JOIN ranked l ON l.pid=g.pid AND l.model IS g.model AND l.rank=1 JOIN {table} a ON a.id=l.id"),[]).map_err(fail)?;
+        let source_field = if unified { ",'source',g.source" } else { "" };
+        let group_key = if unified {
+            "g.source||':'||g.pid"
+        } else {
+            "g.pid"
+        };
+        let group_stats = if unified {
+            "stats_sum(stats ORDER BY source_order)"
+        } else {
+            "stats_sum(stats)"
+        };
+        execute(&self.db,&format!("WITH ranked AS (
+            SELECT source,id,pid,model,t,row_number() OVER(PARTITION BY source,pid,model ORDER BY t IS NULL,t DESC,{tie}) rank FROM {compact_selected}
+          ),totals AS (SELECT source,pid,model,{group_stats} stats FROM {totals_from} GROUP BY source,pid,model)
+          INSERT INTO model_groups SELECT {group_key},g.model,
+            json_object('providerId',g.pid,'provider',json_extract({payload},'$.provider'),
+              'endpoint',json_extract({payload},'$.endpoint'),'routeRevision',json({payload} -> '$.routeRevision'),
+              'model',g.model,'totals',json(g.stats),'lastSeen',CASE WHEN l.t IS NOT NULL THEN json_extract({payload},'$.time') END,
+              'sessionId',json_extract({payload},'$.sessionId'),'requestId',json_extract({payload},'$.requestId'){source_field}),
+            json_extract(g.stats,'$.usage.totalTokens')
+          FROM totals g JOIN ranked l ON l.source=g.source AND l.pid=g.pid AND l.model IS g.model AND l.rank=1
+          {}",payload_join("l")),[]).map_err(fail)?;
         let mut after = 0i64;
         loop {
             let rows: Vec<(i64, String)> = {

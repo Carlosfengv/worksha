@@ -100,6 +100,9 @@ impl History {
             .db
             .query_row("SELECT seq FROM query_clock", [], |r| r.get(0))
             .map_err(fail)?;
+        if q.source == "unified" {
+            return encode(&(seq, self.request_epoch()?));
+        }
         encode(&seq)
     }
 

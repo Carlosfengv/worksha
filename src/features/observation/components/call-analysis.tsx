@@ -125,8 +125,10 @@ export const CallAnalysisCharts = memo(function CallAnalysisCharts({
     <div className="space-y-3">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-label text-fg-muted">
         <p>
-          {source === "native" && metric === "calls"
-            ? "已识别模型响应"
+          {metric === "calls" && source !== "gateway"
+            ? source === "native"
+              ? "已识别模型响应"
+              : "观测记录"
             : `已知${label}`}{" "}
           <strong
             className="font-medium text-fg-default tabular-nums"

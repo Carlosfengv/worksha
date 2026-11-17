@@ -280,10 +280,7 @@ export function AgentDetail({
         <TabPanel value="quota">
           {value === "quota" && (
             <div className="mb-6 rounded-xl border border-border p-4">
-              <AgentModelUsage
-                agentId={agent.id}
-                nativeEnabled={Boolean(source?.enabled)}
-              />
+              <AgentModelUsage agentId={agent.id} />
             </div>
           )}
           {!canConfigure ? (

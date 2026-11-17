@@ -55,7 +55,7 @@ export function RequestsPage({
   const params = useMemo(() => new URLSearchParams(routeSearch), [routeSearch]);
   const range = params.get("range") ?? "today";
   const query = useMemo<RequestQuery>(() => {
-    const q: RequestQuery = {};
+    const q: RequestQuery = { source: "unified" };
     for (const key of [
       "source",
       "start",
@@ -82,7 +82,8 @@ export function RequestsPage({
     return q;
   }, [params]);
   const nativeView = query.source === "native";
-  const unit = nativeView ? "模型响应记录" : "请求";
+  const unifiedView = query.source === "unified";
+  const unit = unifiedView ? "观测记录" : nativeView ? "模型响应记录" : "请求";
   const bodyRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -309,7 +310,7 @@ export function RequestsPage({
         </p>
       )}
       <RequestSources
-        source={query.source ?? "gateway"}
+        source={query.source ?? "unified"}
         report={data?.sourceReport}
         onChange={(source) => change({ source, provider: undefined })}
       />
@@ -362,7 +363,13 @@ export function RequestsPage({
             <TabsList aria-label="请求工作区">
               <TabItem
                 value="records"
-                label={nativeView ? "响应记录" : "请求记录"}
+                label={
+                  unifiedView
+                    ? "观测记录"
+                    : nativeView
+                      ? "响应记录"
+                      : "请求记录"
+                }
               />
               <TabItem value="analysis" label="趋势分析" />
             </TabsList>
@@ -370,6 +377,7 @@ export function RequestsPage({
               <RequestMetrics
                 summary={data.summary}
                 nativeView={nativeView}
+                unifiedView={unifiedView}
                 onResult={(result) => {
                   change({ result });
                   setView("records");
@@ -406,7 +414,7 @@ export function RequestsPage({
               )}
               <div ref={listRef} className="min-w-0">
                 <RequestsTable
-                  key={query.source ?? "gateway"}
+                  key={query.source}
                   nativeView={nativeView}
                   rows={data.items}
                   onOpen={open}

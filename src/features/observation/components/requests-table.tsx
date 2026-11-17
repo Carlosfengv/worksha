@@ -79,6 +79,21 @@ export function RequestsTable({
         ),
       },
       {
+        id: "source",
+        accessorKey: "source",
+        header: "来源",
+        enableSorting: false,
+        enableHiding: false,
+        cell: ({ row: { original } }) =>
+          original.source === "native"
+            ? original.native?.association === "response_id"
+              ? "原生 · 已关联"
+              : "原生观测"
+            : original.nativeLinks?.length
+              ? "网关 · 已关联"
+              : "本地网关",
+      },
+      {
         id: "provider",
         accessorKey: "provider",
         header: "Provider",
@@ -114,14 +129,11 @@ export function RequestsTable({
             >
               {requestStates[row.original.status] ?? "结果未知"}
             </Badge>
-            <p className="text-label text-fg-subtle">
-              {row.original.native
-                ? "原生响应 · " +
-                  (row.original.native.association === "response_id"
-                    ? "已关联网关"
-                    : "路径未确认")
-                : `${row.original.attempts.length} 次尝试`}
-            </p>
+            {!row.original.native && (
+              <p className="text-label text-fg-subtle">
+                {row.original.attempts.length} 次尝试
+              </p>
+            )}
           </>
         ),
       },
@@ -259,7 +271,7 @@ export function RequestsTable({
   const { table } = useDataTable({
     data: rows,
     columns,
-    getRowId: (r) => r.id,
+    getRowId: (r) => `${r.source}:${r.id}`,
     manualPagination: true,
     manualSorting: true,
     autoResetPageIndex: false,

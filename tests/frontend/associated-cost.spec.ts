@@ -16,8 +16,17 @@ test("Agent keeps response and gateway costs separate, including actual zero and
   await expect(cost).toContainText("这些响应不再增加费用或计价未知次数");
   await page.getByRole("tab", { name: "用量与额度", exact: true }).click();
   const usage = page.getByLabel("模型调用费用", { exact: true });
+  await expect(page.getByLabel("模型用量来源")).toContainText("全部来源");
+  await page.getByLabel("模型用量来源").click();
+  await page
+    .getByRole("option", { name: "原生记录 · 官方 / 第三方", exact: true })
+    .click();
   await expect(usage).toContainText("计价未知");
   await expect(usage).toContainText("2 次");
+  await expect(page.getByLabel("模型用量来源")).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
   await page.getByLabel("模型用量来源").click();
   await page
     .getByRole("option", { name: "本地网关 · 上游服务", exact: true })

@@ -276,12 +276,38 @@ impl History {
         let mut cost_key: Vec<_> = costs.iter().collect();
         cost_key.sort_by_key(|(id, _)| *id);
         let scope = scope_hash(&cost_key)?;
+        let loaded = self.sync_model_snapshot(catalog, scope, &costs)?;
+        self.native_model_fee_epoch = Some(epoch);
+        Ok(loaded)
+    }
+
+    pub fn unified_native_models_match(&self, revision: u64) -> bool {
+        self.native_model
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.matches(revision, "unified"))
+    }
+
+    pub fn sync_unified_native_models(
+        &mut self,
+        catalog: &ProjectCatalog,
+    ) -> Result<usize, String> {
+        self.use_directory(catalog.calls.directory())?;
+        let loaded = self.sync_model_snapshot(catalog, "unified".into(), &HashMap::new())?;
+        self.native_model_fee_epoch = None;
+        Ok(loaded)
+    }
+
+    fn sync_model_snapshot(
+        &mut self,
+        catalog: &ProjectCatalog,
+        scope: String,
+        costs: &HashMap<String, crate::provider_cost::Cost>,
+    ) -> Result<usize, String> {
         if self
             .native_model
             .as_ref()
             .is_some_and(|p| p.matches(catalog.revision, &scope))
         {
-            self.native_model_fee_epoch = Some(epoch);
             return Ok(0);
         }
         let (full, removed, added) = Snapshot::delta(self.native_model.as_ref(), catalog, &scope);
@@ -304,7 +330,6 @@ impl History {
             scope,
             calls: catalog.calls.clone(),
         });
-        self.native_model_fee_epoch = Some(epoch);
         Ok(loaded)
     }
 }

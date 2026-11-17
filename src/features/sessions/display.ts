@@ -23,6 +23,25 @@ export function sourceLabel(source?: SessionSource) {
       : "正在读取会话";
 }
 
+const collectorLabels: Record<string, string> = {
+  disabled: "未授权",
+  stopped: "采集已停用",
+  pending: "等待索引",
+  scanning: "扫描中",
+  ready: "可读取",
+  available: "可读取",
+  partial: "部分可读取",
+  not_found: "未发现记录",
+  permission_denied: "无权限",
+  error: "读取失败",
+  unsupported: "版本不支持",
+  empty: "暂无记录",
+};
+
+export function collectorLabel(status: string) {
+  return collectorLabels[status] ?? "状态待确认";
+}
+
 export const agentNames = createAgentNames();
 export const familyNames = createFamilyNames();
 export function clientAttributionLabel(

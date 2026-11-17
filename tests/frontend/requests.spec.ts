@@ -47,7 +47,9 @@ test("request detail distinguishes an unconfirmed send from a skipped candidate"
 test("request overview, full count, frozen pages, detail and return retain scope", async ({
   page,
 }) => {
-  await page.goto("/tests/frontend/requests.html#/requests?range=all");
+  await page.goto(
+    "/tests/frontend/requests.html#/requests?range=all&source=gateway",
+  );
   await expect(
     page.getByRole("region", { name: "请求", exact: true }).getByRole("row"),
   ).toHaveCount(41);
@@ -83,6 +85,23 @@ test("request overview, full count, frozen pages, detail and return retain scope
   await expect(
     page.getByText("当前为历史分页", { exact: false }),
   ).toBeVisible();
+});
+
+test("request page defaults to both sources and shows their selected representatives", async ({
+  page,
+}) => {
+  await page.goto("/tests/frontend/requests.html#/requests?range=all");
+  await expect(page.getByRole("tab", { name: "全部来源" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByText("当前筛选 129 条")).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "来源" })).toBeVisible();
+  await expect(page.getByText("网关 · 已关联", { exact: true })).toBeVisible();
+  await expect(page.getByText("已折叠 1 条原生响应")).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => window.requestQueries[0]?.source))
+    .toBe("unified");
 });
 
 test("gateway retry waterfall uses measured spans and links only the exact attempt", async ({
@@ -200,7 +219,7 @@ test("native export result is shown only for saved files and cancellation stays 
   await page.getByRole("button", { name: "导出 CSV" }).click();
   await expect(
     page.getByRole("status").filter({ hasText: "已导出" }),
-  ).toHaveText("已导出 85 条请求至 requests.csv");
+  ).toHaveText("已导出 129 条观测记录至 requests.csv");
 });
 
 test("export pauses polling during destination selection and resumes after completion", async ({
@@ -227,7 +246,7 @@ test("export pauses polling during destination selection and resumes after compl
   await page.evaluate(() => window.resolveRequestExport?.());
   await expect(
     page.getByRole("status").filter({ hasText: "已导出" }),
-  ).toContainText("85 条请求");
+  ).toContainText("129 条观测记录");
   await page.clock.fastForward(5000);
   await expect
     .poll(() => page.evaluate(() => window.requestQueries.length))
