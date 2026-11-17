@@ -11,10 +11,11 @@ Local Agent 使用 Tauri 2 和 Rust，界面与本地服务随 macOS 应用包�
 | 功能           | 已接入能力                                                                  |
 | -------------- | --------------------------------------------------------------------------- |
 | Agent 与会话   | 原生来源授权、实时活动、会话检索、分页对话、工具与 MCP 记录，以及跨页面定位 |
-| 请求           | 请求筛选、调用详情、关联会话、诊断和 CSV 导出                              |
+| 请求           | 请求筛选、调用详情、关联会话、诊断和 CSV 导出                               |
 | Provider 管理  | 供应商与自定义连接、模型目录、连接验证、凭据管理及本机配置导入              |
 | 配置与恢复     | 切换预览、加密备份、原配置恢复、操作回执与未知结果核查                      |
 | 模型服务与路由 | 跨 Provider 模型组合、固定入口、动态路由、版本发布与策略恢复                |
+| 本机预算与保护 | 每个绑定独立的主备预算、待核查用量、工具循环熔断和总览放行                  |
 | 用量与账户     | Token、计时、费用，以及各来源提供的套餐、额度和余额信息                     |
 | 插件扩展       | 本地签名包、独立授权、Wasm 执行、完整只读来源与详情扩展                     |
 | 常驻网关       | 可选的用户级常驻服务、局域网模型入口和独立客户端授权                        |
@@ -24,6 +25,8 @@ Local Agent 使用 Tauri 2 和 Rust，界面与本地服务随 macOS 应用包�
 插件中心按功能场景组织入口，说明与[实际页面和操作](docs/plugin-functions.md)对应。系统自带和用户上传插件均可启用、停用和卸载。变更前展示依赖、连带影响和受影响的模型服务，后台重新复核。系统插件卸载后保留历史数据与配置，可从应用随附版本重新安装。上传扩展使用一个入口，按[准入规则](docs/plugin-standard.md)检查后安装并启用。具体文件和账户另行授权。
 
 项目是默认关闭的内置插件，可在插件中心启用，项目页面和监听随它启停。任务工作台待接入，已有数据保留。现有任务实现见[架构说明](docs/architecture.md#agent-任务工作台)。
+
+支持 Chat Completions 的本机客户端可在「Agents → 添加本机连接」获取授权模型目录和连接文件。文件含回环 Base URL 与 Key，通过系统保存面板交付，权限为 `0600`。绑定详情支持轮换 Key、撤销绑定、配置预算和核查冻结用量。总览提供熔断原因、会话链接与可用的放行操作。详见[模型服务](docs/model-services.md#本机-chat-completions-连接和预算)与[轮次保护](docs/dynamic-routing.md#轮次保护与放行)。
 
 ## 快速开始
 
@@ -64,10 +67,14 @@ target/debug/bundle/macos/Local Agent.app
 
 ## 开发检查
 
-首次 Rust 桌面检查前先准备本地服务；首次浏览器回归前安装 Chromium：
+按顺序准备桌面服务、插件夹具和浏览器：
 
 ```sh
+pnpm install --frozen-lockfile
 pnpm prepare:service
+rustup target add wasm32-unknown-unknown
+pnpm prepare:plugins
+pnpm prepare:policy-fixtures
 pnpm exec playwright install chromium
 ```
 
@@ -75,27 +82,34 @@ pnpm exec playwright install chromium
 
 ```sh
 pnpm check
-pnpm test:display
-pnpm test:frontend
 pnpm check:rust
 pnpm test:rust
+pnpm test:display
+pnpm test:frontend
 pnpm test:service
+pnpm test:plugins
 pnpm build
 ```
 
 `pnpm check` 包含类型、ESLint、Zeron 文件完整性、语义样式、依赖边界、IPC 契约、生成绑定和格式检查。Rust 检查包含格式与严格 Clippy；`test:rust` 覆盖完整 workspace，`test:service` 验证独立进程及持久化行为。
 
-插件回归另需生成 Wasm 夹具，在准备服务后执行：
+控制面、来源与网关专项：
 
 ```sh
-rustup target add wasm32-unknown-unknown
-pnpm prepare:plugins
-pnpm test:plugins
-pnpm test:plugin-cache-capacity
-pnpm test:domain-isolation
+pnpm test:credential-recovery
+pnpm test:plugin-database
+pnpm test:retention-preview
+pnpm test:sqlite-wal
+pnpm test:plugin-source-host
+pnpm test:external-routing-policy
+pnpm test:dynamic-routing
+pnpm test:model-services
+pnpm test:protocol-completion
+pnpm test:agent-budgets
+pnpm test:loop-guards
 ```
 
-策略故障夹具由 `pnpm prepare:policy-fixtures` 生成。专项命令见 `package.json`，自动检查范围以 `.github/workflows/ci.yml` 为准。测试使用临时数据与模拟上游，原生交互须在实际打包窗口验证。开发约定见 [AGENTS.md](AGENTS.md)。
+先完成共享调试产物的构建，再运行依赖该产物的脚本。其他专项入口见 `package.json`，持续集成范围以 `.github/workflows/ci.yml` 为准。自动回归使用临时数据与模拟上游。原生交互使用打包窗口验证，真实模型调用验收使用隔离配置下的 Claude Code 和 OpenCode。开发约定见 [AGENTS.md](AGENTS.md)。
 
 ## 技术与结构
 

@@ -29,7 +29,7 @@
 
 `local-agent.sqlite3` schema 3 增加绑定、不可变版本、操作与轮次租约四张表。版本提交与目标指针、操作日志同事务提交；请求发送前提交租约。重启读取已提交状态，不把旧工具结果重新分配给最新目标。
 
-当前上限为 64 个绑定、4096 个路由版本、4096 个切换操作及 4096 个轮次租约；到达上限时明确拒绝新增，不自动驱逐旧续调 / 恢复引用。本版尚无自动租约归档界面。
+当前上限为 64 个绑定、4,096 个路由版本、4,096 个在线切换操作及 4,096 个轮次租约。路由版本满载时先回收不可达的历史目标映射，再删除无引用版本。在线切换表满载时归档无依赖的旧终态，保留最近已应用记录与待确认、待核查、恢复证据。归档可按原操作 ID 查询，上限为 64 MiB。租约回收保留水位和原关闭结论，进行中的轮次、可信锚点及未决恢复仍受保护。「设置 → 路由会话归档」可预览并确认每批最多 128 个会话。有动态请求在途、预览失效或无可回收候选时拒绝写入。
 
 schema 2 升级前通过 SQLite `VACUUM INTO` 保存一致性备份 `local-agent.pre-dynamic-v2.sqlite3`，权限 0600。旧 `gateway/route-*.json`、固定端口、旧 pending、加密配置备份保持原义；升级不自动改写任何 Agent 配置。
 
@@ -44,6 +44,14 @@ schema 2 升级前通过 SQLite `VACUUM INTO` 保存一致性备份 `local-agent
 
 默认侧车仍依赖 Local Agent 服务运行。固定地址不等于自动启用常驻服务；独立常驻 / 局域网授权沿用原边界，LAN 客户端不自动跟随本机绑定。
 
+## 轮次保护与放行
+
+可确认会话和轮次的本机模型入口检测连续工具报错、相同工具与参数重复调用、无人值守续调消耗。连续报错 3 步预警、5 步熔断；相同动作 4 次预警、6 次熔断；初始轮次达到 25 步、250,000 Tokens 或 USD 1.50 时预警，达到 45 步、500,000 Tokens 或 USD 3.00 时熔断。工具错误取自 `is_error: true`、`ok: false` 或非零整数退出码等结构化证据。一个并行工具批次计一次往返，重放已处理批次不重复计数。
+
+同一轮保留最多 256 个批次指纹和 512 个唯一工具 ID。越限批次整批拦截并持久化容量熔断，直到可信新轮推进。所有普通熔断也可通过可信新指令自动解除，旧租约、重试、无效的历史前缀和重启无法重置当前轮。发送前检查熔断适用于普通候选、分类调用与后续候选。
+
+在总览可查看熔断原因并跳转会话。普通熔断可确认「放行本轮」，启用 IAM 时限 Owner。放行保留去重集合并开立新用量序号，新增 20 步、250,000 Tokens 或 USD 1.50 可再次熔断，连续报错及重复调用继续按各自阈值保护。每次尝试以取得发送准入时的轮次和放行序号归集已确认、在途及冻结用量。迟到结算和核查仍归原序号。未知 USD 费用保持未知，按已有依据检查 Token 和步数。容量熔断仅支持可信新轮或新会话恢复。
+
 ## 接口与验证
 
 新增受控 IPC：`prepare_dynamic_connection(draft)`、`prepare_dynamic_route(input)`、`dynamic_route_action(changeId, action)`；分别对应管理接口 `/api/dynamic-connections`、`/api/dynamic-routes`、`/api/dynamic-routes/{id}`。旧原生配置命令语义不变。
@@ -51,3 +59,5 @@ schema 2 升级前通过 SQLite `VACUUM INTO` 保存一致性备份 `local-agent
 `get_provider_status` 可选增加 dynamicBindings / dynamicChanges / dynamicLeases。请求观测可选增加 routing，记录精确 bindingId / routeVersionId、Provider revision 与边界来源；requested / routed / reported 模型继续分开。历史费用不按当前别名回算，原生记录没有精确响应关联时保留未知。
 
 `pnpm test:dynamic-routing` 使用临时目录和本机模拟上游验证并发切换、工具续调、旧请求重放、多 Session、配置摘要、鉴权、加密备份与逐字节恢复。
+
+`pnpm test:agent-budgets` 覆盖主备预算、Key 生命周期与结算。`pnpm test:loop-guards` 覆盖重放零发送、并行去重容量、跨重启解锁与放行后再次熔断。Rust 回归补充满载回收与放行序号的事务边界。
