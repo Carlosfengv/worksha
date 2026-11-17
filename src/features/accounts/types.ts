@@ -49,6 +49,7 @@ export interface BillingAccount {
   routingQuota?: RoutingQuotaStatus;
   declaredFor: string[];
   sourceRevision: string;
+  codexRead?: { authorized: boolean; historical: boolean };
   readable: boolean;
   officialUrl: string | null;
   state: string;
@@ -59,4 +60,21 @@ export interface BillingAccount {
 export interface Accounts {
   accounts: BillingAccount[];
   asOf: string;
+}
+
+export interface ClaudeStatusLineStatus {
+  config: {
+    configPath: string;
+    revision: string;
+    state: "installed" | "disabled" | "custom" | "replaced";
+    pending: string | null;
+  };
+  received: boolean;
+}
+
+export interface ClaudeStatusLinePreview {
+  reviewId: string;
+  configPath: string;
+  enabled: boolean;
+  statusLine: { command: string; type: "command" } | null;
 }

@@ -34,6 +34,21 @@ pub(crate) async fn refresh_account(
         .await
 }
 #[tauri::command]
+pub(crate) async fn set_codex_quota_consent(
+    backend: tauri::State<'_, Backend>,
+    expected_revision: String,
+    enabled: bool,
+) -> Result<serde_json::Value, String> {
+    backend
+        .request(
+            reqwest::Method::PUT,
+            "/api/account-collectors/codex/consent",
+            Some(serde_json::json!({"expectedRevision": expected_revision, "enabled": enabled})),
+        )
+        .await
+}
+
+#[tauri::command]
 pub(crate) async fn create_claude_quota_launcher(
     backend: tauri::State<'_, Backend>,
 ) -> Result<serde_json::Value, String> {
@@ -45,6 +60,20 @@ pub(crate) async fn create_claude_quota_launcher(
         )
         .await
 }
+#[tauri::command]
+pub(crate) async fn manage_claude_quota_statusline(
+    backend: tauri::State<'_, Backend>,
+    input: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    backend
+        .request(
+            reqwest::Method::POST,
+            "/api/account-collectors/claude/statusline",
+            Some(input),
+        )
+        .await
+}
+
 #[tauri::command]
 pub(crate) async fn open_account_console(
     app: tauri::AppHandle,

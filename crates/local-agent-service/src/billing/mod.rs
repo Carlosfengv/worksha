@@ -1,5 +1,8 @@
 mod api;
+mod claude;
+pub(crate) use claude::{capture_managed_stdin, statusline};
 mod codex;
+pub(crate) use codex::consent as codex_read_consent;
 mod object_summary;
 mod refresh;
 mod upstream;
@@ -61,6 +64,8 @@ struct Account {
     state: String,
     error: Option<String>,
     snapshot: Option<AccountSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    codex_read: Option<codex::ReadState>,
 }
 struct Cached {
     revision: String,
@@ -154,12 +159,15 @@ impl Billing {
             ),
             (
                 "claude",
-                "Claude Code · 额度采集入口",
+                "最近一次 Claude Code 会话额度",
                 "https://claude.ai/settings/usage",
             ),
         ] {
             let native = configs.iter().find(|c| c.agent_id == agent);
-            let declared = native.is_some_and(|c| c.state == "ready" && c.mode == "native");
+            let declared = native.is_some_and(|c| {
+                c.mode == "native"
+                    && (c.state == "ready" || (agent == "codex" && c.state == "absent"))
+            });
             accounts.push(Account {
                 source_kind: Some(agent),
                 read_scope: None,
@@ -167,9 +175,9 @@ impl Billing {
                 name: name.into(),
                 account_type: "subscription".into(),
                 scope: if agent == "codex" {
-                    "本机 Codex 官方登录；跨客户端共享账户额度"
+                    "本机 Codex 登录来源。额度属于读取时的账号，当前客户端连接另行核验"
                 } else {
-                    "使用独立入口运行的 Claude 会话；官方未提供身份时不合并账户"
+                    "来自 Claude Code 会话状态栏。未提供账号身份或套餐，Claude Desktop 额度另行核验"
                 }
                 .into(),
                 provider_id: None,
@@ -177,11 +185,14 @@ impl Billing {
                 routing_quota: None,
                 declared_for: if declared { vec![agent.into()] } else { vec![] },
                 source_revision: native.and_then(|c| c.revision.clone()).unwrap_or_default(),
-                readable: agent == "codex",
+                readable: agent == "codex"
+                    && native
+                        .is_some_and(|config| matches!(config.state.as_str(), "ready" | "absent")),
                 official_url: Some(url.into()),
                 state: "not_loaded".into(),
                 error: None,
                 snapshot: None,
+                codex_read: None,
             });
         }
         for p in providers
@@ -213,6 +224,7 @@ impl Billing {
                 state: "not_loaded".into(),
                 error: None,
                 snapshot: None,
+                codex_read: None,
             });
         }
         // A native inline key is used only for a pinned provider origin, on explicit refresh.
@@ -240,10 +252,22 @@ impl Billing {
                 state: "not_loaded".into(),
                 error: None,
                 snapshot: None,
+                codex_read: None,
             });
         }
         accounts.extend(upstream);
         for a in &mut accounts {
+            if a.id == "native-codex" {
+                a.codex_read = Some(codex::ReadState {
+                    authorized: codex::authorized_generation(
+                        &self.directory,
+                        &self.home,
+                        &a.source_revision,
+                    )
+                    .is_some(),
+                    historical: false,
+                });
+            }
             let epoch = a
                 .source_kind
                 .and_then(|kind| self.sources.lease(kind).ok().map(|lease| lease.epoch));
@@ -270,8 +294,20 @@ impl Billing {
                     "ready"
                 }
                 .into();
+            } else if let Some(read) = &mut a.codex_read
+                && let Some(snapshot) = codex::history(&self.directory, &self.home)
+            {
+                read.historical = true;
+                a.state = if is_stale(&snapshot) {
+                    "stale"
+                } else {
+                    "last_read"
+                }
+                .into();
+                a.snapshot = Some(snapshot);
             } else if a.id == "native-claude"
-                && let Ok(Some(s)) = self.sources.collected(&self.directory)
+                && let Some(s) = claude::read_managed(&self.directory, &self.home)
+                    .or_else(|| self.sources.collected(&self.directory).ok().flatten())
             {
                 a.state = if is_stale(&s) {
                     "stale"
@@ -310,6 +346,18 @@ impl Billing {
                     })
                     .into();
                 a.error = Some(reason.message().into());
+            }
+            if let Some(read) = &mut a.codex_read
+                && a.snapshot.is_some()
+                && [
+                    "refresh_failed",
+                    "stale",
+                    "failed",
+                    "subscription_unconfirmed",
+                ]
+                .contains(&a.state.as_str())
+            {
+                read.historical = true;
             }
         }
         accounts
@@ -493,9 +541,8 @@ pub async fn claude_launcher(State(state): State<AppState>) -> ApiResult {
 fn quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\"'\"'"))
 }
-fn create_launcher(directory: &FsPath) -> Result<Value, &'static str> {
+fn usage_reader(directory: &FsPath) -> Result<PathBuf, &'static str> {
     files::private_dir(directory).map_err(|_| "额度目录不可写")?;
-    let binary = crate::providers::binary("claude").ok_or("请先安装 Claude Code")?;
     let source = std::env::current_exe().map_err(|_| "采集程序不可用")?;
     let bytes = std::fs::read(source).map_err(|_| "采集程序不可读取")?;
     let helper = directory.join(format!("usage-reader-{}", &files::hash(&bytes)[..24]));
@@ -509,6 +556,11 @@ fn create_launcher(directory: &FsPath) -> Result<Value, &'static str> {
     } else {
         files::atomic_write(&helper, &bytes, 0o700).map_err(|_| "采集程序未保存")?;
     }
+    Ok(helper)
+}
+fn create_launcher(directory: &FsPath) -> Result<Value, &'static str> {
+    let binary = crate::providers::binary("claude").ok_or("请先安装 Claude Code")?;
+    let helper = usage_reader(directory)?;
     let settings = directory.join("claude-usage-settings.json");
     let command = format!(
         "{} --claude-quota-stdin {}",
@@ -548,6 +600,10 @@ fn read_collected(directory: &FsPath) -> Result<Option<AccountSnapshot>, &'stati
         .transpose()
 }
 pub fn capture_stdin(directory: &FsPath) -> Result<(), &'static str> {
+    println!("{}", capture_bytes(directory, &read_quota_stdin()?)?);
+    Ok(())
+}
+fn read_quota_stdin() -> Result<Zeroizing<Vec<u8>>, &'static str> {
     use std::io::Read;
     let mut bytes = Zeroizing::new(Vec::new());
     std::io::stdin()
@@ -557,10 +613,17 @@ pub fn capture_stdin(directory: &FsPath) -> Result<(), &'static str> {
     if bytes.len() > 128 * 1024 {
         return Err("采集输入超限");
     }
-    println!("{}", capture_bytes(directory, &bytes)?);
-    Ok(())
+    Ok(bytes)
 }
 fn capture_bytes(directory: &FsPath, bytes: &[u8]) -> Result<String, &'static str> {
+    let (snapshot, text) = parse_claude_capture(bytes)?;
+    files::private_dir(directory).map_err(|_| "额度目录不可写")?;
+    let bytes = serde_json::to_vec(&Collected { snapshot }).map_err(|_| "采集格式无效")?;
+    files::atomic_write(&directory.join("claude-quota.json"), &bytes, 0o600)
+        .map_err(|_| "采集快照未保存")?;
+    Ok(text)
+}
+fn parse_claude_capture(bytes: &[u8]) -> Result<(AccountSnapshot, String), &'static str> {
     let value: Value = serde_json::from_slice(bytes).map_err(|_| "采集格式无效")?;
     let snapshot = local_agent_core::billing::claude_statusline(&value).unwrap_or_else(|reason| {
         let mut snapshot =
@@ -568,22 +631,20 @@ fn capture_bytes(directory: &FsPath, bytes: &[u8]) -> Result<String, &'static st
         snapshot.notes.push(reason.into());
         snapshot
     });
-    // Store only the normalized allowlisted quota fields, never transcript paths or input payload.
-    files::private_dir(directory).map_err(|_| "额度目录不可写")?;
     let text = snapshot
         .windows
         .iter()
         .filter_map(|w| w.used_percent.map(|p| format!("{} {p:.0}%", w.label)))
         .collect::<Vec<_>>()
         .join(" · ");
-    let bytes = serde_json::to_vec(&Collected { snapshot }).map_err(|_| "采集格式无效")?;
-    files::atomic_write(&directory.join("claude-quota.json"), &bytes, 0o600)
-        .map_err(|_| "采集快照未保存")?;
-    Ok(if text.is_empty() {
-        "Claude · 额度未提供".into()
-    } else {
-        text
-    })
+    Ok((
+        snapshot,
+        if text.is_empty() {
+            "Claude · 额度未提供".into()
+        } else {
+            text
+        },
+    ))
 }
 
 #[cfg(test)]

@@ -13,6 +13,7 @@ pub(crate) struct Refresh {
 struct Flight {
     key: RefreshKey,
     active: Arc<AtomicBool>,
+    codex_generation: Option<String>,
 }
 impl Flight {
     fn finish(&self) {
@@ -70,6 +71,19 @@ fn prepare(
         return Err(err("此来源需通过官方入口或 Claude 额度采集入口更新"));
     }
     let mut billing = state.billing.lock().map_err(|_| err("账户服务暂不可用"))?;
+    let manual_codex_read = account.id == "native-codex";
+    let codex_generation = if manual_codex_read {
+        Some(
+            codex::authorized_generation(
+                &billing.directory,
+                &billing.home,
+                &account.source_revision,
+            )
+            .ok_or_else(|| err("请先确认手动读取 Codex 额度的授权"))?,
+        )
+    } else {
+        None
+    };
     let lease = account
         .source_kind
         .map(|kind| billing.sources.lease(kind))
@@ -85,7 +99,8 @@ fn prepare(
     billing
         .attempted
         .retain(|_, started| started.elapsed() < Duration::from_secs(10));
-    let recent = billing.attempted.keys().any(|other| key.same_read(other));
+    // The local Codex login can change between clicks without changing the source revision.
+    let recent = !manual_codex_read && billing.attempted.keys().any(|other| key.same_read(other));
     if recent
         && (!billing.attempted.contains_key(&key)
             || !billing
@@ -104,9 +119,12 @@ fn prepare(
     let flight = Flight {
         key: key.clone(),
         active: active.clone(),
+        codex_generation,
     };
     billing.in_flight.insert(key.clone(), active);
-    billing.attempted.insert(key, Instant::now());
+    if !manual_codex_read {
+        billing.attempted.insert(key, Instant::now());
+    }
     // Construct the owner inside the worker. A cancelled receiver drops it
     // here, rather than leaving registration without a cancellation guard.
     Ok(Prepared::Read(Box::new(Reading {
@@ -126,6 +144,21 @@ fn publish(
     lease: Option<local_agent_core::plugin::PluginLease>,
 ) -> ApiResult {
     let changed = || err("读取期间配置已改变，已丢弃旧账户结果");
+    let codex_manager = flight
+        .codex_generation
+        .as_ref()
+        .map(|_| state.providers.lock().map_err(|_| err("配置读取暂不可用")))
+        .transpose()?;
+    let codex_config = codex_manager
+        .as_ref()
+        .map(|manager| {
+            let guard = manager.provider_edit_guard().map_err(|e| err(&e.message))?;
+            if !codex::current_revision(manager, &account.source_revision) {
+                return Err(changed());
+            }
+            Ok(guard)
+        })
+        .transpose()?;
     let store = if let Some(provider_id) = &account.provider_id {
         let store = state.store.lock().map_err(|_| err("账户目录暂不可用"))?;
         let provider = store
@@ -144,9 +177,10 @@ fn publish(
         // publication of a result that can also affect other accounts.
         Some((store, target))
     } else {
-        if !catalog(state)?
-            .iter()
-            .any(|a| a.id == account.id && a.source_revision == account.source_revision)
+        if codex_config.is_none()
+            && !catalog(state)?
+                .iter()
+                .any(|a| a.id == account.id && a.source_revision == account.source_revision)
         {
             return Err(changed());
         }
@@ -154,6 +188,13 @@ fn publish(
     };
     let source_epoch = lease.as_ref().map(|lease| lease.epoch);
     let mut billing = state.billing.lock().map_err(|_| err("账户缓存暂不可用"))?;
+    if let Some(generation) = &flight.codex_generation
+        && codex::authorized_generation(&billing.directory, &billing.home, &account.source_revision)
+            .as_ref()
+            != Some(generation)
+    {
+        return Err(err("Codex 额度读取授权已变化，已丢弃本次结果"));
+    }
     if !flight.active.load(Ordering::Acquire)
         || !billing
             .in_flight
@@ -174,6 +215,9 @@ fn publish(
             }
         }
         outcome.and_then(|snapshot| {
+            if account.id == "native-codex" {
+                codex::persist(&billing.directory, &billing.home, &snapshot)?;
+            }
             billing
                 .cache_snapshot(
                     account.id.clone(),
@@ -245,6 +289,8 @@ fn publish(
     flight.finish();
     drop(billing);
     drop(store);
+    drop(codex_config);
+    drop(codex_manager);
     // Resolve again: the catalog only attaches cache entries with the current
     // source revision, including a configuration edited during publication.
     json_value(json!({"accounts":catalog(state)?,"asOf":chrono::Utc::now().to_rfc3339()}))

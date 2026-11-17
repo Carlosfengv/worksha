@@ -1,4 +1,10 @@
-use local_agent_core::{billing::AccountSnapshot, providers::files};
+use super::{ApiResult, AppState, catalog, err, json_value};
+use axum::{Json, extract::State};
+use local_agent_core::{
+    billing::AccountSnapshot,
+    providers::{ProviderManager, files},
+};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
     io::{BufRead, BufReader, Read, Write},
@@ -111,25 +117,184 @@ fn read_binary(binary: &std::path::Path) -> Result<AccountSnapshot, &'static str
         return Err("读取期间账户发生变化，请重新刷新");
     }
     let mut snapshot = local_agent_core::billing::codex(&first["account"], &limits)?;
-    let scope = files::hash(
-        serde_json::to_string(&json!([first["account"], limits["accountId"]]))
-            .unwrap_or_default()
-            .as_bytes(),
-    );
-    snapshot.notes.push(format!(
-        "账户范围 {} · 同一账户在其他客户端的用量共享。",
-        &scope[..12]
-    ));
+    let email = first["account"]["email"]
+        .as_str()
+        .filter(|email| !email.is_empty());
+    let account_id = limits["accountId"].as_str().filter(|id| !id.is_empty());
+    snapshot.identity = None;
+    if let Some(evidence) = account_id.or(email) {
+        let scope = files::hash(evidence.as_bytes());
+        snapshot.notes.push(format!(
+            "账户范围 {} · 同一账户在其他客户端的用量共享。",
+            &scope[..12]
+        ));
+    }
     Ok(snapshot)
+}
+
+const CONSENT_FILE: &str = "codex-read-consent.json";
+const QUOTA_FILE: &str = "codex-quota.json";
+const FORMAT: u8 = 1;
+
+#[derive(Clone, Serialize)]
+pub(super) struct ReadState {
+    pub(super) authorized: bool,
+    pub(super) historical: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Consent {
+    format: u8,
+    source: String,
+    revision: String,
+    generation: String,
+    enabled: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Quota {
+    format: u8,
+    source: String,
+    snapshot: AccountSnapshot,
+}
+
+fn source_key(home: &std::path::Path) -> String {
+    files::hash(home.as_os_str().as_encoded_bytes())
+}
+
+fn local_record<T: DeserializeOwned>(directory: &std::path::Path, name: &str) -> Option<T> {
+    let file = files::read(&directory.join(name)).ok()?;
+    if file.stamp.mode != 0o600 {
+        return None;
+    }
+    serde_json::from_slice(file.bytes.as_deref()?).ok()
+}
+
+pub(super) fn authorized_generation(
+    directory: &std::path::Path,
+    home: &std::path::Path,
+    revision: &str,
+) -> Option<String> {
+    let consent: Consent = local_record(directory, CONSENT_FILE)?;
+    (consent.format == FORMAT
+        && consent.enabled
+        && consent.source == source_key(home)
+        && consent.revision == revision)
+        .then_some(consent.generation)
+}
+
+pub(super) fn current_revision(manager: &ProviderManager, revision: &str) -> bool {
+    !revision.is_empty()
+        && manager.inspect_configs().iter().any(|config| {
+            config.agent_id == "codex"
+                && matches!(config.state.as_str(), "ready" | "absent")
+                && config.revision.as_deref() == Some(revision)
+        })
+}
+
+pub(super) fn history(
+    directory: &std::path::Path,
+    home: &std::path::Path,
+) -> Option<AccountSnapshot> {
+    let quota: Quota = local_record(directory, QUOTA_FILE)?;
+    (quota.format == FORMAT && quota.source == source_key(home)).then_some(quota.snapshot)
+}
+
+pub(super) fn persist(
+    directory: &std::path::Path,
+    home: &std::path::Path,
+    snapshot: &AccountSnapshot,
+) -> Result<(), &'static str> {
+    write_record(
+        directory,
+        QUOTA_FILE,
+        &Quota {
+            format: FORMAT,
+            source: source_key(home),
+            snapshot: snapshot.clone(),
+        },
+    )
+}
+
+fn write_record(
+    directory: &std::path::Path,
+    name: &str,
+    record: &impl Serialize,
+) -> Result<(), &'static str> {
+    let content = serde_json::to_vec(record).map_err(|_| "Codex 额度数据格式无效")?;
+    files::private_dir(directory).map_err(|_| "Codex 额度目录不可安全写入")?;
+    files::atomic_write(&directory.join(name), &content, 0o600)
+        .map_err(|_| "Codex 额度数据未能保存")
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ConsentChange {
+    expected_revision: String,
+    enabled: bool,
+}
+
+pub(crate) async fn consent(
+    State(state): State<AppState>,
+    Json(change): Json<ConsentChange>,
+) -> ApiResult {
+    crate::blocking::management(move || {
+        let account = catalog(&state)?
+            .into_iter()
+            .find(|item| item.id == "native-codex")
+            .ok_or_else(|| err("Codex 额度来源不可用"))?;
+        if change.expected_revision != account.source_revision
+            || (change.enabled && (!account.readable || account.source_revision.is_empty()))
+        {
+            return Err(err("Codex 额度来源已变更，请重新读取"));
+        }
+        let manager = state
+            .providers
+            .lock()
+            .map_err(|_| err("配置读取暂不可用"))?;
+        let _config = manager.provider_edit_guard().map_err(|e| err(&e.message))?;
+        if change.enabled && !current_revision(&manager, &change.expected_revision) {
+            return Err(err("Codex 额度来源已变更，请重新读取"));
+        }
+        let mut billing = state.billing.lock().map_err(|_| err("账户服务暂不可用"))?;
+        write_record(
+            &billing.directory,
+            CONSENT_FILE,
+            &Consent {
+                format: FORMAT,
+                source: source_key(&billing.home),
+                revision: change.expected_revision,
+                generation: uuid::Uuid::new_v4().to_string(),
+                enabled: change.enabled,
+            },
+        )
+        .map_err(err)?;
+        if !change.enabled {
+            billing.cache.remove("native-codex");
+            billing.failures.remove("native-codex");
+        }
+        for (_, active) in billing
+            .in_flight
+            .iter()
+            .filter(|(key, _)| key.account == "native-codex")
+        {
+            active.store(false, std::sync::atomic::Ordering::Release);
+        }
+        json_value(json!({"authorized": change.enabled}))
+    })
+    .await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
     #[test]
     fn rpc_reads_only_and_rejects_account_changes() {
-        let temp = tempfile::tempdir().unwrap();
+        let temp = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let script = temp.path().join("codex-fixture");
         let log = temp.path().join("methods");
         for changed in [false, true] {
@@ -158,9 +323,18 @@ for line in sys.stdin:
             if changed {
                 assert!(result.is_err());
             } else {
-                let s = result.unwrap();
-                assert_eq!(s.plan.as_deref(), Some("pro"));
-                assert_eq!(s.reset_credits.available_count, Some(3));
+                let snapshot = result.unwrap();
+                assert_eq!(snapshot.plan.as_deref(), Some("pro"));
+                assert_eq!(snapshot.reset_credits.available_count, Some(3));
+                let billing = temp.path().join("billing");
+                persist(&billing, temp.path(), &snapshot).unwrap();
+                let saved = std::fs::read_to_string(billing.join(QUOTA_FILE)).unwrap();
+                assert!(!saved.contains("fixture@example.test"));
+                assert_eq!(
+                    history(&billing, temp.path()).unwrap().plan.as_deref(),
+                    Some("pro")
+                );
+                assert!(history(&billing, &temp.path().join("other-home")).is_none());
             }
         }
         let methods = std::fs::read_to_string(log).unwrap();

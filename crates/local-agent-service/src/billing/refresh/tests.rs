@@ -11,6 +11,105 @@ use tokio::sync::Notify;
 
 const REFERENCE: &str = "10000000-0000-4000-8000-000000000001";
 
+#[tokio::test]
+async fn codex_keeps_history_across_restart_and_rejects_publication_after_scope_changes() {
+    let fixture = Fixture::new().await;
+    let state = &fixture.state;
+    let data = fixture._root.path().join("data");
+    let home = fixture._root.path().join("home");
+    let (sources, controlled) = sources::controlled_kind("codex");
+    let restart = || {
+        *state.billing.lock().unwrap() =
+            Billing::with_sources(home.clone(), &data, sources.clone());
+    };
+    restart();
+    let account = || {
+        catalog(state)
+            .unwrap()
+            .into_iter()
+            .find(|a| a.id == "native-codex")
+            .unwrap()
+    };
+    let change = |enabled| {
+        codex::consent(
+            State(state.clone()),
+            Json(
+                serde_json::from_value(json!({
+                    "expectedRevision": account().source_revision,
+                    "enabled": enabled,
+                }))
+                .unwrap(),
+            ),
+        )
+    };
+    let prepare_read = || {
+        prepare(
+            state,
+            "native-codex".into(),
+            Refresh {
+                expected_revision: account().source_revision,
+            },
+        )
+    };
+    let read = || match prepare_read().ok().unwrap() {
+        Prepared::Read(reading) => *reading,
+        Prepared::Cached(_) => panic!("expected a fresh read"),
+    };
+    let result = |reading: Reading, result| {
+        publish(
+            state,
+            reading.account,
+            reading.flight,
+            result,
+            reading.lease,
+        )
+    };
+    let snapshot = |plan: &str| {
+        let mut snapshot = AccountSnapshot::new("subscription", "offline Codex account");
+        snapshot.plan = Some(plan.into());
+        snapshot
+    };
+    assert!(account().declared_for.contains(&"codex".into()));
+    assert!(prepare_read().is_err());
+    let _ = change(true).await.unwrap();
+    let _ = result(read(), Ok(snapshot("pro"))).unwrap();
+    assert!(!account().codex_read.unwrap().historical);
+
+    restart();
+    let historical = account();
+    assert_eq!(historical.state, "last_read");
+    assert!(historical.codex_read.unwrap().historical);
+    assert_eq!(historical.snapshot.unwrap().plan.as_deref(), Some("pro"));
+    let next = read();
+    assert!(
+        prepare_read().is_err(),
+        "only one Codex read may run at a time"
+    );
+    let _ = result(next, Ok(snapshot("team"))).unwrap();
+    // A switch under the same source revision must still read immediately.
+    let _ = result(read(), Ok(snapshot("plus"))).unwrap();
+    assert_eq!(account().snapshot.unwrap().plan.as_deref(), Some("plus"));
+    assert!(result(read(), Err("账户已退出登录".into())).is_err());
+    let logged_out = account();
+    assert!(logged_out.codex_read.unwrap().historical);
+    assert_eq!(logged_out.snapshot.unwrap().plan.as_deref(), Some("plus"));
+
+    restart();
+    let pending = read();
+    let _ = change(false).await.unwrap();
+    assert!(result(pending, Ok(snapshot("revoked"))).is_err());
+    assert!(prepare_read().is_err());
+    restart();
+    let _ = change(true).await.unwrap();
+    let pending = read();
+    std::fs::create_dir_all(home.join(".codex")).unwrap();
+    std::fs::write(home.join(".codex/config.toml"), "model = \"offline\"\n").unwrap();
+    assert!(result(pending, Ok(snapshot("obsolete"))).is_err());
+    assert!(!account().codex_read.unwrap().authorized);
+    assert_eq!(account().snapshot.unwrap().plan.as_deref(), Some("plus"));
+    assert_eq!(controlled.calls.load(Ordering::Acquire), 0);
+}
+
 struct Fixture {
     state: AppState,
     account_id: String,

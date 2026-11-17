@@ -1,4 +1,6 @@
 pub mod catalog;
+mod claude_statusline;
+pub use claude_statusline::ClaudeStatusLine;
 pub mod config;
 pub mod credential_operations;
 pub mod credential_scope;
@@ -94,6 +96,8 @@ pub struct BindingDraft {
 pub struct Transaction {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local_token_operation: Option<credential_scope::IdentityV3>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    claude_statusline: Option<claude_statusline::Change>,
     pub id: String,
     pub agent_id: String,
     pub state: String,
@@ -384,7 +388,12 @@ impl ProviderManager {
         self.recover(&mut j)?;
         Ok(ProviderStatus {
             configs: self.inspect_configs(),
-            transactions: j.transactions.into_iter().rev().collect(),
+            transactions: j
+                .transactions
+                .into_iter()
+                .rev()
+                .filter(|transaction| transaction.claude_statusline.is_none())
+                .collect(),
             backup_protection: "AES-256-GCM · 密钥保存在 macOS 钥匙串",
         })
     }
@@ -905,6 +914,7 @@ impl ProviderManager {
         }
         let t = Transaction {
             local_token_operation: draft.operation,
+            claude_statusline: None,
             id: preview_id,
             agent_id: draft.agent_id.clone(),
             state: "pending".into(),
@@ -948,7 +958,7 @@ impl ProviderManager {
         let original = j
             .transactions
             .iter()
-            .find(|t| t.id == id && t.state == "applied")
+            .find(|t| t.id == id && t.state == "applied" && t.claude_statusline.is_none())
             .cloned()
             .ok_or_else(|| ConfigError::new("not_found", "找不到已应用的备份事务"))?;
         if j.transactions
@@ -960,14 +970,20 @@ impl ProviderManager {
         let backup = self.plan(id)?;
         let path = self.transaction_path(&original)?;
         let before = files::read(&path)?;
-        if before.stamp.digest != backup.after.as_deref().map(files::hash) {
+        let (after, after_mode) = if before.stamp.digest == backup.after.as_deref().map(files::hash)
+        {
+            (backup.before, backup.before_stamp.mode)
+        } else if original.agent_id == "claude" {
+            claude_statusline::restore_route(&j, &path, &before, backup)?
+        } else {
             return fail(
                 "conflict",
                 "当前文件已不同于该次切换结果；为保留外部修改，未自动恢复",
             );
-        }
+        };
         let t = Transaction {
             local_token_operation: None,
+            claude_statusline: None,
             id: uuid::Uuid::new_v4().to_string(),
             agent_id: original.agent_id.clone(),
             state: "pending".into(),
@@ -988,9 +1004,9 @@ impl ProviderManager {
             t,
             Plan {
                 before: before.bytes,
-                after: backup.before,
+                after,
                 before_stamp: before.stamp,
-                after_mode: backup.before_stamp.mode,
+                after_mode,
             },
         )
     }
@@ -1118,6 +1134,16 @@ impl ProviderManager {
         read_provider: impl FnOnce() -> Result<Option<Provider>, ConfigError>,
         check_idle: impl FnOnce() -> Result<(), ConfigError>,
     ) -> Result<Transaction, ConfigError> {
+        self.apply_checked_kind(id, read_provider, check_idle, false)
+    }
+
+    fn apply_checked_kind(
+        &self,
+        id: &str,
+        read_provider: impl FnOnce() -> Result<Option<Provider>, ConfigError>,
+        check_idle: impl FnOnce() -> Result<(), ConfigError>,
+        claude_statusline: bool,
+    ) -> Result<Transaction, ConfigError> {
         let _lock = self.lock()?;
         let mut j = self.journal()?;
         self.recover(&mut j)?;
@@ -1127,6 +1153,9 @@ impl ProviderManager {
             .position(|t| t.id == id)
             .ok_or_else(|| ConfigError::new("not_found", "找不到配置事务"))?;
         let t = &j.transactions[index];
+        if t.claude_statusline.is_some() != claude_statusline {
+            return fail("not_found", "找不到对应类型的配置事务");
+        }
         if t.state == "applied" {
             return Ok(t.clone());
         }
@@ -1152,12 +1181,14 @@ impl ProviderManager {
         check_idle()?;
         Self::check_opencode_route(t, &p, &path)?;
         j.transactions[index].state = "applying".into();
-        j.transactions[index].activation = Some(Activation {
+        j.transactions[index].activation = (!claude_statusline).then(|| Activation {
             state: "awaiting_restart".into(),
             updated_at: chrono::Utc::now().to_rfc3339(),
         });
         self.save(&j)?;
-        if let Err(e) = files::replace(&path, &p.before_stamp, p.after.as_deref(), p.after_mode) {
+        if (!claude_statusline || p.before != p.after)
+            && let Err(e) = files::replace(&path, &p.before_stamp, p.after.as_deref(), p.after_mode)
+        {
             self.recover(&mut j)?;
             return Err(e);
         }

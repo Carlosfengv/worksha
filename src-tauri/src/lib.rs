@@ -91,6 +91,8 @@ pub fn run() {
             commands::accounts::get_accounts,
             commands::accounts::refresh_account,
             commands::accounts::create_claude_quota_launcher,
+            commands::accounts::manage_claude_quota_statusline,
+            commands::accounts::set_codex_quota_consent,
             commands::accounts::open_account_console,
             commands::settings::get_snapshot,
             commands::backend::get_backend_diagnostics,

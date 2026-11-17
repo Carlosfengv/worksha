@@ -159,6 +159,16 @@ export function AgentDetail({
                 />
               </div>
             )}
+          {value === "overview" &&
+            ["codex", "claude"].includes(agent.configId) && (
+              <div className="mb-4">
+                <AccountQuota
+                  accountId={`native-${agent.configId}`}
+                  agentId={agent.configId}
+                  overviewHref={`#/agents/${encodeURIComponent(agent.id)}?tab=quota`}
+                />
+              </div>
+            )}
           {source?.enabled ? (
             <div className="space-y-4">
               <SessionDateFilter value={days} onChange={setDays} />
@@ -316,11 +326,6 @@ export function AgentDetail({
             />
           ) : (
             <AccountQuota agentId={agent.configId} />
-          )}
-          {canConfigure && (
-            <p className="mt-3 text-label text-fg-muted">
-              账户额度由所有客户端共享。
-            </p>
           )}
         </TabPanel>
         <TabPanel value="connection">

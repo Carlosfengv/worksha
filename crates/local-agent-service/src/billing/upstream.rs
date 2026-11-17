@@ -585,6 +585,7 @@ fn row(target: &Provider, reference: AccountRef, label: &str) -> Option<Account>
     let (kind, _) = api::adapter(target)?;
     Some(Account {
         source_kind: Some(kind),
+        codex_read: None,
         read_scope: read_scope(target, kind),
         source_revision: source_revision(target, &reference),
         id: format!("upstream-{}", reference.id),

@@ -118,6 +118,87 @@ fn prepare(f: &Fixture, agent: &str, p: Option<&Provider>) -> Transaction {
         )
         .unwrap()
 }
+
+#[test]
+fn claude_statusline_can_be_enabled_after_routing_and_survives_route_restore() {
+    let f = fixture();
+    let path = config::path(&f.home, "claude").unwrap();
+    let route = prepare(&f, "claude", None);
+    f.manager.apply(&route.id, None, true).unwrap();
+    let initial = f.manager.claude_statusline().unwrap();
+    let field = serde_json::json!({"type":"command","command":"isolated-helper"});
+    let install = f
+        .manager
+        .prepare_claude_statusline(&initial.revision, Some(field.clone()))
+        .unwrap();
+    assert!(f.manager.prepare_restore(&route.id).is_err());
+    assert!(f.manager.apply(&install.id, None, true).is_err());
+    f.manager.apply_claude_statusline(&install.id).unwrap();
+    assert_eq!(f.manager.claude_statusline().unwrap().state, "installed");
+    let restore = f.manager.prepare_restore(&route.id).unwrap();
+    f.manager.apply(&restore.id, None, true).unwrap();
+    let result: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    assert_eq!(result, serde_json::json!({"statusLine":field}));
+    let status = f.manager.claude_statusline().unwrap();
+    let close = f
+        .manager
+        .prepare_claude_statusline(&status.revision, None)
+        .unwrap();
+    f.manager.apply_claude_statusline(&close.id).unwrap();
+    assert!(!path.exists());
+    assert_eq!(f.manager.claude_statusline().unwrap().state, "disabled");
+}
+
+#[test]
+fn claude_statusline_leaves_custom_and_externally_changed_settings_intact() {
+    let f = fixture();
+    let path = config(
+        &f,
+        "claude",
+        br#"{"statusLine":{"type":"command","command":"custom"}}"#,
+    );
+    let field = serde_json::json!({"type":"command","command":"isolated-helper"});
+    let custom = f.manager.claude_statusline().unwrap();
+    assert_eq!(custom.state, "custom");
+    assert!(
+        f.manager
+            .prepare_claude_statusline(&custom.revision, Some(field.clone()))
+            .is_err()
+    );
+    fs::write(&path, br#"{"unrelated":1}"#).unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+    let status = f.manager.claude_statusline().unwrap();
+    let install = f
+        .manager
+        .prepare_claude_statusline(&status.revision, Some(field.clone()))
+        .unwrap();
+    fs::write(&path, br#"{"unrelated":2}"#).unwrap();
+    assert!(f.manager.apply_claude_statusline(&install.id).is_err());
+    assert_eq!(fs::read(&path).unwrap(), br#"{"unrelated":2}"#);
+    f.manager.cancel(&install.id).unwrap();
+    let status = f.manager.claude_statusline().unwrap();
+    let install = f
+        .manager
+        .prepare_claude_statusline(&status.revision, Some(field))
+        .unwrap();
+    f.manager.apply_claude_statusline(&install.id).unwrap();
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o640
+    );
+    let replacement =
+        br#"{"unrelated":2,"statusLine":{"type":"command","command":"user-replaced"}}"#;
+    fs::write(&path, replacement).unwrap();
+    let status = f.manager.claude_statusline().unwrap();
+    assert_eq!(status.state, "replaced");
+    let close = f
+        .manager
+        .prepare_claude_statusline(&status.revision, None)
+        .unwrap();
+    f.manager.apply_claude_statusline(&close.id).unwrap();
+    assert_eq!(fs::read(&path).unwrap(), replacement);
+    assert_eq!(f.manager.claude_statusline().unwrap().state, "custom");
+}
 fn tree_bytes(path: &Path, all: &mut Vec<Vec<u8>>) {
     for item in fs::read_dir(path).unwrap().flatten() {
         if item.path().is_dir() {

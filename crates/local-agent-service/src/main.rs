@@ -91,7 +91,18 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
     local_agent_core::sessions::install_reader_worker(std::env::current_exe()?);
     if std::env::args().nth(1).as_deref() == Some("--claude-quota-stdin") {
         let directory = PathBuf::from(std::env::args().nth(2).ok_or("Missing quota directory")?);
-        billing::capture_stdin(&directory)?;
+        match std::env::args().nth(3).as_deref() {
+            None => billing::capture_stdin(&directory)?,
+            Some("--managed") => {
+                let settings =
+                    PathBuf::from(std::env::args().nth(4).ok_or("Missing Claude settings")?);
+                let generation = std::env::args()
+                    .nth(5)
+                    .ok_or("Missing statusLine generation")?;
+                billing::capture_managed_stdin(&directory, &settings, &generation)?;
+            }
+            Some(_) => return Err("Invalid Claude quota reader argument".into()),
+        }
         return Ok(());
     }
     let Some(options) = daemon::command(std::env::args().skip(1).collect()).await? else {

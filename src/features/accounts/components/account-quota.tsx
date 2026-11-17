@@ -33,6 +33,7 @@ import { ConnectionEmpty } from "@/shared/ui/connection-empty";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ProviderQuotaForecast } from "./provider-quota-forecast";
 import { ProviderBalanceEstimate } from "./provider-balance-estimate";
+import { ClaudeStatusLineControl } from "./claude-statusline";
 const stateLabel: Record<string, string> = {
   not_loaded: "尚未读取",
   unsupported: "读取能力未接入",
@@ -40,6 +41,7 @@ const stateLabel: Record<string, string> = {
   stale: "快照已过期",
   refreshing: "正在刷新",
   refresh_failed: "刷新失败 · 上次快照",
+  last_read: "上次读取 · 当前账号待核验",
   subscription_authorization_failed: "订阅授权未通过",
   subscription_unconfirmed: "订阅状态待确认",
   failed: "读取失败",
@@ -57,11 +59,13 @@ export function AccountQuota({
   providerId,
   accountId,
   upstreamAccount,
+  overviewHref,
 }: {
   agentId?: ConfigAgentId;
   providerId?: string;
   accountId?: string;
   upstreamAccount?: BillingAccount["upstreamAccount"];
+  overviewHref?: string;
 }) {
   const resource = useSharedRead(accountsResource);
   const reload = resource.invalidate;
@@ -91,7 +95,11 @@ export function AccountQuota({
     : accountId
       ? scoped.filter((account) => account.id === accountId)
       : scoped;
-  const account = selectBillingAccount(rows, selected, agentId);
+  const account = selectBillingAccount(
+    rows,
+    selected || (accountId === "native-claude" ? accountId : ""),
+    agentId,
+  );
   const scopeReady = !upstreamAccount || (!resource.loading && !resource.error);
   const canConfirm =
     !upstreamAccount ||
@@ -115,10 +123,13 @@ export function AccountQuota({
     return () => window.clearInterval(timer);
   }, [hasResets, providerId, snapshotTime]);
   const refresh = useCallback(
-    async (a: BillingAccount) => {
+    async (a: BillingAccount, authorizeCodex = false) => {
       setBusy(true);
       setError(null);
       try {
+        if (authorizeCodex && a.id === "native-codex") {
+          await accountsApi.setCodexQuotaConsent(a.sourceRevision, true);
+        }
         await accountsApi.refreshAccount(a.id, a.sourceRevision);
         reload();
         return true;
@@ -136,7 +147,8 @@ export function AccountQuota({
     const onFocus = () => {
       const previous = returnAccount.current;
       returnAccount.current = null;
-      if (previous?.readable) void refresh(previous);
+      if (previous?.readable && previous.id !== "native-codex")
+        void refresh(previous);
       else reload();
     };
     window.addEventListener("focus", onFocus);
@@ -167,20 +179,30 @@ export function AccountQuota({
       setBusy(false);
     }
   };
+  if (overviewHref && !account && resource.data && !resource.error) return null;
+  const windows = overviewHref
+    ? snapshot?.windows.slice(0, 2)
+    : snapshot?.windows;
   return (
     <section className="min-w-0 space-y-4" aria-label="账户用量与额度">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-title font-medium">账户用量与额度</h2>
         </div>
-        <Button
-          variant="tertiary"
-          size="sm"
-          onClick={resource.reload}
-          loading={resource.loading}
-        >
-          重新读取目录
-        </Button>
+        {overviewHref ? (
+          <Button asChild variant="tertiary" size="sm">
+            <a href={overviewHref}>查看额度明细</a>
+          </Button>
+        ) : (
+          <Button
+            variant="tertiary"
+            size="sm"
+            onClick={resource.reload}
+            loading={resource.loading}
+          >
+            重新读取目录
+          </Button>
+        )}
       </div>
       {resource.error && (
         <Alert>
@@ -193,31 +215,32 @@ export function AccountQuota({
           正在读取账户目录…
         </p>
       )}
-      {(rows.length > 1 || (rows.length > 0 && providerId === undefined)) && (
-        <Select
-          value={account?.id ?? ""}
-          disabled={busy}
-          onValueChange={(v) => {
-            setSelected(String(v));
-            setError(null);
-          }}
-        >
-          <SelectTrigger
-            aria-label="选择计费账户"
-            placeholder="选择账户查看额度"
-          />
-          <SelectContent>
-            {rows.map((a) => (
-              <SelectItem key={a.id} value={a.id}>
-                {a.accountType === "subscription" ? "订阅" : "API"} · {a.name}
-                {agentId && a.declaredFor.includes(agentId)
-                  ? " · 文件默认连接"
-                  : ""}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
+      {!overviewHref &&
+        (rows.length > 1 || (rows.length > 0 && providerId === undefined)) && (
+          <Select
+            value={account?.id ?? ""}
+            disabled={busy}
+            onValueChange={(v) => {
+              setSelected(String(v));
+              setError(null);
+            }}
+          >
+            <SelectTrigger
+              aria-label="选择计费账户"
+              placeholder="选择账户查看额度"
+            />
+            <SelectContent>
+              {rows.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.accountType === "subscription" ? "订阅" : "API"} · {a.name}
+                  {agentId && a.declaredFor.includes(agentId)
+                    ? " · 文件默认连接"
+                    : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       {resource.data && rows.length > 0 && !account && (
         <ConnectionEmpty
           compact
@@ -261,13 +284,24 @@ export function AccountQuota({
               </p>
               {providerId === undefined && (
                 <p className="text-label text-fg-subtle">
-                  {agentId && account.declaredFor.includes(agentId)
-                    ? "默认账户"
-                    : "当前查看账户 · 历史用量归属未知"}
+                  {account.id === "native-claude"
+                    ? "Claude Code 会话采集"
+                    : agentId && account.declaredFor.includes(agentId)
+                      ? "默认额度入口 · 当前账号按读取结果核验"
+                      : "当前查看账户 · 历史用量归属未知"}
                 </p>
               )}
             </div>
-            <Badge>{stateLabel[account.state] ?? "状态未知"}</Badge>
+            <Badge>
+              {account.codexRead &&
+              !account.codexRead.historical &&
+              account.state === "ready"
+                ? "本次读取确认"
+                : (stateLabel[account.state] ?? "状态未知")}
+            </Badge>
+            {account.codexRead?.historical && account.state !== "last_read" && (
+              <span className="text-label text-fg-muted">当前账号待核验</span>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             {account.readable && (
@@ -277,14 +311,39 @@ export function AccountQuota({
                 loading={busy}
                 disabled={!scopeReady}
                 onClick={() => {
-                  setReadConfirm(account);
                   setError(null);
+                  if (account.codexRead?.authorized) void refresh(account);
+                  else setReadConfirm(account);
                 }}
               >
                 {snapshot ? "刷新账户用量" : "读取真实账户"}
               </Button>
             )}
-            {account.officialUrl && (
+            {!overviewHref && account.codexRead?.authorized && (
+              <Button
+                size="sm"
+                variant="tertiary"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    await accountsApi.setCodexQuotaConsent(
+                      account.sourceRevision,
+                      false,
+                    );
+                    await reload();
+                  } catch (reason) {
+                    setError(accountFeedback(account, reason));
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                撤销读取授权
+              </Button>
+            )}
+            {!overviewHref && account.officialUrl && (
               <Button
                 size="sm"
                 variant="tertiary"
@@ -344,7 +403,9 @@ export function AccountQuota({
                 <>
                   <dl className="grid gap-3 sm:grid-cols-3">
                     <Value
-                      label="Plan"
+                      label={
+                        account.codexRead?.historical ? "历史套餐" : "套餐"
+                      }
                       value={
                         snapshot.plan
                           ? snapshot.plan[0].toUpperCase() +
@@ -352,11 +413,15 @@ export function AccountQuota({
                           : "来源未提供"
                       }
                     />
-                    <Value
-                      label="账户身份"
-                      value={snapshot.identity ?? "来源未提供"}
-                    />
-                    <Value label="续费 / 到期时间" value="来源未提供" />
+                    {!overviewHref && (
+                      <>
+                        <Value
+                          label="账户身份"
+                          value={snapshot.identity ?? "来源未提供"}
+                        />
+                        <Value label="续费 / 到期时间" value="来源未提供" />
+                      </>
+                    )}
                   </dl>
                   {providerId !== undefined ? (
                     <ProviderQuotaForecast
@@ -366,9 +431,9 @@ export function AccountQuota({
                       now={now}
                       directoryError={!!resource.error}
                     />
-                  ) : snapshot.windows.length ? (
+                  ) : windows?.length ? (
                     <div className="grid gap-3 lg:grid-cols-2">
-                      {snapshot.windows.map((w) => (
+                      {windows.map((w) => (
                         <article
                           key={w.id}
                           className="min-w-0 space-y-3 rounded-xl border border-border p-4"
@@ -422,43 +487,45 @@ export function AccountQuota({
                       该来源未提供额度窗口。
                     </p>
                   )}
-                  <article className="space-y-3 rounded-xl border border-border p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h4 className="text-body font-medium">
-                        重置券 ·{" "}
-                        {snapshot.resetCredits.availableCount === null
-                          ? "数量未知"
-                          : `${snapshot.resetCredits.availableCount} 张可用`}
-                      </h4>
-                      {account.officialUrl && (
-                        <Button
-                          size="sm"
-                          variant="tertiary"
-                          onClick={() => void openOfficial()}
-                        >
-                          {snapshot.resetCredits.availableCount
-                            ? "前往官方使用重置券"
-                            : "查看官方重置券入口"}
-                        </Button>
+                  {!overviewHref && (
+                    <article className="space-y-3 rounded-xl border border-border p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="text-body font-medium">
+                          重置券 ·{" "}
+                          {snapshot.resetCredits.availableCount === null
+                            ? "数量未知"
+                            : `${snapshot.resetCredits.availableCount} 张可用`}
+                        </h4>
+                        {account.officialUrl && (
+                          <Button
+                            size="sm"
+                            variant="tertiary"
+                            onClick={() => void openOfficial()}
+                          >
+                            {snapshot.resetCredits.availableCount
+                              ? "前往官方使用重置券"
+                              : "查看官方重置券入口"}
+                          </Button>
+                        )}
+                      </div>
+                      <p className="text-label text-fg-muted">
+                        {snapshot.resetCredits.reason}
+                      </p>
+                      {snapshot.resetCredits.expirations.map((expires, i) => (
+                        <p key={i} className="text-label text-fg-subtle">
+                          已返回券明细 {i + 1} · 有效期{" "}
+                          {expires === null
+                            ? "未知"
+                            : date(new Date(expires * 1000).toISOString())}
+                        </p>
+                      ))}
+                      {!snapshot.resetCredits.detailsComplete && (
+                        <p className="text-label text-fg-subtle">
+                          明细未完整提供，数量按官方总数显示。
+                        </p>
                       )}
-                    </div>
-                    <p className="text-label text-fg-muted">
-                      {snapshot.resetCredits.reason}
-                    </p>
-                    {snapshot.resetCredits.expirations.map((expires, i) => (
-                      <p key={i} className="text-label text-fg-subtle">
-                        已返回券明细 {i + 1} · 有效期{" "}
-                        {expires === null
-                          ? "未知"
-                          : date(new Date(expires * 1000).toISOString())}
-                      </p>
-                    ))}
-                    {!snapshot.resetCredits.detailsComplete && (
-                      <p className="text-label text-fg-subtle">
-                        明细未完整提供，数量按官方总数显示。
-                      </p>
-                    )}
-                  </article>
+                    </article>
+                  )}
                 </>
               ) : (
                 <>
@@ -493,11 +560,12 @@ export function AccountQuota({
                   )}
                 </>
               )}
-              {snapshot.notes.map((note, i) => (
-                <p key={i} className="break-words text-label text-fg-muted">
-                  {note}
-                </p>
-              ))}
+              {!overviewHref &&
+                snapshot.notes.map((note, i) => (
+                  <p key={i} className="break-words text-label text-fg-muted">
+                    {note}
+                  </p>
+                ))}
             </>
           ) : providerId !== undefined ? (
             <ProviderQuotaForecast
@@ -510,7 +578,7 @@ export function AccountQuota({
           ) : (
             <div className="rounded-xl border border-border p-4 text-body text-fg-muted">
               {account.id === "native-claude"
-                ? "通过独立额度入口运行 Claude 后，接收官方提供的 5 小时 / 7 天额度。API 会话可能没有订阅额度。"
+                ? "接入 Claude Code 状态栏后，等待会话提供额度窗口。API 会话可能没有订阅额度。"
                 : "尚未取得此账户的用量。读取时只查询账户信息，不发起模型推理。"}
             </div>
           )}
@@ -544,7 +612,7 @@ export function AccountQuota({
             <DialogTitle>读取 {readConfirm?.name}</DialogTitle>
             <DialogDescription>
               {readConfirm?.id === "native-codex"
-                ? "通过本机 Codex 官方 CLI 查询当前登录账户、Plan、额度窗口和重置券；不会登录、退出、发起推理或消耗重置券。"
+                ? "允许此后仅在点击刷新时，通过 Codex 读取本机当前登录账号的套餐、额度窗口和重置券。切换账号后，手动刷新会读取新账号。可随时撤销授权。"
                 : "使用该连接的凭据，只向已核对的服务商官方账户接口发送读取请求。原生配置内的 API Key 不导入或保存为新凭据。"}
             </DialogDescription>
           </DialogHeader>
@@ -577,7 +645,10 @@ export function AccountQuota({
               disabled={!canConfirm}
               onClick={() => {
                 if (readConfirm && canConfirm && !busy)
-                  void refresh(readConfirm).then((ok) => {
+                  void refresh(
+                    readConfirm,
+                    readConfirm.id === "native-codex",
+                  ).then((ok) => {
                     if (ok) setReadConfirm(null);
                   });
               }}
@@ -603,10 +674,12 @@ export function AccountQuota({
           <DialogHeader>
             <DialogTitle>接入 Claude 官方额度</DialogTitle>
             <DialogDescription>
-              为新启动的 Claude 会话生成独立入口，读取官方 statusLine 提供的
-              rate_limits。
+              从 Claude Code 状态栏读取额度窗口。选择用户级接入或独立启动入口。
             </DialogDescription>
           </DialogHeader>
+          {collectorOpen && (
+            <ClaudeStatusLineControl onApply={() => void reload()} />
+          )}
           <div className="space-y-3 text-body text-fg-muted">
             <p>
               在项目终端运行此入口，CLI

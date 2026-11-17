@@ -182,12 +182,20 @@ pub(crate) fn management(state: AppState) -> Router {
         )
         .route("/api/accounts", get(billing::list))
         .route(
+            "/api/account-collectors/codex/consent",
+            axum::routing::put(billing::codex_read_consent),
+        )
+        .route(
             "/api/accounts/{id}/refresh",
             axum::routing::post(billing::refresh),
         )
         .route(
             "/api/account-collectors/claude",
             axum::routing::post(billing::claude_launcher),
+        )
+        .route(
+            "/api/account-collectors/claude/statusline",
+            axum::routing::post(billing::statusline),
         )
         .route("/api/snapshot", get(settings::snapshot))
         .route("/api/settings", axum::routing::put(settings::save_settings))
