@@ -4,7 +4,8 @@ import type { Provider, ProviderUsage } from "./types";
 export interface ProviderOverviewEntry {
   id: string;
   name: string;
-  type: "subscription" | "api" | "unknown";
+  type: "subscription" | "api" | "unknown" | "connection";
+  connectionHref?: string;
   provider: Provider | null;
   account: BillingAccount | null;
 }
@@ -13,6 +14,7 @@ export function providerOverviewEntries(
   providers: readonly Provider[],
   accounts: readonly BillingAccount[],
   providerId?: string,
+  dshConnectionHref?: string,
 ): ProviderOverviewEntry[] {
   const entries: ProviderOverviewEntry[] = [];
   for (const provider of providers.filter((p) =>
@@ -47,6 +49,16 @@ export function providerOverviewEntries(
         type: account.accountType,
         provider: null,
         account,
+      });
+    }
+    if (dshConnectionHref) {
+      entries.push({
+        id: "connection:dsh",
+        name: "DeepSeek 官方账号",
+        type: "connection",
+        connectionHref: dshConnectionHref,
+        provider: null,
+        account: null,
       });
     }
   }

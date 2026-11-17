@@ -21,11 +21,14 @@ export function AgentConnectionStatus({
   live?: { count: number; stale: boolean };
   compact?: boolean;
 }) {
-  const { configAgent } = useAgentDirectory();
+  const { configAgent, agentFamily } = useAgentDirectory();
   const view = connectionView({
     agentId: configAgent(agentId),
     productId: agentId,
     connections: data.agentConnections,
+    source: data.sessionSources.find(
+      (source) => source.agentId === agentFamily(agentId),
+    ),
     live,
   });
   const launcher = data.observationBindings.some(
@@ -54,9 +57,7 @@ export function AgentConnectionStatus({
         <Badge
           size="sm"
           variant="plain"
-          status={
-            view.confirmed || view.gatewayConfigured ? "success" : "warning"
-          }
+          status={view.observationStatus}
           title={view.description}
         >
           {view.title}

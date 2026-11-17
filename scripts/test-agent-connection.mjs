@@ -30,9 +30,18 @@ assert.match(view().description, /没有进行中的网关请求/);
 assert.equal(view({ live: { count: 2, stale: false } }).confirmed, true);
 assert.equal(view({ live: { count: 2, stale: true } }).confirmed, false);
 assert.equal(view({ live: { count: 2, stale: true } }).gatewayConfigured, true);
-assert.match(view({ live: { count: 2, stale: true } }).description, /状态待更新/);
-assert.doesNotMatch(view({ live: { count: 2, stale: true } }).description, /没有进行中/);
-assert.equal(view({ live: { count: 2, stale: false } }).title, "网关正在代理 · 2 个请求");
+assert.match(
+  view({ live: { count: 2, stale: true } }).description,
+  /状态待更新/,
+);
+assert.doesNotMatch(
+  view({ live: { count: 2, stale: true } }).description,
+  /没有进行中/,
+);
+assert.equal(
+  view({ live: { count: 2, stale: false } }).title,
+  "网关正在代理 · 2 个请求",
+);
 assert.equal(
   view({
     connections: {
@@ -49,22 +58,55 @@ assert.equal(
 assert.equal(view({ connections: undefined }).mode, "unknown");
 assert.equal(view({ connections: undefined }).gatewayConfigured, false);
 assert.equal(
-  view({connections:{...connections,checkedAt:new Date(now-16000).toISOString()}}).gatewayConfigured,
+  view({
+    connections: {
+      ...connections,
+      checkedAt: new Date(now - 16000).toISOString(),
+    },
+  }).gatewayConfigured,
   false,
   "expired configuration cannot confirm the default gateway route",
 );
 assert.equal(
-  view({connections:{...connections,error:"unavailable"}}).gatewayConfigured,
+  view({ connections: { ...connections, error: "unavailable" } })
+    .gatewayConfigured,
   false,
 );
 assert.equal(view({ agentId: "codex" }).mode, "unknown");
+const realtime = {
+  source: { enabled: true, status: "ready", runtimeActive: true },
+  productId: "claude-code-cli",
+  connections: {
+    ...connections,
+    nativeRealtimeProducts: ["claude-code-cli"],
+  },
+};
+assert.equal(view(realtime).title, "原生实时观测已连接");
+assert.equal(
+  view({ ...realtime, productId: "claude-code-desktop" }).title,
+  "网关路由已确认",
+);
+assert.equal(
+  view({
+    source: realtime.source,
+    connections: { ...connections, items: [{ ...item, mode: "direct" }] },
+  }).title,
+  "原生观测已就绪",
+);
+assert.equal(
+  view({
+    ...realtime,
+    source: { ...realtime.source, enabled: false },
+  }).title,
+  "网关路由已确认",
+);
 assert.equal(
   view({
     connections: {
       ...connections,
       items: [{ ...item, mode: "official_login" }],
     },
-  }).loginNote.includes("尚未核验"),
+  }).loginNote.includes("账户核验"),
   true,
 );
 assert.equal(
@@ -74,7 +116,9 @@ assert.equal(
   false,
 );
 assert.equal(
-  view({connections:{...connections,items:[{...item,mode:"direct"}]}}).gatewayConfigured,
+  view({
+    connections: { ...connections, items: [{ ...item, mode: "direct" }] },
+  }).gatewayConfigured,
   false,
   "a local endpoint is not evidence that this app owns its route",
 );
@@ -105,9 +149,93 @@ assert.equal(
 console.log(
   "通过：默认连接与实际流量分离、官方登录未核验、直连采集缺口、过期与错误降级、多实例不同路由及实时状态覆盖。",
 );
-const shared = {checkedAt:new Date(now).toISOString(),error:null,items:[{...item,agentId:"codex",activeRequests:2,activeByProduct:{"codex-cli":1,"codex-unknown":1}}]};
-assert.equal(connectionView({agentId:"codex",productId:"codex-cli",connections:shared,now}).active,1);
-assert.equal(connectionView({agentId:"codex",productId:"codex-desktop",connections:shared,now}).confirmed,false,"shared config and unknown traffic cannot be attributed to desktop");
-const separate={...connections,items:[item,{...item,agentId:"claude-desktop",mode:"official_login"}]};
-assert.equal(connectionView({agentId:"claude",productId:"claude-code-cli",connections:separate,now}).gatewayConfigured,true);
-assert.equal(connectionView({agentId:"claude-desktop",productId:"claude-code-desktop",connections:separate,now}).gatewayConfigured,false,"a verified CLI default must not confirm the desktop profile");
+const shared = {
+  checkedAt: new Date(now).toISOString(),
+  error: null,
+  items: [
+    {
+      ...item,
+      agentId: "codex",
+      activeRequests: 2,
+      activeByProduct: { "codex-cli": 1, "codex-unknown": 1 },
+    },
+  ],
+};
+assert.equal(
+  connectionView({
+    agentId: "codex",
+    productId: "codex-cli",
+    connections: shared,
+    now,
+  }).active,
+  1,
+);
+assert.equal(
+  connectionView({
+    agentId: "codex",
+    productId: "codex-desktop",
+    connections: shared,
+    now,
+  }).confirmed,
+  false,
+  "shared config and unknown traffic cannot be attributed to desktop",
+);
+const separate = {
+  ...connections,
+  items: [item, { ...item, agentId: "claude-desktop", mode: "official_login" }],
+};
+assert.equal(
+  connectionView({
+    agentId: "claude",
+    productId: "claude-code-cli",
+    connections: separate,
+    now,
+  }).gatewayConfigured,
+  true,
+);
+assert.equal(
+  connectionView({
+    agentId: "claude-desktop",
+    productId: "claude-code-desktop",
+    connections: separate,
+    now,
+  }).gatewayConfigured,
+  false,
+  "a verified CLI default must not confirm the desktop profile",
+);
+const absent = {
+  ...connections,
+  items: [{ ...item, mode: "unknown", configState: "absent" }],
+};
+assert.equal(
+  view({ connections: absent, source: { enabled: false, status: "disabled" } })
+    .title,
+  "会话待授权",
+);
+assert.equal(
+  view({ connections: absent, source: { enabled: true, status: "ready" } })
+    .title,
+  "原生观测已就绪",
+);
+assert.equal(
+  view({
+    connections: absent,
+    source: { enabled: true, status: "ready", runtimeActive: false },
+  }).title,
+  "原生采集已停用",
+);
+assert.equal(
+  view({
+    connections: absent,
+    source: { enabled: true, status: "permission_denied" },
+  }).observationStatus,
+  "warning",
+);
+assert.equal(
+  view({ connections: absent, nativeRealtime: true }).title,
+  "原生实时观测已连接",
+);
+assert.equal(
+  view({ connections: absent, nativeRealtime: true }).mode,
+  "unknown",
+);

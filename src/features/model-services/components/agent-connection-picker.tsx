@@ -51,6 +51,7 @@ export function AgentConnectionPicker({
       <SelectContent>
         <SelectGroup aria-label="Provider">
           <SelectLabel>Provider</SelectLabel>
+          {native && <SelectItem value="native">{nativeLabel}</SelectItem>}
           {!configured.length && (
             <SelectItem value="empty-providers" disabled>
               暂无已配置 Provider
@@ -85,12 +86,6 @@ export function AgentConnectionPicker({
             </SelectItem>
           )}
         </SelectGroup>
-        {native && (
-          <>
-            <SelectSeparator />
-            <SelectItem value="native">{nativeLabel}</SelectItem>
-          </>
-        )}
       </SelectContent>
     </Select>
   );

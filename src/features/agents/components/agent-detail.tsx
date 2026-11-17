@@ -2,6 +2,12 @@ import { AssociatedCostsView } from "@/shared/ui/associated-costs";
 import type { Snapshot } from "@/app/types";
 import { Button } from "@/components/ui/button";
 import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@/components/ui/accordion";
+import {
   DetailList,
   DetailListItem,
   DetailListLabel,
@@ -10,6 +16,7 @@ import {
 import { TabPanel } from "@/components/ui/tabs";
 import { AccountQuota } from "@/features/accounts/components/account-quota";
 import { AgentConnectionStatus } from "@/features/agents/components/agent-connection-status";
+import { connectionView } from "@/features/agents/connection-display";
 import { AgentModelUsage } from "@/features/agents/components/agent-model-usage";
 import { ObservationConnection } from "@/features/observation/components/observation-connection";
 import { ModelServiceSettings } from "@/features/model-services/components/agent-service-control";
@@ -105,6 +112,12 @@ export function AgentDetail({
         ? recent.items
         : [];
   const value = tabs.find(({ id }) => id === tab)?.id ?? "overview";
+  const connection = connectionView({
+    agentId: agent.configId,
+    productId: agent.id,
+    connections: data.agentConnections,
+    source,
+  });
   const openSession = (session: NativeSession) => {
     window.location.hash = sessionLink(session.id, {
       agent: agent.id,
@@ -134,6 +147,18 @@ export function AgentDetail({
         status={<AgentConnectionStatus agentId={agent.id} data={data} />}
       >
         <TabPanel value="overview" className="pt-4">
+          {connection.nativeDefault &&
+            source &&
+            !source.enabled &&
+            source.runtimeActive !== false && (
+              <div className="mb-4">
+                <SessionSourceControl
+                  source={source}
+                  refresh={refresh}
+                  compact
+                />
+              </div>
+            )}
           {source?.enabled ? (
             <div className="space-y-4">
               <SessionDateFilter value={days} onChange={setDays} />
@@ -328,14 +353,6 @@ export function AgentDetail({
                 <a href="#/sessions?agent=opencode">查看 OpenCode 共享会话</a>
               </Button>
             )}
-            {agent.id.endsWith("cli") &&
-              ["claude", "codex"].includes(agent.family) && (
-                <ObservationConnection
-                  agentId={agent.family}
-                  data={data}
-                  onSaved={() => void refresh()}
-                />
-              )}
             {source && (
               <SessionSourceControl source={source} refresh={refresh} />
             )}
@@ -367,6 +384,21 @@ export function AgentDetail({
                 <p className="text-label text-fg-muted">{capability.reason}</p>
               </div>
             ))}
+            {agent.id.endsWith("cli") &&
+              ["claude", "codex"].includes(agent.family) && (
+                <Accordion className="w-full">
+                  <AccordionItem value="advanced">
+                    <AccordionTrigger>高级观测入口</AccordionTrigger>
+                    <AccordionContent>
+                      <ObservationConnection
+                        agentId={agent.family}
+                        data={data}
+                        onSaved={() => void refresh()}
+                      />
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              )}
           </div>
         </TabPanel>
       </AgentDetailLayout>

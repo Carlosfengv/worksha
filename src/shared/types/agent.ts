@@ -124,6 +124,8 @@ export interface AgentDiscovery extends AgentProduct {
 export interface AgentConnection {
   agentId: ConfigAgentId;
   mode: "gateway" | "official_login" | "official_api" | "direct" | "unknown";
+  configState?: string;
+  configOverride?: "external" | "profile" | null;
   providerName: string;
   model: string | null;
   endpoint: string | null;
@@ -136,4 +138,5 @@ export interface AgentConnections {
   checkedAt: string;
   error: string | null;
   items: AgentConnection[];
+  nativeRealtimeProducts?: string[];
 }

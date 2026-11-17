@@ -14,6 +14,7 @@ import { AgentServiceControl } from "@/features/model-services/components/agent-
 import type { ModelServiceCatalog } from "@/features/model-services/types";
 import type { NativeConfig, ProviderStatus } from "@/features/providers/types";
 import { sourceLabel } from "@/features/sessions/display";
+import { SessionSourceControl } from "@/features/sessions/components/session-source";
 import { useSharedRead } from "@/shared/hooks/use-shared-read";
 import { providerStatusResource } from "@/features/providers/queries";
 import { modelServicesResource } from "@/features/model-services/queries";
@@ -39,6 +40,7 @@ type AgentRow = {
   services: ModelServiceCatalog | null;
   servicesUnavailable: boolean;
   reloadServices: () => void;
+  refresh?: () => Promise<void>;
   onSelect: (
     agent: AgentDiscovery,
     config: NativeConfig,
@@ -60,6 +62,7 @@ const columns: ColumnDef<AgentRow>[] = [
         agentId: agent.configId,
         productId: agent.id,
         connections: data.agentConnections,
+        source,
       });
       const activation = status
         ? activationLabel(status, agent.configId)
@@ -121,9 +124,9 @@ const columns: ColumnDef<AgentRow>[] = [
                 sourceStatus(agent, item.sourcePackage)
               ) : (
                 <>
-                  {connection.label} · {connection.title} ·{" "}
-                  {agent.family === "opencode" ? "默认模型配置共享 · " : ""}
-                  {sourceLabel(source)}
+                  {connection.label} · {connection.title}
+                  {agent.family === "opencode" ? " · 默认模型配置共享" : ""}
+                  {!connection.showNative && ` · ${sourceLabel(source)}`}
                 </>
               )}
             </p>
@@ -132,6 +135,17 @@ const columns: ColumnDef<AgentRow>[] = [
                 {activation}
               </Badge>
             )}
+            {connection.nativeDefault &&
+              source &&
+              !source.enabled &&
+              source.runtimeActive !== false &&
+              item.refresh && (
+                <SessionSourceControl
+                  source={source}
+                  refresh={item.refresh}
+                  compact
+                />
+              )}
           </div>
         </div>
       );
@@ -201,6 +215,7 @@ function AgentTable({
   services,
   servicesUnavailable,
   reloadServices,
+  refresh,
   onSelect,
 }: Omit<AgentRow, "agent" | "sourcePackage"> & {
   agents: AgentDiscovery[];
@@ -220,6 +235,7 @@ function AgentTable({
         services,
         servicesUnavailable,
         reloadServices,
+        refresh,
         onSelect,
       })),
     [
@@ -233,6 +249,7 @@ function AgentTable({
       services,
       servicesUnavailable,
       reloadServices,
+      refresh,
     ],
   );
   const { table } = useDataTable({
@@ -315,6 +332,7 @@ export function AgentList({
       services={services.data}
       servicesUnavailable={!!services.error}
       reloadServices={reloadServices}
+      refresh={refresh}
       onSelect={(agent, config, providerId) => {
         setActive(agent);
         openSwitch(config, providerId);

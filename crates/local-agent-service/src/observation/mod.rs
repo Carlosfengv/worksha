@@ -254,6 +254,49 @@ impl Observation {
         }
         counts
     }
+    pub(crate) fn fresh_native_products(
+        &self,
+        sessions: &local_agent_core::sessions::NativeSessions,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Vec<String> {
+        if !self.native_activity_collecting() {
+            return Vec::new();
+        }
+        let Ok(publication) = self.native.lock() else {
+            return Vec::new();
+        };
+        let age = publication
+            .checked_at
+            .as_deref()
+            .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+            .map(|at| now.signed_duration_since(at).num_milliseconds());
+        if publication.error.is_some() || !age.is_some_and(|age| (0..15_000).contains(&age)) {
+            return Vec::new();
+        }
+        let products: std::collections::BTreeSet<_> = publication
+            .rows
+            .iter()
+            .filter(|row| {
+                !row.stale
+                    && row
+                        .realtime
+                        .as_ref()
+                        .is_some_and(|sample| sample.state == "connected")
+            })
+            .filter_map(|row| Some((row.agent_id.clone(), row.agent_product_id.clone()?)))
+            .collect();
+        let authorizations = publication.authorizations.clone();
+        drop(publication);
+        products
+            .into_iter()
+            .filter(|(family, _)| {
+                authorizations.iter().any(|scope| {
+                    scope.source_id() == family && scope.ensure_current(sessions).is_ok()
+                })
+            })
+            .map(|(_, product)| product)
+            .collect()
+    }
     pub fn active_count(&self, agent: &str) -> usize {
         self.hub.active_count(agent)
     }

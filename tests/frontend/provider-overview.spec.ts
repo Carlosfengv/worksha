@@ -140,6 +140,7 @@ test("Provider list shows every account's core statistics before selection with 
   const api = list.getByRole("row").filter({ hasText: "MyDeepSeek" });
   const other = list.getByRole("row").filter({ hasText: "另一个计费连接" });
   const subscription = list.getByRole("row").filter({ hasText: "Codex 订阅" });
+  const dsh = list.getByRole("row").filter({ hasText: "DeepSeek 官方账号" });
   await expect(api).toContainText("8.52 CNY");
   await expect(api).toContainText("11.93 CNY · 估算 / 18 次未知");
   await expect(api).toContainText("11,520,138 · 部分");
@@ -150,6 +151,8 @@ test("Provider list shows every account's core statistics before selection with 
   await expect(subscription).toContainText("5 小时窗口 · 剩余 20%");
   await expect(subscription).toContainText("7 天窗口 · 剩余 100%");
   await expect(subscription.getByText(/重置$/)).toHaveCount(2);
+  await expect(dsh).toContainText("登录与模型待核验");
+  await expect(dsh).toContainText("未接入");
   const overview = page.getByRole("region", {
     name: "MyDeepSeek用量概览",
     exact: true,
@@ -169,6 +172,12 @@ test("Provider list shows every account's core statistics before selection with 
   await expect(overview).toContainText("13 次：上游拒绝跨协议请求");
   await expect(overview).not.toContainText("12.34 USD");
   await expect(api).toContainText("11.93 CNY · 估算 / 18 次未知");
+  await dsh.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/#\/agents\/[^?]+\?tab=connection$/);
+  expect(
+    await page.evaluate(() => window.providerOverviewFixture.refreshes),
+  ).toBe(0);
 });
 
 test("native subscription is selectable without an API binding and never shows API spending", async ({

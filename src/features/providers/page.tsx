@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { providersApi } from "@/features/providers/api";
+import { bundledDshAgent } from "@/features/agents/bundled-source";
 import { NativeProviderImport } from "@/features/providers/components/native-provider-import";
 import type { Provider } from "@/features/providers/types";
 import { useSharedRead, useSharedQuery } from "@/shared/hooks/use-shared-read";
@@ -233,7 +234,10 @@ export function ProvidersPage({
               <TabItem value="models" label="全部模型" />
             </TabsList>
             <TabPanel value="overview">
-              <ProviderOverview providers={data.providers} />
+              <ProviderOverview
+                providers={data.providers}
+                dshConnectionHref={`#/agents/${encodeURIComponent(bundledDshAgent.id)}?tab=connection`}
+              />
             </TabPanel>
             <TabPanel value="models" keepMounted className="pt-3">
               <ProviderModelInventory

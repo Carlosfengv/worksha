@@ -18,9 +18,11 @@ import { useAgentDirectory } from "@/shared/hooks/use-agent-directory";
 export function SessionSourceControl({
   source,
   refresh,
+  compact = false,
 }: {
   source: SessionSource;
   refresh: () => Promise<void>;
+  compact?: boolean;
 }) {
   const { isSharedSource, sourceName } = useAgentDirectory();
   const shared = isSharedSource(source.agentId);
@@ -44,9 +46,11 @@ export function SessionSourceControl({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="dot" status="neutral">
-          {sourceLabel(source)}
-        </Badge>
+        {!compact && (
+          <Badge variant="dot" status="neutral">
+            {sourceLabel(source)}
+          </Badge>
+        )}
         <Button
           variant="tertiary"
           size="sm"
@@ -57,7 +61,11 @@ export function SessionSourceControl({
             else setOpen(true);
           }}
         >
-          {source.enabled ? "停止读取" : "读取本机会话"}
+          {source.enabled
+            ? "停止读取"
+            : compact
+              ? "开启原生观测"
+              : "读取本机会话"}
         </Button>
       </div>
       {pluginStopped && (

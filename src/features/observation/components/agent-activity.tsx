@@ -533,7 +533,7 @@ function ActiveActivities({
             </p>
           )}
           {group.activeNative.length > 0 && (
-            <p>原生记录未提供实时 Token/s 和请求 TTFT。</p>
+            <p>原生会话的速度与首出以各自记录的有效样本为准。</p>
           )}
         </div>
       </PopoverContent>
@@ -715,6 +715,14 @@ export function AgentActivity({
     agentId: configAgent(agent.id),
     productId: agent.id,
     connections: data.agentConnections,
+    source: data.sessionSources.find(
+      (source) => source.agentId === agent.family,
+    ),
+    nativeRealtime:
+      !activityStale &&
+      group.activeNative.some(
+        (activity) => activity.realtime?.state === "connected",
+      ),
   });
   const subtitle = hasLive
     ? [

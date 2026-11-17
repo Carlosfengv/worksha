@@ -7,6 +7,8 @@ use serde::Serialize;
 pub struct Connection {
     agent_id: String,
     mode: &'static str,
+    config_state: String,
+    config_override: Option<&'static str>,
     provider_name: String,
     model: Option<String>,
     endpoint: Option<String>,
@@ -21,6 +23,7 @@ pub struct Connections {
     checked_at: String,
     error: Option<&'static str>,
     items: Vec<Connection>,
+    native_realtime_products: Vec<String>,
 }
 
 fn declared_mode(config: &NativeConfig) -> &'static str {
@@ -62,12 +65,14 @@ fn declared_mode(config: &NativeConfig) -> &'static str {
 }
 
 pub fn snapshot(state: &AppState) -> Connections {
-    let checked_at = chrono::Utc::now().to_rfc3339();
+    let now = chrono::Utc::now();
+    let checked_at = now.to_rfc3339();
     let Ok(manager) = state.providers.try_lock() else {
         return Connections {
             checked_at,
             error: Some("连接配置正在更新，暂时无法确认"),
             items: vec![],
+            native_realtime_products: vec![],
         };
     };
     let configs = manager.inspect_configs();
@@ -156,6 +161,12 @@ pub fn snapshot(state: &AppState) -> Connections {
             Connection {
                 agent_id: config.agent_id,
                 mode,
+                config_state: config.state,
+                config_override: match config.mode.as_str() {
+                    "external" => Some("external"),
+                    "profile" => Some("profile"),
+                    _ => None,
+                },
                 provider_name,
                 model: config.model,
                 endpoint: config.endpoint,
@@ -169,6 +180,9 @@ pub fn snapshot(state: &AppState) -> Connections {
         checked_at,
         error: None,
         items,
+        native_realtime_products: state
+            .observation
+            .fresh_native_products(&state.sessions, now),
     }
 }
 

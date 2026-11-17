@@ -41,6 +41,7 @@ const typeName = {
   subscription: "订阅",
   api: "按量计费",
   unknown: "类型待确认",
+  connection: "原生连接",
 };
 type OverviewRow = ProviderOverviewEntry & {
   status: string;
@@ -128,9 +129,11 @@ const columns: ColumnDef<OverviewRow>[] = [
 export function ProviderOverview({
   providers,
   providerId,
+  dshConnectionHref,
 }: {
   providers: Provider[];
   providerId?: string;
+  dshConnectionHref?: string;
 }) {
   const accounts = useSharedRead(accountsResource);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -142,8 +145,9 @@ export function ProviderOverview({
         providers,
         accounts.data?.accounts ?? [],
         providerId,
+        dshConnectionHref,
       ),
-    [providers, accounts.data, providerId],
+    [providers, accounts.data, providerId, dshConnectionHref],
   );
   const selected =
     entries.find((e) => e.id === selectedId) ??
@@ -185,8 +189,12 @@ export function ProviderOverview({
         const subscription = entry.type === "subscription";
         return {
           ...entry,
-          status: overviewAccountState(entry.account, now, !!accounts.error),
-          balance: overviewMoney(entry.account, "balance"),
+          status: entry.connectionHref
+            ? "登录与模型待核验"
+            : overviewAccountState(entry.account, now, !!accounts.error),
+          balance: entry.connectionHref
+            ? "未接入"
+            : overviewMoney(entry.account, "balance"),
           windows: entry.account
             ? accountQuotaForecasts(entry.account, now, !!accounts.error).map(
                 (window) => ({
@@ -302,7 +310,11 @@ export function ProviderOverview({
               table={table}
               aria-label="Provider 与计费账户概览"
               activeRowId={selected?.id}
-              onRowActivate={(row) => setSelectedId(row.original.id)}
+              onRowActivate={(row) => {
+                const href = row.original.connectionHref;
+                if (href) window.location.hash = href;
+                else setSelectedId(row.original.id);
+              }}
               showPagination={false}
             />
             <p className="text-label text-fg-subtle">

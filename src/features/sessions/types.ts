@@ -15,7 +15,7 @@ export interface SessionSource {
   agentId: AgentId;
   enabled: boolean;
   locations: string[];
-  status: "disabled" | "pending" | "scanning" | "ready" | "partial";
+  status: string;
   sessionCount: number;
   scannedFiles: number;
   totalFiles: number;

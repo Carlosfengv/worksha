@@ -69,7 +69,7 @@ test("historical gateway requests cannot confirm a current official-login defaul
   });
   await expect(cli).toContainText("暂无进行中会话");
   await expect(cli).toContainText("官方登录 · 默认");
-  await expect(cli).toContainText("采集受限");
+  await expect(cli).toContainText("原生观测已就绪");
   await expect(cli.locator("dl")).toContainText("35.0 Token/s");
   await expect(cli).not.toContainText("网关路由已确认");
   await expect(cli).not.toContainText("网关正在代理");
