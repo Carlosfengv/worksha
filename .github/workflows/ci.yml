@@ -15,7 +15,8 @@ jobs:
       run:
         shell: bash
     env:
-      LOCAL_AGENT_TEST_SERVICE_BINARY: ${{ github.workspace }}/target/debug/local-agent-service
+      LOCAL_AGENT_TEST_SERVICE_BINARY: ${{ github.workspace }}/.work/ci-binaries/local-agent-service
+      PLUGIN_TEST_BINARY: ${{ github.workspace }}/.work/ci-binaries/local-agent-service
       PLUGIN_TEST_REPORT: .work/ci/plugins.json
       PLUGIN_M5_REPORT: .work/ci/plugin-extensions.json
       PLUGIN_RECOVERY_REPORT: .work/ci/plugin-recovery.json
@@ -52,7 +53,11 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - run: mkdir -p .work/ci
       - run: pnpm install --frozen-lockfile
-      - run: pnpm prepare:service
+      - name: Prepare debug service for integration tests
+        run: |
+          pnpm prepare:service
+          mkdir -p "$(dirname "$LOCAL_AGENT_TEST_SERVICE_BINARY")"
+          install -m 700 target/debug/local-agent-service "$LOCAL_AGENT_TEST_SERVICE_BINARY"
       - run: pnpm check
       - run: pnpm test:display
       - run: pnpm test:cleanup-test-apps
@@ -65,8 +70,8 @@ jobs:
       - run: pnpm test:service 2>&1 | tee .work/ci/service.log
       - run: pnpm test:observation
       - run: pnpm test:projects
-      - run: pnpm test:providers
-      - run: pnpm test:accounts
+      - run: node scripts/test-providers.mjs
+      - run: node scripts/test-accounts.mjs
       - run: pnpm test:requests 2>&1 | tee .work/ci/requests.log
       - name: Provider connection and routing smoke
         run: |
@@ -87,6 +92,9 @@ jobs:
           pnpm test:model-service-operations 2>&1 | tee .work/ci/model-service-operations.log
           pnpm test:settings-scope 2>&1 | tee .work/ci/settings-scope.log
           pnpm test:retention-preview 2>&1 | tee .work/ci/retention-preview.log
+          pnpm test:sqlite-wal 2>&1 | tee .work/ci/sqlite-wal.log
+          pnpm test:agent-budgets 2>&1 | tee .work/ci/agent-budgets.log
+          pnpm test:loop-guards 2>&1 | tee .work/ci/loop-guards.log
           pnpm test:lan-operations 2>&1 | tee .work/ci/lan-operations.log
           node scripts/test-dynamic-routing.mjs 2>&1 | tee .work/ci/dynamic-routing.log
           node scripts/test-routing-policy.mjs 2>&1 | tee .work/ci/routing-policy.log
@@ -94,6 +102,8 @@ jobs:
         run: |
           pnpm prepare:plugins 2>&1 | tee .work/ci/plugin-prepare.log
           pnpm test:plugins 2>&1 | tee .work/ci/plugins.log
+          pnpm test:plugin-database 2>&1 | tee .work/ci/plugin-database.log
+          pnpm test:dynamic-plugins 2>&1 | tee .work/ci/dynamic-plugins.log
           pnpm test:plugin-extensions 2>&1 | tee .work/ci/plugin-extensions.log
           pnpm test:protocol-completion 2>&1 | tee .work/ci/protocol-completion.log
           pnpm test:plugin-recovery 2>&1 | tee .work/ci/plugin-recovery.log
