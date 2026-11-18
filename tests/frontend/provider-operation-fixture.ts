@@ -61,6 +61,7 @@ export function installProviderOperationFixture(options: {
     action: import("../../contracts/domain/provider-draft-catalog/types").DraftCatalogAction,
   ) => Promise<unknown>;
   save: (provider: Provider) => Promise<void>;
+  remove?: (provider: Provider) => Promise<void>;
   connect: (
     provider: Provider,
   ) => Promise<{ provider: Provider; verification: ProviderVerification }>;
@@ -519,10 +520,15 @@ export function installProviderOperationFixture(options: {
               release = resolve;
             });
         } else {
-          await options.save(request.provider);
+          if (request.kind === "delete") {
+            if (!options.remove) throw Error("Unexpected provider deletion");
+            await options.remove(request.provider);
+          } else {
+            await options.save(request.provider);
+          }
           saved = {
             ...request.provider,
-            configured: true,
+            configured: request.kind !== "delete",
             revision: request.provider.revision + 1,
           };
         }

@@ -1,0 +1,310 @@
+"use client";
+import { useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { Bar, BarChart } from "@/components/ui/bar-chart";
+import { ChartTooltip } from "@/components/ui/chart-core";
+import { cn } from "@/lib/utils";
+export interface TimeRangeHistogramDatum {
+    start: number;
+    end: number;
+    label: string;
+    [key: string]: number | string;
+}
+export interface TimeRangeHistogramRange {
+    start: number;
+    end: number;
+}
+export interface TimeRangeHistogramSeries {
+    dataKey: string;
+    label: string;
+    color: string;
+    inactiveColor?: string;
+}
+interface BucketSelection {
+    startIndex: number;
+    endIndex: number;
+}
+type DragMode = "create" | "move" | "resize-start" | "resize-end";
+export interface TimeRangeHistogramProps extends Omit<ComponentPropsWithoutRef<"section">, "children" | "onChange"> {
+    /** Accessible name for the interactive range selector. */
+    ariaLabel: string;
+    /** Ordered, non-overlapping time buckets. */
+    data: readonly TimeRangeHistogramDatum[];
+    /** Stacked data series rendered for every bucket. */
+    series: readonly TimeRangeHistogramSeries[];
+    /** Controlled time range. Values are snapped to bucket boundaries. */
+    value: TimeRangeHistogramRange;
+    /** Called after a pointer or keyboard range move completes. */
+    onValueChange: (value: TimeRangeHistogramRange) => void;
+    /** Formats the selected range for assistive technology. */
+    formatRange?: (value: TimeRangeHistogramRange) => string;
+    /** Formats values displayed in the chart tooltip. */
+    formatValue?: (value: number, series: TimeRangeHistogramSeries) => ReactNode;
+    /** Label displayed beneath the first bucket. */
+    rangeStartLabel?: ReactNode;
+    /** Label displayed beneath the last bucket. */
+    rangeEndLabel?: ReactNode;
+    /** Optional interaction hint displayed between the boundary labels. */
+    instruction?: ReactNode;
+    /** Content shown when no buckets are available. */
+    emptyContent?: ReactNode;
+    /** Disables pointer and keyboard interaction while retaining the visualization. */
+    disabled?: boolean;
+    /** Class applied to the fixed-height chart container. */
+    chartClassName?: string;
+    /** Fixed width of each rendered bar in CSS pixels. */
+    barSize?: number;
+    /** Target visual gap between adjacent bars in CSS pixels. */
+    targetBarGap?: number;
+}
+function normalizeSelection(startIndex: number, endIndex: number): BucketSelection {
+    return {
+        startIndex: Math.min(startIndex, endIndex),
+        endIndex: Math.max(startIndex, endIndex),
+    };
+}
+function selectionForRange(data: readonly TimeRangeHistogramDatum[], value: TimeRangeHistogramRange): BucketSelection {
+    if (data.length === 0)
+        return { startIndex: 0, endIndex: 0 };
+    const firstSelected = data.findIndex((bucket) => value.start < bucket.end && value.end > bucket.start);
+    const lastSelected = data.findLastIndex((bucket) => value.start < bucket.end && value.end > bucket.start);
+    if (firstSelected >= 0 && lastSelected >= 0) {
+        return { startIndex: firstSelected, endIndex: lastSelected };
+    }
+    const rangeCenter = value.start + (value.end - value.start) / 2;
+    const closestIndex = data.reduce((closest, bucket, index) => {
+        const distance = rangeCenter < bucket.start
+            ? bucket.start - rangeCenter
+            : rangeCenter > bucket.end
+                ? rangeCenter - bucket.end
+                : 0;
+        const closestBucket = data[closest]!;
+        const closestDistance = rangeCenter < closestBucket.start
+            ? closestBucket.start - rangeCenter
+            : rangeCenter > closestBucket.end
+                ? rangeCenter - closestBucket.end
+                : 0;
+        return distance < closestDistance ? index : closest;
+    }, 0);
+    return { startIndex: closestIndex, endIndex: closestIndex };
+}
+function rangeForSelection(data: readonly TimeRangeHistogramDatum[], selection: BucketSelection): TimeRangeHistogramRange {
+    return {
+        start: data[selection.startIndex]?.start ?? 0,
+        end: data[selection.endIndex]?.end ?? 0,
+    };
+}
+function compactBuckets(data: readonly TimeRangeHistogramDatum[], series: readonly TimeRangeHistogramSeries[], targetCount: number): readonly TimeRangeHistogramDatum[] {
+    if (targetCount <= 0 || data.length <= targetCount)
+        return data;
+    return Array.from({ length: targetCount }, (_, index) => {
+        const startIndex = Math.floor(index * data.length / targetCount);
+        const endIndex = Math.max(startIndex + 1, Math.floor((index + 1) * data.length / targetCount));
+        const group = data.slice(startIndex, endIndex);
+        const first = group[0]!;
+        const last = group.at(-1)!;
+        return {
+            start: first.start,
+            end: last.end,
+            label: first.label,
+            ...Object.fromEntries(series.map((item) => [
+                item.dataKey,
+                group.reduce((sum, bucket) => sum + Number(bucket[item.dataKey] ?? 0), 0),
+            ])),
+        };
+    });
+}
+export function TimeRangeHistogram({ ariaLabel, data, series, value, onValueChange, formatRange, formatValue, rangeStartLabel, rangeEndLabel, instruction, emptyContent, disabled = false, chartClassName, barSize, targetBarGap, className, ...props }: TimeRangeHistogramProps) {
+    const interactionRef = useRef<HTMLDivElement>(null);
+    const dragStartIndex = useRef<number | null>(null);
+    const dragMode = useRef<DragMode | null>(null);
+    const dragOriginSelection = useRef<BucketSelection | null>(null);
+    const [draftSelection, setDraftSelection] = useState<BucketSelection | null>(null);
+    const [chartWidth, setChartWidth] = useState(0);
+    useEffect(() => {
+        const element = interactionRef.current;
+        if (!element)
+            return;
+        const updateWidth = (width = element.getBoundingClientRect().width) => {
+            setChartWidth((current) => current === width ? current : width);
+        };
+        updateWidth();
+        if (typeof ResizeObserver === "undefined")
+            return;
+        let resizeTimeout: ReturnType<typeof setTimeout> | undefined;
+        const observer = new ResizeObserver((entries) => {
+            // Use the layout width so zoomed previews keep the same bucket density.
+            const width = entries[0]?.contentRect.width;
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => updateWidth(width), 80);
+        });
+        observer.observe(element);
+        return () => {
+            observer.disconnect();
+            clearTimeout(resizeTimeout);
+        };
+    }, []);
+    const targetBucketCount = barSize && targetBarGap !== undefined && chartWidth > 0
+        ? Math.max(1, Math.floor(chartWidth / (barSize + targetBarGap)))
+        : data.length;
+    const chartData = useMemo(() => compactBuckets(data, series, targetBucketCount), [data, series, targetBucketCount]);
+    const selection = useMemo(() => selectionForRange(chartData, value), [chartData, value]);
+    const activeSelection = draftSelection ?? selection;
+    const activeRange = rangeForSelection(chartData, activeSelection);
+    const selectionLabel = formatRange
+        ? formatRange(activeRange)
+        : `${chartData[activeSelection.startIndex]?.label ?? ""} – ${chartData[activeSelection.endIndex]?.label ?? ""}`;
+    if (data.length === 0) {
+        return (<section aria-label={ariaLabel} className={cn("grid min-h-[68px] place-items-center text-label text-fg-muted", className)} {...props}>
+        {emptyContent}
+      </section>);
+    }
+    const getIndexAtPointer = (clientX: number) => {
+        const bounds = interactionRef.current?.getBoundingClientRect();
+        if (!bounds?.width)
+            return 0;
+        const position = Math.min(0.9999, Math.max(0, (clientX - bounds.left) / bounds.width));
+        return Math.floor(position * chartData.length);
+    };
+    const getSelectionAtIndex = (index: number) => {
+        const origin = dragOriginSelection.current;
+        if (dragMode.current === "resize-start" && origin) {
+            return { startIndex: Math.min(index, origin.endIndex), endIndex: origin.endIndex };
+        }
+        if (dragMode.current === "resize-end" && origin) {
+            return { startIndex: origin.startIndex, endIndex: Math.max(index, origin.startIndex) };
+        }
+        if (dragMode.current === "move" && dragStartIndex.current !== null && origin) {
+            const selectionWidth = origin.endIndex - origin.startIndex;
+            const nextStartIndex = Math.min(chartData.length - selectionWidth - 1, Math.max(0, origin.startIndex + index - dragStartIndex.current));
+            return { startIndex: nextStartIndex, endIndex: nextStartIndex + selectionWidth };
+        }
+        return normalizeSelection(dragStartIndex.current ?? index, index);
+    };
+    const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+        if (disabled || event.button !== 0)
+            return;
+        event.preventDefault();
+        const index = getIndexAtPointer(event.clientX);
+        const bounds = interactionRef.current?.getBoundingClientRect();
+        const pointerOffset = bounds ? event.clientX - bounds.left : 0;
+        const startBoundaryOffset = bounds ? selection.startIndex / chartData.length * bounds.width : 0;
+        const endBoundaryOffset = bounds ? (selection.endIndex + 1) / chartData.length * bounds.width : 0;
+        const boundaryHitRadius = event.pointerType === "touch" ? 12 : 8;
+        const startBoundaryDistance = Math.abs(pointerOffset - startBoundaryOffset);
+        const endBoundaryDistance = Math.abs(pointerOffset - endBoundaryOffset);
+        const nearestBoundaryMode: DragMode | null = Math.min(startBoundaryDistance, endBoundaryDistance) <= boundaryHitRadius
+            ? startBoundaryDistance <= endBoundaryDistance ? "resize-start" : "resize-end"
+            : null;
+        const selectionCoversAllBuckets = selection.startIndex === 0 && selection.endIndex === chartData.length - 1;
+        const moveExistingSelection = !selectionCoversAllBuckets &&
+            index >= selection.startIndex &&
+            index <= selection.endIndex;
+        const nextDragMode = nearestBoundaryMode ?? (moveExistingSelection ? "move" : "create");
+        dragStartIndex.current = index;
+        dragMode.current = nextDragMode;
+        dragOriginSelection.current = nextDragMode === "create" ? null : selection;
+        setDraftSelection(nextDragMode === "create" ? { startIndex: index, endIndex: index } : selection);
+        event.currentTarget.setPointerCapture(event.pointerId);
+    };
+    const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+        if (disabled || dragStartIndex.current === null)
+            return;
+        setDraftSelection(getSelectionAtIndex(getIndexAtPointer(event.clientX)));
+    };
+    const resetPointerInteraction = (event: PointerEvent<HTMLDivElement>) => {
+        dragStartIndex.current = null;
+        dragMode.current = null;
+        dragOriginSelection.current = null;
+        setDraftSelection(null);
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+    };
+    const finishPointerSelection = (event: PointerEvent<HTMLDivElement>) => {
+        if (disabled || dragStartIndex.current === null)
+            return;
+        const nextSelection = getSelectionAtIndex(getIndexAtPointer(event.clientX));
+        resetPointerInteraction(event);
+        onValueChange(rangeForSelection(chartData, nextSelection));
+    };
+    const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+        if (disabled)
+            return;
+        if (event.shiftKey) {
+            let endIndex = selection.endIndex;
+            if (event.key === "ArrowLeft")
+                endIndex = Math.max(selection.startIndex, endIndex - 1);
+            else if (event.key === "ArrowRight")
+                endIndex = Math.min(chartData.length - 1, endIndex + 1);
+            else if (event.key === "PageUp")
+                endIndex = Math.max(selection.startIndex, endIndex - 5);
+            else if (event.key === "PageDown")
+                endIndex = Math.min(chartData.length - 1, endIndex + 5);
+            else if (event.key === "Home")
+                endIndex = selection.startIndex;
+            else if (event.key === "End")
+                endIndex = chartData.length - 1;
+            else
+                return;
+            event.preventDefault();
+            onValueChange(rangeForSelection(chartData, { startIndex: selection.startIndex, endIndex }));
+            return;
+        }
+        const selectionWidth = selection.endIndex - selection.startIndex;
+        const maximumStart = chartData.length - selectionWidth - 1;
+        let startIndex = selection.startIndex;
+        if (event.key === "ArrowLeft")
+            startIndex = Math.max(0, startIndex - 1);
+        else if (event.key === "ArrowRight")
+            startIndex = Math.min(maximumStart, startIndex + 1);
+        else if (event.key === "PageUp")
+            startIndex = Math.max(0, startIndex - 5);
+        else if (event.key === "PageDown")
+            startIndex = Math.min(maximumStart, startIndex + 5);
+        else if (event.key === "Home")
+            startIndex = 0;
+        else if (event.key === "End")
+            startIndex = maximumStart;
+        else
+            return;
+        event.preventDefault();
+        onValueChange(rangeForSelection(chartData, {
+            startIndex,
+            endIndex: startIndex + selectionWidth,
+        }));
+    };
+    const selectionLeft = activeSelection.startIndex / chartData.length * 100;
+    const selectionWidth = (activeSelection.endIndex - activeSelection.startIndex + 1) / chartData.length * 100;
+    const isSelectedIndex = (index: number) => index >= activeSelection.startIndex && index <= activeSelection.endIndex;
+    return (<section className={cn("min-w-0", className)} {...props}>
+      <div aria-disabled={disabled || undefined} aria-label={ariaLabel} aria-orientation="horizontal" aria-valuemax={chartData.length} aria-valuemin={1} aria-valuenow={activeSelection.startIndex + 1} aria-valuetext={selectionLabel} className={cn("relative rounded-md outline-none transition-shadow", disabled ? "cursor-default" : "cursor-crosshair touch-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-floating")} onKeyDown={handleKeyDown} onPointerCancel={resetPointerInteraction} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={finishPointerSelection} ref={interactionRef} role="slider" tabIndex={disabled ? -1 : 0}>
+        <div aria-hidden className="pointer-events-none absolute inset-y-0 z-content bg-brand/10" data-slot="time-range-histogram-selection" style={{ left: `${selectionLeft}%`, width: `${selectionWidth}%` }}>
+          <span className="absolute inset-y-0 left-0 w-0.5 bg-brand" data-slot="time-range-histogram-boundary">
+            <span className="absolute left-1/2 top-1/2 h-2 w-1 -translate-x-1/2 -translate-y-1/2 bg-brand" data-slot="time-range-histogram-handle"/>
+          </span>
+          <span className="absolute inset-y-0 right-0 w-0.5 bg-brand" data-slot="time-range-histogram-boundary">
+            <span className="absolute left-1/2 top-1/2 h-2 w-1 -translate-x-1/2 -translate-y-1/2 bg-brand" data-slot="time-range-histogram-handle"/>
+          </span>
+          <span className="pointer-events-auto absolute -left-2 inset-y-0 w-4 cursor-col-resize" data-slot="time-range-histogram-hit-area"/>
+          <span className="pointer-events-auto absolute -right-2 inset-y-0 w-4 cursor-col-resize" data-slot="time-range-histogram-hit-area"/>
+        </div>
+        <div aria-hidden>
+          <BarChart className={cn("relative h-[68px] w-full", chartClassName)} aspectRatio="auto" data={chartData.map(bucket => ({ ...bucket }))} xDataKey="start" stacked barGap={0} barWidth={barSize} margin={{ bottom: 0, left: 0, right: 0, top: 0 }} animationDuration={0} keyboardNavigation={false}>
+            <ChartTooltip showDatePill={false} showDots={false} content={({ point }) => <div className="grid gap-1.5 text-label">
+              <p className="font-medium text-fg-default">{String(point.label)}</p>
+              {series.map(item => <div key={item.dataKey} className="flex items-start justify-between gap-4">
+                <span className="flex min-w-0 items-center gap-1.5 text-fg-muted"><span aria-hidden className="size-2 shrink-0 rounded-xs" style={{ backgroundColor: item.color }}/>{item.label}</span>
+                <span className="font-medium tabular-nums text-fg-default">{formatValue ? formatValue(Number(point[item.dataKey]), item) : Number(point[item.dataKey]).toLocaleString()}</span>
+              </div>)}
+            </div>}/>
+            {series.map(item => <Bar dataKey={item.dataKey} fill={item.color} fillForDatum={(_, index) => isSelectedIndex(index) ? item.color : item.inactiveColor ?? "var(--surface-raised)"} key={item.dataKey} lineCap="butt" animate={false}/>)}
+          </BarChart>
+        </div>
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-3 text-label text-fg-subtle">
+        <span>{rangeStartLabel ?? data[0]?.label}</span>
+        {instruction ? <span className="hidden text-center sm:inline">{instruction}</span> : null}
+        <span>{rangeEndLabel ?? data.at(-1)?.label}</span>
+      </div>
+    </section>);
+}

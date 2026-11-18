@@ -1,3 +1,4 @@
+import { TimeWindowTimeline } from "@/components/ui/time-window-timeline";
 import { PluginDetailSlots } from "@/features/plugins/detail-slots";
 import { ObjectContributionSlots } from "@/features/plugins/object-detail-slots";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -115,6 +116,38 @@ export function AccountQuota({
   const snapshot = account?.snapshot;
   const routingQuota = resource.error ? undefined : account?.routingQuota;
   const snapshotTime = snapshot?.asOf;
+  const timelineRows =
+    snapshot?.accountType === "subscription"
+      ? snapshot.windows.flatMap((window) => {
+          if (
+            window.resetsAt == null ||
+            window.durationMins == null ||
+            window.durationMins <= 0
+          )
+            return [];
+          const end = window.resetsAt * 1000;
+          return [
+            {
+              id: window.id,
+              label: window.label,
+              intervals: [
+                {
+                  id: window.id,
+                  start: end - window.durationMins * 60_000,
+                  end,
+                  label: window.label,
+                  ariaLabel: `${window.label} · 重置于 ${date(new Date(end).toISOString())}`,
+                  ...(window.usedPercent != null &&
+                  window.usedPercent >= 0 &&
+                  window.usedPercent <= 100
+                    ? { value: window.usedPercent }
+                    : {}),
+                },
+              ],
+            },
+          ];
+        })
+      : undefined;
   const hasResets = snapshot?.windows.some((w) => w.resetsAt !== null) ?? false;
   useEffect(() => {
     if (!hasResets && !(providerId !== undefined && snapshotTime)) return;
@@ -423,6 +456,29 @@ export function AccountQuota({
                       </>
                     )}
                   </dl>
+                  {!!timelineRows?.length && (
+                    <TimeWindowTimeline
+                      ariaLabel="订阅额度周期"
+                      start={Math.min(
+                        ...timelineRows.map((row) => row.intervals[0].start),
+                      )}
+                      end={Math.max(
+                        ...timelineRows.map((row) => row.intervals[0].end),
+                      )}
+                      now={now}
+                      nowLabel="现在"
+                      minTrackWidth={360}
+                      labelWidth={120}
+                      ticks={[]}
+                      groups={[
+                        {
+                          id: account.id,
+                          label: "额度窗口",
+                          rows: timelineRows,
+                        },
+                      ]}
+                    />
+                  )}
                   {providerId !== undefined ? (
                     <ProviderQuotaForecast
                       key={account.id}

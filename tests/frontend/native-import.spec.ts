@@ -18,7 +18,9 @@ const submits = (page: Page) =>
   page.evaluate(() => window.nativeImportFixture.submits);
 async function begin(page: Page, mode: string) {
   await page.goto("/tests/frontend/native-import.html?mode=" + mode);
-  await page.getByRole("button", { name: "导入本机配置", exact: true }).click();
+  await page
+    .getByRole("button", { name: "从本机客户端导入", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "导入到 Providers", exact: true })
     .click();
@@ -108,7 +110,9 @@ test("reload preserves the exact request and server discovery restores a missing
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await expect(page.getByTestId("native-import-recovery")).toHaveCount(0);
-  await page.getByRole("button", { name: "导入本机配置", exact: true }).click();
+  await page
+    .getByRole("button", { name: "从本机客户端导入", exact: true })
+    .click();
   await expect(page.getByTestId("native-import-recovery")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "导入到 Providers", exact: true }),
@@ -158,7 +162,9 @@ test("corrupt recovery bytes remain intact and prevent a new import", async ({
   await expect(
     page.getByText("导入记录需要核查", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "导入本机配置", exact: true }).click();
+  await page
+    .getByRole("button", { name: "从本机客户端导入", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: "导入到 Providers", exact: true }),
   ).toBeDisabled();
@@ -182,7 +188,7 @@ test("backend recovery during a held import preserves the request and releases t
   expect(await records(page)).toHaveLength(1);
   await page.getByRole("button", { name: "取消", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "导入本机配置", exact: true }),
+    page.getByRole("button", { name: "从本机客户端导入", exact: true }),
   ).toBeEnabled();
   expect(await submits(page)).toHaveLength(1);
 });
@@ -191,7 +197,9 @@ test("a future preview capability stays an explicit read error and never enables
   page,
 }) => {
   await page.goto("/tests/frontend/native-import.html?mode=weak-protocol");
-  await page.getByRole("button", { name: "导入本机配置", exact: true }).click();
+  await page
+    .getByRole("button", { name: "从本机客户端导入", exact: true })
+    .click();
   await expect(
     page.getByText(/当前后台的原生导入能力或来源无法核查/),
   ).toBeVisible();
@@ -307,7 +315,9 @@ test("a full retained journal permits result checks but prevents creating anothe
   page,
 }) => {
   await page.goto("/tests/frontend/native-import.html?mode=full");
-  await page.getByRole("button", { name: "导入本机配置", exact: true }).click();
+  await page
+    .getByRole("button", { name: "从本机客户端导入", exact: true })
+    .click();
   await expect(
     page.getByText("导入记录容量已满", { exact: true }),
   ).toBeVisible();

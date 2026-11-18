@@ -48,6 +48,52 @@ impl Store {
         }
         Ok(provider)
     }
+    pub(crate) fn remove_provider_connection(
+        &self,
+        mut provider: Provider,
+    ) -> Result<Provider, ConfigError> {
+        if self.connection.is_autocommit() || !provider.configured {
+            return Err(ConfigError::new(
+                "conflict",
+                "供应商已移除或不可删除，请重新读取",
+            ));
+        }
+        let references: Vec<_> = self
+            .model_services()?
+            .into_iter()
+            .filter(|service| {
+                service
+                    .models
+                    .iter()
+                    .any(|model| model.child.is_none() && model.provider.id == provider.id)
+            })
+            .map(|service| service.name)
+            .collect();
+        if !references.is_empty() {
+            return Err(ConfigError::new(
+                "in_use",
+                &format!("供应商仍被模型服务引用：{}", references.join("、")),
+            ));
+        }
+        // Retain identity and revision for history joins and optimistic writes.
+        provider.configured = false;
+        provider.credential_ref = None;
+        provider.credential_label = None;
+        provider.model_catalog = None;
+        provider.revision += 1;
+        let value = serde_json::to_string(&provider).map_err(|_| unavailable())?;
+        let changed = self
+            .connection
+            .execute(
+                "UPDATE providers SET value=?2 WHERE id=?1",
+                params![provider.id, value],
+            )
+            .map_err(|_| unavailable())?;
+        if changed != 1 {
+            return Err(unavailable());
+        }
+        Ok(provider)
+    }
     /// Validate and normalize the complete metadata before an external import write.
     pub(crate) fn normalize_provider(
         &self,

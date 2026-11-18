@@ -26,6 +26,10 @@ struct Status {
     active: Option<usize>,
     clients: Vec<Client>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    client_usage: Option<
+        std::collections::BTreeMap<String, local_agent_core::observation::GatewayClientUsage>,
+    >,
+    #[serde(skip_serializing_if = "Option::is_none")]
     write_protocol: Option<Protocol>,
     persistent: bool,
 }

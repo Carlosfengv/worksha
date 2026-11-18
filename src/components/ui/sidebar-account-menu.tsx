@@ -1,0 +1,114 @@
+"use client";
+import { useEffect, useRef, type ReactNode } from "react";
+import { Menu } from "@base-ui/react/menu";
+import { Button } from "@/components/ui/button";
+import { DropdownContent, DropdownMenu, DropdownSeparator, DropdownTrigger, useDropdown, } from "@/components/ui/dropdown";
+import { MenuItem } from "@/components/ui/menu-item";
+import { SidebarIdentityAvatar, SidebarIdentityRow, } from "@/components/ui/sidebar-identity-row";
+import type { IconComponent } from "@/lib/icon-context";
+import { useIcon } from "@/lib/icon-context";
+import { Elevated } from "@/lib/elevated";
+import { cn } from "@/lib/utils";
+export interface SidebarAccountMenuItem {
+    id: string;
+    label: string;
+    icon?: IconComponent;
+    leading?: ReactNode;
+    trailing?: ReactNode;
+    onSelect?: () => void;
+    closeOnClick?: boolean;
+    disabled?: boolean;
+    submenu?: SidebarAccountMenuSubmenu;
+}
+export interface SidebarAccountMenuSubmenuOption {
+    label: string;
+    value: string;
+}
+export interface SidebarAccountMenuSubmenu {
+    onValueChange: (value: string) => void;
+    options: SidebarAccountMenuSubmenuOption[];
+    value: string;
+}
+export interface SidebarAccountMenuSection {
+    items: SidebarAccountMenuItem[];
+}
+export interface SidebarAccountMenuProps {
+    avatar?: ReactNode;
+    className?: string;
+    /** Show an avatar-only trigger in a collapsed sidebar. */
+    compact?: boolean;
+    description: ReactNode;
+    menuAlign?: "start" | "center" | "end";
+    menuAlignOffset?: number;
+    menuClassName?: string;
+    primary: ReactNode;
+    sections: SidebarAccountMenuSection[];
+    triggerTrailing?: ReactNode;
+    menuSide?: "top" | "bottom" | "left" | "right";
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+}
+function SidebarAccountSubmenu({ item, index, }: {
+    item: SidebarAccountMenuItem;
+    index: number;
+}) {
+    const Check = useIcon("check");
+    const triggerRef = useRef<HTMLDivElement>(null);
+    const { registerItem } = useDropdown();
+    const submenu = item.submenu;
+    useEffect(() => {
+        registerItem(index, triggerRef.current);
+        return () => registerItem(index, null);
+    }, [index, registerItem]);
+    if (!submenu)
+        return null;
+    return (<Menu.SubmenuRoot>
+      <Menu.SubmenuTrigger disabled={item.disabled} label={item.label} render={<div ref={triggerRef} data-proximity-index={index} className="relative z-content flex h-control-md shrink-0 items-center gap-2 rounded-lg px-2 outline-none transition-colors data-[disabled]:opacity-50 data-[highlighted]:bg-hover data-[highlighted]:text-fg-default focus-visible:ring-1 focus-visible:ring-focus-ring"/>}>
+        {item.leading ?? (item.icon && <item.icon aria-hidden size={16} strokeWidth={1.5} className="shrink-0 text-fg-muted"/>)}
+        <span className="flex-1 text-body text-fg-muted">{item.label}</span>
+        {item.trailing}
+      </Menu.SubmenuTrigger>
+      <Menu.Portal>
+        <Menu.Positioner side="right" align="start" sideOffset={6} className="z-popover outline-none">
+          <Menu.Popup render={<Elevated surface="floating" shadow="floating"/>} className="flex min-w-36 flex-col gap-0.5 rounded-xl p-1 outline-none">
+            <Menu.RadioGroup value={submenu.value}>
+              {submenu.options.map((option) => {
+            const checked = option.value === submenu.value;
+            return (<Menu.RadioItem key={option.value} value={option.value} label={option.label} disabled={item.disabled} closeOnClick onClick={() => submenu.onValueChange(option.value)} render={<div className={cn("flex h-control-md items-center gap-2 rounded-lg px-2 outline-none transition-colors data-[highlighted]:bg-hover focus-visible:ring-1 focus-visible:ring-focus-ring", checked ? "text-fg-default" : "text-fg-muted")}/>}>
+                    <span className={cn("flex-1 text-body", checked && "font-semibold")}>{option.label}</span>
+                    {checked && <Check aria-hidden className="size-4" strokeWidth={2}/>}
+                  </Menu.RadioItem>);
+        })}
+            </Menu.RadioGroup>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.SubmenuRoot>);
+}
+/** Grouped account menu; opens upward by default and supports header placement. */
+export function SidebarAccountMenu({ avatar, className, compact = false, description, menuAlign, menuAlignOffset, menuClassName, primary, sections, triggerTrailing, menuSide, open, onOpenChange, }: SidebarAccountMenuProps) {
+    const accountAvatar = avatar ?? <SidebarIdentityAvatar>{String(primary).slice(0, 2)}</SidebarIdentityAvatar>;
+    let itemIndex = 0;
+    return (<DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <DropdownTrigger render={compact ? (<Button iconOnly size="xl" variant="ghost" className={className}>
+            <span aria-hidden="true">{accountAvatar}</span>
+            <span className="sr-only">{primary}</span>
+          </Button>) : (<SidebarIdentityRow as="button" primary={primary} description={description} layout="two-line" trailingPlacement="edge" leading={accountAvatar} trailing={triggerTrailing} className={cn("px-[calc(var(--spacing)*1.6)]", className)}/>)}/>
+      <DropdownContent side={menuSide ?? (compact ? "right" : "top")} align={menuAlign ?? (compact ? "end" : "start")} alignOffset={menuAlignOffset} className={cn("!w-[264px] !min-w-[264px] !max-w-[264px]", menuClassName)}>
+        <div className="px-1.5 py-1">
+          <SidebarIdentityRow primary={primary} description={description} layout="two-line" leading={accountAvatar} className="min-h-0 px-0 py-1"/>
+        </div>
+        {sections.map((section, sectionIndex) => (<div key={sectionIndex} className="contents">
+            {sectionIndex > 0 && <DropdownSeparator />}
+            {section.items.map((item) => {
+                const index = itemIndex++;
+                if (item.submenu) {
+                    return <SidebarAccountSubmenu key={item.id} item={item} index={index}/>;
+                }
+                return (<MenuItem key={item.id} index={index} label={item.label} icon={item.icon} leading={item.leading} trailing={item.trailing} closeOnClick={item.closeOnClick} disabled={item.disabled} onSelect={item.onSelect}/>);
+            })}
+          </div>))}
+      </DropdownContent>
+    </DropdownMenu>);
+}
+export default SidebarAccountMenu;

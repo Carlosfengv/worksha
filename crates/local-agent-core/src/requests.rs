@@ -36,6 +36,10 @@ pub struct Query {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub search: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub client: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub issue: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sort: Option<String>,
@@ -67,6 +71,14 @@ impl Query {
             .source
             .as_deref()
             .is_some_and(|s| !["gateway", "native", "linked", "unified"].contains(&s))
+            || self
+                .client
+                .as_ref()
+                .is_some_and(|id| uuid::Uuid::parse_str(id).is_err())
+            || self
+                .client_scope
+                .as_deref()
+                .is_some_and(|scope| !matches!(scope, "local" | "lan"))
             || self
                 .start
                 .as_ref()
@@ -957,15 +969,21 @@ fn csv_cell(s: &str) -> String {
 }
 pub(crate) fn matches(r: &Request, q: &Query) -> bool {
     let t = time(&r.started_at);
-    crate::agents::matches(
-        q.agent.as_deref(),
-        &r.agent_id,
-        r.agent_product_id.as_deref(),
-    ) && q
-        .start
+    q.client
         .as_deref()
-        .and_then(time)
-        .is_none_or(|s| t.is_some_and(|t| t >= s))
+        .is_none_or(|id| r.client.as_ref().is_some_and(|client| client.id == id))
+        && q.client_scope
+            .as_deref()
+            .is_none_or(|scope| (scope == "lan") == r.client.is_some())
+        && crate::agents::matches(
+            q.agent.as_deref(),
+            &r.agent_id,
+            r.agent_product_id.as_deref(),
+        )
+        && q.start
+            .as_deref()
+            .and_then(time)
+            .is_none_or(|s| t.is_some_and(|t| t >= s))
         && q.end
             .as_deref()
             .and_then(time)

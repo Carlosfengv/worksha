@@ -29,6 +29,7 @@ export interface PageContext {
   refresh: () => Promise<void>;
   navigate: (page: Page) => void;
   pageRefresh: number;
+  featureAvailable: (page: Page) => boolean;
 }
 export interface PageContribution {
   id: Page;
@@ -93,7 +94,8 @@ export function createUiRegistry(plugins: readonly UiPlugin[]) {
           /* Invalid deep links use the existing safe fallback. */
         }
       }
-      const [page, rawId] = path.split("/");
+      const [segment, rawId] = path.split("/");
+      const page = segment === "quotas" ? "providers" : segment;
       if (page === "tasks" && !pages.has(page)) {
         return { page: "plugins", deferredPlugin: page };
       }
@@ -117,7 +119,7 @@ export function createUiRegistry(plugins: readonly UiPlugin[]) {
         agent: params.get("agent") ?? undefined,
         anchor: params.get("anchor") ?? undefined,
         from: params.get("from") ?? undefined,
-        tab: params.get("tab") ?? undefined,
+        tab: segment === "quotas" ? "quotas" : (params.get("tab") ?? undefined),
         days: params.get("days") ?? undefined,
         model: params.get("model") ?? undefined,
         project: params.get("project") ?? undefined,

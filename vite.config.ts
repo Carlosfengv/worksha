@@ -16,7 +16,48 @@ export default defineConfig(() => ({
   optimizeDeps: {
     entries: testing ? ["index.html", "tests/frontend/*.html"] : ["index.html"],
   },
-  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
+  resolve: {
+    alias: [
+      {
+        find: "@",
+        replacement: fileURLToPath(new URL("./src", import.meta.url)),
+      },
+      {
+        find: /^shiki$/,
+        replacement: fileURLToPath(
+          new URL("./src/shared/lib/highlighting/shiki.ts", import.meta.url),
+        ),
+      },
+      {
+        find: /^shiki\/wasm$/,
+        replacement: fileURLToPath(
+          new URL("./src/shared/lib/highlighting/wasm.ts", import.meta.url),
+        ),
+      },
+    ],
+  },
+
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: "react-renderer",
+              test: /\/node_modules\/(?:react-dom|scheduler)\//,
+              includeDependenciesRecursively: false,
+            },
+            {
+              name: "configuration-diff-engine",
+              test: /\/src\/lib\/code-engine\//,
+              includeDependenciesRecursively: false,
+              maxSize: 400_000,
+            },
+          ],
+        },
+      },
+    },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

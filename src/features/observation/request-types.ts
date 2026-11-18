@@ -15,6 +15,8 @@ export interface RequestQuery {
   session?: string;
   project?: string;
   search?: string;
+  client?: string;
+  clientScope?: "local" | "lan";
   issue?: string;
   sort?: string;
   descending?: boolean;

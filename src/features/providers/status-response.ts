@@ -180,7 +180,7 @@ const status: Decoder<ProviderStatus> = shape({
 });
 const candidate: Decoder<ProviderImportCandidate> = shape({
   id: nonempty(),
-  agentId: oneOf("claude", "codex"),
+  agentId: oneOf("claude", "codex", "opencode"),
   sourcePath: text(),
   sourceLabel: text(),
   revision: nonempty(),

@@ -1,5 +1,5 @@
 import { ExternalRoutingPolicy } from "./components/external-routing-policy";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useServiceWrite } from "./hooks/use-service-write";
 import { ServiceWriteFeedback } from "./components/service-write-feedback";
 import { ModelServiceOperationRecovery } from "./components/operation-recovery";
@@ -21,11 +21,18 @@ import {
 import type { Provider } from "@/features/providers/types";
 import { useSharedRead } from "@/shared/hooks/use-shared-read";
 import { modelServicesResource } from "./queries";
+import { useWorkspaceNavigation } from "@/shared/hooks/use-workspace-navigation";
 import { useIam } from "@/features/iam/context";
 import { IamResourceDetail } from "@/features/iam/resource-detail";
-import { ServiceEditor } from "./components/service-editor";
+import {
+  ServiceEditor,
+  type ServiceEditorDraftState,
+} from "./components/service-editor";
 import {
   commonCapabilities,
+  serviceDraft,
+  defaultRoutingPolicy,
+  type ModelServiceDraft,
   type ModelService,
   type ModelServiceCatalog,
 } from "./types";
@@ -35,10 +42,6 @@ type Row = {
   connections: number;
   routingStatus: string[];
   configurationUnknown: boolean;
-  disabled: boolean;
-  edit: () => void;
-  detail?: () => void;
-  remove: () => void;
 };
 
 function routingStatus(
@@ -72,23 +75,22 @@ const columns: ColumnDef<Row>[] = [
     id: "service",
     header: "模型服务",
     cell: ({ row }) => {
-      const { service, detail, edit, disabled } = row.original;
+      const { service } = row.original;
       const providers = new Set(
         service.models.filter((m) => !m.child).map((m) => m.provider.id),
       ).size;
       const children = service.models.filter((m) => m.child).length;
       return (
         <div className="space-y-1">
-          <Button
-            variant="link"
-            size="sm"
-            className="max-w-56 justify-start px-0"
+          <a
+            href={serviceHref(service.id)}
+            data-workspace-resource
+            data-workspace-title={service.name}
+            className="block max-w-56 truncate font-medium hover:underline"
             title={service.name}
-            onClick={detail ?? edit}
-            disabled={disabled}
           >
-            <span className="truncate">{service.name}</span>
-          </Button>
+            {service.name}
+          </a>
           <p className="text-label text-fg-muted">
             {[
               `版本 ${service.revision}`,
@@ -165,47 +167,61 @@ const columns: ColumnDef<Row>[] = [
       </Badge>
     ),
   },
-  {
-    id: "actions",
-    header: "操作",
-    cell: ({ row }) => (
-      <div className="flex gap-1">
-        <Button
-          variant="tertiary"
-          size="sm"
-          onClick={row.original.detail ?? row.original.edit}
-          disabled={row.original.disabled}
-        >
-          编辑<span className="sr-only"> {row.original.service.name}</span>
-        </Button>
-        <Button
-          variant="tertiary"
-          size="sm"
-          onClick={row.original.remove}
-          disabled={row.original.disabled}
-        >
-          删除<span className="sr-only"> {row.original.service.name}</span>
-        </Button>
-      </div>
-    ),
-  },
 ];
 
-export function ModelServicesPage({ providers }: { providers: Provider[] }) {
+const serviceHref = (id: string) =>
+  `#/model-services/${encodeURIComponent(id)}`;
+
+export function ModelServicesPage({
+  providers,
+  selectedId,
+  cloneFrom,
+}: {
+  providers: Provider[];
+  selectedId?: string;
+  cloneFrom?: string;
+}) {
   const catalog = useSharedRead(modelServicesResource);
-  const showDetails = !!useIam().status?.enabled;
+  const member = useIam().status?.account?.role === "member";
+  const workspace = useWorkspaceNavigation();
+  const draftState = useRef<ServiceEditorDraftState | null>(null);
   const [view, setView] = useState("services");
-  const [detail, setDetail] = useState("");
-  const [editor, setEditor] = useState<ModelService | "new" | null>(null);
+  const services = catalog.data?.services;
+  const selected = services?.find((service) => service.id === selectedId);
+  const draftId = selectedId?.startsWith("draft-")
+    ? selectedId.slice(6)
+    : undefined;
+  const clone = services?.find((service) => service.id === cloneFrom);
+  const initialDraft: ModelServiceDraft | undefined = draftId
+    ? {
+        ...(clone
+          ? serviceDraft(clone)
+          : {
+              models: [],
+              defaultModelId: "",
+              routingPolicy: defaultRoutingPolicy(),
+            }),
+        id: draftId,
+        revision: 0,
+        name: clone ? `${clone.name} 副本` : "",
+      }
+    : undefined;
+  const title = selected?.name ?? (draftId ? "新建模型服务" : undefined);
+  const { setTitle } = workspace;
+  useEffect(() => {
+    if (title) setTitle(title);
+  }, [setTitle, title]);
   const [removing, setRemoving] = useState<ModelService | null>(null);
   const removingStore = useRef<string | undefined>(undefined);
-  const deletion = useServiceWrite(() => setRemoving(null));
+  const deletion = useServiceWrite(() => {
+    setRemoving(null);
+    workspace.close();
+  });
   const { busy, reset: resetDeletion } = deletion;
   const rows = useMemo(
     () =>
       (catalog.data?.services ?? []).map((service) => ({
         service,
-        disabled: !!catalog.error || busy,
         routingStatus: routingStatus(service, catalog.data?.routingHealth),
         connections:
           catalog.data?.attachments.filter(
@@ -215,15 +231,8 @@ export function ModelServicesPage({ providers }: { providers: Provider[] }) {
           catalog.data?.attachments.some(
             (a) => a.serviceId === service.id && a.configurationUnknown,
           ) ?? false,
-        edit: () => setEditor(service),
-        detail: showDetails ? () => setDetail(service.id) : undefined,
-        remove: () => {
-          resetDeletion();
-          removingStore.current = catalog.data?.writeProtocol?.storeId;
-          setRemoving(service);
-        },
       })),
-    [catalog.data, catalog.error, busy, resetDeletion, showDetails],
+    [catalog.data],
   );
   const { table } = useDataTable({
     data: rows,
@@ -234,8 +243,17 @@ export function ModelServicesPage({ providers }: { providers: Provider[] }) {
     enableSorting: false,
     enableHiding: false,
   });
+  const attachments =
+    catalog.data?.attachments.filter(
+      (item) => item.serviceId === selectedId && item.referenced,
+    ) ?? [];
+  const parents =
+    services?.filter((service) =>
+      service.models.some((model) => model.child?.serviceId === selectedId),
+    ) ?? [];
+  const referenced = attachments.length > 0 || parents.length > 0;
   const remove = async () => {
-    if (!removing || busy || deletion.uncertain) return;
+    if (!removing || referenced || busy || deletion.uncertain) return;
     await deletion.start(
       {
         kind: "delete",
@@ -267,29 +285,34 @@ export function ModelServicesPage({ providers }: { providers: Provider[] }) {
         />
       </div>
     ) : null;
+  const openDraft = (from?: string) =>
+    workspace.open(
+      `${serviceHref(`draft-${crypto.randomUUID()}`)}${from ? `?from=${encodeURIComponent(from)}` : ""}`,
+      { pin: true, title: "新建模型服务" },
+    );
+
   return (
     <div className="min-w-0 space-y-4">
-      <PageHeader className="px-0">
-        <h2 className="text-title font-medium">模型服务</h2>
-        <PageActions>
-          <Button
-            variant="tertiary"
-            loading={catalog.loading}
-            onClick={catalog.reload}
-          >
-            重新读取
-          </Button>
-          <Button
-            onClick={() => {
-              setView("services");
-              setEditor("new");
-            }}
-            disabled={!!catalog.error || !catalog.data}
-          >
-            创建模型服务
-          </Button>
-        </PageActions>
-      </PageHeader>
+      {!selectedId && (
+        <PageHeader className="px-0">
+          <h2 className="text-title font-medium">模型服务与路由</h2>
+          <PageActions>
+            <Button
+              variant="tertiary"
+              loading={catalog.loading}
+              onClick={catalog.reload}
+            >
+              重新读取
+            </Button>
+            <Button
+              onClick={() => openDraft()}
+              disabled={!!catalog.error || !catalog.data}
+            >
+              + 创建模型服务
+            </Button>
+          </PageActions>
+        </PageHeader>
+      )}
       <ModelServiceOperationRecovery />
       {catalog.error && (
         <Alert status="danger" role="alert">
@@ -300,44 +323,94 @@ export function ModelServicesPage({ providers }: { providers: Provider[] }) {
           </AlertDescription>
         </Alert>
       )}
-      {policyStore && catalog.data ? (
-        <Tabs
-          value={view}
-          onValueChange={setView}
-          variant="underline"
-          color="default"
-        >
-          <TabsList aria-label="模型服务工作区">
-            <TabItem value="services" label="服务列表" />
-            <TabItem value="routing" label="外部路由策略" />
-          </TabsList>
-          <TabPanel value="services" className="pt-3">
-            {list}
-          </TabPanel>
-          <TabPanel value="routing" keepMounted className="pt-3">
-            <ExternalRoutingPolicy
-              key={policyStore}
-              storeId={policyStore}
-              services={catalog.data.services}
+      {!selectedId &&
+        (policyStore && catalog.data ? (
+          <Tabs
+            value={view}
+            onValueChange={setView}
+            variant="underline"
+            color="default"
+          >
+            <TabsList aria-label="模型服务工作区">
+              <TabItem value="services" label="服务列表" />
+              <TabItem value="routing" label="外部路由策略" />
+            </TabsList>
+            <TabPanel value="services" className="pt-3">
+              {list}
+            </TabPanel>
+            <TabPanel value="routing" keepMounted className="pt-3">
+              <ExternalRoutingPolicy
+                key={policyStore}
+                storeId={policyStore}
+                services={catalog.data.services}
+              />
+            </TabPanel>
+          </Tabs>
+        ) : (
+          list
+        ))}
+      {selectedId &&
+        (member ? (
+          <IamResourceDetail id={selectedId} onClose={workspace.dismiss} />
+        ) : (selected || initialDraft) && services && catalog.data ? (
+          <>
+            {selected && (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Badge>rev#{selected.revision}</Badge>
+                <span className="text-label text-fg-muted">
+                  {routingStatus(selected, catalog.data?.routingHealth).join(
+                    " · ",
+                  )}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => openDraft(selected.id)}
+                  >
+                    克隆为新服务
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="tertiary"
+                    onClick={() => {
+                      resetDeletion();
+                      removingStore.current = policyStore;
+                      setRemoving(selected);
+                    }}
+                  >
+                    删除服务
+                  </Button>
+                </div>
+              </div>
+            )}
+            <ServiceEditor
+              key={selectedId}
+              tabId={selectedId}
+              draftState={draftState}
+              service={selected ?? null}
+              initialDraft={initialDraft}
+              providers={providers}
+              services={services}
+              originStoreId={policyStore}
+              onClose={workspace.dismiss}
+              onDirtyChange={workspace.setDirty}
+              onSaved={(receipt) => {
+                if (draftId) {
+                  workspace.open(serviceHref(receipt.serviceId), {
+                    pin: true,
+                    title: receipt.service?.name,
+                  });
+                  workspace.close(false);
+                }
+              }}
             />
-          </TabPanel>
-        </Tabs>
-      ) : (
-        list
-      )}
-      {detail && (
-        <IamResourceDetail id={detail} onClose={() => setDetail("")} />
-      )}
-      {editor && (
-        <ServiceEditor
-          key={editor === "new" ? "new" : editor.versionId}
-          service={editor === "new" ? null : editor}
-          providers={providers}
-          services={catalog.data?.services ?? []}
-          originStoreId={catalog.data?.writeProtocol?.storeId}
-          onClose={() => setEditor(null)}
-        />
-      )}
+          </>
+        ) : (
+          <p role="status">
+            {catalog.loading ? "正在读取模型服务…" : "找不到此模型服务"}
+          </p>
+        ))}
       <Dialog
         open={!!removing}
         onOpenChange={(open) => {
@@ -353,6 +426,32 @@ export function ModelServicesPage({ providers }: { providers: Provider[] }) {
               使用的服务会拒绝删除。
             </DialogDescription>
           </DialogHeader>
+          {referenced && (
+            <Alert status="warning">
+              <AlertTitle>服务仍被引用</AlertTitle>
+              <AlertDescription>
+                <ul className="space-y-1">
+                  {attachments.map((item) => (
+                    <li key={item.bindingId}>
+                      <a
+                        className="underline"
+                        href={`#/agents/${encodeURIComponent(item.agentId)}?tab=connection`}
+                      >
+                        {item.agentId} · 前往解绑
+                      </a>
+                    </li>
+                  ))}
+                  {parents.map((parent) => (
+                    <li key={parent.id}>
+                      <a className="underline" href={serviceHref(parent.id)}>
+                        {parent.name} · 父服务
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
           <ServiceWriteFeedback operation={deletion} />
           <DialogFooter>
             <Button
@@ -364,7 +463,7 @@ export function ModelServicesPage({ providers }: { providers: Provider[] }) {
             </Button>
             <Button
               loading={busy}
-              disabled={deletion.uncertain}
+              disabled={deletion.uncertain || referenced}
               onClick={() => void remove()}
             >
               删除服务

@@ -9,7 +9,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MobileDrawer } from "@/components/ui/mobile-drawer";
 import {
   Select,
   SelectContent,
@@ -19,7 +18,9 @@ import {
 import { sessionsApi } from "@/features/sessions/api";
 import { ConversationReader } from "@/features/sessions/components/conversation-reader";
 import { ReadingCache } from "./reading-cache";
-import { SessionList } from "@/features/sessions/components/session-list";
+import { SessionRecords } from "./components/session-records";
+import { useSessionGrouping } from "./hooks/use-session-grouping";
+import { TabItem, Tabs, TabsList } from "@/components/ui/tabs";
 import { SessionPagination } from "./components/session-pagination";
 import { useBackendReadEpoch } from "@/shared/hooks/use-backend-read-epoch";
 import { number, sessionLink } from "@/features/sessions/display";
@@ -46,6 +47,7 @@ interface SessionProps {
   initialUnified?: boolean;
   initialDomainSource?: string;
   nativeOnly?: boolean;
+  projectsAvailable?: boolean;
   data: Snapshot | null;
   navigate: (page: Page) => void;
   selectedId?: string;
@@ -93,6 +95,7 @@ function SessionWorkspace({
   returnTab,
   returnTo,
   initialView,
+  projectsAvailable,
 }: SessionProps) {
   const { agentFamily, agentProducts, familyNames, isSharedSource } =
     useAgentDirectory();
@@ -100,8 +103,7 @@ function SessionWorkspace({
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [days, setDays] = useState("all");
-  const [grouped, setGrouped] = useState(false);
-  const [drawer, setDrawer] = useState(false);
+  const { grouped, setGrouped } = useSessionGrouping();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [detailSummary, setDetailSummary] = useState<NativeSession | null>(
@@ -121,7 +123,6 @@ function SessionWorkspace({
     epoch: symbol;
     route?: string;
   } | null>(null);
-  const drawerTrigger = useRef<HTMLButtonElement>(null);
   const loader = useCallback(
     (cursor?: string) =>
       sessionsApi.sessions({
@@ -153,7 +154,7 @@ function SessionWorkspace({
           choice.epoch === epoch &&
           choice.route === selectedId
         ? choice.id
-        : (selectedId ?? items[0]?.id);
+        : selectedId;
   const explicitAgent = targetId?.split(":")[0];
   const sourceEnabled = data?.sessionSources.some(
     (s) => s.enabled && s.agentId === explicitAgent,
@@ -187,7 +188,7 @@ function SessionWorkspace({
     ? undefined
     : requestedVisible
       ? targetId
-      : items[0]?.id;
+      : undefined;
   const selectedSourceEnabled =
     effectiveId &&
     data?.sessionSources.some(
@@ -204,16 +205,8 @@ function SessionWorkspace({
   const canReadConversation = Boolean(
     selectedSourceEnabled && selectedSession?.status !== "observed",
   );
-  const pinned =
-    requestedVisible &&
-    !selectedInList &&
-    detailSummary?.id === effectiveId &&
-    choice?.epoch === epoch
-      ? detailSummary
-      : null;
   const {
     desktopList,
-    mobileList,
     expandedProjects,
     expandProjects,
     rememberScroll,
@@ -222,7 +215,7 @@ function SessionWorkspace({
     scope: queryKey,
     epoch,
     pages: sessions,
-    drawer,
+    drawer: false,
     selected: effectiveId,
     summaryId: detailSummary?.id,
   });
@@ -268,24 +261,25 @@ function SessionWorkspace({
       cache.current = new ReadingCache();
     }
   }, [sessions.scopeInvalid]);
+  const linkFor = useCallback(
+    (id: string, view?: "requests") =>
+      sessionLink(id, {
+        agent: agent === "all" ? undefined : agent,
+        from: returnAgent,
+        tab: returnTab,
+        returnTo,
+        view,
+      }),
+    [agent, returnAgent, returnTab, returnTo],
+  );
   const openSession = (id: string, view?: "requests") => {
-    window.location.hash = sessionLink(id, {
-      agent: agent === "all" ? undefined : agent,
-      from: returnAgent,
-      tab: returnTab,
-      returnTo,
-      view,
-    });
-    setDrawer(false);
+    window.location.hash = linkFor(id, view);
   };
-  const select = (session: NativeSession) =>
-    openSession(
-      session.id,
-      session.status === "observed" ? "requests" : undefined,
-    );
-  const resetSelection = () => {
-    window.location.hash = "/sessions";
-  };
+  const rowHref = useCallback(
+    (session: NativeSession) =>
+      `#${linkFor(session.id, session.status === "observed" ? "requests" : undefined)}`,
+    [linkFor],
+  );
   const refresh = async () => {
     if (refreshing) return;
     setRefreshing(true);
@@ -310,90 +304,98 @@ function SessionWorkspace({
   );
   const sidebar = (listRef: RefObject<HTMLDivElement | null>) => (
     <aside
-      aria-label="会话标题列表"
-      className="flex h-full min-h-0 min-w-0 flex-col border-r border-border"
+      aria-label="会话列表"
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      <div className="shrink-0 space-y-3 border-b border-border p-3">
+      <div
+        data-session-toolbar
+        className="shrink-0 space-y-3 border-b border-border p-3"
+      >
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-body font-medium">全部会话</h2>
+          <h2 className="text-title font-medium">会话列表</h2>
           <Badge size="sm">
             {number(sessions.scopeInvalid ? undefined : sessions.data?.total)}
           </Badge>
         </div>
-        <Input
-          aria-label="搜索会话"
-          placeholder="搜索标题、项目或路径"
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-            resetSelection();
-          }}
-        />
-        <div className="grid grid-cols-2 gap-2">
-          <Select
-            value={agent}
-            onValueChange={(value) => {
-              setAgent(value);
-              resetSelection();
-            }}
-          >
-            <SelectTrigger
-              aria-label="筛选会话 Agent"
-              wrapperClassName="min-w-0"
-              className="w-full min-w-0"
-            />
-            <SelectContent>
-              <SelectItem value="all">全部 Agents</SelectItem>
-              {agentProducts.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                </SelectItem>
-              ))}
-              <SelectItem value="unknown">客户端来源未知</SelectItem>
-              {isSharedSource(agent) && (
-                <SelectItem value={agent}>{familyNames[agent]}</SelectItem>
-              )}
-              {agent.endsWith("-unknown") && (
-                <SelectItem value={agent}>
-                  {familyNames[agent.slice(0, -8)]?.replace(
-                    " · 全部客户端",
-                    "",
-                  ) ?? agent.slice(0, -8)}{" "}
-                  · 客户端来源未知
-                </SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-          <SessionDateFilter
-            value={days}
-            onChange={(value) => {
-              setDays(value);
-              resetSelection();
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            className="min-w-44 flex-1"
+            aria-label="搜索会话"
+            placeholder="搜索标题、项目或路径"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
             }}
           />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {data?.agents.some((agent) => agent.sourceId && agent.connected) && (
-            <Button asChild variant="tertiary" size="sm">
-              <a href="#/sessions">查看全部来源</a>
+          <div className="flex gap-2">
+            <Select
+              value={agent}
+              onValueChange={(value) => {
+                setAgent(value);
+              }}
+            >
+              <SelectTrigger
+                aria-label="筛选会话 Agent"
+                wrapperClassName="min-w-0"
+                className="w-full min-w-0"
+              />
+              <SelectContent>
+                <SelectItem value="all">全部 Agents</SelectItem>
+                {agentProducts.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+                <SelectItem value="unknown">客户端来源未知</SelectItem>
+                {isSharedSource(agent) && (
+                  <SelectItem value={agent}>{familyNames[agent]}</SelectItem>
+                )}
+                {agent.endsWith("-unknown") && (
+                  <SelectItem value={agent}>
+                    {familyNames[agent.slice(0, -8)]?.replace(
+                      " · 全部客户端",
+                      "",
+                    ) ?? agent.slice(0, -8)}{" "}
+                    · 客户端来源未知
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            <SessionDateFilter
+              value={days}
+              onChange={(value) => {
+                setDays(value);
+              }}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {data?.agents.some(
+              (agent) => agent.sourceId && agent.connected,
+            ) && (
+              <Button asChild variant="tertiary" size="sm">
+                <a href="#/sessions">查看全部来源</a>
+              </Button>
+            )}
+            <Tabs
+              value={grouped ? "project" : "time"}
+              onValueChange={(value) => setGrouped(value === "project")}
+              variant="segment"
+              color="default"
+            >
+              <TabsList aria-label="会话排列">
+                <TabItem value="project" label="按项目分组" />
+                <TabItem value="time" label="按时间排序" />
+              </TabsList>
+            </Tabs>
+            <Button
+              variant="ghost"
+              size="sm"
+              loading={refreshing}
+              onClick={() => void refresh()}
+            >
+              重新检查来源
             </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            active={grouped}
-            onClick={() => setGrouped(!grouped)}
-          >
-            {grouped ? "会话列表" : "按项目分组"}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            loading={refreshing}
-            onClick={() => void refresh()}
-          >
-            重新检查来源
-          </Button>
+          </div>
         </div>
         {data?.sessionSources.some(
           (s) => s.enabled && ["pending", "scanning"].includes(s.status),
@@ -411,16 +413,6 @@ function SessionWorkspace({
         aria-busy={sessions.loading}
         onScroll={(event) => rememberScroll(event.currentTarget.scrollTop)}
       >
-        {pinned && (
-          <div className="border-b border-border">
-            <p className="px-3 pt-3 text-label text-fg-subtle">当前会话</p>
-            <SessionList
-              items={[pinned]}
-              selected={effectiveId}
-              onSelect={select}
-            />
-          </div>
-        )}
         {grouped ? (
           <Accordion
             type="multiple"
@@ -430,24 +422,37 @@ function SessionWorkspace({
           >
             {[...groups].map(([path, group]) => (
               <AccordionItem key={path} value={path}>
-                <AccordionTrigger>
-                  <span className="break-all">
-                    {path} · 本页 {group.length} 个
-                  </span>
-                </AccordionTrigger>
+                <div className="flex items-center gap-2">
+                  <AccordionTrigger className="min-w-0 flex-1">
+                    <span className="truncate">
+                      {group[0].projectHidden
+                        ? path
+                        : (group[0].projectName ?? path)}{" "}
+                      · 本页 {group.length} 个会话
+                    </span>
+                  </AccordionTrigger>
+                  {projectsAvailable &&
+                    group[0].projectId &&
+                    !group[0].projectHidden && (
+                      <Button variant="tertiary" size="sm" asChild>
+                        <a
+                          href={`#/projects/${encodeURIComponent(group[0].projectId)}`}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          项目监控
+                        </a>
+                      </Button>
+                    )}
+                </div>
                 <AccordionContent>
-                  <SessionList
-                    items={group}
-                    selected={effectiveId}
-                    onSelect={select}
-                  />
+                  <SessionRecords items={group} href={rowHref} />
                 </AccordionContent>
               </AccordionItem>
             ))}
           </Accordion>
-        ) : (
-          <SessionList items={items} selected={effectiveId} onSelect={select} />
-        )}
+        ) : items.length > 0 ? (
+          <SessionRecords items={items} href={rowHref} />
+        ) : null}
         {!sessions.loading && sessions.data && items.length === 0 && (
           <ConnectionEmpty
             compact
@@ -473,7 +478,6 @@ function SessionWorkspace({
                 setSearch("");
                 setDays("all");
                 setAgent("all");
-                resetSelection();
               } else navigate("agents");
             }}
           />
@@ -512,74 +516,50 @@ function SessionWorkspace({
       )}
     </aside>
   );
+  if (!selectedId) return sidebar(desktopList);
   return (
-    <div className="session-workspace">
-      <div className="session-desktop-list min-h-0 min-w-0">
-        {sidebar(desktopList)}
-      </div>
-      <div className="flex min-h-0 min-w-0 flex-col">
-        <div className="session-mobile-switch shrink-0 border-b border-border p-2">
-          <Button
-            ref={drawerTrigger}
-            variant="tertiary"
-            size="sm"
-            onClick={() => setDrawer(true)}
-          >
-            切换会话 / 项目
-          </Button>
-        </div>
-        {effectiveId && canReadConversation ? (
-          <ConversationReader
-            key={effectiveId}
-            id={effectiveId}
-            summary={selectedSession}
-            requestsActive={showRequests}
-            onRequestsChange={(active) =>
-              openSession(effectiveId, active ? "requests" : undefined)
-            }
-            anchor={selectedId === effectiveId ? anchor : undefined}
-            initialView={
-              selectedId === effectiveId && initialView !== "requests"
-                ? initialView
-                : undefined
-            }
-            cache={cache.current}
-            onSummary={onSummary}
-            returnAgent={returnAgent}
-            returnTab={returnTab}
-            returnTo={returnTo}
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {effectiveId && canReadConversation ? (
+        <ConversationReader
+          key={effectiveId}
+          id={effectiveId}
+          summary={selectedSession}
+          requestsActive={showRequests}
+          onRequestsChange={(active) =>
+            openSession(effectiveId, active ? "requests" : undefined)
+          }
+          anchor={selectedId === effectiveId ? anchor : undefined}
+          initialView={
+            selectedId === effectiveId && initialView !== "requests"
+              ? initialView
+              : undefined
+          }
+          cache={cache.current}
+          onSummary={onSummary}
+          returnAgent={returnAgent}
+          returnTab={returnTab}
+          returnTo={returnTo}
+        />
+      ) : effectiveId && showRequests ? (
+        <SessionRequests
+          key={effectiveId}
+          id={effectiveId}
+          title={selectedSession?.title}
+          returnTo={returnTo}
+        />
+      ) : (
+        <section
+          aria-label="会话内容"
+          className="min-h-0 flex-1 overflow-y-auto"
+        >
+          <ConnectionEmpty
+            title={sessions.loading ? "正在读取会话" : "会话暂不可读"}
+            action="查看 Agents"
+            onAction={() => navigate("agents")}
+            icon="message-circle"
           />
-        ) : effectiveId && showRequests ? (
-          <SessionRequests
-            key={effectiveId}
-            id={effectiveId}
-            title={selectedSession?.title}
-            returnTo={returnTo}
-          />
-        ) : (
-          <section
-            aria-label="会话内容"
-            className="min-h-0 flex-1 overflow-y-auto"
-          >
-            <ConnectionEmpty
-              title={confirmedEmpty ? "没有匹配会话" : "从会话标题列表开始"}
-              description="选择会话后，可以查看相关模型请求和已授权读取的对话。"
-              action="查看 Agents"
-              onAction={() => navigate("agents")}
-              icon="message-circle"
-            />
-          </section>
-        )}
-      </div>
-      <MobileDrawer
-        open={drawer}
-        onClose={() => setDrawer(false)}
-        triggerRef={drawerTrigger}
-        ariaLabel="选择会话或项目"
-        panelClassName="w-80 max-w-full"
-      >
-        {sidebar(mobileList)}
-      </MobileDrawer>
+        </section>
+      )}
     </div>
   );
 }

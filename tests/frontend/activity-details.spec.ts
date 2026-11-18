@@ -19,10 +19,10 @@ test("activity shows the latest input, observed thinking and named native or gat
   const thinking = feed(page)
     .getByRole("row")
     .filter({ hasText: "登录修复会话" });
-  await expect(
-    thinking.getByRole("cell").first().locator("p").first(),
-  ).toHaveText("请检查最新登录失败，再补充回归测试。");
-  await expect(thinking.getByRole("cell").nth(1)).toContainText("思考中");
+  await expect(thinking.getByRole("cell").first().getByRole("link")).toHaveText(
+    "请检查最新登录失败，再补充回归测试。",
+  );
+  await expect(thinking.getByRole("cell").first()).toContainText("思考中");
   const tools = feed(page).getByRole("row").filter({ hasText: "检查工具链" });
   await expect(tools).toContainText("已提出调用：Read、Grep");
   await expect(tools).toContainText("先读取项目说明");
@@ -30,11 +30,11 @@ test("activity shows the latest input, observed thinking and named native or gat
     .getByRole("row")
     .filter({ hasText: "核对请求参数，不要修改配置。" });
   await expect(gateway).toContainText("核对请求参数");
-  await expect(gateway.getByRole("cell").nth(1)).toContainText("生成工具参数");
-  await expect(gateway.getByRole("cell").nth(1)).toContainText(
+  await expect(gateway.getByRole("cell").first()).toContainText("生成工具参数");
+  await expect(gateway.getByRole("cell").first()).toContainText(
     "mcp__files__read",
   );
-  await expect(gateway).toContainText("TTFT 0.700 秒");
+  await expect(gateway).toContainText("0.700 秒");
 });
 
 test("a new input and tool results replace the visible step on the same activity", async ({
@@ -46,7 +46,7 @@ test("a new input and tool results replace the visible step on the same activity
   await page.evaluate(() => {
     window.activityCase = "activity-details-updated";
   });
-  await expect(row.getByRole("cell").first().locator("p").first()).toHaveText(
+  await expect(row.getByRole("cell").first().getByRole("link")).toHaveText(
     "现在修改登录按钮颜色。",
   );
   await expect(row).toContainText("已提出调用：Edit、Bash");
@@ -73,7 +73,7 @@ test("completed or stale activities retain input but do not claim current thinki
     window.activityCase = "activity-details-completed";
   });
   await expect(row).toContainText("已结束 · 等待输入");
-  await expect(row.getByRole("cell").first().locator("p").first()).toHaveText(
+  await expect(row.getByRole("cell").first().getByRole("link")).toHaveText(
     "请检查最新登录失败，再补充回归测试。",
   );
 });
@@ -84,7 +84,7 @@ test("the latest Session input replaces older requests and markup still renders 
   await load(page, "activity-details-scope");
   const current = feed(page)
     .getByRole("row")
-    .filter({ hasText: "收到新的用户消息" });
+    .filter({ hasText: "后续轮次的输入不得套给旧请求" });
   await expect(current.getByRole("cell").first()).toContainText(
     "后续轮次的输入不得套给旧请求",
   );
@@ -117,11 +117,9 @@ test("long input and tool labels stay within the table at the minimum native win
   const text = await title.textContent();
   expect(text).toMatch(/^检查包含中文和🙂的长输入/);
   await expect(title).toHaveAttribute("title", text!);
-  expect(
-    await title.evaluate(
-      (e) => e.parentElement!.scrollHeight > e.parentElement!.clientHeight,
-    ),
-  ).toBe(true);
+  expect(await title.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(
+    true,
+  );
 });
 
 test("disabled native sources cannot expose excerpts from an already populated overview", async ({

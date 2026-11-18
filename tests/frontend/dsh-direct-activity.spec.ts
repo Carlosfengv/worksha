@@ -14,7 +14,8 @@ test("DSH direct activity reaches the primary feed, running count and recent act
   const summary = page.getByRole("region", { name: "实时任务汇总" });
   await expect(row).toContainText("执行中");
   await openRecentActivities(page);
-  await expect(row.getByText("来源未提供", { exact: true })).toHaveCount(2);
+  await expect(row.getByRole("cell").nth(1)).toHaveText("来源未提供");
+  await expect(row.getByRole("cell").nth(2)).toHaveText("来源未提供");
   await expect(summary).toContainText("含 1 个 Agent 上报的 Session");
   await expect(summary).not.toContainText("仅网关");
   await expect(row.getByRole("link", { name: title })).toHaveAttribute(
@@ -27,7 +28,7 @@ test("DSH direct activity reaches the primary feed, running count and recent act
   await openRecentActivities(page);
   await expect(page.getByText("调用分析筛选无效")).toHaveCount(0);
   await expect(
-    page.getByRole("heading", { name: "调用趋势与占比" }),
+    page.getByRole("heading", { name: /模型调用趋势$/ }),
   ).toHaveCount(0);
   await page.evaluate(() => {
     window.dshActivity = "idle";
@@ -96,7 +97,7 @@ for (const source of [
     await openRecentActivities(page);
     const elapsed = row.locator("[data-activity-elapsed]");
     await expect(elapsed).toHaveText(/^\d+ 秒$/);
-    await expect(row).toContainText(/TTFT 0\.85/);
+    await expect(row).toContainText(/0\.850? 秒/);
     await expect(row).toContainText(/均速 24(?:\.\d+)? Token\/s/);
     await expect(summary).toContainText(`${source.name} · 1 个会话已上报`);
     await expect(row).toContainText(`${source.name} · 上报当前步骤`);
@@ -106,7 +107,7 @@ for (const source of [
     });
     await expect(row).toContainText("等待输入", { timeout: 8000 });
     await expect(elapsed).toHaveText("12 秒");
-    await expect(row).toContainText(/TTFT 0\.85/);
+    await expect(row).toContainText(/0\.850? 秒/);
     await expect(row).toContainText(/均速 30(?:\.\d+)? Token\/s/);
     await expect(row).toContainText(`${source.name} · 上报已完成步骤`);
     await expect(row).toContainText("120");

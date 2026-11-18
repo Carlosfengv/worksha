@@ -22,7 +22,7 @@ export function AgentsPage({
     return (
       <div className="min-w-0 space-y-4">
         <PageHeader className="px-0">
-          <h2 className="text-title font-medium">Agents</h2>
+          <h2 className="text-title font-medium">本机 Agents</h2>
         </PageHeader>
         <ConnectionEmpty title="尚未连接本机数据" icon="brain" />
       </div>

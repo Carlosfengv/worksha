@@ -38,10 +38,27 @@ pub(crate) async fn commit_gateway_client_operation(
 pub(crate) async fn save_gateway_client_operation(
     app: tauri::AppHandle,
     backend: tauri::State<'_, Backend>,
-    input: serde_json::Value,
+    mut input: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
+    let delivery = input
+        .as_object_mut()
+        .and_then(|input| input.remove("delivery"));
+    let show_receipt = match delivery.as_ref().and_then(serde_json::Value::as_str) {
+        None if delivery.is_none() => false,
+        Some("receipt") => true,
+        _ => {
+            return Err(operations::failure(
+                "invalid_input",
+                false,
+                "客户端密钥交付方式无效",
+            ));
+        }
+    };
     let input = scoped_save::Input::parse(input)?;
     let context = backend.context()?;
+    if show_receipt {
+        return scoped_save::issue_receipt(&context, input).await;
+    }
     let window = app.get_webview_window("main").ok_or("应用窗口不可用")?;
     let selected = tokio::task::spawn_blocking(move || {
         app.dialog()

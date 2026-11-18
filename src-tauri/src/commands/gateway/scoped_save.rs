@@ -66,6 +66,21 @@ pub(super) async fn create_at(
     if !matches!(checked_result, Ok(Ok(()))) {
         return Ok(not_issued("保存位置未通过安全检查，本次未发送签发。"));
     }
+    deliver(context, input, Some(target)).await
+}
+
+pub(super) async fn issue_receipt(
+    context: &ConnectionContext,
+    input: Input,
+) -> Result<Value, String> {
+    deliver(context, input, None).await
+}
+
+async fn deliver(
+    context: &ConnectionContext,
+    input: Input,
+    target: Option<PathBuf>,
+) -> Result<Value, String> {
     let status = match context
         .request(reqwest::Method::GET, "/api/gateway-lan", None)
         .await
@@ -116,6 +131,14 @@ pub(super) async fn create_at(
     };
     let Some(key) = key else {
         return Ok(result(context, "issued", out));
+    };
+    let Some(target) = target else {
+        if context.ensure_current().is_err() {
+            return Ok(result(context, "issued", out));
+        }
+        let mut response = result(context, "receipt", out);
+        response["key"] = json!(key);
+        return Ok(response);
     };
     let Action::Create { draft } = &input.request.action else {
         return Err(operations::unknown());

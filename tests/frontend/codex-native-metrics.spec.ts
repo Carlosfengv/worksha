@@ -17,7 +17,7 @@ test("native thinking and tool phases update output rates before completion whil
     exact: true,
   });
   await expect(row).toContainText("思考中");
-  await expect(row).toContainText("TTFT 1.05 秒");
+  await expect(row).toContainText("1.05 秒");
   await expect(row).toContainText("实时 37.0 Token/s");
   await expect(row).toContainText("最近 1 秒 · 输出估算");
   await expect(summary).toContainText("37.0 Token/s");
@@ -35,12 +35,12 @@ test("native thinking and tool phases update output rates before completion whil
       window.activityCase = mode;
     }, mode);
     await expect(row).toContainText(phase);
-    await expect(row.getByRole("cell").nth(4)).toContainText(rateLabel);
+    await expect(row.getByRole("cell").nth(2)).toContainText(rateLabel);
     await expect(summary).toContainText(rateLabel.replace("实时 ", ""));
     await expect(row).not.toContainText("0.0 Token/s");
     if (mode !== "native-desktop-output-tools")
       await expect(row).toContainText("原生未上报生成增量");
-    await expect(row).toContainText("TTFT 1.05 秒");
+    await expect(row).toContainText("1.05 秒");
     await expect(row.getByRole("link")).toBeFocused();
     await expect(feed.getByRole("row")).toHaveCount(2);
   }
@@ -49,7 +49,7 @@ test("native thinking and tool phases update output rates before completion whil
   });
   await expect(row).toContainText("原生重连中");
   await expect(row).not.toContainText("实时 37.0 Token/s");
-  await expect(row).toContainText("TTFT 1.05 秒");
+  await expect(row).toContainText("1.05 秒");
   await page.evaluate(() => {
     window.activityCase = "native-desktop-output-completed";
   });
@@ -59,7 +59,7 @@ test("native thinking and tool phases update output rates before completion whil
     window.activityCase = "native-desktop-output-next";
   });
   await expect(row).toContainText("等待首 Token");
-  await expect(row).not.toContainText("TTFT 1.05 秒");
+  await expect(row).not.toContainText("1.05 秒");
   await expect(row).not.toContainText("32.0 Token/s");
 });
 
@@ -81,9 +81,9 @@ test("native silence stays unknown in the summary and table instead of displayin
     await page.evaluate((mode) => {
       window.activityCase = mode;
     }, mode);
-    await expect(row.getByRole("cell").nth(4)).toContainText(label);
+    await expect(row.getByRole("cell").nth(2)).toContainText(label);
     await expect(row).toContainText("原生未上报生成增量");
-    await expect(row).toContainText("TTFT 1.05 秒");
+    await expect(row).toContainText("1.05 秒");
     await expect(summary).toContainText(label);
     await expect(summary).toContainText("0/1 个活动来源可测");
     await expect(summary).not.toContainText("0.0 Token/s");
@@ -110,7 +110,7 @@ test("native desktop text updates summary and the same message row without a gat
   const row = feed.getByRole("row").filter({ hasText: "原生采集同一条消息" });
   await expect(summary).toContainText("20.0 Token/s");
   await expect(summary).not.toContainText("待采样");
-  await expect(row).toContainText("TTFT 1.05 秒");
+  await expect(row).toContainText("1.05 秒");
   await expect(row).toContainText("原生首 Token · 实时观测");
   await expect(row).toContainText("实时 20.0 Token/s");
   await expect(row).not.toContainText("来源未提供流式");
@@ -128,9 +128,9 @@ test("native desktop text updates summary and the same message row without a gat
     window.activityCase = "native-desktop-thinking";
   });
   await expect(summary).toContainText("思考中");
-  await expect(row.getByRole("cell").nth(4)).toContainText("思考中");
+  await expect(row.getByRole("cell").nth(2)).toContainText("思考中");
   await expect(summary).not.toContainText("42.0 Token/s");
-  await expect(row).toContainText("TTFT 1.05 秒");
+  await expect(row).toContainText("1.05 秒");
   await page.evaluate(() => {
     window.activityCase = "native-desktop-reconnecting";
   });
@@ -140,7 +140,7 @@ test("native desktop text updates summary and the same message row without a gat
   await page.evaluate(() => {
     window.activityCase = "native-desktop-completed";
   });
-  await expect(row).toContainText("TTFT 1.00 秒");
+  await expect(row).toContainText("1.00 秒");
   await expect(row).toContainText("Agent 上报 · 本轮");
   await expect(row).toContainText("均速 32.0 Token/s");
   await expect(summary).toContainText("当前没有观测到正在执行的任务。");
@@ -161,11 +161,11 @@ test("the first native reasoning token updates TTFT while the same turn is still
     .filter({ hasText: "原生采集同一条消息" });
   await expect(row).toContainText("等待首 Token");
   await expect(row).not.toContainText("首项输出");
-  await expect(row).not.toContainText("TTFT 0.900");
+  await expect(row).not.toContainText("0.900");
   await page.evaluate(() => {
     window.activityCase = "native-desktop-first-token";
   });
-  await expect(row).toContainText("TTFT 1.05 秒");
+  await expect(row).toContainText("1.05 秒");
   await expect(row).toContainText("原生首 Token · 实时观测");
   await expect(row).toContainText("思考中");
   await expect(row).not.toContainText("请求已完成");
@@ -176,7 +176,7 @@ test("the first native reasoning token updates TTFT while the same turn is still
     window.activityCase = "native-desktop-updated";
   });
   await expect(row).toContainText("实时 42.0 Token/s");
-  await expect(row).toContainText("TTFT 1.05 秒");
+  await expect(row).toContainText("1.05 秒");
   await expect(row).toHaveCount(1);
 });
 
@@ -194,8 +194,8 @@ test("joining after the native first token explicitly waits for attribution inst
     .filter({ hasText: "原生采集同一条消息" });
   await expect(row).toContainText("TTFT 待补报");
   await expect(row).toContainText("中途接入 · 待原生补报");
-  await expect(row).not.toContainText("TTFT 0.900");
-  await expect(row).not.toContainText("TTFT 1.05");
+  await expect(row).not.toContainText("0.900");
+  await expect(row).not.toContainText("1.05");
   await expect(
     page.getByRole("region", { name: "实时任务汇总" }),
   ).toContainText("待原生补报");
@@ -214,7 +214,7 @@ test("restored native TTFT remains visible through reconnection and new text res
     .getByRole("region", { name: "当前活动列表", exact: true })
     .getByRole("row")
     .filter({ hasText: "原生采集同一条消息" });
-  await expect(row).toContainText("TTFT 1.05 秒");
+  await expect(row).toContainText("1.05 秒");
   await expect(row).toContainText("原生重连中");
   await expect(row).not.toContainText("待原生补报");
   await expect(row).not.toContainText("实时 42.0 Token/s");
@@ -222,7 +222,7 @@ test("restored native TTFT remains visible through reconnection and new text res
   await page.evaluate(() => {
     window.activityCase = "native-desktop-restored-live";
   });
-  await expect(row).toContainText("TTFT 1.05 秒");
+  await expect(row).toContainText("1.05 秒");
   await expect(row).toContainText("实时 42.0 Token/s");
   await expect(summary).toContainText("42.0 Token/s");
   await expect(row).not.toContainText("待原生补报");
@@ -244,7 +244,7 @@ test("completed native averages survive restart and an offline owner without bec
       window.activityCase = value;
     }, scenario);
     await expect(row).toContainText("均速 32.0 Token/s");
-    await expect(row).toContainText("TTFT 1.05 秒");
+    await expect(row).toContainText("1.05 秒");
     await expect(row).not.toContainText("速率未记录");
     await expect(row).not.toContainText("实时 32.0 Token/s");
     await expect(row).toHaveCount(1);

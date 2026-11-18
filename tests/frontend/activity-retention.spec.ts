@@ -10,7 +10,11 @@ const titles = (page: Page) =>
   feed(page)
     .getByRole("row")
     .evaluateAll((rows) =>
-      rows.slice(1).map((row) => row.querySelector("p")?.textContent),
+      rows
+        .slice(1)
+        .map(
+          (row) => row.querySelector("a[data-workspace-resource]")?.textContent,
+        ),
     );
 
 test("activity rows expire after three hours of no business activity, including during read errors", async ({
@@ -23,7 +27,10 @@ test("activity rows expire after three hours of no business activity, including 
   );
   await openRecentActivities(page);
   await expect(
-    feed(page).getByRole("columnheader", { name: "TTFT", exact: true }),
+    feed(page).getByRole("columnheader", {
+      name: "首字延迟 (TTFT)",
+      exact: true,
+    }),
   ).toBeVisible();
   await page.clock.pauseAt(new Date(now.getTime() + 60000));
   await page.evaluate(() =>

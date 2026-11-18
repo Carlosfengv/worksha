@@ -380,7 +380,7 @@ export function ProviderOperationRecovery({
   return (
     <section aria-label="服务商操作恢复">
       {compact ? (
-        <Accordion type="multiple">
+        <Accordion type="multiple" className="w-full min-w-0">
           <AccordionItem value="recovery">
             <AccordionTrigger>
               操作恢复

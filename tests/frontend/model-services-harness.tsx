@@ -7,7 +7,11 @@ import {
 } from "@/features/model-services/operation-receipt";
 import { createRoot } from "react-dom/client";
 import { IconProvider } from "@/lib/icon-context";
-import { ModelServicesPage } from "@/features/model-services/page";
+import App from "@/app/App";
+import { appApi } from "@/app/api";
+import { iamApi } from "@/features/iam/api";
+import { createTableFixtureContext } from "./fixtures/tables/context";
+import { installTableShell } from "./fixtures/tables/shell";
 import { ModelServiceSettings } from "@/features/model-services/components/agent-service-control";
 import { modelServicesApi } from "@/features/model-services/api";
 import {
@@ -26,6 +30,15 @@ import type {
 } from "@/features/providers/types";
 import "@/styles/globals.css";
 
+const context = createTableFixtureContext();
+if (!context.params.has("agent")) {
+  iamApi.status = async () => ({
+    enabled: false,
+    available: true,
+    account: null,
+  });
+  installTableShell(context);
+}
 const sources: Provider[] = ["Alpha", "Beta"].map((name, i) => ({
   id: `source-${name}`,
   name,
@@ -602,18 +615,26 @@ if (params.has("pending")) {
 }
 const root = createRoot(document.getElementById("root")!);
 fixture.unmountView = () => root.unmount();
-root.render(
-  <IconProvider>
-    <main className="mx-auto max-w-5xl p-4">
-      {params.has("agent") ? (
+if (params.has("agent")) {
+  root.render(
+    <IconProvider>
+      <main className="mx-auto max-w-5xl p-4">
         <ModelServiceSettings
           agentId={agent}
           name={agent === "claude" ? "Claude Code CLI" : "OpenCode"}
           providers={sources}
         />
-      ) : (
-        <ModelServicesPage providers={sources} />
-      )}
-    </main>
-  </IconProvider>,
-);
+      </main>
+    </IconProvider>,
+  );
+} else {
+  const snapshot = appApi.snapshot;
+  appApi.snapshot = async () => ({ ...(await snapshot()), providers: sources });
+  if (!window.location.hash)
+    window.history.replaceState(null, "", "#/model-services");
+  root.render(
+    <IconProvider>
+      <App />
+    </IconProvider>,
+  );
+}

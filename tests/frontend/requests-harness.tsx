@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { IconProvider } from "@/lib/icon-context";
 import { RequestsPage } from "@/features/observation/requests-page";
+import { requestsViewHref } from "@/features/observation/request-display";
+import {
+  PageSubnav,
+  PageSubnavList,
+  PageSubnavItem,
+} from "@/components/ui/page-layout";
 import { observationApi } from "@/features/observation/api";
 import { workbenchApi } from "@/features/workbench/api";
 import type { LiveAction } from "@/features/workbench/types";
@@ -383,6 +389,30 @@ function Harness() {
   return (
     <IconProvider>
       <main className="flex h-dvh min-w-0 flex-col">
+        {!id && (
+          <PageSubnav aria-label="调用与工具视图">
+            <PageSubnavList
+              activeValue={
+                new URLSearchParams(search).get("tab") === "trends"
+                  ? "trends"
+                  : "records"
+              }
+            >
+              <PageSubnavItem
+                value="records"
+                href={requestsViewHref(search ?? "", false)}
+              >
+                模型请求
+              </PageSubnavItem>
+              <PageSubnavItem
+                value="trends"
+                href={requestsViewHref(search ?? "", true)}
+              >
+                趋势与热力图
+              </PageSubnavItem>
+            </PageSubnavList>
+          </PageSubnav>
+        )}
         <RequestsPage selectedId={id} routeSearch={search ?? ""} />
       </main>
     </IconProvider>

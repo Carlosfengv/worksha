@@ -132,11 +132,13 @@ test("the actual application exposes connection diagnostics when its first snaps
 }) => {
   await page.goto("/tests/frontend/render-boundary.html?app#/providers");
   await page.getByRole("button", { name: "查看连接诊断", exact: true }).click();
-  await expect(page).toHaveURL(/#\/settings$/);
+  await expect(page).toHaveURL(/#\/settings\?tab=connection$/);
   await expect(
     page.getByRole("region", { name: "本地服务连接", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("设置暂不可用", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("本地数据暂不可用", { exact: true }),
+  ).toBeVisible();
 });
 test("malformed diagnostics never expose unexpected payloads; records paginate and fit narrow dark layout", async ({
   page,

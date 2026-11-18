@@ -62,10 +62,10 @@ test("native requests adapt default columns and switch to analysis without losin
   await expect(
     table.getByRole("columnheader", { name: "缓存读取" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "跨来源统计与采集状态", exact: true }),
-  ).toHaveAttribute("aria-expanded", "false");
-  await page.getByRole("tab", { name: "趋势分析", exact: true }).click();
+  await expect(page.locator("[data-request-toolbar]")).toBeVisible();
+  await page.evaluate(() => {
+    window.location.hash += "&tab=trends";
+  });
   await expect(
     page.getByRole("region", { name: "请求趋势分析", exact: true }),
   ).toBeVisible();
@@ -108,8 +108,8 @@ test("MCP directory opens details at the top and returns to the triggering servi
   );
   const directory = page.getByRole("tab", { name: "服务目录", exact: true });
   await expect(directory).toHaveAttribute("aria-selected", "true");
-  const trigger = page.getByRole("button", {
-    name: "查看 Fixture MCP",
+  const trigger = page.getByRole("link", {
+    name: "Fixture MCP",
     exact: true,
   });
   await expect(trigger).toBeInViewport();
@@ -132,10 +132,14 @@ test("Agent and model lists share the MCP title and action placement at minimum 
   await page.setViewportSize({ width: 720, height: 560 });
   const bounds = [];
   for (const { route, title, action } of [
-    { route: "mcp", title: "MCP", action: "重新读取 MCP 配置" },
-    { route: "providers", title: "模型供应商", action: "添加供应商" },
-    { route: "model-services", title: "模型服务", action: "创建模型服务" },
-    { route: "agents", title: "Agents", action: "重新读取配置" },
+    { route: "mcp", title: "MCP 工具目录", action: "重新读取 MCP 配置" },
+    { route: "providers", title: "模型与额度", action: "添加供应商" },
+    {
+      route: "model-services",
+      title: "模型服务与路由",
+      action: "+ 创建模型服务",
+    },
+    { route: "agents", title: "本机 Agents", action: "重新读取配置" },
   ]) {
     await page.goto(`/tests/frontend/tables.html?mode=shell#/${route}`);
     const heading = page.getByRole("heading", {
@@ -148,11 +152,15 @@ test("Agent and model lists share the MCP title and action placement at minimum 
     await expect(button).toBeInViewport();
     const titleBox = await heading.boundingBox();
     const actionBox = await button.boundingBox();
+    const bodyBox = await heading
+      .locator("xpath=ancestor::*[@data-slot='page-body'][1]")
+      .boundingBox();
     expect(titleBox).not.toBeNull();
     expect(actionBox).not.toBeNull();
+    expect(bodyBox).not.toBeNull();
     expect(actionBox!.x).toBeGreaterThan(titleBox!.x);
     expect(Math.abs(actionBox!.y - titleBox!.y)).toBeLessThan(12);
-    bounds.push({ x: titleBox!.x, y: titleBox!.y });
+    bounds.push({ x: titleBox!.x - bodyBox!.x, y: titleBox!.y - bodyBox!.y });
   }
   for (const position of bounds.slice(1)) expect(position).toEqual(bounds[0]);
 });

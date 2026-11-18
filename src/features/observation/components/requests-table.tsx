@@ -1,5 +1,5 @@
 import { useAgentDirectory } from "@/shared/hooks/use-agent-directory";
-import { Button } from "@/components/ui/button";
+import { SegmentedBar } from "@/components/ui/chart-primitives";
 import { Badge } from "@/components/ui/badge";
 import { compactNumber } from "@/shared/lib/format";
 import {
@@ -20,10 +20,13 @@ import {
 } from "../request-display";
 import type { RequestRecord } from "../request-types";
 
+const defaultHref = (id: string) => `#/requests/${encodeURIComponent(id)}`;
+
 export function RequestsTable({
   rows,
   nativeView = false,
   onOpen,
+  requestHref = defaultHref,
   onSort,
   sort = "time",
   descending = true,
@@ -31,6 +34,7 @@ export function RequestsTable({
   rows: RequestRecord[];
   nativeView?: boolean;
   onOpen?: (id: string) => void;
+  requestHref?: (id: string) => string;
   onSort?: (sort: string, descending: boolean) => void;
   sort?: string;
   descending?: boolean;
@@ -50,9 +54,23 @@ export function RequestsTable({
         ),
         enableHiding: false,
         cell: ({ row }) => (
-          <span className="whitespace-nowrap text-label">
+          <a
+            href={requestHref(row.original.id)}
+            data-workspace-resource
+            data-request-id={row.original.id}
+            aria-label={`查看请求 ${row.original.id} · ${date(row.original.startedAt)}`}
+            className="whitespace-nowrap text-label font-medium hover:underline"
+            onClick={
+              onOpen
+                ? (event) => {
+                    event.preventDefault();
+                    onOpen(row.original.id);
+                  }
+                : undefined
+            }
+          >
             {date(row.original.startedAt)}
-          </span>
+          </a>
         ),
       },
       {
@@ -159,13 +177,37 @@ export function RequestsTable({
             labels={dataTableControls}
           />
         ),
-        cell: ({ row }) => (
-          <>
-            {["waiting", "streaming"].includes(row.original.status)
-              ? "计时中"
-              : durationLabel(row.original.durationMs)}
-          </>
-        ),
+        cell: ({ row }) => {
+          const { durationMs, ttftMs, status } = row.original;
+          return (
+            <div className="min-w-16 space-y-1 text-label">
+              <span>
+                {["waiting", "streaming"].includes(status)
+                  ? "计时中"
+                  : durationLabel(durationMs)}
+              </span>
+              {durationMs != null &&
+                ttftMs != null &&
+                durationMs > 0 &&
+                ttftMs <= durationMs && (
+                  <SegmentedBar
+                    mode="distribution"
+                    total={durationMs}
+                    valueText="首字等待与传输耗时"
+                    className="h-1.5"
+                    segments={[
+                      { id: "waiting", label: "等待", value: ttftMs },
+                      {
+                        id: "stream",
+                        label: "传输",
+                        value: durationMs - ttftMs,
+                      },
+                    ]}
+                  />
+                )}
+            </div>
+          );
+        },
       },
       {
         id: "tokens",
@@ -241,28 +283,8 @@ export function RequestsTable({
           </span>
         ),
       },
-      {
-        id: "details",
-        header: "详情",
-        enableSorting: false,
-        enableHiding: false,
-        cell: ({ row }) => (
-          <Button
-            size="sm"
-            variant="ghost"
-            data-request-id={row.original.id}
-            onClick={() =>
-              onOpen
-                ? onOpen(row.original.id)
-                : (window.location.hash = `/requests/${encodeURIComponent(row.original.id)}`)
-            }
-          >
-            查看详情
-          </Button>
-        ),
-      },
     ],
-    [onOpen, nativeView, agentNames],
+    [onOpen, requestHref, nativeView, agentNames],
   );
   const sorting: SortingState = useMemo(
     () => [{ id: sort, desc: descending }],
@@ -309,6 +331,11 @@ export function RequestsTable({
         role="region"
         aria-label={nativeView ? "原生响应" : "请求"}
         showPagination={false}
+        onRowActivate={(row) =>
+          onOpen
+            ? onOpen(row.original.id)
+            : (window.location.hash = requestHref(row.original.id))
+        }
         emptyMessage={nativeView ? "暂无匹配原生响应" : "暂无匹配请求"}
       />
     </section>

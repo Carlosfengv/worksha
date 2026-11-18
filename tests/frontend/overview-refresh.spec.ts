@@ -179,7 +179,7 @@ test("changing analysis controls keeps activity and charts mounted until the mat
   });
   await page.getByRole("tab", { name: "Token 用量", exact: true }).click();
   const analysis = page.getByRole("region", {
-    name: "调用趋势与占比",
+    name: /模型调用趋势$/,
     exact: true,
   });
   await expect(analysis).toHaveAttribute("aria-busy", "true");
@@ -192,7 +192,7 @@ test("changing analysis controls keeps activity and charts mounted until the mat
     timeout: 6000,
   });
   await expect(
-    analysis.getByRole("region", { name: "Agent占比 · Token 用量" }),
+    analysis.getByRole("region", { name: "模型占比 · Token 用量" }),
   ).toBeVisible();
 });
 
@@ -276,11 +276,11 @@ test("a failed analysis change keeps the prior scope labeled and recovery publis
   await page.goto(url);
   await openAgentHistory(page);
   const analysis = page.getByRole("region", {
-    name: "调用趋势与占比",
+    name: /模型调用趋势$/,
     exact: true,
   });
   await expect(
-    analysis.getByRole("region", { name: "Agent占比 · 调用次数" }),
+    analysis.getByRole("region", { name: "模型占比 · 调用次数" }),
   ).toBeVisible();
   await page.evaluate(() => {
     window.activityCase = "error";
@@ -288,14 +288,14 @@ test("a failed analysis change keeps the prior scope labeled and recovery publis
   await page.getByRole("tab", { name: "Token 用量", exact: true }).click();
   await expect(analysis).toContainText("统计更新失败，保留上次结果");
   await expect(
-    analysis.getByRole("region", { name: "Agent占比 · 调用次数" }),
+    analysis.getByRole("region", { name: "模型占比 · 调用次数" }),
   ).toBeVisible();
   await page.evaluate(() => {
     window.activityCase = "parallel";
   });
   await expect(analysis).toHaveAttribute("aria-busy", "false");
   await expect(
-    analysis.getByRole("region", { name: "Agent占比 · Token 用量" }),
+    analysis.getByRole("region", { name: "模型占比 · Token 用量" }),
   ).toBeVisible();
 });
 
@@ -342,6 +342,6 @@ test("a slow previous Agent response cannot replace the selected Agent or its an
   await expect(page.getByRole("article")).toHaveCount(1);
   await expect(card).toContainText("3 个活动进行中");
   await expect(
-    page.getByRole("region", { name: "调用趋势与占比", exact: true }),
+    page.getByRole("region", { name: /模型调用趋势$/ }),
   ).toHaveAttribute("aria-busy", "false");
 });

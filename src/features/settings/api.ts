@@ -125,12 +125,17 @@ export const settingsApi = {
       request,
     );
   },
-  saveGatewayClientOperation: async (input: PendingGatewayOperation) => {
+  saveGatewayClientOperation: async (
+    input: PendingGatewayOperation,
+    delivery?: "receipt",
+  ) => {
     input = freezeGatewayPending(input);
     if (input.request.action.kind !== "create")
       throw Error("此入口仅用于保存原客户端连接文件。");
     return gatewayOperationFileResult(
-      await command("save_gateway_client_operation", { input }),
+      await command("save_gateway_client_operation", {
+        input: delivery ? { ...input, delivery } : input,
+      }),
       input,
     );
   },

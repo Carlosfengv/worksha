@@ -90,15 +90,17 @@ test("real workspace catches a page render crash and keeps the original navigati
   await page.goto("/tests/frontend/render-boundary.html?app#/settings");
   await expect(page.getByRole("region", { name: "页面恢复" })).toBeVisible();
   await expect(
-    page.getByRole("navigation", { name: "主导航", exact: true }),
+    page.getByRole("navigation", { name: "工作区标签", exact: true }),
   ).toBeVisible();
   await page.evaluate(() => {
     window.recoveryFixture.crash = false;
   });
   await page.getByRole("button", { name: "重试页面", exact: true }).click();
-  await expect(page.getByText("设置页面已恢复", { exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "模型供应商", exact: true }).click();
-  await expect(page).toHaveURL(/#\/providers$/);
+  await expect(page.getByRole("main")).toContainText("设置页面已恢复");
+  await page.getByRole("button", { name: "Home", exact: true }).click();
+  await expect(
+    page.getByRole("complementary", { name: "应用导航" }),
+  ).toBeVisible();
   await expect(page.getByRole("region", { name: "页面恢复" })).toHaveCount(0);
 });
 
@@ -111,11 +113,13 @@ test("failed page module download offers a full application reload that fetches 
   await page.goto("/tests/frontend/render-boundary.html?app#/settings");
   await expect(page.getByRole("region", { name: "页面恢复" })).toBeVisible();
   await expect(
-    page.getByRole("navigation", { name: "主导航", exact: true }),
+    page.getByRole("navigation", { name: "工作区标签", exact: true }),
   ).toBeVisible();
   await page.unroute("**/src/features/settings/page.tsx*");
   await page.getByRole("button", { name: "重新加载应用", exact: true }).click();
-  await expect(page.getByText("设置暂不可用", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "系统设置分区", exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("region", { name: "页面恢复" })).toHaveCount(0);
   expect(await page.evaluate(() => window.recoveryFixture.writes)).toBe(0);
 });

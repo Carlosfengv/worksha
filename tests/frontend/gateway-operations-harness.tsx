@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { IconProvider } from "@/lib/icon-context";
@@ -39,6 +39,7 @@ declare global {
       outcome: typeof gatewayFixtureOutcome;
       publish: (storeId: string, root?: boolean) => Promise<void>;
       available: (value: boolean) => void;
+      setVisible: (value: boolean) => void;
       failStatus: boolean;
       legacy: boolean;
       rawStatus?: unknown;
@@ -62,6 +63,7 @@ const fixture: Window["gatewayOps"] = {
   outcome: gatewayFixtureOutcome,
   publish: async () => {},
   available: () => {},
+  setVisible: () => {},
   failStatus: false,
   legacy: false,
   rawStatus: undefined as unknown,
@@ -146,7 +148,14 @@ function Harness() {
   const [rootScope, setRootScope] = useState(gatewayStoreA),
     [available, setAvailable] = useState(true),
     [visible, setVisible] = useState(true);
+  const [selectedId, setSelectedId] = useState<string>();
+  useEffect(() => {
+    const select = () => setSelectedId(location.hash.split("/")[2]);
+    window.addEventListener("hashchange", select);
+    return () => window.removeEventListener("hashchange", select);
+  }, []);
   fixture.available = setAvailable;
+  fixture.setVisible = setVisible;
   fixture.publish = async (storeId, root = true) => {
     status = gatewayFixtureStatus(storeId);
     if (root) setRootScope(storeId);
@@ -158,6 +167,7 @@ function Harness() {
         <button onClick={() => setVisible((v) => !v)}>切换客户端挂载</button>
         {visible && (
           <GatewayPanel
+            selectedId={selectedId}
             storeId={available ? rootScope : undefined}
             providers={
               available

@@ -31,6 +31,24 @@ fn worker_error(error: crate::blocking::Error) -> (StatusCode, Json<serde_json::
     settings_error(SettingsError { code, message })
 }
 
+fn database_bytes(path: &std::path::Path) -> Option<u64> {
+    let main = std::fs::symlink_metadata(path).ok()?;
+    if !main.is_file() {
+        return None;
+    }
+    ["-wal", "-shm"]
+        .into_iter()
+        .try_fold(main.len(), |total, suffix| {
+            let mut sidecar = path.as_os_str().to_os_string();
+            sidecar.push(suffix);
+            match std::fs::symlink_metadata(sidecar) {
+                Ok(metadata) if metadata.is_file() => total.checked_add(metadata.len()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Some(total),
+                _ => None,
+            }
+        })
+}
+
 pub(crate) async fn snapshot(State(state): State<AppState>) -> ApiResult {
     crate::blocking::run(move || {
         let store = state
@@ -40,6 +58,15 @@ pub(crate) async fn snapshot(State(state): State<AppState>) -> ApiResult {
         let mut value = serde_json::to_value(store.snapshot().map_err(error)?)
             .map_err(|_| error("读取失败".into()))?;
         drop(store);
+        if let Some(database) = value["databasePath"].as_str().map(std::path::PathBuf::from)
+            && let Some(directory) = database.parent()
+        {
+            let observations = directory.join("observation").join("observations.sqlite3");
+            value["sqliteStorage"] = serde_json::json!({
+                "configuration": database_bytes(&database),
+                "observation": database_bytes(&observations),
+            });
+        }
         let (plugin_agents, directory_problem) = crate::domain::plugin_agents(&state);
         if let Some(agents) = value["agents"].as_array_mut() {
             agents.extend(plugin_agents);

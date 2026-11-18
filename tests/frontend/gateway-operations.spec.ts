@@ -26,6 +26,12 @@ const original: PendingGatewayOperation = {
 };
 const createButton = (page: Page) =>
   page.getByRole("button", { name: "创建并保存连接文件", exact: true });
+const issueButton = (page: Page) =>
+  page.getByRole("button", { name: /签发客户端密钥/ });
+const issueDialog = (page: Page) =>
+  page.getByRole("dialog", { name: "签发客户端密钥", exact: true });
+const closeIssue = (page: Page) =>
+  issueDialog(page).getByRole("button", { name: "返回密钥列表" }).click();
 const region = (page: Page) =>
   page.getByRole("region", { name: "保留的客户端操作", exact: true });
 const records = (page: Page) => page.evaluate(() => window.gatewayOps.read());
@@ -34,13 +40,18 @@ async function open(page: Page) {
   await expect(page.getByText("Laptop A", { exact: true })).toBeVisible();
 }
 async function fill(page: Page, name = "新客户端") {
+  if (!(await issueDialog(page).isVisible())) await issueButton(page).click();
   await expect(page.getByLabel("客户端名称", { exact: true })).toBeEnabled();
   await page.getByLabel("客户端名称", { exact: true }).fill(name);
-  await page.getByRole("combobox", { name: "Provider", exact: true }).click();
+  await page
+    .getByRole("combobox", { name: "Provider", exact: true })
+    .fill("Fixture");
   await page
     .getByRole("option", { name: "Fixture provider", exact: true })
     .click();
-  await page.getByRole("combobox", { name: "可调用模型", exact: true }).click();
+  await page
+    .getByRole("combobox", { name: "可调用模型", exact: true })
+    .fill("fixture");
   await page
     .getByRole("option", { name: "fixture-model", exact: true })
     .click();
@@ -120,6 +131,7 @@ test("original request and compensation identity are durably whitelisted before 
   await saveReply(page, "saved");
   await expect.poll(async () => (await records(page)).requests.length).toBe(0);
   await expect(page.getByText(/连接文件已保存为 client.json/)).toBeVisible();
+  await issueButton(page).click();
   await expect(page.getByLabel("客户端名称", { exact: true })).toHaveValue("");
 });
 test("unknown save survives unmount and reload with no automatic operation queries or writes", async ({
@@ -130,6 +142,7 @@ test("unknown save survives unmount and reload with no automatic operation queri
   await expect(
     page.getByRole("alert").filter({ hasText: "transport_timeout" }),
   ).toBeVisible();
+  await closeIssue(page);
   await page.getByRole("button", { name: "切换客户端挂载" }).click();
   await page.getByRole("button", { name: "切换客户端挂载" }).click();
   expect((await records(page)).requests).toEqual([row]);
@@ -180,6 +193,7 @@ test("fresh cancellation releases its unused identity without issuing another op
   await start(page);
   await saveReply(page, "cancelled");
   await expect.poll(async () => (await records(page)).requests.length).toBe(0);
+  await closeIssue(page);
   await expect(page.getByText("已取消本次选择，未创建客户端。")).toBeVisible();
   expect(
     await page.evaluate(() => [
@@ -195,6 +209,7 @@ test("definite rejection permits fresh draft correction while an earlier unknown
   await saveReply(page, "notIssued");
   await expect.poll(async () => (await records(page)).requests.length).toBe(0);
   await expect(page.getByLabel("客户端名称", { exact: true })).toBeEnabled();
+  await closeIssue(page);
   await seed(page);
   await region(page).getByRole("button", { name: "重试原客户端操作" }).click();
   await expect
@@ -209,6 +224,7 @@ test("confirmed issuance is file-unknown and requires explicit file acknowledgem
 }) => {
   const row = await start(page);
   await saveReply(page, "issued");
+  await closeIssue(page);
   await expect(
     region(page).getByText("签发已确认，原连接文件待核对。"),
   ).toBeVisible();
@@ -342,7 +358,8 @@ test("late saved replies after unmount do not clear a new database draft or eras
   page,
 }) => {
   const row = await start(page);
-  await page.getByRole("button", { name: "切换客户端挂载" }).click();
+  await page.evaluate(() => window.gatewayOps.setVisible(false));
+  await expect(issueDialog(page)).toHaveCount(0);
   await page.evaluate((store) => window.gatewayOps.publish(store), B);
   await page.getByRole("button", { name: "切换客户端挂载" }).click();
   await fill(page, "新库保留");
@@ -350,6 +367,7 @@ test("late saved replies after unmount do not clear a new database draft or eras
   await expect(page.getByLabel("客户端名称", { exact: true })).toHaveValue(
     "新库保留",
   );
+  await closeIssue(page);
   expect((await records(page)).requests).toEqual([row]);
   await expect(
     region(page).getByRole("button", { name: "重试原客户端操作" }),
@@ -417,7 +435,7 @@ test("storage unavailable and malformed records disable new operations without d
     },
     { key: prefix + original.request.operationId, bad },
   );
-  await expect(createButton(page)).toBeDisabled();
+  await expect(issueButton(page)).toBeDisabled();
   expect(
     await page.evaluate(
       (key) => localStorage.getItem(key),
@@ -466,10 +484,11 @@ test("old protocol remains readable but never falls back to unscoped mutation", 
   });
   await page.getByRole("button", { name: "刷新状态" }).click();
   await expect(page.getByText(/客户端来源或回执协议尚未确认/)).toBeVisible();
+  await expect(issueButton(page)).toBeDisabled();
+  await page.getByRole("link", { name: "Laptop A", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "撤销密钥", exact: true }),
+    page.getByRole("button", { name: "撤销此密钥", exact: true }),
   ).toBeDisabled();
-  await expect(createButton(page)).toBeDisabled();
   expect(
     await page.evaluate(
       () =>
@@ -498,7 +517,7 @@ test("all 16 recovery rows remain visible and preserve keyboard focus in a narro
   }, original);
   const checks = region(page).getByRole("button", { name: "核查原客户端操作" });
   await expect(checks).toHaveCount(16);
-  await expect(createButton(page)).toBeDisabled();
+  await expect(issueButton(page)).toBeDisabled();
   await checks.last().focus();
   await page.evaluate(() =>
     window.dispatchEvent(new Event("gateway-operations-changed")),
@@ -516,7 +535,8 @@ test("revocation dialog and durable intent remain bound to their original databa
   page,
 }) => {
   await open(page);
-  await page.getByRole("button", { name: "撤销密钥", exact: true }).click();
+  await page.getByRole("link", { name: "Laptop A", exact: true }).click();
+  await page.getByRole("button", { name: "撤销此密钥", exact: true }).click();
   expect(await page.evaluate(() => window.gatewayOps.revokes.length)).toBe(0);
   expect((await records(page)).requests).toHaveLength(0);
   await page.evaluate((store) => window.gatewayOps.publish(store), B);

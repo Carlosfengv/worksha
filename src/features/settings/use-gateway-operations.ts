@@ -118,7 +118,11 @@ export function useGatewayOperations(
       "原后台签发已确认，连接文件状态仍待核对；没有重新签发密钥。请核对原文件或明确撤销原客户端。",
     );
   }
-  async function send(row: PendingGatewayOperation, fresh = false) {
+  async function send(
+    row: PendingGatewayOperation,
+    fresh = false,
+    delivery?: "receipt",
+  ) {
     requireGatewayRecovery(row);
     if (current.current !== row.request.storeId)
       throw Error("请连接并确认原后台后重试，未改用当前来源或新编号。");
@@ -134,7 +138,7 @@ export function useGatewayOperations(
       );
       return false;
     }
-    const result = await settingsApi.saveGatewayClientOperation(row);
+    const result = await settingsApi.saveGatewayClientOperation(row, delivery);
     if (!mounted.current) return false;
     if (result.status === "cancelled") {
       if (fresh) finish(row, "已取消本次选择，未创建客户端。");
@@ -146,6 +150,9 @@ export function useGatewayOperations(
       if (fresh) finish(row, `本次未新增客户端。${result.reason}`);
       else
         setNotice(`本次尝试未新增客户端；原操作仍保留待核查。${result.reason}`);
+    } else if (result.status === "receipt") {
+      finish(row, "原后台客户端已创建。");
+      return result;
     } else if (result.status === "saved") {
       finish(row, `原后台客户端已创建，连接文件已保存为 ${result.fileName}。`);
       return true;
@@ -154,7 +161,11 @@ export function useGatewayOperations(
     } else keepIssued(row, result.outcome);
     return false;
   }
-  const startCreate = (draft: GatewayClientDraft, originalStoreId: string) =>
+  const startCreate = (
+    draft: GatewayClientDraft,
+    originalStoreId: string,
+    delivery?: "receipt",
+  ) =>
     perform(async () => {
       if (current.current !== originalStoreId)
         throw Error("客户端草稿不属于当前已确认后台，未发送签发。");
@@ -167,7 +178,7 @@ export function useGatewayOperations(
         compensationOperationId: crypto.randomUUID(),
       });
       rememberGatewayOperation(row);
-      return send(row, true);
+      return send(row, true, delivery);
     });
   const startRevoke = (clientId: string, originalStoreId: string) =>
     perform(async () => {

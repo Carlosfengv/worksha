@@ -950,6 +950,25 @@ pub(crate) async fn probe_detailed_with(
     p: &Provider,
     secret: Option<Zeroizing<Vec<u8>>>,
 ) -> Result<String, ConfigError> {
+    probe_request(adapters, client, p, secret, true).await
+}
+
+pub(crate) async fn probe_short_with(
+    adapters: &crate::provider_models::adapters::Adapters,
+    client: &reqwest::Client,
+    provider: &Provider,
+    secret: Option<Zeroizing<Vec<u8>>>,
+) -> Result<String, ConfigError> {
+    probe_request(adapters, client, provider, secret, false).await
+}
+
+async fn probe_request(
+    adapters: &crate::provider_models::adapters::Adapters,
+    client: &reqwest::Client,
+    p: &Provider,
+    secret: Option<Zeroizing<Vec<u8>>>,
+    allow_intrinsic_reasoning: bool,
+) -> Result<String, ConfigError> {
     providers::subscription::validate_key(p, secret.as_deref().map(Vec::as_slice))?;
     let wire = crate::gateway::capabilities::builtin()
         .resolve(&p.protocol)
@@ -964,7 +983,8 @@ pub(crate) async fn probe_detailed_with(
         ));
     }
     let mut body = wire.verification_body(&p.model);
-    let intrinsic_reasoning = providers::subscription::intrinsic_reasoning(p);
+    let intrinsic_reasoning =
+        allow_intrinsic_reasoning && providers::subscription::intrinsic_reasoning(p);
     if intrinsic_reasoning {
         body[if p.protocol == "responses" {
             "max_output_tokens"

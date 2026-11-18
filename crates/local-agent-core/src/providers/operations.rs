@@ -30,6 +30,7 @@ pub struct Protocol {
 pub enum Kind {
     Save,
     Connect,
+    Delete,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -175,14 +176,14 @@ fn load(db: &Connection, id: &str, store_id: &str) -> Result<Option<Operation>, 
                     .ok_or_else(|| invalid_record("provider"))?;
                 if p.id != operation.request.provider.id
                     || p.revision != operation.request.provider.revision + 1
-                    || !p.configured
+                    || p.configured == (operation.request.kind == Kind::Delete)
                     || p.models.len() > 2000
                     || operation.error.is_some()
                 {
                     return Err(invalid_record("committed"));
                 }
                 match (operation.request.kind, &operation.verification) {
-                    (Kind::Save, None) => (),
+                    (Kind::Save | Kind::Delete, None) => (),
                     (Kind::Connect, Some(v))
                         if v.provider_id == p.id
                             && v.model.as_ref() == Some(&p.model)
@@ -402,8 +403,14 @@ impl Store {
             verification: None,
             error: None,
         };
-        if request.kind == Kind::Save {
-            operation.provider = Some(self.write_provider(request.provider.clone())?);
+        if request.kind != Kind::Connect {
+            operation.provider = Some(if request.kind == Kind::Delete {
+                self.remove_provider_connection(
+                    current.ok_or_else(|| invalid_record("provider missing"))?,
+                )?
+            } else {
+                self.write_provider(request.provider.clone())?
+            });
             operation.status = Status::Committed;
         }
         save(&tx, &operation, true)?;

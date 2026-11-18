@@ -16,15 +16,16 @@ import { useEditorCatalogCache } from "./use-editor-catalog-cache";
 import { useProviderPresets } from "./use-provider-presets";
 import type { PresetAdvice } from "../preset-advice";
 
-type Intent = "models" | "save";
+type Intent = "models" | "probe" | "save";
 type Preparation =
   | { kind: "idle" }
-  | { kind: "reading" | "preparing-save"; source: CatalogContext };
+  | { kind: "reading" | "probing" | "preparing-save"; source: CatalogContext };
 export interface ProviderEditorProps {
   provider: Provider;
   storeId?: string;
   onClose: () => void;
-  onSaved: () => Promise<void>;
+  onSaved: (provider: Provider, createDefaultService: boolean) => Promise<void>;
+  canCreateDefaultService?: boolean;
 }
 
 export function useProviderEditor({
@@ -58,6 +59,10 @@ export function useProviderEditor({
     catalogSource.generation,
   );
   const [modelError, setModelError] = useState<string | null>(null);
+  const [probeResult, setProbeResult] = useState<{
+    source: CatalogContext;
+    target: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewError, setViewError] = useState<string | null>(null);
   const [committed, setCommitted] = useState<Provider | null>(null);
@@ -85,10 +90,13 @@ export function useProviderEditor({
   const current = (source: CatalogContext | null) =>
     context.isCurrent(source) && source?.storeId === originStoreId;
   const sourceUnavailable = !originStoreId || originStoreId !== storeId;
-  const reloadSaved = async () => {
+  const [createDefaultService, setCreateDefaultService] = useState(
+    !provider.configured,
+  );
+  const reloadSaved = async (saved: Provider) => {
     const source = context.capture();
     try {
-      await onSaved();
+      await onSaved(saved, createDefaultService && !provider.configured);
     } catch (reason) {
       if (current(source))
         setViewError(`保存已确认，列表暂未刷新：${message(reason)}`);
@@ -103,7 +111,7 @@ export function useProviderEditor({
       credentials.confirmBound(saved.credentialRef);
       dispatch({ type: "provider", value: saved });
       setCommitted(saved);
-      void reloadSaved();
+      void reloadSaved(saved);
     },
     storeId ?? null,
   );
@@ -126,6 +134,7 @@ export function useProviderEditor({
   const modelOptions = modelOptionsFor(availableCatalog);
   const fetching =
     preparation.kind === "reading" && current(preparation.source);
+  const probing = preparation.kind === "probing" && current(preparation.source);
   const saving =
     write.busy ||
     (preparation.kind === "preparing-save" && current(preparation.source));
@@ -177,19 +186,24 @@ export function useProviderEditor({
       });
     return current(source);
   };
+  const prepareCredential = async <T extends Provider>(
+    source: CatalogContext,
+    pending: T,
+  ) => {
+    if (!keyInput.current?.value) return pending;
+    const saved = await credentials.create(form.label, takeSecret());
+    const prepared = {
+      ...pending,
+      credentialRef: saved.credentialRef,
+      credentialLabel: saved.credentialLabel,
+      modelCatalog: null,
+    };
+    if (current(source)) dispatch({ type: "provider", value: prepared });
+    return prepared;
+  };
   const readModels = async (source: CatalogContext) => {
-    let pending = draft;
-    if (keyInput.current?.value) {
-      const saved = await credentials.create(form.label, takeSecret());
-      if (!current(source)) return;
-      pending = {
-        ...pending,
-        credentialRef: saved.credentialRef,
-        credentialLabel: saved.credentialLabel,
-        modelCatalog: null,
-      };
-      dispatch({ type: "provider", value: pending });
-    }
+    const pending = await prepareCredential(source, draft);
+    if (!current(source)) return;
     await providersApi.writeProtocol(originStoreId);
     if (!current(source)) return;
     const sourceGeneration = catalogSource.capture();
@@ -244,7 +258,11 @@ export function useProviderEditor({
               ? (draft.disabledModels ?? []).filter((id) => id !== draft.model)
               : draft.disabledModels,
           credentialLabel: draft.credentialRef ? form.label : null,
-          models: [...modelOptionsFor(catalog).keys()],
+          models: [...modelOptionsFor(catalog).keys()].filter(
+            (model) =>
+              model === draft.model ||
+              !form.excludedCatalogModels.includes(model),
+          ),
           modelCatalog: providerCatalogSource(
             {
               ...draft,
@@ -258,18 +276,7 @@ export function useProviderEditor({
     await write.start(
       automatic ? "connect" : "save",
       pending,
-      async () => {
-        if (!keyInput.current?.value) return pending;
-        const saved = await credentials.create(form.label, takeSecret());
-        const prepared = {
-          ...pending,
-          credentialRef: saved.credentialRef,
-          credentialLabel: saved.credentialLabel,
-          modelCatalog: null,
-        };
-        if (current(source)) dispatch({ type: "provider", value: prepared });
-        return prepared;
-      },
+      () => prepareCredential(source, pending),
       async (prepared) => {
         if (!current(source) || !catalogSource.current(sourceGeneration))
           throw Error("目录或后台已变化，本次未提交。");
@@ -284,7 +291,12 @@ export function useProviderEditor({
     const token = Symbol();
     working.current = { token, source };
     setPreparation({
-      kind: intent === "models" ? "reading" : "preparing-save",
+      kind:
+        intent === "models"
+          ? "reading"
+          : intent === "probe"
+            ? "probing"
+            : "preparing-save",
       source,
     });
     if (intent === "models") setModelError(null);
@@ -294,16 +306,30 @@ export function useProviderEditor({
     }
     try {
       if (
-        intent === "models" &&
+        intent !== "save" &&
         !keyInput.current?.value &&
         !draft.credentialRef &&
         !isLoopbackEndpoint(draft.endpoint)
       )
-        throw Error("请先填写此供应商的 API Key，再获取模型。");
+        throw Error(
+          intent === "models"
+            ? "请先填写此供应商的 API Key，再获取模型。"
+            : "请先填写此供应商的 API Key，再验证连接。",
+        );
       await providersApi.writeProtocol(originStoreId);
       if (!current(source) || !(await readyForKey(source))) return;
       if (intent === "models") await readModels(source);
-      else {
+      else if (intent === "probe") {
+        setProbeResult(null);
+        const pending = await prepareCredential(source, draft);
+        if (!current(source)) return;
+        await providersApi.probeDraft(source.storeId, pending);
+        if (current(source))
+          setProbeResult({
+            source,
+            target: JSON.stringify([catalogKey(pending), pending.model.trim()]),
+          });
+      } else {
         setPreparation({ kind: "idle" });
         await savePrepared(source);
       }
@@ -345,8 +371,10 @@ export function useProviderEditor({
     dispatch({ type: "label", value: receipt.credentialLabel });
     setError(null);
   };
-  const busy = saving || fetching || credentials.busy;
+  const busy = saving || fetching || probing || credentials.busy;
   return {
+    createDefaultService,
+    setCreateDefaultService,
     form,
     dispatch,
     catalogSource,
@@ -359,6 +387,12 @@ export function useProviderEditor({
     activeCatalog,
     modelOptions,
     modelError: modelError ?? catalogCache.error,
+    probeVerified:
+      !hasNewKey &&
+      !!probeResult &&
+      current(probeResult.source) &&
+      probeResult.target ===
+        JSON.stringify([catalogKey(draft), draft.model.trim()]),
     committed,
     viewError,
     showRecovery,
@@ -371,6 +405,7 @@ export function useProviderEditor({
         ["needs_model", "connection_unknown"].includes(write.state.code ?? "")),
     flags: {
       fetching,
+      probing,
       saving,
       busy,
       sourceUnavailable,
@@ -405,6 +440,7 @@ export function useProviderEditor({
     },
     actions: {
       fetchModels: () => run("models"),
+      probe: () => run("probe"),
       save: () => run("save"),
       takeSecret,
       adoptCredential,

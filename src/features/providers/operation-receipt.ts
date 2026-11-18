@@ -16,7 +16,7 @@ export interface ProviderWriteRequest {
   storeId: string;
   operationId: string;
   expectedSequence: number;
-  kind: "save" | "connect";
+  kind: "save" | "connect" | "delete";
   provider: Provider;
 }
 export interface ProviderOperation {
@@ -174,7 +174,9 @@ export function storedProviderRequest(
     !providerOperationId(value.operationId) ||
     !integer(value.expectedSequence) ||
     value.expectedSequence >= Number.MAX_SAFE_INTEGER ||
-    (value.kind !== "save" && value.kind !== "connect")
+    (value.kind !== "save" &&
+      value.kind !== "connect" &&
+      value.kind !== "delete")
   )
     return null;
   const p = validatedProviderMetadata(value.provider);
@@ -288,14 +290,14 @@ export function providerOperation(
   if (value.status === "committed") {
     if (
       !p ||
-      !p.configured ||
+      p.configured === (request.kind === "delete") ||
       !p.name ||
       p.id !== request.provider.id ||
       p.revision !== request.provider.revision + 1 ||
       value.error !== null
     )
       throw invalid();
-    if (request.kind === "save") {
+    if (request.kind !== "connect") {
       if (value.verification !== null) throw invalid();
     } else {
       const v = value.verification;

@@ -104,6 +104,20 @@ impl LanGateway {
             None => Ok(None),
         }
     }
+    pub(crate) fn provider_references(
+        &self,
+        store_id: &str,
+        provider_id: &str,
+    ) -> Result<Vec<String>, local_agent_core::providers::ConfigError> {
+        let registry = self.clients.lock().map_err(|_| registry::invalid())?;
+        registry.ensure_store(store_id)?;
+        Ok(registry
+            .entries
+            .iter()
+            .filter(|entry| entry.client.enabled && entry.client.provider_id == provider_id)
+            .map(|entry| entry.client.name.clone())
+            .collect())
+    }
     pub(crate) fn ensure_store(&self, store_id: &str) -> Result<(), String> {
         self.clients
             .lock()
@@ -133,26 +147,41 @@ fn validate_client(
 }
 pub async fn status(State(state): State<AppState>) -> ApiResult {
     crate::blocking::run(move || {
-    let lan = &state.gateway.lan;
-    let store_id = state.store.lock().map_err(|_| error("数据库身份暂不可读".into()))?
-        .database_id().map_err(crate::providers::error)?;
-    let clients = lan
-        .clients
-        .lock()
-        .map_err(|_| error("客户端记录暂不可用".into()))?;
-    clients.ensure_store(&store_id).map_err(crate::providers::error)?;
-    json_value(serde_json::json!({
-        "listen": lan.config.as_ref().map(|c| c.listen.to_string()),
-        "concurrency": lan.config.as_ref().map(|c| c.concurrency),
-        "active": lan.config.as_ref().map(|c| c.concurrency - lan.capacity.available_permits()),
-        "writeProtocol": {"version":1,"storeId":store_id,"maxClients":128,"secretReplay":false},
-        "clients": clients.entries.iter().map(|entry| {
+        let lan = &state.gateway.lan;
+        let store_id = state
+            .store
+            .lock()
+            .map_err(|_| error("数据库身份暂不可读".into()))?
+            .database_id()
+            .map_err(crate::providers::error)?;
+        let clients = {
+            let registry = lan
+                .clients
+                .lock()
+                .map_err(|_| error("客户端记录暂不可用".into()))?;
+            registry
+                .ensure_store(&store_id)
+                .map_err(crate::providers::error)?;
+            registry.entries.iter().map(|entry| {
             let c = &entry.client;
             serde_json::json!({"id":c.id,"name":c.name,"agent":c.agent,"providerId":c.provider_id,
                 "models":c.models,"enabled":c.enabled,"concurrency":c.concurrency,
                 "active":c.concurrency-entry.capacity.available_permits(),"createdAt":c.created_at})
         }).collect::<Vec<_>>()
-    }))
+        };
+        let client_usage = if clients.is_empty() {
+            None
+        } else {
+            state.observation.gateway_client_usage().ok()
+        };
+        json_value(serde_json::json!({
+            "listen": lan.config.as_ref().map(|c| c.listen.to_string()),
+            "concurrency": lan.config.as_ref().map(|c| c.concurrency),
+            "active": lan.config.as_ref().map(|c| c.concurrency - lan.capacity.available_permits()),
+            "writeProtocol": {"version":1,"storeId":store_id,"maxClients":128,"secretReplay":false},
+            "clients": clients,
+            "clientUsage": client_usage,
+        }))
     })
     .await
     .map_err(|e| crate::providers::error(crate::blocking::config_error(e)))?
@@ -173,10 +202,11 @@ pub async fn create(State(state): State<AppState>, Json(input): Json<CreateClien
         if state.gateway.lan.config.is_none() {
             return Err(error("此服务未配置局域网入口".into()));
         }
-        let provider = state
+        let store = state
             .store
             .lock()
-            .map_err(|_| error("Provider 暂不可用".into()))?
+            .map_err(|_| error("Provider 暂不可用".into()))?;
+        let provider = store
             .providers()
             .map_err(error)?
             .into_iter()

@@ -2163,3 +2163,61 @@ fn sql_associations_fees_revisions_and_revocation_match_canonical_global_evidenc
         assert_close(&got, &expected, "source report");
     }
 }
+
+#[test]
+fn lan_client_filter_uses_exact_identity_and_exports_persisted_facts() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = ObservationStore::open(dir.path()).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let lan = ModelObservation {
+        client: Some(crate::observation::GatewayClient {
+            id: id.clone(),
+            name: "同名".into(),
+            peer: "10.0.0.2".into(),
+        }),
+        ..row(1)
+    };
+    let mut local = row(2);
+    local.id = format!("same-text-{id}");
+    let mut other = lan.clone();
+    other.id = "other-client-request".into();
+    other.client.as_mut().unwrap().id = uuid::Uuid::new_v4().to_string();
+    store.save_batch(&[lan, local, other]).unwrap();
+
+    let at = DateTime::parse_from_rfc3339("2026-10-22T00:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    let usage = store.gateway_client_usage(at).unwrap();
+    assert_eq!(usage[&id].requests_7d, 1);
+    assert_eq!(usage[&id].usage_7d.total_tokens, Some(110));
+    let mut history = History::open(dir.path()).unwrap();
+    history.refresh(&[]).unwrap();
+    let summary =
+        |history: &mut History, query| history.request_page(&query, at, json!({}), None).unwrap();
+    let exact = summary(
+        &mut history,
+        requests::Query {
+            client: Some(id.clone()),
+            ..Default::default()
+        },
+    );
+    assert_eq!(exact["total"], 1);
+    assert_eq!(exact["items"][0]["client"]["id"], id);
+    let csv = history
+        .frozen_csv(exact["snapshot"].as_str().unwrap(), at)
+        .unwrap();
+    assert_eq!(csv["count"], 1);
+    let count = |history: &mut History, scope: &str| {
+        summary(
+            history,
+            requests::Query {
+                client_scope: Some(scope.into()),
+                ..Default::default()
+            },
+        )["total"]
+            .as_u64()
+            .unwrap()
+    };
+    assert_eq!(count(&mut history, "lan"), 2);
+    assert_eq!(count(&mut history, "local"), 1);
+}

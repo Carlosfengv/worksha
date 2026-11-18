@@ -148,6 +148,7 @@ pub fn run() {
             commands::providers::get_provider_credential_operation,
             commands::providers::cancel_provider_credential_operation,
             commands::providers::verify_provider,
+            commands::providers::probe_provider_draft,
             commands::providers::connect_provider,
             commands::providers::get_provider_write_protocol,
             commands::providers::commit_provider_operation,

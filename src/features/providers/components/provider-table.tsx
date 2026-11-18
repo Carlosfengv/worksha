@@ -18,6 +18,10 @@ import type {
   ProviderUsageTotals,
 } from "@/features/providers/types";
 import { providerCosts, providerTokens } from "../usage-display";
+import {
+  providerHistoryHref,
+  type UsageFilters,
+} from "./provider-usage-filters";
 import { date } from "@/features/sessions/display";
 import {
   dataTableControls,
@@ -34,6 +38,7 @@ type ProviderRow = {
   defaultEnabled: boolean;
   v: ProviderStatus["verifications"][number] | undefined;
   usage: ProviderUsageTotals | undefined;
+  href: string;
 };
 const providerColumns: ColumnDef<ProviderRow>[] = [
   {
@@ -51,9 +56,12 @@ const providerColumns: ColumnDef<ProviderRow>[] = [
       return (
         <>
           <Button variant="link" size="sm" asChild>
-            <a href={`#/providers/${encodeURIComponent(p.id)}`}>
+            <a
+              href={row.original.href}
+              data-workspace-resource
+              data-workspace-title={p.name}
+            >
               {p.name}
-              <span className="sr-only">详情</span>
             </a>
           </Button>
           <p
@@ -188,12 +196,14 @@ export function ProviderTable({
   onEdit,
   onVerify,
   usage,
+  usageFilters,
 }: {
   providers: Provider[];
   status: ProviderStatus | null;
   onEdit: (p: Provider) => void;
   onVerify: (p: Provider) => void;
   usage?: ProviderUsage | null;
+  usageFilters?: UsageFilters;
 }) {
   const rows = useMemo(
     () =>
@@ -204,6 +214,10 @@ export function ProviderTable({
         );
         return {
           p,
+          href: providerHistoryHref(
+            p.id,
+            usageFilters ?? { source: "gateway" },
+          ),
           defaultEnabled,
           v,
           onEdit,
@@ -212,7 +226,7 @@ export function ProviderTable({
             ?.totals,
         };
       }),
-    [providers, status, onEdit, onVerify, usage],
+    [providers, status, onEdit, onVerify, usage, usageFilters],
   );
 
   const pagination = useTablePagination(rows.length, 20);

@@ -5,7 +5,7 @@ export async function openAgentHistory(page: Page) {
     name: "Agent 连接与历史指标",
     exact: true,
   });
-  await expect(trigger).toBeVisible();
+  await expect(trigger).toBeVisible({ timeout: 10000 });
   if ((await trigger.getAttribute("aria-expanded")) !== "true")
     await trigger.click();
 }

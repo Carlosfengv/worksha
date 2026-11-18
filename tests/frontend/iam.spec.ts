@@ -26,13 +26,19 @@ test("系统 IAM 按需开启，Owner 分配模型服务后成员可查看创建
   await setup.getByRole("checkbox", { name: "我已保存恢复码" }).click();
   await setup.getByRole("button", { name: "创建并开启" }).click();
   await expect(page.getByRole("heading", { name: "登录账号" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "主导航" })).toHaveCount(0);
+  await expect(
+    page.getByRole("navigation", { name: "工作区标签" }),
+  ).toHaveCount(0);
 
   await page.getByLabel("登录名", { exact: true }).fill("owner");
   await page.getByLabel("密码", { exact: true }).fill("fixture-password");
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await expect(toggle).toBeChecked();
   await expect(toggle).toBeDisabled();
+  await page.getByRole("button", { name: /林青/ }).click();
+  await page
+    .getByRole("menuitem", { name: "系统与账号设置", exact: true })
+    .click();
   await page.getByRole("link", { name: "账号管理", exact: true }).click();
   await page.getByRole("button", { name: "新建账号" }).click();
   const create = page.getByRole("dialog");
@@ -50,7 +56,8 @@ test("系统 IAM 按需开启，Owner 分配模型服务后成员可查看创建
     "文档助手",
   );
 
-  await page.getByRole("button", { name: "退出登录" }).click();
+  await page.getByRole("button", { name: /林青/ }).click();
+  await page.getByRole("menuitem", { name: "退出登录", exact: true }).click();
   await page.getByLabel("登录名", { exact: true }).fill("member");
   await page.getByLabel("密码", { exact: true }).fill("fixture-password");
   await page.getByRole("button", { name: "登录", exact: true }).click();

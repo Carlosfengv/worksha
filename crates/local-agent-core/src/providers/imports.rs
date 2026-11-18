@@ -95,6 +95,13 @@ fn checked_endpoint(raw: &str) -> Option<String> {
     }
     Some(url.to_string().trim_end_matches('/').into())
 }
+fn agent_label(agent: &str) -> &'static str {
+    match agent {
+        "claude" => "Claude Code",
+        "opencode" => "OpenCode",
+        _ => "Codex",
+    }
+}
 fn base(agent: &str, path: &std::path::Path, label: &str, digest: &str, active: bool) -> Material {
     use std::os::unix::ffi::OsStrExt;
     Material {
@@ -107,21 +114,13 @@ fn base(agent: &str, path: &std::path::Path, label: &str, digest: &str, active: 
                 &serde_json::to_vec(&(path.as_os_str().as_bytes(), digest))
                     .expect("source tuple serializes"),
             ),
-            name: format!(
-                "{} · {}",
-                if agent == "claude" {
-                    "Claude Code"
-                } else {
-                    "Codex"
-                },
-                sanitize_label(label, 70)
-            ),
+            name: format!("{} · {}", agent_label(agent), sanitize_label(label, 70)),
             vendor: "custom".into(),
             endpoint: None,
-            protocol: if agent == "claude" {
-                "messages"
-            } else {
-                "responses"
+            protocol: match agent {
+                "claude" => "messages",
+                "opencode" => "chat-completions",
+                _ => "responses",
             }
             .into(),
             model: None,
@@ -410,15 +409,142 @@ impl ProviderManager {
         }
         Ok(result)
     }
+    fn opencode_materials(
+        &self,
+        environment: &dyn Fn(&str) -> Option<String>,
+    ) -> Result<Vec<Material>, ConfigError> {
+        let path = config::path(&self.home, "opencode")?;
+        let read = files::read(&path)?;
+        let raw = read.bytes.map(Zeroizing::new);
+        let doc = super::opencode_config::parse(raw.as_deref().map(Vec::as_slice))?;
+        let Some(providers) = doc.get("providers").or_else(|| doc.get("provider")) else {
+            return Ok(vec![]);
+        };
+        let providers = providers
+            .as_object()
+            .ok_or_else(|| ConfigError::new("invalid_config", "OpenCode 供应商配置格式无效"))?;
+        if providers.len() > 100 {
+            return fail("capacity", "OpenCode Provider 数量超过 100 项，暂不扫描");
+        }
+        let active = doc["model"]
+            .as_str()
+            .and_then(|model| model.split_once('/'));
+        let mut result = Vec::new();
+        for (id, entry) in providers {
+            let mut material = base(
+                "opencode",
+                &path,
+                id,
+                read.stamp.digest.as_deref().unwrap_or("absent"),
+                active.is_some_and(|(selected, _)| selected == id),
+            );
+            let settings = &entry[if doc.get("providers").is_some() {
+                "settings"
+            } else {
+                "options"
+            }];
+            material.public.endpoint = settings["baseURL"].as_str().and_then(checked_endpoint);
+            material.public.protocol = match entry["package"]
+                .as_str()
+                .or_else(|| entry["npm"].as_str())
+                .map(|package| package.strip_prefix("aisdk:").unwrap_or(package))
+            {
+                Some("@ai-sdk/openai-compatible" | "@opencode/ai/providers/openai-compatible") => {
+                    "chat-completions"
+                }
+                Some("@ai-sdk/openai" | "@opencode/ai/providers/openai") => "responses",
+                Some("@ai-sdk/anthropic" | "@opencode/ai/providers/anthropic") => "messages",
+                _ => {
+                    material.blocked("此 OpenCode 连接没有可确认的接口协议，请手动添加。");
+                    "unsupported"
+                }
+            }
+            .into();
+            if [&entry["headers"], &entry["body"], &settings["headers"]]
+                .iter()
+                .any(|value| {
+                    !value.is_null() && !value.as_object().is_some_and(serde_json::Map::is_empty)
+                })
+            {
+                material.blocked("OpenCode 配置含自定义请求头或请求体，导入无法完整保留。");
+            }
+            if let Some(models) = entry["models"].as_object() {
+                if models.len() > 2000 {
+                    material.blocked("OpenCode 模型目录超过 2000 项，请手动选择需要的模型。");
+                } else {
+                    material.models = models
+                        .iter()
+                        .map(|(alias, model)| {
+                            model["modelID"]
+                                .as_str()
+                                .or_else(|| model["id"].as_str())
+                                .unwrap_or(alias)
+                                .to_owned()
+                        })
+                        .collect();
+                }
+            }
+            if let Some((_, model)) = active.filter(|(selected, _)| *selected == id) {
+                let model_entry = &entry["models"][model];
+                material.public.model = Some(
+                    model_entry["modelID"]
+                        .as_str()
+                        .or_else(|| model_entry["id"].as_str())
+                        .unwrap_or(model)
+                        .into(),
+                );
+            } else if material.models.len() == 1 {
+                material.public.model = material.models.first().cloned();
+            }
+            let env_key = |name: &str| {
+                (!name.is_empty()
+                    && name.len() <= 100
+                    && name.bytes().enumerate().all(|(i, b)| {
+                        b == b'_' || b.is_ascii_alphabetic() || (i > 0 && b.is_ascii_digit())
+                    }))
+                .then(|| environment(name).map(Zeroizing::new))
+                .flatten()
+            };
+            if let Some(key) = settings["apiKey"].as_str().filter(|s| !s.is_empty()) {
+                if let Some(name) = key.strip_prefix("{env:").and_then(|s| s.strip_suffix('}')) {
+                    if let Some(value) = env_key(name) {
+                        material.credential(&value, "OpenCode 用户配置 · 环境变量 API Key");
+                    } else {
+                        material.blocked("OpenCode 的 API Key 环境变量在本机服务中不可用。");
+                    }
+                } else if key.starts_with('{') {
+                    material.blocked("OpenCode 的文件引用或其他凭据来源需手动配置。");
+                } else {
+                    material.credential(key, "OpenCode 用户配置 · API Key");
+                }
+            } else if let Some(value) = entry["env"]
+                .as_array()
+                .and_then(|items| items.iter().filter_map(Value::as_str).find_map(env_key))
+            {
+                material.credential(&value, "OpenCode 用户配置 · 环境变量 API Key");
+            }
+            if material.secret.as_ref().is_some_and(|secret| {
+                material
+                    .public
+                    .endpoint
+                    .as_ref()
+                    .is_some_and(|endpoint| endpoint.contains(secret.as_str()))
+            }) {
+                material.public.endpoint = None;
+                material.blocked("OpenCode 服务地址包含 API Key，请先修改原配置。");
+            }
+            result.push(material);
+        }
+        Ok(result)
+    }
+
     fn import_materials(&self, environment: &dyn Fn(&str) -> Option<String>) -> Vec<Material> {
         let mut items = vec![];
-        for agent in ["claude", "codex"] {
-            let result = self.adapters.resolve(agent).and_then(|_| {
-                if agent == "claude" {
-                    self.claude_material().map(|m| vec![m])
-                } else {
-                    self.codex_materials(environment)
-                }
+        for agent in ["claude", "codex", "opencode"] {
+            let result = self.adapters.resolve(agent).and_then(|_| match agent {
+                "claude" => self.claude_material().map(|m| vec![m]),
+                "opencode" => self.opencode_materials(environment),
+                _ => self.codex_materials(environment),
             });
             match result {
                 Ok(found) => items.extend(found),
@@ -636,16 +762,10 @@ impl ProviderManager {
                 .result();
         }
         let creates_credential = m.secret.is_some() && m.reference.is_none();
-        let label = m.secret.as_ref().map(|_| {
-            format!(
-                "{} · 本机导入 API Key",
-                if m.public.agent_id == "claude" {
-                    "Claude Code"
-                } else {
-                    "Codex"
-                }
-            )
-        });
+        let label = m
+            .secret
+            .as_ref()
+            .map(|_| format!("{} · 本机导入 API Key", agent_label(&m.public.agent_id)));
         let mut p = Provider {
             id: format!("custom-{}", identity.operation_id),
             name: m.public.name,

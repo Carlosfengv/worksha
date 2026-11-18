@@ -1,5 +1,5 @@
 // Generated from contracts/domain/provider-source-operation/*.schema.json. Do not edit.
-export type Kind = "save" | "connect";
+export type Kind = "save" | "connect" | "delete";
 export type ModelCatalogSource = { "credentialRef"?: (string | null); "endpoint": string; "fetchedAt": string; "protocol": string; "sourceUrl": string; };
 export type Provider = { "category"?: string; "configured": boolean; "credentialLabel"?: (string | null); "credentialRef"?: (string | null); "disabledModels"?: Array<string>; "endpoint": string; "id": string; "model": string; "modelCatalog"?: (ModelCatalogSource | null); "models"?: Array<string>; "name": string; "protocol": string; "revision"?: number; "vendor"?: string; };
 export type ProviderOperationRequest = { "expectedSequence": number; "kind": Kind; "operationId": string; "provider": Provider; "storeId": string; };

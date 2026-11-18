@@ -223,6 +223,12 @@ pub(super) async fn commit_selected(
     {
         return json_value(operation);
     }
+    if input.operation.kind == Kind::Delete {
+        return Err(error(ConfigError::new(
+            "invalid_input",
+            "请从供应商连接执行删除",
+        )));
+    }
     if input.operation.kind == Kind::Save {
         return save(state, input, source).await;
     }

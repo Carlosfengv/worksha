@@ -1,3 +1,4 @@
+import { useWorkspaceNavigation } from "@/shared/hooks/use-workspace-navigation";
 import { useAgentDirectory } from "@/shared/hooks/use-agent-directory";
 import { McpUsageComparison } from "./components/mcp-usage-comparison";
 import {
@@ -9,6 +10,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { InputCopy } from "@/components/ui/input-copy";
 import { PageActions, PageBody, PageHeader } from "@/components/ui/page-layout";
 import { TabItem, TabPanel, Tabs, TabsList } from "@/components/ui/tabs";
 import {
@@ -31,17 +33,21 @@ import { McpGroupsTable } from "./components/mcp-groups-table";
 import { Tokens } from "./components/mcp-token-summary";
 
 type Filters = { agent: string; days: string; model: string; project: string };
-function link(service: string | undefined, filters: Filters) {
+function mcpHref(service: string | undefined, filters: Filters) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters))
     if (value !== "all") params.set(key, value);
-  window.location.hash = `/mcp${service ? `/${service}` : ""}${params.size ? `?${params}` : ""}`;
+  return `#/mcp${service ? `/${encodeURIComponent(service)}` : ""}${params.size ? `?${params}` : ""}`;
+}
+
+function link(service: string | undefined, filters: Filters) {
+  window.location.hash = mcpHref(service, filters);
 }
 
 function Configurations({ services }: { services: McpService[] }) {
   const { agentNames, familyNames } = useAgentDirectory();
   return (
-    <Accordion>
+    <Accordion className="w-full min-w-0">
       <AccordionItem value="sources">
         <AccordionTrigger>
           配置来源与历史关联 · {services.length} 项
@@ -79,12 +85,12 @@ function Configurations({ services }: { services: McpService[] }) {
                   · 连接未知 · {service.transport ?? "传输未知"}
                 </p>
                 {service.sources.map((s) => (
-                  <p
-                    key={`${s.scope}:${s.path}`}
-                    className="break-all text-fg-muted"
-                  >
-                    {s.path} · 文件更新 {date(s.modifiedAt)}
-                  </p>
+                  <div key={`${s.scope}:${s.path}`} className="min-w-0">
+                    <InputCopy value={s.path} label="配置文件路径" />
+                    <p className="text-fg-muted">
+                      文件更新 {date(s.modifiedAt)}
+                    </p>
+                  </div>
                 ))}
                 {!service.sources.length && (
                   <p className="text-fg-muted">
@@ -245,6 +251,10 @@ export function McpPage({
       : (data?.facets.projects.find((f) => f.id === project)?.label ??
         "所选项目"),
   ].join(" · ");
+  const { setTitle } = useWorkspaceNavigation();
+  useEffect(() => {
+    if (selected?.name && selectedId) setTitle(selected.name);
+  }, [selected?.name, selectedId, setTitle]);
   function change(patch: Partial<Filters>) {
     link(selected?.id ?? selectedId, { ...filters, ...patch });
   }
@@ -316,9 +326,13 @@ export function McpPage({
           <h2
             ref={title}
             tabIndex={-1}
-            className="min-w-0 break-words text-title font-medium"
+            className={
+              selectedId
+                ? "sr-only"
+                : "min-w-0 break-words text-title font-medium"
+            }
           >
-            {selected?.name ?? (selectedId ? "MCP 详情" : "MCP")}
+            {selectedId ? (selected?.name ?? "MCP 详情") : "MCP 工具目录"}
           </h2>
           <PageActions>
             {!externalAgent && selectedId && (
@@ -433,7 +447,11 @@ export function McpPage({
                       <TabItem value="analysis" label="调用分析" />
                     </TabsList>
                     <TabPanel value="services" className="pt-3">
-                      <McpGroupsTable rows={rows} onOpen={openGroup} />
+                      <McpGroupsTable
+                        rows={rows}
+                        onOpen={openGroup}
+                        href={(id) => mcpHref(id, filters)}
+                      />
                     </TabPanel>
                     <TabPanel value="analysis" className="space-y-4 pt-3">
                       {!search.trim() && (
@@ -540,73 +558,64 @@ export function McpPage({
                     )}
                   </div>
                 </div>
-                <section aria-label="MCP 历史调用" className="space-y-3">
-                  <h2 className="text-title font-medium">
-                    调用记录 · {number(data.totalCalls)}
-                  </h2>
-                  {data.calls.length ? (
-                    <McpCallsTable
-                      items={data.calls}
-                      selected={selected}
-                      scope={scope}
-                      asOf={data.asOf}
+                <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                  <section
+                    aria-label="MCP 历史调用"
+                    className="min-w-0 space-y-3"
+                  >
+                    <h2 className="text-title font-medium">
+                      调用记录 · {number(data.totalCalls)}
+                    </h2>
+                    {data.calls.length ? (
+                      <McpCallsTable
+                        items={data.calls}
+                        selected={selected}
+                        scope={scope}
+                        asOf={data.asOf}
+                      />
+                    ) : (
+                      <ConnectionEmpty
+                        title="当前筛选没有已记录调用"
+                        description={
+                          selected.callCount == null
+                            ? "来源未授权或读取未完成，实际调用数量未知。"
+                            : "可调整 Agent、模型、项目或会话范围。"
+                        }
+                      />
+                    )}
+                    {data.nextCursor && (
+                      <Button
+                        variant="tertiary"
+                        disabled={loading}
+                        loading={more}
+                        onClick={() => void loadMore()}
+                      >
+                        加载更多调用
+                      </Button>
+                    )}
+                  </section>
+                  <aside
+                    className="min-w-0 space-y-3"
+                    aria-label="MCP 配置与调用指标"
+                  >
+                    <Metric
+                      label="原生延迟 P95"
+                      value={mcpElapsed(selected.p95Ms)}
+                      note={`${selected.durationSamples} 个有效样本 · ${selected.errorCount} 次原生错误`}
                     />
-                  ) : (
-                    <ConnectionEmpty
-                      title="当前筛选没有已记录调用"
-                      description={
-                        selected.callCount == null
-                          ? "来源未授权或读取未完成，实际调用数量未知。"
-                          : "可调整 Agent、模型、项目或会话范围。"
-                      }
+                    <div className="rounded-xl border border-border p-4">
+                      <p className="mb-2 text-label text-fg-muted">
+                        已关联模型 Token
+                      </p>
+                      <Tokens group={selected} />
+                    </div>
+                    <Configurations
+                      services={data.services.filter((service) =>
+                        selected.serviceIds.includes(service.id),
+                      )}
                     />
-                  )}
-                  {data.nextCursor && (
-                    <Button
-                      variant="tertiary"
-                      disabled={loading}
-                      loading={more}
-                      onClick={() => void loadMore()}
-                    >
-                      加载更多调用
-                    </Button>
-                  )}
-                </section>
-                <Accordion>
-                  <AccordionItem value="metrics">
-                    <AccordionTrigger>调用指标</AccordionTrigger>
-                    <AccordionContent>
-                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                        <Metric
-                          label="调用次数"
-                          value={number(selected.callCount)}
-                          note={`${selected.sessionCount} 个关联会话`}
-                        />
-                        <div className="rounded-xl border border-border p-4">
-                          <p className="mb-2 text-label text-fg-muted">
-                            关联模型 Token
-                          </p>
-                          <Tokens group={selected} />
-                        </div>
-                        <Metric
-                          label="最近一次调用"
-                          value={date(selected.lastCallAt)}
-                          note="当前筛选内的原生调用时间"
-                        />
-                        <Metric
-                          label="原生延迟 P95"
-                          value={mcpElapsed(selected.p95Ms)}
-                          note={`${selected.durationSamples} 个有效样本 · ${selected.errorCount} 次原生错误`}
-                        />
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                </Accordion>
-                <Configurations
-                  services={data.services.filter((s) =>
-                    selected.serviceIds.includes(s.id),
-                  )}
-                />
+                  </aside>
+                </div>
               </>
             ) : (
               <ConnectionEmpty title="当前范围内没有该 MCP" />

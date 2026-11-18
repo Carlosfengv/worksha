@@ -1,10 +1,38 @@
 import { expect, test } from "@playwright/test";
 
+test("the cost disclosure fills its container at narrow and wide window widths", async ({
+  page,
+}) => {
+  await page.goto(
+    "/tests/frontend/tables.html?mode=activity&fees=1#/agents/claude-code-cli?tab=overview",
+  );
+  const cost = page.getByLabel("关联费用", { exact: true });
+  const toggle = cost.getByRole("button", { name: "费用统计依据" });
+  for (const width of [720, 1280]) {
+    await page.setViewportSize({ width, height: 860 });
+    for (const expanded of ["false", "true"] as const) {
+      await expect(toggle).toHaveAttribute("aria-expanded", expanded);
+      await expect
+        .poll(async () => {
+          const [region, trigger] = await Promise.all([
+            cost.boundingBox(),
+            toggle.boundingBox(),
+          ]);
+          return region && trigger
+            ? Math.abs(region.width - trigger.width)
+            : Infinity;
+        })
+        .toBeLessThanOrEqual(1);
+      await toggle.click();
+    }
+  }
+});
+
 test("Agent keeps response and gateway costs separate, including actual zero and tiny estimates", async ({
   page,
 }) => {
   await page.goto(
-    "/tests/frontend/tables.html?mode=activity&fees=1#/agents/claude-code-cli",
+    "/tests/frontend/tables.html?mode=activity&fees=1#/agents/claude-code-cli?tab=overview",
   );
   const cost = page.getByLabel("关联费用", { exact: true });
   await expect(cost).toContainText("0 USD");

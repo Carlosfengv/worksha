@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { useSyncExternalStore } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { IconProvider } from "@/lib/icon-context";
 import { UnifiedWorkspace } from "@/features/domain/session-workspace";
@@ -973,6 +974,29 @@ window.domainFixture = {
     });
   },
 };
+function subscribeSessionRoute(update: () => void) {
+  window.addEventListener("hashchange", update);
+  return () => window.removeEventListener("hashchange", update);
+}
+
+function SessionFixture() {
+  const hash = useSyncExternalStore(
+    subscribeSessionRoute,
+    () => window.location.hash,
+  );
+  const session = /^#\/sessions\/([^?]+)(?:\?|$)/.exec(hash);
+  return (
+    <UnifiedWorkspace
+      initialSource={source}
+      initialSession={
+        session
+          ? decodeURIComponent(session[1])
+          : (params.get("directSession") ?? undefined)
+      }
+    />
+  );
+}
+
 createRoot(document.getElementById("root")!).render(
   <IconProvider>
     <main className="flex h-dvh min-h-0 flex-col">
@@ -987,10 +1011,7 @@ createRoot(document.getElementById("root")!).render(
       </div>
       <div className="min-h-0 flex-1">
         {params.get("unified") === "1" ? (
-          <UnifiedWorkspace
-            initialSource={source}
-            initialSession={params.get("directSession") ?? undefined}
-          />
+          <SessionFixture />
         ) : (
           <p>原生会话保持</p>
         )}

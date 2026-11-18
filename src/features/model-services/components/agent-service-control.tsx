@@ -512,12 +512,14 @@ export function ModelServiceSettings({
   name,
   providers,
   refresh,
+  showConfigurationPreview,
 }: {
   agentId: string;
   agentProductId?: AgentProductId;
   name: string;
   providers: Provider[];
   refresh?: () => Promise<void>;
+  showConfigurationPreview?: boolean;
 }) {
   const status = useSharedRead(providerStatusResource);
   const catalog = useSharedRead(modelServicesResource);
@@ -557,6 +559,7 @@ export function ModelServiceSettings({
           checking={status.loading || !!status.error}
           onlyAgent={agentId}
           agentProductId={agentProductId}
+          showConfigurationPreview={showConfigurationPreview}
           renderPicker={(openSwitch, switching) => (
             <AgentServiceControl
               agentId={agentId}

@@ -34,10 +34,17 @@ test("confirmed recovery refreshes active reads once and preserves settings and 
   await page
     .getByRole("switch", { name: "额外保存消息与工具内容", exact: true })
     .click();
+  await page.getByRole("button", { name: /签发客户端密钥/ }).click();
   await page
     .getByLabel("客户端名称", { exact: true })
     .fill("unfinished client");
+  await page.getByRole("button", { name: "返回密钥列表" }).click();
   await recover(page);
+  await page.getByRole("button", { name: /签发客户端密钥/ }).click();
+  await expect(page.getByLabel("客户端名称", { exact: true })).toHaveValue(
+    "unfinished client",
+  );
+  await page.getByRole("button", { name: "返回密钥列表" }).click();
   await expect(page.getByTestId("root")).toHaveText("snapshot-1");
   await expect(page.getByTestId("provider-a")).toHaveText("provider-1");
   await expect(page.getByTestId("provider-b")).toHaveText("provider-1");
@@ -47,9 +54,6 @@ test("confirmed recovery refreshes active reads once and preserves settings and 
     page.getByRole("switch", { name: "额外保存消息与工具内容", exact: true }),
   ).toBeChecked();
   await expect(page.getByText("设置已有新版本", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("客户端名称", { exact: true })).toHaveValue(
-    "unfinished client",
-  );
   for (const name of [
     "get_snapshot",
     "get_gateway_status",
@@ -297,7 +301,9 @@ test("recovery invalidates an import preview without discarding its model draft 
   await page
     .getByRole("button", { name: "核对并重新连接", exact: true })
     .click();
-  await page.getByRole("button", { name: "导入本机配置", exact: true }).click();
+  await page
+    .getByRole("button", { name: "从本机客户端导入", exact: true })
+    .click();
   const model = page.getByRole("textbox", {
     name: "默认模型",
     exact: true,
@@ -337,7 +343,9 @@ test("a late pre-recovery native scan cannot turn an unknown preview into confir
   await page
     .getByRole("button", { name: "核对并重新连接", exact: true })
     .click();
-  await page.getByRole("button", { name: "导入本机配置", exact: true }).click();
+  await page
+    .getByRole("button", { name: "从本机客户端导入", exact: true })
+    .click();
   await count(page, "preview_native_provider_import", 1);
   await page.evaluate(() => window.readRecovery.connect[0]());
   await expect(

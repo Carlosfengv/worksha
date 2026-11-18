@@ -1,6 +1,7 @@
 import { AssociatedCostsView } from "@/shared/ui/associated-costs";
 import type { Snapshot } from "@/app/types";
 import { Button } from "@/components/ui/button";
+import { InputCopy } from "@/components/ui/input-copy";
 import {
   Accordion,
   AccordionItem,
@@ -111,7 +112,7 @@ export function AgentDetail({
       : recent?.key === queryKey && recent.epoch === epoch
         ? recent.items
         : [];
-  const value = tabs.find(({ id }) => id === tab)?.id ?? "overview";
+  const value = tabs.find(({ id }) => id === tab)?.id ?? "connection";
   const connection = connectionView({
     agentId: agent.configId,
     productId: agent.id,
@@ -329,81 +330,101 @@ export function AgentDetail({
           )}
         </TabPanel>
         <TabPanel value="connection">
-          {canConfigure ? (
-            <div className="mb-6">
-              <ModelServiceSettings
-                agentId={agent.configId}
-                agentProductId={agent.id}
-                name={agent.name}
-                providers={data.providers}
-                refresh={refresh}
+          <div className="grid min-w-0 items-start gap-5 lg:grid-cols-2">
+            {canConfigure ? (
+              <div className="mb-6">
+                <ModelServiceSettings
+                  agentId={agent.configId}
+                  agentProductId={agent.id}
+                  name={agent.name}
+                  providers={data.providers}
+                  refresh={refresh}
+                  showConfigurationPreview
+                />
+                {agent.family === "opencode" && (
+                  <p className="mt-3 text-label text-fg-muted">
+                    OpenCode CLI 和 Desktop
+                    共用本机默认模型配置。从任一入口切换，
+                    都会更新这份配置。模型服务可按请求报告的客户端设置路由规则。
+                  </p>
+                )}
+              </div>
+            ) : (
+              <ConnectionEmpty
+                compact
+                title="只读来源"
+                description="此来源提供历史与观测读取，尚未提供模型连接切换。"
               />
+            )}
+            <div className="min-w-0 space-y-4">
+              <h3 className="text-title font-medium">只读会话来源</h3>
               {agent.family === "opencode" && (
-                <p className="mt-3 text-label text-fg-muted">
-                  OpenCode CLI 和 Desktop 共用本机默认模型配置。从任一入口切换，
-                  都会更新这份配置。模型服务可按请求报告的客户端设置路由规则。
-                </p>
+                <Button asChild variant="tertiary" size="sm">
+                  <a href="#/sessions?agent=opencode">查看 OpenCode 共享会话</a>
+                </Button>
+              )}
+              {source && (
+                <SessionSourceControl source={source} refresh={refresh} />
+              )}
+              <DetailList>
+                <DetailListItem>
+                  <DetailListLabel>默认数据目录</DetailListLabel>
+                  <DetailListValue>
+                    {agent.location ? (
+                      <InputCopy value={agent.location} />
+                    ) : (
+                      "未发现"
+                    )}
+                  </DetailListValue>
+                </DetailListItem>
+                <DetailListItem>
+                  <DetailListLabel>观测模式</DetailListLabel>
+                  <DetailListValue>
+                    原生历史与活动；API 网关请求另行观测
+                  </DetailListValue>
+                </DetailListItem>
+                <DetailListItem>
+                  <DetailListLabel>记录版本</DetailListLabel>
+                  <DetailListValue>
+                    {source?.versions.join("、") || "尚未读取"}
+                  </DetailListValue>
+                </DetailListItem>
+                <DetailListItem>
+                  <DetailListLabel>最近检查</DetailListLabel>
+                  <DetailListValue>{date(source?.lastScan)}</DetailListValue>
+                </DetailListItem>
+              </DetailList>
+              {source?.capabilities.map((capability) => (
+                <div key={capability.name} className="space-y-1">
+                  <h3 className="text-body font-medium">{capability.name}</h3>
+                  <p className="text-label text-fg-muted">
+                    {capability.reason}
+                  </p>
+                </div>
+              ))}
+              {agent.id.endsWith("cli") &&
+                ["claude", "codex"].includes(agent.family) && (
+                  <Accordion className="w-full">
+                    <AccordionItem value="advanced">
+                      <AccordionTrigger>高级观测入口</AccordionTrigger>
+                      <AccordionContent>
+                        <ObservationConnection
+                          agentId={agent.family}
+                          data={data}
+                          onSaved={() => void refresh()}
+                        />
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
+                )}
+              {value === "connection" && agent.family === "claude" && (
+                <AgentMemory
+                  key={agent.id}
+                  agentId={agent.id}
+                  enabled={Boolean(source?.enabled)}
+                />
               )}
             </div>
-          ) : (
-            <ConnectionEmpty
-              compact
-              title="只读来源"
-              description="此来源提供历史与观测读取，尚未提供模型连接切换。"
-            />
-          )}
-          <div className="space-y-4">
-            {agent.family === "opencode" && (
-              <Button asChild variant="tertiary" size="sm">
-                <a href="#/sessions?agent=opencode">查看 OpenCode 共享会话</a>
-              </Button>
-            )}
-            {source && (
-              <SessionSourceControl source={source} refresh={refresh} />
-            )}
-            <DetailList>
-              <DetailListItem>
-                <DetailListLabel>默认数据目录</DetailListLabel>
-                <DetailListValue>{agent.location ?? "未发现"}</DetailListValue>
-              </DetailListItem>
-              <DetailListItem>
-                <DetailListLabel>观测模式</DetailListLabel>
-                <DetailListValue>
-                  原生历史与活动；API 网关请求另行观测
-                </DetailListValue>
-              </DetailListItem>
-              <DetailListItem>
-                <DetailListLabel>记录版本</DetailListLabel>
-                <DetailListValue>
-                  {source?.versions.join("、") || "尚未读取"}
-                </DetailListValue>
-              </DetailListItem>
-              <DetailListItem>
-                <DetailListLabel>最近检查</DetailListLabel>
-                <DetailListValue>{date(source?.lastScan)}</DetailListValue>
-              </DetailListItem>
-            </DetailList>
-            {source?.capabilities.map((capability) => (
-              <div key={capability.name} className="space-y-1">
-                <h3 className="text-body font-medium">{capability.name}</h3>
-                <p className="text-label text-fg-muted">{capability.reason}</p>
-              </div>
-            ))}
-            {agent.id.endsWith("cli") &&
-              ["claude", "codex"].includes(agent.family) && (
-                <Accordion className="w-full">
-                  <AccordionItem value="advanced">
-                    <AccordionTrigger>高级观测入口</AccordionTrigger>
-                    <AccordionContent>
-                      <ObservationConnection
-                        agentId={agent.family}
-                        data={data}
-                        onSaved={() => void refresh()}
-                      />
-                    </AccordionContent>
-                  </AccordionItem>
-                </Accordion>
-              )}
           </div>
         </TabPanel>
       </AgentDetailLayout>

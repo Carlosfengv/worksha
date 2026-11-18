@@ -9,8 +9,8 @@ import {
 import { useBackendReadEpoch } from "@/shared/hooks/use-backend-read-epoch";
 import { backendReadEpoch } from "@/shared/lib/backend-recovery";
 import { Button } from "@/components/ui/button";
-import { PageActions, PageBody, PageHeader } from "@/components/ui/page-layout";
-import { Tabs, TabsList, TabItem, TabPanel } from "@/components/ui/tabs";
+import { PageActions, PageBody } from "@/components/ui/page-layout";
+import { Tabs, TabPanel } from "@/components/ui/tabs";
 import {
   Accordion,
   AccordionItem,
@@ -25,9 +25,13 @@ import {
 } from "@/components/ui/select";
 import { date } from "@/features/sessions/display";
 import { observationApi } from "./api";
-import { calendarRange, requestParams } from "./request-display";
+import {
+  calendarRange,
+  requestParams,
+  requestsViewHref,
+} from "./request-display";
 import type { RequestDashboard, RequestQuery } from "./request-types";
-import { RequestFilters } from "./components/request-filters";
+import { RequestToolbar } from "./components/request-toolbar";
 import { RequestMetrics } from "./components/request-metrics";
 import { RequestTrends } from "./components/request-trends";
 import { RequestsTable } from "./components/requests-table";
@@ -35,15 +39,6 @@ import { RequestSources } from "./components/request-sources";
 import { RequestHeatmap } from "./components/request-heatmap";
 import { RequestDetail } from "./components/request-detail";
 import { PublishedSources } from "@/features/domain/published-sources";
-
-// The list can unmount while the user follows a request to its session.
-let listPosition: {
-  id: string;
-  epoch: symbol;
-  search: string;
-  snapshotSearch: string;
-  top: number;
-} | null = null;
 
 export function RequestsPage({
   selectedId,
@@ -67,6 +62,7 @@ export function RequestsPage({
       "session",
       "project",
       "search",
+      "client",
       "issue",
       "sort",
       "metric",
@@ -78,6 +74,8 @@ export function RequestsPage({
       const value = params.get(key);
       if (value) q[key] = value;
     }
+    const scope = params.get("clientScope") ?? params.get("scope");
+    if (scope === "lan" || scope === "local") q.clientScope = scope;
     q.descending = params.get("descending") !== "false";
     return q;
   }, [params]);
@@ -87,10 +85,17 @@ export function RequestsPage({
   const bodyRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const returnFocus = useRef<string | undefined>(undefined);
   const exporting = useRef(false);
   const epoch = useBackendReadEpoch(!selectedId);
   const [readingPaused, setReadingPaused] = useState(false);
-  const [view, setView] = useState("records");
+  const view = params.get("tab") === "trends" ? "analysis" : "records";
+  const setView = (view: string) => {
+    window.location.hash = requestsViewHref(
+      window.location.hash.split("?")[1] ?? "",
+      view === "analysis",
+    );
+  };
   const [interval, setIntervalSeconds] = useState("5");
   const [revision, setRevision] = useState(0);
   const [state, setState] = useState<{
@@ -109,30 +114,21 @@ export function RequestsPage({
   const error = state.key === key ? state.error : null;
   useLayoutEffect(() => {
     if (!selectedId) return;
+    returnFocus.current = selectedId;
     bodyRef.current?.scrollTo(0, 0);
     titleRef.current?.focus({ preventScroll: true });
   }, [selectedId]);
   useLayoutEffect(() => {
-    if (selectedId || !listPosition) return;
-    if (
-      listPosition.epoch !== epoch ||
-      (routeSearch !== listPosition.search &&
-        routeSearch !== listPosition.snapshotSearch)
-    ) {
-      listPosition = null;
-      return;
-    }
-    if (!data && !error) return;
-    const position = listPosition;
-    listPosition = null;
-    if (document.activeElement !== document.body) return;
-    bodyRef.current?.scrollTo(0, position.top);
-    const trigger = listRef.current?.querySelector<HTMLButtonElement>(
-      `[data-request-id="${CSS.escape(position.id)}"]`,
+    if (selectedId || !data || !returnFocus.current) return;
+    const link = listRef.current?.querySelector<HTMLAnchorElement>(
+      `a[data-request-id="${CSS.escape(returnFocus.current)}"]`,
     );
-    (trigger ?? titleRef.current)?.focus({ preventScroll: true });
-    trigger?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [data, epoch, error, routeSearch, selectedId]);
+    if (link) {
+      link.focus();
+      link.scrollIntoView({ block: "nearest" });
+      returnFocus.current = undefined;
+    }
+  }, [data, selectedId]);
   const change = useCallback(
     (patch: Record<string, string | undefined>) => {
       const next = new URLSearchParams(params);
@@ -146,6 +142,7 @@ export function RequestsPage({
         if (v === undefined) next.delete(k);
         else next.set(k, v);
       }
+      if (next.get("source") === "native") next.delete("provider");
       window.location.hash = `/requests?${next}`;
     },
     [params],
@@ -212,19 +209,12 @@ export function RequestsPage({
       if (timer) window.clearInterval(timer);
     };
   }, [key, query, range, revision, interval, selectedId, epoch]);
-  const open = useCallback(
+  const requestHref = useCallback(
     (id: string) => {
       const search = data
         ? requestParams(data.query, range, data.snapshot, query.cursor)
         : routeSearch;
-      listPosition = {
-        id,
-        epoch: backendReadEpoch(),
-        search: routeSearch,
-        snapshotSearch: search,
-        top: bodyRef.current?.scrollTop ?? 0,
-      };
-      window.location.hash = `/requests/${encodeURIComponent(id)}?${search}`;
+      return `#/requests/${encodeURIComponent(id)}?${search}`;
     },
     [data, query.cursor, range, routeSearch],
   );
@@ -243,84 +233,80 @@ export function RequestsPage({
       </PageBody>
     );
   return (
-    <PageBody ref={bodyRef} className="relative space-y-3 p-4 lg:p-6">
-      <PageHeader className="px-0">
-        <h2 ref={titleRef} tabIndex={-1} className="text-title font-medium">
-          请求
-        </h2>
-        <PageActions>
-          <Select
-            value={interval}
-            onValueChange={(v) => setIntervalSeconds(v ?? "5")}
-          >
-            <SelectTrigger aria-label="请求刷新间隔" />
-            <SelectContent>
-              <SelectItem value="5">5 秒刷新</SelectItem>
-              <SelectItem value="15">15 秒刷新</SelectItem>
-              <SelectItem value="0">暂停刷新</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            variant="tertiary"
-            loading={state.key === key && state.loading}
-            onClick={refresh}
-          >
-            刷新
-          </Button>
-          <Button
-            variant="tertiary"
-            disabled={!data}
-            loading={exportState.running}
-            onClick={() => {
-              if (!data || exporting.current) return;
-              exporting.current = true;
-              setExportState({ running: true, message: "", error: false });
-              void observationApi
-                .exportRequests(data.snapshot)
-                .then((result) =>
-                  setExportState({
-                    running: false,
-                    error: false,
-                    message:
-                      result.status === "saved"
-                        ? `已导出 ${result.count} 条${unit}至 ${result.fileName}`
-                        : "已取消导出",
-                  }),
-                )
-                .catch((reason) =>
-                  setExportState({
-                    running: false,
-                    error: true,
-                    message:
-                      reason instanceof Error ? reason.message : String(reason),
-                  }),
-                )
-                .finally(() => {
-                  exporting.current = false;
-                });
-            }}
-          >
-            导出 CSV
-          </Button>
-        </PageActions>
-      </PageHeader>
+    <PageBody ref={bodyRef} className="relative max-w-none space-y-2 px-4 py-2">
+      <h2 className="sr-only">调用与工具</h2>
+      <RequestToolbar
+        params={params}
+        data={data}
+        onChange={change}
+        actions={
+          <PageActions>
+            <Select
+              size="sm"
+              value={interval}
+              onValueChange={(v) => setIntervalSeconds(v ?? "5")}
+            >
+              <SelectTrigger aria-label="请求刷新间隔" contentSized />
+              <SelectContent>
+                <SelectItem value="5">5 秒刷新</SelectItem>
+                <SelectItem value="15">15 秒刷新</SelectItem>
+                <SelectItem value="0">暂停刷新</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="tertiary"
+              size="sm"
+              loading={state.key === key && state.loading}
+              onClick={refresh}
+            >
+              刷新
+            </Button>
+            <Button
+              variant="tertiary"
+              size="sm"
+              disabled={!data}
+              loading={exportState.running}
+              onClick={() => {
+                if (!data || exporting.current) return;
+                exporting.current = true;
+                setExportState({ running: true, message: "", error: false });
+                void observationApi
+                  .exportRequests(data.snapshot)
+                  .then((result) =>
+                    setExportState({
+                      running: false,
+                      error: false,
+                      message:
+                        result.status === "saved"
+                          ? `已导出 ${result.count} 条${unit}至 ${result.fileName}`
+                          : "已取消导出",
+                    }),
+                  )
+                  .catch((reason) =>
+                    setExportState({
+                      running: false,
+                      error: true,
+                      message:
+                        reason instanceof Error
+                          ? reason.message
+                          : String(reason),
+                    }),
+                  )
+                  .finally(() => {
+                    exporting.current = false;
+                  });
+              }}
+            >
+              导出 CSV
+            </Button>
+          </PageActions>
+        }
+      />
       {exportState.message && (
         <p role={exportState.error ? "alert" : "status"} className="text-label">
           {exportState.message}
         </p>
       )}
-      <RequestSources
-        source={query.source ?? "unified"}
-        report={data?.sourceReport}
-        onChange={(source) => change({ source, provider: undefined })}
-      />
-      <PublishedSources mode="requests" productId={query.agent} />
-      <RequestFilters
-        key={`${params.get("search") ?? ""}:${params.get("range") ?? ""}:${params.get("start") ?? ""}:${params.get("end") ?? ""}`}
-        params={params}
-        data={data}
-        onChange={change}
-      />
       {error && (
         <p role="alert" className="text-body">
           {data ? "数据更新失败，保留旧快照：" : "请求读取失败："}
@@ -341,6 +327,24 @@ export function RequestsPage({
             </p>
             {query.snapshot && <p>固定快照 · 刷新获取最新记录</p>}
             {!!data.missingTime && <p>{data.missingTime} 条记录的时间未知</p>}
+            {(query.session || query.project) && (
+              <>
+                <p aria-label="请求关联范围">
+                  {query.session
+                    ? `会话 ${query.session}`
+                    : `项目 ${query.project}`}
+                </p>
+                <Button
+                  size="sm"
+                  variant="tertiary"
+                  onClick={() =>
+                    change({ session: undefined, project: undefined })
+                  }
+                >
+                  查看全部请求（移除关联范围）
+                </Button>
+              </>
+            )}
             {view === "records" &&
               !query.result &&
               !!data.summary.statuses.failed && (
@@ -360,19 +364,6 @@ export function RequestsPage({
             variant="underline"
             color="default"
           >
-            <TabsList aria-label="请求工作区">
-              <TabItem
-                value="records"
-                label={
-                  unifiedView
-                    ? "观测记录"
-                    : nativeView
-                      ? "响应记录"
-                      : "请求记录"
-                }
-              />
-              <TabItem value="analysis" label="趋势分析" />
-            </TabsList>
             <TabPanel value="analysis" className="space-y-6 pt-4">
               <RequestMetrics
                 summary={data.summary}
@@ -417,7 +408,7 @@ export function RequestsPage({
                   key={query.source}
                   nativeView={nativeView}
                   rows={data.items}
-                  onOpen={open}
+                  requestHref={requestHref}
                   sort={data.query.sort ?? "time"}
                   descending={data.query.descending ?? true}
                   onSort={(sort, descending) =>
@@ -523,6 +514,19 @@ export function RequestsPage({
           </Accordion>
         </>
       ) : null}
+      <Accordion className="w-full">
+        <AccordionItem value="sources">
+          <AccordionTrigger>观测来源与覆盖范围</AccordionTrigger>
+          <AccordionContent>
+            <RequestSources
+              source={query.source ?? "unified"}
+              report={data?.sourceReport}
+              onChange={(source) => change({ source, provider: undefined })}
+            />
+            <PublishedSources mode="requests" productId={query.agent} />
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
     </PageBody>
   );
 }

@@ -262,7 +262,7 @@ export function ProviderUsageStatus({
 }
 export function ProviderUsageNotes() {
   return (
-    <Accordion>
+    <Accordion className="w-full min-w-0">
       <AccordionItem value="scope">
         <AccordionTrigger>统计说明</AccordionTrigger>
         <AccordionContent>

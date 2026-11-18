@@ -21,7 +21,11 @@ import { Tokens } from "./mcp-token-summary";
 const rate = (v: number | null) =>
   v == null ? "未知" : `${(v * 100).toFixed(1)}%`;
 
-type McpGroupRow = { group: McpGroup; onOpen: (id: string) => void };
+type McpGroupRow = {
+  group: McpGroup;
+  href?: (id: string) => string;
+  onOpen: (id: string) => void;
+};
 const groupColumns = (
   agentNames: Record<string, string>,
 ): ColumnDef<McpGroupRow>[] => [
@@ -36,20 +40,32 @@ const groupColumns = (
       />
     ),
     cell: ({ row }) => {
-      const { group: g, onOpen } = row.original;
+      const { group: g, onOpen, href } = row.original;
       return (
         <>
-          <Button
-            size="sm"
-            variant="link"
-            className="max-w-56 justify-start px-0"
-            aria-label={`查看 ${g.name}`}
-            title={g.name}
-            data-mcp-group={g.id}
-            onClick={() => onOpen(g.id)}
-          >
-            <span className="truncate">{g.name}</span>
-          </Button>
+          {href ? (
+            <a
+              href={href(g.id)}
+              data-workspace-resource
+              data-workspace-title={g.name}
+              data-mcp-group={g.id}
+              className="font-medium hover:underline"
+            >
+              {g.name}
+            </a>
+          ) : (
+            <Button
+              size="sm"
+              variant="link"
+              className="max-w-56 justify-start px-0"
+              aria-label={`查看 ${g.name}`}
+              title={g.name}
+              data-mcp-group={g.id}
+              onClick={() => onOpen(g.id)}
+            >
+              <span className="truncate">{g.name}</span>
+            </Button>
+          )}
           <p className="text-label text-fg-muted">
             {g.identity === "unattributed"
               ? "未确认的服务来源"
@@ -144,15 +160,17 @@ const groupColumns = (
 export function McpGroupsTable({
   rows,
   onOpen,
+  href,
 }: {
   rows: McpGroup[];
   onOpen: (id: string) => void;
+  href?: (id: string) => string;
 }) {
   const { agentNames } = useAgentDirectory();
   const columns = useMemo(() => groupColumns(agentNames), [agentNames]);
   const records = useMemo(
-    () => rows.map((group) => ({ group, onOpen })),
-    [rows, onOpen],
+    () => rows.map((group) => ({ group, onOpen, href })),
+    [rows, onOpen, href],
   );
 
   const pagination = useTablePagination(rows.length, 20);

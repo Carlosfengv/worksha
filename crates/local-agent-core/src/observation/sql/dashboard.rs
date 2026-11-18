@@ -145,6 +145,20 @@ pub(super) fn filter(q: &requests::Query, now: DateTime<Utc>, dates: bool) -> St
             parts.push(format!("(r.{column}={} OR (json_extract(r.stats,'$.attempts')>0 AND EXISTS(SELECT 1 FROM json_each(r.value,'$.attempts') a WHERE {leaf}={})))",quote(v),quote(v)));
         }
     }
+    if let Some(client) = &q.client {
+        parts.push(format!(
+            "json_extract(r.value,'$.client.id')={}",
+            quote(client)
+        ));
+    }
+    if let Some(scope) = q.client_scope.as_deref() {
+        let null_check = if scope == "lan" {
+            "IS NOT NULL"
+        } else {
+            "IS NULL"
+        };
+        parts.push(format!("json_extract(r.value,'$.client.id') {null_check}"));
+    }
     if let Some(v) = &q.search {
         parts.push(format!("instr(r.search,{})>0", quote(&v.to_lowercase())));
     }

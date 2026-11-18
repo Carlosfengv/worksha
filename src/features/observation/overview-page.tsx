@@ -12,6 +12,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { GettingStarted } from "@/components/blocks/getting-started-01";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -58,7 +59,10 @@ export function OverviewPage({
   const [range, setRange] = useState("24");
   const [metric, setMetric] = useState<OverviewQuery["metric"]>("calls");
   const [dimension, setDimension] =
-    useState<OverviewQuery["dimension"]>("agent");
+    useState<OverviewQuery["dimension"]>("model");
+  const [onboarding, setOnboarding] = useState(
+    () => localStorage.getItem("local-agent.onboarding") === "open",
+  );
   const [source, setSource] = useState<OverviewQuery["source"]>("unified");
   const warnings = useSharedRead(budgetWarnings, isDesktopRuntime());
   const budgetAlerts = new Set(
@@ -209,6 +213,182 @@ export function OverviewPage({
             </Button>
           </div>
         </div>
+        {data && (
+          <GettingStarted
+            title="接入检查单"
+            open={onboarding}
+            onOpenChange={(open) => {
+              setOnboarding(open);
+              localStorage.setItem(
+                "local-agent.onboarding",
+                open ? "open" : "closed",
+              );
+            }}
+            tasks={[
+              {
+                id: "provider",
+                title: "添加供应商",
+                href: "#/providers",
+                status: data.providers.some((p) => p.configured)
+                  ? "completed"
+                  : "current",
+              },
+              {
+                id: "service",
+                title: "配置模型服务",
+                href: "#/model-services",
+                status: data.observationBindings.some((b) => b.enabled)
+                  ? "completed"
+                  : "pending",
+              },
+              {
+                id: "agent",
+                title: "绑定本机 Agent",
+                href: "#/agents",
+                status: data.agentConnections?.items.some(
+                  (agent) => agent.mode === "gateway",
+                )
+                  ? "completed"
+                  : "pending",
+              },
+            ]}
+          />
+        )}
+        {data ? (
+          <>
+            <div
+              className={`grid min-w-0 gap-3 ${activity.rows.some((row) => row.active) && !sourceAgentSelected ? "lg:grid-cols-2" : ""}`}
+            >
+              <ActivitySummary
+                {...activity.performance}
+                activeCount={activity.rows.filter((row) => row.active).length}
+                at={overview?.asOf}
+                gatewayReady={data.gatewayStatus === "ready"}
+                ttftP50={overview?.timings.ttftP50Ms}
+                ttftP95={overview?.timings.ttftP95Ms}
+              />
+              {!sourceAgentSelected && (
+                <section
+                  className="@container min-w-0 space-y-3 rounded-xl border border-border bg-surface-floating p-4"
+                  aria-labelledby="analysis-title"
+                  aria-busy={observation.updating}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <h2 id="analysis-title" className="text-title font-medium">
+                      {range === "168" ? "7 天" : `${range}h`} 模型调用趋势
+                    </h2>
+                    <div className="flex flex-wrap gap-2">
+                      <Select
+                        value={source}
+                        onValueChange={(v) =>
+                          setSource(v as OverviewQuery["source"])
+                        }
+                      >
+                        <SelectTrigger aria-label="调用统计来源" />
+                        <SelectContent>
+                          <SelectItem value="unified">全部来源</SelectItem>
+                          <SelectItem value="native">原生响应记录</SelectItem>
+                          <SelectItem value="gateway">网关请求</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={range} onValueChange={setRange}>
+                        <SelectTrigger aria-label="时间范围" />
+                        <SelectContent>
+                          {[
+                            ["6", "最近 6 小时"],
+                            ["12", "最近 12 小时"],
+                            ["24", "最近 24 小时"],
+                            ["168", "最近 7 天"],
+                          ].map(([value, label]) => (
+                            <SelectItem key={value} value={value}>
+                              {label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <Tabs
+                      value={metric}
+                      onValueChange={(v) =>
+                        setMetric(v as OverviewQuery["metric"])
+                      }
+                      color="default"
+                      variant="segment"
+                    >
+                      <TabsList aria-label="分析指标">
+                        {Object.entries(metricLabels).map(([value, label]) => (
+                          <TabItem key={value} value={value} label={label} />
+                        ))}
+                      </TabsList>
+                    </Tabs>
+                    <Select
+                      value={dimension}
+                      onValueChange={(v) =>
+                        setDimension(v as OverviewQuery["dimension"])
+                      }
+                    >
+                      <SelectTrigger aria-label="趋势分组" />
+                      <SelectContent>
+                        <SelectItem value="agent">按 Agent</SelectItem>
+                        <SelectItem value="model">按模型</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {observation.updating && (
+                    <p className="text-label text-fg-subtle" role="status">
+                      {observation.error
+                        ? "统计更新失败，保留上次结果"
+                        : "正在更新统计，保留上次结果"}
+                    </p>
+                  )}
+                  {overview ? (
+                    <>
+                      {overview.analysis.sourceCounts && (
+                        <p className="text-label text-fg-muted">
+                          网关逻辑请求 {overview.analysis.sourceCounts.gateway}{" "}
+                          条 · 原生响应 {overview.analysis.sourceCounts.native}{" "}
+                          条
+                        </p>
+                      )}
+                      {overview.analysis.nativeSourceError && (
+                        <p role="status" className="text-label text-fg-muted">
+                          {overview.analysis.nativeSourceError}
+                        </p>
+                      )}
+                      {Boolean(nativeSources?.length) && (
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-label text-fg-muted">
+                          {nativeSources?.map((source) => (
+                            <span
+                              key={source.agentId}
+                              title={source.error ?? undefined}
+                            >
+                              {familyNames[source.agentId] ?? source.agentId} ·{" "}
+                              {collectorLabel(source.status)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <CallAnalysisCharts analysis={overview.analysis} />
+                    </>
+                  ) : (
+                    <ConnectionEmpty
+                      title={
+                        observation.error
+                          ? "暂时无法读取分析"
+                          : "正在读取调用分析"
+                      }
+                    />
+                  )}
+                </section>
+              )}
+            </div>
+            <CurrentActivities activity={activity} />
+          </>
+        ) : (
+          <ConnectionEmpty title="连接本机数据后查看活动" />
+        )}
         {budgetAlerts > 0 && (
           <p role="status" className="text-label text-fg-muted">
             最近 24 小时有 {budgetAlerts} 个本机绑定触发预算预警。{" "}
@@ -232,128 +412,8 @@ export function OverviewPage({
           )}
           sourceError={published.error}
         />
-        {data ? (
-          <>
-            <ActivitySummary {...activity.performance} />
-            <CurrentActivities activity={activity} />
-          </>
-        ) : (
-          <ConnectionEmpty
-            title="连接本机数据后查看活动"
-            description="请在桌面应用中连接本地观测服务。"
-          />
-        )}
       </section>
       <div className="space-y-4">
-        {!sourceAgentSelected && (
-          <section
-            className="@container min-w-0 space-y-3 rounded-xl border border-border bg-surface-floating p-4"
-            aria-labelledby="analysis-title"
-            aria-busy={observation.updating}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <h2 id="analysis-title" className="text-title font-medium">
-                调用趋势与占比
-              </h2>
-              <div className="flex flex-wrap gap-2">
-                <Select
-                  value={source}
-                  onValueChange={(v) => setSource(v as OverviewQuery["source"])}
-                >
-                  <SelectTrigger aria-label="调用统计来源" />
-                  <SelectContent>
-                    <SelectItem value="unified">全部来源</SelectItem>
-                    <SelectItem value="native">原生响应记录</SelectItem>
-                    <SelectItem value="gateway">网关请求</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={range} onValueChange={setRange}>
-                  <SelectTrigger aria-label="时间范围" />
-                  <SelectContent>
-                    {[
-                      ["6", "最近 6 小时"],
-                      ["12", "最近 12 小时"],
-                      ["24", "最近 24 小时"],
-                      ["168", "最近 7 天"],
-                    ].map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Tabs
-                value={metric}
-                onValueChange={(v) => setMetric(v as OverviewQuery["metric"])}
-                color="default"
-                variant="segment"
-              >
-                <TabsList aria-label="分析指标">
-                  {Object.entries(metricLabels).map(([value, label]) => (
-                    <TabItem key={value} value={value} label={label} />
-                  ))}
-                </TabsList>
-              </Tabs>
-              <Select
-                value={dimension}
-                onValueChange={(v) =>
-                  setDimension(v as OverviewQuery["dimension"])
-                }
-              >
-                <SelectTrigger aria-label="趋势分组" />
-                <SelectContent>
-                  <SelectItem value="agent">按 Agent</SelectItem>
-                  <SelectItem value="model">按模型</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {observation.updating && (
-              <p className="text-label text-fg-subtle" role="status">
-                {observation.error
-                  ? "统计更新失败，保留上次结果"
-                  : "正在更新统计，保留上次结果"}
-              </p>
-            )}
-            {overview ? (
-              <>
-                {overview.analysis.sourceCounts && (
-                  <p className="text-label text-fg-muted">
-                    网关逻辑请求 {overview.analysis.sourceCounts.gateway} 条 ·
-                    原生响应 {overview.analysis.sourceCounts.native} 条
-                  </p>
-                )}
-                {overview.analysis.nativeSourceError && (
-                  <p role="status" className="text-label text-fg-muted">
-                    {overview.analysis.nativeSourceError}
-                  </p>
-                )}
-                {Boolean(nativeSources?.length) && (
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-label text-fg-muted">
-                    {nativeSources?.map((source) => (
-                      <span
-                        key={source.agentId}
-                        title={source.error ?? undefined}
-                      >
-                        {familyNames[source.agentId] ?? source.agentId} ·{" "}
-                        {collectorLabel(source.status)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <CallAnalysisCharts analysis={overview.analysis} />
-              </>
-            ) : (
-              <ConnectionEmpty
-                title={
-                  observation.error ? "暂时无法读取分析" : "正在读取调用分析"
-                }
-              />
-            )}
-          </section>
-        )}
         {!sourceAgentSelected && (
           <Accordion className="w-full" type="multiple">
             <AccordionItem value="statistics">

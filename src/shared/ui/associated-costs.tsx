@@ -84,7 +84,7 @@ export function AssociatedCostsView({
         {value && value.unlinkedNativeResponses > 0 ? " · 原生覆盖未确认" : ""}
         {value?.sourceState === "partial" ? " · 采集不完整" : ""}
       </p>
-      <Accordion>
+      <Accordion className="w-full min-w-0">
         <AccordionItem value="scope">
           <AccordionTrigger>费用统计依据</AccordionTrigger>
           <AccordionContent>

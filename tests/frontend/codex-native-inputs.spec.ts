@@ -9,7 +9,7 @@ test("native backfills replace the session headline and each next message keeps 
   await openRecentActivities(page);
   const feed = page.getByRole("region", { name: "当前活动列表", exact: true });
   const row = feed.getByRole("row").filter({ has: page.getByRole("cell") });
-  const title = row.getByRole("cell").first().locator("p").first();
+  const title = row.getByRole("link");
   await page.evaluate(() => {
     window.activityCase = "native-desktop-input-missing";
   });
@@ -29,7 +29,7 @@ test("native backfills replace the session headline and each next message keeps 
     await expect(row).toContainText("会话：固定的会话标题");
     await expect(row).not.toContainText("来源未提供");
     await expect(row).not.toContainText("更早一条消息内容");
-    await expect(row).toContainText("TTFT 1.00 秒");
+    await expect(row.getByRole("cell").nth(1)).toContainText("1.00 秒");
     await expect(row).toContainText("均速 32.0 Token/s");
     await expect(row.getByRole("link")).toBeFocused();
   }

@@ -29,6 +29,7 @@ export interface ObservationBinding {
 }
 
 export interface ModelObservation {
+  revision?: number;
   lastRateSample?: RateSample | null;
   routing?: {
     bindingId: string;

@@ -189,6 +189,18 @@ pub struct ObservationStore(
     content_epoch::ContentEpoch,
     source_file::SourceFile,
 );
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GatewayClientUsage {
+    pub requests_7d: usize,
+    pub errors_7d: usize,
+    pub throttled429_count_7d: usize,
+    pub usage_7d: Usage,
+    pub cost_7d: crate::provider_cost::Totals,
+    pub last_peer: Option<String>,
+    pub last_active_at: Option<String>,
+}
+
 pub struct ObservationRead {
     pub rows: Vec<ModelObservation>,
     pub invalid_records: usize,
@@ -221,6 +233,72 @@ impl ObservationStore {
             .parent()
             .expect("database has a parent")
             .to_path_buf()
+    }
+    /// Aggregate stored logical requests with their real upstream attempts.
+    pub fn gateway_client_usage(
+        &self,
+        now: DateTime<Utc>,
+    ) -> Result<BTreeMap<String, GatewayClientUsage>, String> {
+        let since = now - chrono::Duration::days(7);
+        let mut statement = self
+            .0
+            .prepare(
+                "SELECT value FROM model_observations
+             WHERE CASE WHEN json_valid(value) THEN json_extract(value,'$.client.id') IS NOT NULL
+              AND json_type(value,'$.routing.trace') IS NULL ELSE 0 END
+              AND julianday(started_at)>=julianday(?1) AND julianday(started_at)<=julianday(?2)",
+            )
+            .map_err(|_| "无法读取局域网请求历史")?;
+        let rows = statement
+            .query_map([since.to_rfc3339(), now.to_rfc3339()], |row| {
+                row.get::<_, String>(0)
+            })
+            .map_err(|_| "无法读取局域网请求历史")?;
+        let mut facts = Vec::new();
+        for row in rows {
+            let row = row.map_err(|_| "局域网请求历史读取中断")?;
+            let observation: ModelObservation =
+                serde_json::from_str(&row).map_err(|_| "局域网请求历史存在无法核对的记录")?;
+            if DateTime::parse_from_rfc3339(&observation.started_at)
+                .is_ok_and(|at| at >= since && at <= now)
+            {
+                facts.push(observation);
+            }
+        }
+        let mut usage = BTreeMap::<String, GatewayClientUsage>::new();
+        for request in crate::requests::logical_requests(facts, &Default::default()) {
+            let Some(client) = &request.client else {
+                continue;
+            };
+            let stats = usage.entry(client.id.clone()).or_default();
+            stats.requests_7d += 1;
+            stats.errors_7d += usize::from(request.status == "failed");
+            stats.throttled429_count_7d += usize::from(
+                request
+                    .attempts
+                    .iter()
+                    .any(|attempt| attempt.observation.http_status == Some(429)),
+            );
+            stats.usage_7d.add(&request.usage);
+            for attempt in &request.attempts {
+                stats.cost_7d.add(&attempt.cost);
+            }
+            let Some(latest) = request.attempts.last() else {
+                continue;
+            };
+            let active_at = &latest.observation.started_at;
+            let previous = stats
+                .last_active_at
+                .as_deref()
+                .and_then(|at| DateTime::parse_from_rfc3339(at).ok());
+            if DateTime::parse_from_rfc3339(active_at)
+                .is_ok_and(|at| previous.is_none_or(|before| at > before))
+            {
+                stats.last_active_at = Some(active_at.clone());
+                stats.last_peer = Some(client.peer.clone());
+            }
+        }
+        Ok(usage)
     }
     /// Invalid records remain untouched in SQLite and are counted explicitly.
     pub fn read(&self, limit: Option<usize>) -> Result<ObservationRead, String> {

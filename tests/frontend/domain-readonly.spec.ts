@@ -55,7 +55,10 @@ test("unified metadata does not read body until the user selects a session", asy
       c.startsWith("body:"),
     ),
   ).toEqual([]);
-  await expect(page.getByText("选择会话后按需读取正文。")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "按项目分组" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await page.getByRole("row").filter({ hasText: "Alpha" }).focus();
   await page.getByRole("row").filter({ hasText: "Alpha" }).press("Enter");
   await expect(
@@ -64,14 +67,17 @@ test("unified metadata does not read body until the user selects a session", asy
   await expect(
     page.getByText(/9,007,199,254,741,000 Token/).first(),
   ).toBeVisible();
+  await page.goBack();
   await page.getByLabel("搜索统一会话").fill("Beta");
-  await expect(page.getByText("选择会话后按需读取正文。")).toBeVisible();
+  await expect(page.getByLabel("统一范围统计")).toContainText(
+    "Reader：1 个会话",
+  );
   expect(
     (await page.evaluate(() => window.domainFixture.calls)).filter((c) =>
       c.startsWith("body:"),
     ),
   ).toEqual(["body:org.example.reader:Alpha"]);
-  await page.getByRole("row").filter({ hasText: "Beta" }).click();
+  await page.getByRole("link", { name: "Beta", exact: true }).click();
   await expect(
     page.getByText("Beta private body", { exact: true }),
   ).toBeVisible();
@@ -97,7 +103,8 @@ test("late body results cannot replace another selected session", async ({
       ),
     )
     .toBe(true);
-  await page.getByRole("row").filter({ hasText: "Beta" }).click();
+  await page.goBack();
+  await page.getByRole("link", { name: "Beta", exact: true }).click();
   await expect(
     page.getByText("Beta private body", { exact: true }),
   ).toBeVisible();
@@ -162,7 +169,12 @@ test("withdrawing unified authorization clears visible rows and body immediately
   await expect(
     page.getByText("Alpha private body", { exact: true }),
   ).toHaveCount(0);
-  await expect(page.getByText("当前范围尚无可读会话")).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "当前快照中无法读取原会话" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Alpha", exact: true }),
+  ).toHaveCount(0);
 });
 test("view authorization and optional metadata storage require an explicit action", async ({
   page,
@@ -200,10 +212,12 @@ test("minimum window keeps the list and body readable with independent scrolling
     .getByLabel("统一正文滚动区域", { exact: true })
     .boundingBox();
   expect(body?.height).toBeGreaterThanOrEqual(80);
-  await expect(page.getByRole("cell", { name: /Alpha/ })).toBeInViewport();
+
   await expect(
     page.getByText("Alpha private body", { exact: true }),
   ).toBeInViewport();
+  await page.goBack();
+  await expect(page.getByRole("cell", { name: /Alpha/ })).toBeInViewport();
   const summary = page.locator("summary").filter({ hasText: "选择来源" });
   await summary.focus();
   await summary.press("Enter");
@@ -285,7 +299,7 @@ test("a session link opens the scoped conversation even outside the first page",
   const url =
     "/tests/frontend/domain-readonly.html?unified=1&many=1&directSession=org.example.reader%3APaged-080";
   await page.goto(url);
-  await expect(page.getByRole("cell", { name: /Paged-000/ })).toBeVisible();
+  await expect(page.getByRole("cell", { name: /Paged-000/ })).toHaveCount(0);
   await expect(
     page.getByRole("region", { name: "统一会话正文" }),
   ).toContainText("Paged-080 private body");

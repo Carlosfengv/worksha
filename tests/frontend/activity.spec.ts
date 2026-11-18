@@ -25,8 +25,10 @@ test("activity links navigate to the associated Session with mouse and keyboard"
     page.getByRole("heading", { name: "修复登录", exact: true }),
   ).toBeVisible();
   await expect(popover).toBeHidden();
+  await page.getByRole("button", { name: "Home", exact: true }).hover();
   await page.goBack();
   await openAgentHistory(page);
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await trigger.press("Enter");
   await expect(first).toBeFocused();
   await page.keyboard.press("Tab");
@@ -99,7 +101,7 @@ test("native activity opens the selected Session and outside click dismisses the
   await trigger.press("Space");
   const popover = page.getByRole("dialog", { name: "Codex 桌面端活动明细" });
   await expect(popover).toBeVisible();
-  await page.getByRole("heading", { name: "总览", exact: true }).click();
+  await page.getByRole("region", { name: /模型调用趋势$/ }).click();
   await expect(popover).toBeHidden();
   await trigger.press("Enter");
   const link = popover.getByRole("link", { name: /核对文档/ });

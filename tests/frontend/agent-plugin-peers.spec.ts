@@ -93,7 +93,9 @@ test("DSH 无会话来源时仍可从列表验证 Provider、预览、应用和�
 
   await page.getByRole("link", { name: `详情 ${name}` }).click();
   await expect(page.getByRole("tab", { name: "Sessions" })).toBeVisible();
-  await page.getByRole("link", { name: "返回 Agents" }).click();
+  await page
+    .getByRole("button", { name: "← 本机 Agents", exact: true })
+    .click();
   await expect(current).toHaveText("Provider · 连接 000 · model-042");
   await page.getByRole("button", { name: "恢复变更前的连接" }).click();
   await dialog.getByRole("button", { name: "确认恢复" }).click();

@@ -301,6 +301,10 @@ pub(crate) fn management(state: AppState) -> Router {
             axum::routing::post(crate::provider_connect::connect),
         )
         .route(
+            "/api/provider-drafts/probe",
+            axum::routing::post(crate::provider_connect::probe_draft),
+        )
+        .route(
             "/api/provider-source-operations",
             axum::routing::post(providers::source_operation::action).layer(
                 axum::extract::DefaultBodyLimit::max(2 * 1024 * 1024 + 32768),

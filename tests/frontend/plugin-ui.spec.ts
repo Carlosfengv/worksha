@@ -18,6 +18,7 @@ test("registered pages retain all detail and return parameters", async ({
     "projects",
     "iam",
     "plugins",
+    "lan-gateway",
     "settings",
   ]);
   for (const { route } of contexts) {
@@ -106,7 +107,7 @@ test("registry rejects conflicts and keeps navigation and scroll ownership", asy
     navigation
       .filter((item: { ownsBody: boolean }) => item.ownsBody)
       .map((item: { id: string }) => item.id),
-  ).toEqual(["mcp", "sessions", "requests"]);
+  ).toEqual(["mcp", "sessions", "requests", "settings"]);
   expect(
     navigation
       .filter(

@@ -530,6 +530,20 @@ pub(crate) async fn fetch_provider_models(
         .await
 }
 #[tauri::command]
+pub(crate) async fn probe_provider_draft(
+    backend: tauri::State<'_, Backend>,
+    request: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    backend
+        .context()?
+        .request(
+            reqwest::Method::POST,
+            "/api/provider-drafts/probe",
+            Some(request),
+        )
+        .await
+}
+#[tauri::command]
 pub(crate) async fn verify_provider(
     backend: tauri::State<'_, Backend>,
     provider_id: String,

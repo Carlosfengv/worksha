@@ -4,7 +4,6 @@ import { useBackendReadEpoch } from "@/shared/hooks/use-backend-read-epoch";
 import { backendReadEpoch } from "@/shared/lib/backend-recovery";
 import { useEffect, useState, type Ref } from "react";
 import { Button } from "@/components/ui/button";
-import { PageActions, PageHeader } from "@/components/ui/page-layout";
 import {
   DetailList,
   DetailListItem,
@@ -33,6 +32,7 @@ import {
 } from "../request-display";
 import type { RequestDetailResponse } from "../request-types";
 import { RequestRetryWaterfall } from "./request-retry-waterfall";
+import { requestsViewHref } from "../request-display";
 
 const fallbackReasons: Record<string, string> = {
   upstream_failure: "首选来源临时故障，已回退",
@@ -231,21 +231,15 @@ export function RequestDetail({
     : [];
   return (
     <section className="space-y-4" aria-label="请求详情">
-      <PageHeader className="px-0">
-        <h2 ref={titleRef} tabIndex={-1} className="text-title font-medium">
-          请求详情
-        </h2>
-        <PageActions>
-          <Button
-            variant="tertiary"
-            onClick={() => {
-              window.location.hash = `/requests${returnSearch ? `?${returnSearch}` : ""}`;
-            }}
-          >
-            返回请求列表
-          </Button>
-        </PageActions>
-      </PageHeader>
+      <h2 ref={titleRef} tabIndex={-1} className="text-title font-medium">
+        请求详情
+      </h2>
+      <a
+        href={requestsViewHref(returnSearch ?? "", false)}
+        className="sr-only focus:not-sr-only"
+      >
+        返回请求列表
+      </a>
       {error && (
         <p role="alert">
           {data ? "更新失败，保留上次快照：" : "请求详情暂不可读取："}
@@ -260,47 +254,62 @@ export function RequestDetail({
       ) : (
         <>
           {!r.native && <RequestBudget key={id} id={id} />}
-          {!r.native && r.attempts.length > 0 && (
-            <RequestRetryWaterfall request={r} returnTo={returnTo} />
-          )}
-          {!!data.routeTrace?.decisions.length && (
-            <section
-              aria-label="候选路由决策"
-              className="space-y-3 rounded-xl border border-border p-4"
-            >
-              <h3 className="text-title font-medium">候选路由决策</h3>
-              <p className="text-label text-fg-muted">
-                {r.attempts.length
-                  ? `本轮发送 ${r.attempts.length} 次`
-                  : "本轮未向候选发送请求"}
-                {data.routeTrace.httpStatus
-                  ? ` · 网关返回 HTTP ${data.routeTrace.httpStatus}`
-                  : ""}
-              </p>
-              <ol className="list-inside list-decimal space-y-2">
-                {data.routeTrace.decisions.map((decision, index) => (
-                  <li key={index} className="break-all text-body">
-                    {decision.path
-                      .map(
-                        (step) =>
-                          `${step.service} / ${step.model} · 版本 ${step.versionId.slice(0, 8)}${step.modelId ? ` · 条目 ${step.modelId.slice(0, 8)}` : ""}`,
-                      )
-                      .join(" → ")}
+          {!r.native && (
+            <div className="grid min-w-0 items-start gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+              {!!data.routeTrace?.decisions.length && (
+                <section
+                  aria-label="候选路由决策"
+                  className="space-y-3 rounded-xl border border-border p-4"
+                >
+                  <h3 className="text-title font-medium">候选路由决策</h3>
+                  <p className="text-label text-fg-muted">
+                    {r.attempts.length
+                      ? `本轮发送 ${r.attempts.length} 次`
+                      : "本轮未向候选发送请求"}
+                    {data.routeTrace.httpStatus
+                      ? ` · 网关返回 HTTP ${data.routeTrace.httpStatus}`
+                      : ""}
+                  </p>
+                  <ol className="list-inside list-decimal space-y-2">
+                    {data.routeTrace.decisions.map((decision, index) => (
+                      <li key={index} className="break-all text-body">
+                        {decision.path
+                          .map(
+                            (step) =>
+                              `${step.service} / ${step.model} · 版本 ${step.versionId.slice(0, 8)}${step.modelId ? ` · 条目 ${step.modelId.slice(0, 8)}` : ""}`,
+                          )
+                          .join(" → ")}
+                        <p className="text-label text-fg-muted">
+                          {decision.accountPosition
+                            ? `账号池第 ${decision.accountPosition} 位 · `
+                            : ""}
+                          {decisionReasons[decision.reason] ?? "原因未知"}
+                        </p>
+                      </li>
+                    ))}
+                  </ol>
+                  {data.routeTrace.truncated && (
                     <p className="text-label text-fg-muted">
-                      {decision.accountPosition
-                        ? `账号池第 ${decision.accountPosition} 位 · `
-                        : ""}
-                      {decisionReasons[decision.reason] ?? "原因未知"}
+                      记录达到容量上限，部分候选决策未展示。
                     </p>
-                  </li>
-                ))}
-              </ol>
-              {data.routeTrace.truncated && (
-                <p className="text-label text-fg-muted">
-                  记录达到容量上限，部分候选决策未展示。
-                </p>
+                  )}
+                </section>
               )}
-            </section>
+              {!data.routeTrace?.decisions.length && (
+                <section
+                  className="space-y-2 rounded-xl border border-border p-3"
+                  aria-label="候选路由决策"
+                >
+                  <h3 className="text-body font-medium">候选路由决策</h3>
+                  <p className="text-label text-fg-muted">
+                    此请求没有记录候选跳过决策。
+                  </p>
+                </section>
+              )}
+              {!r.native && r.attempts.length > 0 && (
+                <RequestRetryWaterfall request={r} returnTo={returnTo} />
+              )}
+            </div>
           )}
           <div className="rounded-xl border border-border p-4">
             <DetailList>
@@ -324,17 +333,23 @@ export function RequestDetail({
             )}
             <div className="mt-4 flex flex-wrap gap-2">
               {r.sessionId && !r.client && (
-                <Button
-                  variant="tertiary"
-                  onClick={() => {
-                    window.location.hash = sessionLink(r.sessionId!, {
-                      anchor: r.native?.eventId,
-                      returnTo,
-                      view: r.native ? undefined : "requests",
-                    });
-                  }}
-                >
-                  打开所属会话
+                <Button variant="tertiary" asChild>
+                  <a
+                    data-workspace-pin
+                    href={`#${sessionLink(r.sessionId, { anchor: r.native?.eventId, returnTo, view: r.native ? undefined : "requests" })}`}
+                  >
+                    打开关联会话
+                  </a>
+                </Button>
+              )}
+              {r.client && (
+                <Button variant="tertiary" asChild>
+                  <a
+                    data-workspace-pin
+                    href={`#/lan-gateway/${encodeURIComponent(r.client.id)}`}
+                  >
+                    打开客户端密钥审计
+                  </a>
                 </Button>
               )}
               <Button
@@ -369,7 +384,7 @@ export function RequestDetail({
                 </Button>
               )}
             </div>
-            <Accordion type="multiple" className="mt-3">
+            <Accordion type="multiple" className="mt-3 w-full min-w-0">
               <AccordionItem value="metadata">
                 <AccordionTrigger>请求标识与采集字段</AccordionTrigger>
                 <AccordionContent>

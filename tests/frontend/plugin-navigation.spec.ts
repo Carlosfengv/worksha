@@ -19,7 +19,7 @@ test("手动刷新报表只提交当前视图", async ({ page }) => {
 
 test("撤权后丢弃迟到的报表响应", async ({ page }) => {
   await page.goto(
-    "/tests/frontend/tables.html?mode=plugin-navigation#/settings",
+    "/tests/frontend/tables.html?mode=plugin-navigation#/overview",
   );
   const link = page.getByRole("link", { name: "Agent 会话报表", exact: true });
   await expect(link).toBeVisible();
@@ -40,13 +40,13 @@ test("撤权后丢弃迟到的报表响应", async ({ page }) => {
   ).toHaveCount(0);
 });
 
-test("an active uploaded plugin gets a keyboard-accessible sidebar route and loses it on disable", async ({
+test("uploaded views open in independent tabs and leave Home navigation when disabled", async ({
   page,
 }) => {
   await page.goto(
-    "/tests/frontend/tables.html?mode=plugin-navigation#/settings",
+    "/tests/frontend/tables.html?mode=plugin-navigation#/overview",
   );
-  const navigation = page.getByRole("navigation", { name: "主导航" });
+  const navigation = page.getByRole("navigation", { name: "观测" });
   const link = navigation.getByRole("link", {
     name: "Agent 会话报表",
     exact: true,
@@ -70,7 +70,8 @@ test("an active uploaded plugin gets a keyboard-accessible sidebar route and los
   await expect(
     page.getByText("DeepSeek Harness 桌面端 · 2 个会话 · 38 Token"),
   ).toHaveCount(0);
-  await expect(link).toBeVisible();
+  await expect(link).not.toBeVisible();
+  await expect(page.locator("[data-workspace-tab]")).toHaveCount(1);
   await page.evaluate(() => window.setNavigationFixtureEnabled(false));
   await expect(link).not.toBeVisible();
   await expect(

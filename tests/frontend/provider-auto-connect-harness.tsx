@@ -27,6 +27,8 @@ declare global {
       credentialCancels: string[];
       connections: Provider[];
       manualSaves: Provider[];
+      draftProbes: Provider[];
+      makeDefaultService?: boolean;
       modelRequests: Parameters<typeof providersApi.providerModels>[0][];
       saved: number;
       release?: () => void;
@@ -42,11 +44,13 @@ window.autoConnectFixture = {
   credentialCancels: [],
   connections: [],
   manualSaves: [],
+  draftProbes: [],
   modelRequests: [],
   saved: 0,
 };
 const fixture = window.autoConnectFixture;
 const mode = new URLSearchParams(location.search).get("mode");
+const guided = new URLSearchParams(location.search).has("guided");
 const receipts = new Map<string, CredentialReceipt>();
 const receipt = (operationId: string, label: string): CredentialReceipt => ({
   operationId,
@@ -312,6 +316,9 @@ providersApi.connectProvider = async (input) => {
 providersApi.saveProvider = async (input) => {
   fixture.manualSaves.push(input);
 };
+providersApi.probeDraft = async (_storeId, input) => {
+  fixture.draftProbes.push(input);
+};
 providersApi.providerModels = async (input) => {
   fixture.modelRequests.push(input);
   if (mode === "models-error") throw Error("目录读取失败，请重试。");
@@ -379,9 +386,12 @@ function Harness() {
         <ProviderEditor
           provider={provider}
           storeId={storeId}
+          guidedCreation={guided}
+          canCreateDefaultService={guided}
           onClose={() => setOpen(false)}
-          onSaved={async () => {
+          onSaved={async (_provider, makeDefaultService) => {
             fixture.saved++;
+            fixture.makeDefaultService = makeDefaultService;
             if (mode === "operation-refresh-error" && fixture.saved === 1)
               throw new Error("合成列表刷新失败");
             setOpen(false);

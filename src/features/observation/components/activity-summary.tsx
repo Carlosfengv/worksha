@@ -3,10 +3,17 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { AiBrain03Icon } from "@hugeicons/core-free-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MetricCard, type MetricCardState } from "@/components/ui/metric-card";
+import type { MetricCardState } from "@/components/ui/metric-card";
+import {
+  LiveLine,
+  LiveLineChart,
+  LiveXAxis,
+  LiveYAxis,
+  type LiveLinePoint,
+} from "@/components/ui/live-line-chart";
 import type { ActivitySummaryData } from "../activity-summary";
-import { seconds, speed } from "../display";
 import { ActivityTime } from "./activity-time";
+import { seconds, speed } from "../display";
 import {
   assignModelColors,
   loadModelColors,
@@ -211,25 +218,36 @@ function ModelActivityFlow({
 export function ActivitySummary({
   summary,
   state,
+  activeCount,
+  at,
+  ttftP50,
+  ttftP95,
+  gatewayReady,
   nativeSourceEnabled,
+  nativeObservationPaused,
+  reportedOnly,
   sourceHref,
-  nativeObservationPaused = false,
-  reportedOnly = false,
-  reportedTtfts = [],
   reportedRates = [],
+  reportedTtfts = [],
   reportedSourceNames = [],
 }: {
   summary: ActivitySummaryData;
   state: MetricCardState;
+  activeCount: number;
+  at?: string;
+  ttftP50?: number | null;
+  ttftP95?: number | null;
+  gatewayReady: boolean;
   nativeSourceEnabled: boolean;
-  sourceHref: string;
   nativeObservationPaused?: boolean;
   reportedOnly?: boolean;
-  reportedTtfts?: number[];
+  sourceHref?: string;
   reportedRates?: number[];
+  reportedTtfts?: number[];
   reportedSourceNames?: string[];
 }) {
   const [paused, setPaused] = useState(false);
+  const [points, setPoints] = useState<LiveLinePoint[]>([]);
   const [colors, setColors] =
     useState<ReadonlyMap<string, string>>(loadModelColors);
   const nextColors = assignModelColors(
@@ -238,195 +256,204 @@ export function ActivitySummary({
   );
   if (nextColors !== colors) setColors(nextColors);
   useEffect(() => saveModelColors(colors), [colors]);
+  const latest = summary.samples ? summary.rate : null;
+  useEffect(() => {
+    if (!at || latest == null || state !== "ready" || !activeCount) return;
+    const time = Date.parse(at) / 1000;
+    if (!Number.isFinite(time)) return;
+    setPoints((previous) => [
+      ...previous.filter(
+        (point) => point.time >= time - 30 && point.time < time,
+      ),
+      { time, value: latest },
+    ]);
+  }, [activeCount, at, latest, state]);
+  const timing = `成功 TTFT P50 / P95 ${seconds(ttftP50)} / ${seconds(ttftP95)} 秒`;
   const ready = state === "ready";
-  const hasActivity = summary.sources > 0 || summary.reportedSessions > 0;
-  const hasMetricSources = summary.sources > 0;
+  const nativeOrActive = nativeSourceEnabled || activeCount > 0;
+  const known = ready && nativeOrActive;
   const mean = (values: number[]) =>
     values.length
-      ? values.reduce((total, value) => total + value / values.length, 0)
+      ? values.reduce((sum, value) => sum + value / values.length, 0)
       : null;
-  const sourceTtft = hasMetricSources ? null : mean(reportedTtfts);
-  const sourceRate = hasMetricSources ? null : mean(reportedRates);
-  const sourceLabel =
+  const reportedRate = summary.sources === 0 ? mean(reportedRates) : null;
+  const reportedTtft = summary.sources === 0 ? mean(reportedTtfts) : null;
+  const source =
     reportedSourceNames.length === 1 ? reportedSourceNames[0] : "来源上报";
-  const ttft = summary.ttft ?? sourceTtft;
-  const rateAvailable =
-    hasMetricSources || (!reportedOnly && summary.reportedSessions === 0);
-  const metricsAvailable = ready && (hasActivity || nativeSourceEnabled);
-  const metricState = ready && !metricsAvailable ? "unavailable" : state;
-  const message =
-    state === "loading"
-      ? "正在读取当前任务…"
-      : state === "stale"
-        ? "快照已过期，当前任务与速率待更新。"
-        : state === "error"
-          ? "暂时无法读取当前任务，恢复后自动更新。"
-          : !hasActivity
-            ? nativeSourceEnabled
-              ? "当前没有观测到正在执行的任务。"
-              : nativeObservationPaused
-                ? "原生活动采集已暂停，当前执行状态待确认。"
-                : "未开启原生会话读取，当前执行状态待确认。"
-            : hasMetricSources
-              ? `近 ${summary.windowMs / 1000} 秒可测输出合计，包含正文、已上报的思考和网关工具参数。历史采样单独标记。`
-              : "运行状态由 Agent 上报。";
+  const rate =
+    reportedRate ??
+    (summary.reportedSessions && !summary.sources ? null : summary.rate);
+  const rateLabel =
+    reportedRate !== null
+      ? "上报的当前步骤均速"
+      : rate != null && summary.partial
+        ? "已测 Token 速率"
+        : "总 Token 速率";
+  const ttft = summary.ttft ?? reportedTtft;
+  const gatewayOnly =
+    ready && !nativeSourceEnabled && !reportedOnly && !summary.reportedSessions;
+  const metrics = (
+    <dl className="grid gap-2 text-label sm:grid-cols-3">
+      <div role="group" aria-label="执行中的 Session">
+        <dt className="text-fg-muted">执行中的 Session</dt>
+        <dd className="font-medium">
+          <span aria-label="指标值">{known ? summary.sessions : "—"} 个</span>
+        </dd>
+        {known && (summary.unlinked > 0 || summary.reportedSessions > 0) && (
+          <dd className="text-fg-muted">
+            {summary.unlinked
+              ? `另有 ${summary.unlinked} 个网关请求待关联 Session`
+              : `含 ${summary.reportedSessions} 个 Agent 上报的 Session`}
+          </dd>
+        )}
+      </div>
+      <div role="group" aria-label="当前平均 TTFT">
+        <dt className="text-fg-muted">当前平均 TTFT</dt>
+        <dd className="font-medium">
+          <span aria-label="指标值">
+            {known && ttft != null ? `${seconds(ttft)} 秒` : "—"}
+          </span>
+        </dd>
+        {known && summary.sources > 0 && (
+          <dd className="text-fg-muted">
+            {summary.ttftSamples}/{summary.sources} 个活动来源已记录
+            {summary.ttftPendingLabel ? ` · ${summary.ttftPendingLabel}` : ""}
+          </dd>
+        )}
+        {known && reportedTtft != null && (
+          <dd className="text-fg-muted">
+            {source} · {reportedTtfts.length} 个会话已上报
+          </dd>
+        )}
+      </div>
+      <div role="group" aria-label={rateLabel}>
+        <dt className="text-fg-muted">{rateLabel}</dt>
+        <dd className="font-medium">
+          <span aria-label="指标值">
+            {known && rate != null ? speed(rate) : "—"} Token/s
+          </span>
+        </dd>
+        {known && summary.sources > 0 && (
+          <dd className="text-fg-muted">
+            {summary.samples}/{summary.sources} 个活动来源可测
+            {summary.samples && summary.partial ? " · 部分可测" : ""}
+            {rate == null && " · 当前来源未提供可测的 Token 增量"}
+          </dd>
+        )}
+        {known && reportedRate != null && (
+          <dd className="text-fg-muted">
+            {source} · {reportedRates.length} 个会话
+          </dd>
+        )}
+      </div>
+    </dl>
+  );
+  if (state !== "ready" || !activeCount) {
+    const visibility =
+      reportedOnly || nativeSourceEnabled
+        ? "当前无在途模型调用 · 当前没有观测到正在执行的任务。"
+        : nativeObservationPaused
+          ? "当前无在途网关调用 · 原生活动采集已暂停，当前执行状态待确认。"
+          : "当前无在途网关调用 · 原生观测未授权，当前执行状态待确认。";
+    return (
+      <section
+        aria-label="实时任务汇总"
+        className="col-span-full space-y-1 rounded-lg border border-border px-3 py-2"
+      >
+        <div
+          role="status"
+          aria-label="实时任务汇总"
+          className="flex flex-wrap items-center gap-2 text-label text-fg-muted"
+        >
+          {state === "ready" ? (
+            <>
+              <Badge size="sm" status={gatewayReady ? "success" : "neutral"}>
+                {gatewayOnly
+                  ? "仅网关"
+                  : gatewayReady
+                    ? "网关就绪"
+                    : "网关未就绪"}
+              </Badge>
+              {visibility} · {timing}
+            </>
+          ) : state === "loading" ? (
+            "正在读取当前任务…"
+          ) : state === "stale" ? (
+            "快照已过期，当前任务与速率待更新。"
+          ) : (
+            "暂时无法读取当前任务，恢复后自动更新。"
+          )}
+          {ready && nativeObservationPaused && (
+            <a
+              href="#/plugins?scene=activity"
+              className="text-fg-link underline"
+            >
+              管理活动采集
+            </a>
+          )}
+          {gatewayOnly && !nativeObservationPaused && sourceHref && (
+            <a href={"#" + sourceHref} className="text-fg-link underline">
+              开启原生观测
+            </a>
+          )}
+        </div>
+        {metrics}
+      </section>
+    );
+  }
   return (
     <section
       aria-label="实时任务汇总"
-      className="space-y-2 rounded-xl border border-border bg-surface-floating p-3"
+      className="min-w-0 space-y-2 rounded-xl border border-border bg-surface-floating p-3"
     >
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-body font-medium">活动性能明细</h3>
-        <Badge size="sm" status={ready && hasActivity ? "success" : "neutral"}>
-          {ready
-            ? !nativeSourceEnabled && (!reportedOnly || hasMetricSources)
-              ? "仅网关"
-              : hasActivity
-                ? "实时"
-                : nativeSourceEnabled
-                  ? "暂无活动"
-                  : "待接入"
-            : state === "loading"
-              ? "读取中"
-              : "待更新"}
-        </Badge>
-      </div>
-      <div className="grid gap-2 sm:grid-cols-3">
-        <MetricCard
-          className="self-stretch p-2"
-          valueClassName="text-title"
-          label="执行中的 Session"
-          value={metricsAvailable ? summary.sessions : "—"}
-          unit="个"
-          state={metricState}
-          meta={
-            ready && summary.unlinked
-              ? `另有 ${summary.unlinked} 个网关请求待关联 Session`
-              : ready && summary.reportedSessions
-                ? `含 ${summary.reportedSessions} 个 Agent 上报的 Session`
-                : "同一 Session 的消息与工具步骤只计一次"
-          }
-        />
-        <MetricCard
-          className="self-stretch p-2"
-          valueClassName="text-title"
-          label="当前平均 TTFT"
-          value={
-            ready
-              ? ttft === null
-                ? hasMetricSources
-                  ? (summary.ttftPendingLabel ?? "等待首 Token")
-                  : "—"
-                : seconds(ttft)
-              : "—"
-          }
-          unit={ready && ttft !== null ? "秒" : undefined}
-          state={metricState}
-          meta={
-            ready && hasMetricSources
-              ? `${summary.ttftSamples}/${summary.sources} 个活动来源已记录 · 原生含事件传递延迟`
-              : ready && sourceTtft !== null
-                ? `${sourceLabel} · ${reportedTtfts.length} 个会话已上报`
-                : rateAvailable
-                  ? "首个推理或正文返回后更新"
-                  : "来源未提供"
-          }
-        />
-        <MetricCard
-          className="self-stretch p-2"
-          valueClassName="text-title"
-          label={
-            ready && sourceRate !== null
-              ? "上报的当前步骤均速"
-              : ready &&
-                  (summary.partial || summary.reportedSessions > 0) &&
-                  summary.rate !== null &&
-                  rateAvailable
-                ? "已测 Token 速率"
-                : "总 Token 速率"
-          }
-          value={
-            metricsAvailable && sourceRate !== null
-              ? speed(sourceRate)
-              : metricsAvailable && rateAvailable && summary.rate !== null
-                ? speed(summary.rate)
-                : "—"
-          }
-          unit="Token/s"
-          state={metricState}
-          footer={
-            ready &&
-            hasMetricSources &&
-            summary.rate === null &&
-            summary.recentSample ? (
-              <>
-                最近单个来源 {speed(summary.recentSample.tokensPerSecond)}{" "}
-                Token/s ·{" "}
-                <ActivityTime
-                  value={new Date(summary.recentSample.at).toISOString()}
-                  kind="sample"
-                />
-              </>
-            ) : undefined
-          }
-          statusMessage={
-            ready && hasMetricSources && summary.rate === null
-              ? "当前来源未提供可测的 Token 增量"
-              : undefined
-          }
-          meta={
-            ready && hasMetricSources
-              ? `${summary.samples}/${summary.sources} 个活动来源可测${summary.samples === 0 ? " · 暂无实时采样" : summary.partial ? " · 部分可测" : ""}`
-              : ready && sourceRate !== null
-                ? `${sourceLabel} · ${reportedRates.length} 个会话`
-                : rateAvailable
-                  ? "仅统计当前任务"
-                  : "来源未提供"
-          }
-        />
-      </div>
-      {ready && hasMetricSources && (
-        <ModelActivityFlow
-          models={summary.models}
-          paused={paused}
-          colors={nextColors}
-        />
-      )}
-      <div className="flex items-start justify-between gap-3">
-        <p
-          className="text-label text-fg-muted"
-          role={ready ? undefined : "status"}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-body font-medium">实时模型调用与速率</h3>
+        {gatewayOnly && (
+          <p className="text-label text-fg-muted">
+            仅网关 · 当前仅统计经本应用的网关请求
+          </p>
+        )}
+        <Button
+          variant="ghost"
+          size="xs"
+          aria-pressed={paused}
+          aria-label={paused ? "播放活动流动效果" : "暂停活动流动效果"}
+          onClick={() => setPaused(!paused)}
         >
-          {message}
-        </p>
-        {ready &&
-          summary.models.some(
-            (model) => model.rate !== null && model.rate > 0,
-          ) && (
-            <Button
-              variant="ghost"
-              size="xs"
-              aria-label={paused ? "播放活动流动效果" : "暂停活动流动效果"}
-              aria-pressed={paused}
-              onClick={() => setPaused(!paused)}
-            >
-              {paused ? "播放动效" : "暂停动效"}
-            </Button>
-          )}
+          {paused ? "播放动效" : "暂停动效"}
+        </Button>
       </div>
-      {ready && !nativeSourceEnabled && !reportedOnly && (
-        <p className="text-label text-fg-muted">
-          {nativeObservationPaused
-            ? "原生活动采集已暂停，当前仅统计经本应用的网关请求。可在插件管理中恢复采集。"
-            : "当前仅统计经本应用的网关请求。官方登录及其他直连会话需开启原生观测。"}
-          <a
-            href={`#${sourceHref}`}
-            className="ml-2 rounded-lg text-fg-muted outline-none hover:text-fg-default focus-visible:ring-1 focus-visible:ring-focus-ring"
-          >
-            {nativeObservationPaused ? "管理活动采集" : "开启原生观测"}
-          </a>
-        </p>
-      )}
+      {metrics}
+      <section
+        aria-label="实时模型流向"
+        className="grid min-w-0 gap-3 2xl:grid-cols-2"
+      >
+        {summary.models.length > 0 && (
+          <ModelActivityFlow
+            models={summary.models}
+            paused={paused}
+            colors={nextColors}
+          />
+        )}
+        <div className="min-w-0" aria-label="最近 30 秒 Token 速率">
+          <p className="text-label text-fg-muted">最近 30 秒 Token/s</p>
+          {latest != null && points.length > 0 ? (
+            <LiveLineChart
+              data={points}
+              value={latest}
+              window={30}
+              paused={paused}
+              className="h-28"
+            >
+              <LiveLine dataKey="value" badge={false} pulse={!paused} />
+              <LiveXAxis />
+              <LiveYAxis />
+            </LiveLineChart>
+          ) : (
+            <p className="py-3 text-label text-fg-muted">暂无可测速率样本</p>
+          )}
+        </div>
+      </section>
     </section>
   );
 }

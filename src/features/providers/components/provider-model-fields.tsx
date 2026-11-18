@@ -1,5 +1,8 @@
-import type { Dispatch } from "react";
+import { useMemo, type Dispatch } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DataTable, useDataTable } from "@/components/ui/data-table";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import type { ProviderDraftAction, ProviderEditorDraft } from "../editor-draft";
@@ -14,8 +17,88 @@ import {
 } from "@/components/ui/combobox";
 import { date } from "@/features/sessions/display";
 import type { ProviderModelCatalog } from "../types";
+import type { ColumnDef } from "@tanstack/react-table";
+
+type CatalogModelRow = ProviderModelCatalog["models"][number] & {
+  isDefault: boolean;
+  included: boolean;
+  setIncluded: (included: boolean) => void;
+};
+
+const catalogModelColumns: ColumnDef<CatalogModelRow>[] = [
+  {
+    id: "model",
+    header: "模型 ID",
+    cell: ({ row }) => (
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="break-all">{row.original.id}</span>
+        {row.original.isDefault && <Badge>默认</Badge>}
+      </div>
+    ),
+  },
+  {
+    id: "include",
+    header: "加入连接",
+    cell: ({ row }) => (
+      <Checkbox
+        aria-label={`加入 ${row.original.id}`}
+        checked={row.original.included}
+        disabled={row.original.isDefault}
+        onCheckedChange={row.original.setIncluded}
+      />
+    ),
+  },
+];
+
+function CatalogModelChoices({
+  catalog,
+  draft,
+  dispatch,
+}: {
+  catalog: ProviderModelCatalog;
+  draft: ProviderEditorDraft;
+  dispatch: Dispatch<ProviderDraftAction>;
+}) {
+  const selectedModel = draft.provider.model;
+  const excludedModels = draft.excludedCatalogModels;
+  const rows = useMemo(
+    () =>
+      catalog.models.map((model) => ({
+        ...model,
+        isDefault: model.id === selectedModel,
+        included:
+          model.id === selectedModel || !excludedModels.includes(model.id),
+        setIncluded: (included: boolean) =>
+          dispatch({
+            type: "include-catalog-model",
+            model: model.id,
+            included,
+          }),
+      })),
+    [catalog.models, dispatch, excludedModels, selectedModel],
+  );
+  const { table } = useDataTable({
+    data: rows,
+    columns: catalogModelColumns,
+    getRowId: (row) => row.id,
+    enableHiding: false,
+    autoResetPageIndex: false,
+    initialState: { pagination: { pageIndex: 0, pageSize: 5 } },
+  });
+  return (
+    <DataTable
+      table={table}
+      role="region"
+      aria-label="上游模型目录"
+      showPagination={rows.length > 5}
+      paginationProps={{ pageSizeOptions: [5, 10, 20, 50] }}
+    />
+  );
+}
+
 export function ProviderModelFields({
   state,
+  guided = false,
   dispatch,
   activeCatalog,
   modelOptions,
@@ -27,6 +110,7 @@ export function ProviderModelFields({
   fetchModels,
 }: {
   state: ProviderEditorDraft;
+  guided?: boolean;
   dispatch: Dispatch<ProviderDraftAction>;
   activeCatalog: ProviderModelCatalog | null;
   modelOptions: Map<string, string>;
@@ -77,7 +161,11 @@ export function ProviderModelFields({
                 disabled={!canReadModels}
                 onClick={() => void fetchModels()}
               >
-                {fetching ? "正在获取模型…" : "获取模型"}
+                {fetching
+                  ? "正在获取模型…"
+                  : guided && activeCatalog
+                    ? "刷新目录"
+                    : "获取模型"}
               </Button>
               <Button
                 type="button"
@@ -90,6 +178,14 @@ export function ProviderModelFields({
                 {manualModel ? "从目录选择" : "手动输入模型 ID"}
               </Button>
             </div>
+            {guided && activeCatalog && activeCatalog.models.length > 0 && (
+              <CatalogModelChoices
+                key={activeCatalog.fetchedAt}
+                catalog={activeCatalog}
+                draft={state}
+                dispatch={dispatch}
+              />
+            )}
 
             <Field>
               <FieldLabel>默认模型</FieldLabel>
@@ -139,7 +235,9 @@ export function ProviderModelFields({
                   </Combobox>
                   <FieldDescription>
                     {modelOptions.size}{" "}
-                    个已登记模型。选择停用模型为默认值时会同时启用。
+                    {guided
+                      ? "个可选模型。"
+                      : "个已登记模型。选择停用模型为默认值时会同时启用。"}
                   </FieldDescription>
                 </>
               )}
@@ -173,7 +271,7 @@ export function ProviderModelFields({
               )}
             </Field>
           </div>
-          {advanced && (
+          {(advanced || guided) && (
             <Field>
               <FieldLabel>补充模型目录</FieldLabel>
               <Input

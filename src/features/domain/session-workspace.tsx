@@ -1,5 +1,15 @@
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { TabItem, Tabs, TabsList } from "@/components/ui/tabs";
+import { useSessionGrouping } from "@/features/sessions/hooks/use-session-grouping";
+import { groupSessionsByProject } from "@/features/sessions/session-collections";
+import { useWorkspaceNavigation } from "@/shared/hooks/use-workspace-navigation";
 import { ObjectContributionSlots } from "@/features/plugins/object-detail-slots";
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,6 +44,9 @@ const stateNames: Record<string, string> = {
   partial: "范围不完整",
   unavailable: "范围不可用",
 };
+const sessionHref = (item: SessionItem) =>
+  `#/sessions/${encodeURIComponent(item.record.id)}?scope=unified&source=${encodeURIComponent(item.sourceId)}`;
+
 const columnsFor = (
   names: Record<string, string>,
 ): ColumnDef<SessionItem>[] => [
@@ -42,7 +55,14 @@ const columnsFor = (
     header: "会话",
     cell: ({ row }) => (
       <div className="max-w-80 whitespace-normal break-words">
-        <p>{row.original.record.title}</p>
+        <a
+          href={sessionHref(row.original)}
+          data-workspace-resource
+          data-workspace-title={row.original.record.title}
+          className="font-medium hover:underline"
+        >
+          {row.original.record.title}
+        </a>
         <p className="text-label text-fg-muted">
           {formatDateTime(
             row.original.record.updatedAt ?? row.original.record.createdAt,
@@ -137,87 +157,89 @@ export function UnifiedWorkspace({
   };
   return (
     <section aria-label="统一来源会话" className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 space-y-2 border-b border-border p-2">
-        {!initialProduct && (
-          <details
-            open={choosing}
-            onToggle={(event) => setChoosing(event.currentTarget.open)}
-          >
-            <summary className="cursor-pointer text-label font-medium">
-              选择来源 · 已选 {ids.length} 个
-            </summary>
-            <div
-              className="flex max-h-24 flex-wrap gap-3 overflow-y-auto py-2"
-              aria-label="统一会话来源选择"
+      {!initialSession && (
+        <div className="shrink-0 space-y-2 border-b border-border p-2">
+          {!initialProduct && (
+            <details
+              open={choosing}
+              onToggle={(event) => setChoosing(event.currentTarget.open)}
             >
-              {directory.data?.catalog.sources.map((source) => (
-                <label
-                  key={source.id}
-                  className="flex min-w-0 items-center gap-2 text-label"
-                >
-                  <Checkbox
-                    checked={sources.includes(source.id)}
-                    disabled={
-                      !sources.includes(source.id) && sources.length >= 16
-                    }
-                    onCheckedChange={(checked) =>
-                      setSelection((old) => {
-                        const current = old ?? sources;
-                        return checked === true
-                          ? [...new Set([...current, source.id])]
-                          : current.filter((id) => id !== source.id);
-                      })
-                    }
-                  />
-                  <span className="break-words">
-                    {names[source.id]} ·{" "}
-                    {stateNames[source.status.authorization]}
-                  </span>
-                </label>
-              ))}
-              <Button asChild variant="tertiary" size="sm">
-                <a href="#/agents">管理原生来源</a>
-              </Button>
-            </div>
-            <p className="text-label text-fg-subtle">
-              普通查询不会刷新来源；会话累计用量不计作模型调用次数。
+              <summary className="cursor-pointer text-label font-medium">
+                选择来源 · 已选 {ids.length} 个
+              </summary>
+              <div
+                className="flex max-h-24 flex-wrap gap-3 overflow-y-auto py-2"
+                aria-label="统一会话来源选择"
+              >
+                {directory.data?.catalog.sources.map((source) => (
+                  <label
+                    key={source.id}
+                    className="flex min-w-0 items-center gap-2 text-label"
+                  >
+                    <Checkbox
+                      checked={sources.includes(source.id)}
+                      disabled={
+                        !sources.includes(source.id) && sources.length >= 16
+                      }
+                      onCheckedChange={(checked) =>
+                        setSelection((old) => {
+                          const current = old ?? sources;
+                          return checked === true
+                            ? [...new Set([...current, source.id])]
+                            : current.filter((id) => id !== source.id);
+                        })
+                      }
+                    />
+                    <span className="break-words">
+                      {names[source.id]} ·{" "}
+                      {stateNames[source.status.authorization]}
+                    </span>
+                  </label>
+                ))}
+                <Button asChild variant="tertiary" size="sm">
+                  <a href="#/agents">管理原生来源</a>
+                </Button>
+              </div>
+              <p className="text-label text-fg-subtle">
+                普通查询不会刷新来源；会话累计用量不计作模型调用次数。
+              </p>
+              {defaultAll && (
+                <Button asChild variant="tertiary" size="sm">
+                  <a href="#/sessions?scope=local">管理本机客户端会话</a>
+                </Button>
+              )}
+            </details>
+          )}
+          <div className="flex min-w-0 items-center gap-2">
+            <Input
+              aria-label="搜索统一会话"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="搜索会话标题或来源记录 ID"
+            />
+            <Button
+              variant="tertiary"
+              size="sm"
+              onClick={() => void directory.invalidate()}
+            >
+              重读目录
+            </Button>
+            <Button asChild variant="tertiary" size="sm">
+              <a href={manageHref}>管理授权</a>
+            </Button>
+          </div>
+          {directory.loading && !directory.data && (
+            <p role="status" className="text-label text-fg-muted">
+              正在读取来源目录…
             </p>
-            {defaultAll && (
-              <Button asChild variant="tertiary" size="sm">
-                <a href="#/sessions?scope=local">管理本机客户端会话</a>
-              </Button>
-            )}
-          </details>
-        )}
-        <div className="flex min-w-0 items-center gap-2">
-          <Input
-            aria-label="搜索统一会话"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="搜索会话标题或来源记录 ID"
-          />
-          <Button
-            variant="tertiary"
-            size="sm"
-            onClick={() => void directory.invalidate()}
-          >
-            重读目录
-          </Button>
-          <Button asChild variant="tertiary" size="sm">
-            <a href={manageHref}>管理授权</a>
-          </Button>
+          )}
+          {(directory.error || directory.data?.externalProblem) && (
+            <p role="alert" className="text-label text-fg-muted">
+              扩展目录暂不可用。{directory.error}
+            </p>
+          )}
         </div>
-        {directory.loading && !directory.data && (
-          <p role="status" className="text-label text-fg-muted">
-            正在读取来源目录…
-          </p>
-        )}
-        {(directory.error || directory.data?.externalProblem) && (
-          <p role="alert" className="text-label text-fg-muted">
-            扩展目录暂不可用。{directory.error}
-          </p>
-        )}
-      </div>
+      )}
       {ids.length ? (
         <UnifiedPane
           key={`${identity.revision}:${directory.data?.catalog.revision}:${JSON.stringify(scope)}:${query}`}
@@ -229,8 +251,7 @@ export function UnifiedWorkspace({
             initialSession &&
             initialSource &&
             ids.length === 1 &&
-            ids[0] === initialSource &&
-            !query
+            ids[0] === initialSource
               ? { id: initialSession, sourceId: initialSource }
               : undefined
           }
@@ -259,9 +280,7 @@ function UnifiedPane({
   const [trail, setTrail] = useState<
     { snapshotToken: string | null; cursor: string | null }[]
   >([{ snapshotToken: null, cursor: null }]);
-  const [selected, setSelected] = useState<string | null>(
-    directSession?.id ?? null,
-  );
+  const selected = directSession?.id;
   const [retryItem, setRetryItem] = useState<SessionItem | null>(null);
   const [facts, setFacts] = useState<{ sessionId: string | null } | null>(null);
   const [activity, setActivity] = useState<{ sessionId: string | null } | null>(
@@ -294,7 +313,8 @@ function UnifiedPane({
   const active =
     listed ??
     (page?.nextCursor &&
-    retryItem?.record.id === selected &&
+    retryItem &&
+    retryItem.record.id === selected &&
     page.sourceStates.some(
       (s) =>
         s.sourceId === retryItem.sourceId &&
@@ -305,7 +325,7 @@ function UnifiedPane({
       : null);
   // The frozen conversation endpoint rechecks exact membership and authorization
   // even when the linked session falls outside the first page.
-  const linked = directSession?.id === selected ? directSession : undefined;
+  const linked = directSession;
   const direct =
     linked &&
     page?.sourceStates.some(
@@ -318,24 +338,25 @@ function UnifiedPane({
       : undefined;
   const activeId = active?.record.id ?? direct?.id;
   const activeSource = active?.sourceId ?? direct?.sourceId;
-  const columns = useMemo(() => columnsFor(names), [names]);
-  const { table } = useDataTable({
-    data: rows,
-    columns,
-    getRowId: (r) => r.record.id,
-    manualPagination: true,
-    manualSorting: true,
-    manualFiltering: true,
-    enableSorting: false,
-    enableRowSelection: false,
-    enableHiding: false,
-  });
-  const refresh = (
-    item: SessionItem | null = null,
-    id = item?.record.id ?? null,
-  ) => {
+  const { grouped, setGrouped } = useSessionGrouping();
+  const { setTitle } = useWorkspaceNavigation();
+  useEffect(() => {
+    if (directSession && active?.record.title) setTitle(active.record.title);
+  }, [active?.record.title, directSession, setTitle]);
+  const groups = useMemo(
+    () =>
+      groupSessionsByProject(
+        rows.map((item) => ({
+          ...item,
+          // Unified facts expose an opaque project reference, never a local path.
+          projectPath: item.record.projectRef ?? null,
+          projectHidden: false,
+        })),
+      ),
+    [rows],
+  );
+  const refresh = (item: SessionItem | null = null) => {
     setTrail([{ snapshotToken: null, cursor: null }]);
-    setSelected(id);
     setRetryItem(item);
     void head.invalidate();
   };
@@ -397,117 +418,178 @@ function UnifiedPane({
           </Button>
         </div>
       )}
-      <div className="grid min-h-0 flex-1 grid-cols-2 overflow-hidden">
-        <div className="flex min-h-0 min-w-0 flex-col border-r border-border">
-          <DataTable
-            table={table}
-            showPagination={false}
-            isLoading={resource.loading && !page}
-            loadingMessage="正在查询统一会话"
-            emptyMessage={
-              page?.coverage === "complete"
-                ? "没有匹配会话"
-                : "当前范围尚无可读会话"
-            }
-            activeRowId={active?.record.id}
-            onRowActivate={(row) => {
-              setRetryItem(null);
-              setSelected(row.original.record.id);
-            }}
-            className="min-h-0 flex-1"
-          />
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border p-2">
-            <Button
-              variant="tertiary"
-              size="sm"
-              disabled={resource.loading || trail.length < 2}
-              onClick={() => {
-                setTrail((old) => old.slice(0, -1));
-                setSelected(null);
-                setRetryItem(null);
-              }}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {!directSession && (
+          <div className="flex min-h-0 min-w-0 flex-col">
+            <Tabs
+              value={grouped ? "project" : "time"}
+              onValueChange={(value) => setGrouped(value === "project")}
+              variant="segment"
+              color="default"
+              className="p-2"
             >
-              上一页会话
-            </Button>
-            <Button
-              variant="tertiary"
-              size="sm"
-              disabled={resource.loading || !page?.nextCursor}
-              onClick={() => {
-                const nextCursor = page?.nextCursor;
-                if (page && nextCursor) {
-                  setTrail((old) => [
-                    ...old.map((p) => ({
-                      ...p,
-                      snapshotToken: page.snapshotToken,
-                    })),
-                    {
-                      snapshotToken: page.snapshotToken,
-                      cursor: nextCursor,
-                    },
-                  ]);
-                  setSelected(null);
-                  setRetryItem(null);
-                }
-              }}
-            >
-              下一页会话
-            </Button>
-            <Button variant="tertiary" size="sm" onClick={() => refresh()}>
-              重新查询
-            </Button>
-            <Button
-              variant="tertiary"
-              size="sm"
-              onClick={() => setFacts({ sessionId: activeId ?? null })}
-            >
-              {activeId ? "查看此会话项目与响应" : "查看项目与响应事实"}
-            </Button>
-            <Button
-              variant="tertiary"
-              size="sm"
-              onClick={() => setActivity({ sessionId: activeId ?? null })}
-            >
-              {activeId ? "查看此会话活动" : "查看活动快照"}
-            </Button>
-            <span className="text-label text-fg-muted">
+              <TabsList aria-label="会话排列">
+                <TabItem value="project" label="按项目分组" />
+                <TabItem value="time" label="按时间排序" />
+              </TabsList>
+            </Tabs>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {grouped && groups.size ? (
+                <Accordion
+                  key={trail.at(-1)?.cursor ?? "first"}
+                  type="multiple"
+                  defaultValue={[...groups.keys()]}
+                  className="w-full p-2"
+                >
+                  {[...groups].map(([ref, items], index) => (
+                    <AccordionItem key={ref} value={ref}>
+                      <AccordionTrigger>
+                        {ref === "项目未知" ? ref : `项目 ${index + 1}`} · 本页{" "}
+                        {items.length} 个会话
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        <UnifiedSessionTable names={names} items={items} />
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
+              ) : (
+                <UnifiedSessionTable
+                  names={names}
+                  items={rows}
+                  loading={resource.loading && !page}
+                  complete={page?.coverage === "complete"}
+                />
+              )}
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border p-2">
               <Button
                 variant="tertiary"
                 size="sm"
-                onClick={() => setRequests({ sessionId: activeId ?? null })}
+                disabled={resource.loading || trail.length < 2}
+                onClick={() => {
+                  setTrail((old) => old.slice(0, -1));
+                  setRetryItem(null);
+                }}
               >
-                {activeId ? "查看此会话请求" : "查看统一请求"}
+                上一页会话
               </Button>
-            </span>
-            <span className="text-label text-fg-muted">
-              本页 {rows.length} 个
-            </span>
+              <Button
+                variant="tertiary"
+                size="sm"
+                disabled={resource.loading || !page?.nextCursor}
+                onClick={() => {
+                  const nextCursor = page?.nextCursor;
+                  if (page && nextCursor) {
+                    setTrail((old) => [
+                      ...old.map((p) => ({
+                        ...p,
+                        snapshotToken: page.snapshotToken,
+                      })),
+                      {
+                        snapshotToken: page.snapshotToken,
+                        cursor: nextCursor,
+                      },
+                    ]);
+                    setRetryItem(null);
+                  }
+                }}
+              >
+                下一页会话
+              </Button>
+              <Button variant="tertiary" size="sm" onClick={() => refresh()}>
+                重新查询
+              </Button>
+              <Button
+                variant="tertiary"
+                size="sm"
+                onClick={() => setFacts({ sessionId: activeId ?? null })}
+              >
+                {activeId ? "查看此会话项目与响应" : "查看项目与响应事实"}
+              </Button>
+              <Button
+                variant="tertiary"
+                size="sm"
+                onClick={() => setActivity({ sessionId: activeId ?? null })}
+              >
+                {activeId ? "查看此会话活动" : "查看活动快照"}
+              </Button>
+              <span className="text-label text-fg-muted">
+                <Button
+                  variant="tertiary"
+                  size="sm"
+                  onClick={() => setRequests({ sessionId: activeId ?? null })}
+                >
+                  {activeId ? "查看此会话请求" : "查看统一请求"}
+                </Button>
+              </span>
+              <span className="text-label text-fg-muted">
+                本页 {rows.length} 个
+              </span>
+            </div>
           </div>
-        </div>
-        {page && activeId && activeSource ? (
-          <UnifiedBody
-            key={`${page.snapshotToken}:${activeId}`}
-            item={active}
-            sessionId={activeId}
-            scope={scope}
-            snapshotToken={page.snapshotToken}
-            sourceName={names[activeSource] ?? activeSource}
-            onRetry={() => refresh(active, activeId)}
-          />
-        ) : (
-          <p
-            className="p-4 text-body text-fg-muted"
-            role={retryItem || linked ? "status" : undefined}
-          >
-            {retryItem || linked
-              ? resource.loading
-                ? "正在刷新会话快照…"
-                : "当前快照中无法读取原会话，请检查来源状态或重新选择会话。"
-              : "选择会话后按需读取正文。"}
-          </p>
         )}
+        {directSession &&
+          (page && activeId && activeSource ? (
+            <UnifiedBody
+              key={`${page.snapshotToken}:${activeId}`}
+              item={active}
+              sessionId={activeId}
+              scope={scope}
+              snapshotToken={page.snapshotToken}
+              sourceName={names[activeSource] ?? activeSource}
+              onRetry={() => refresh(active)}
+            />
+          ) : (
+            <p
+              className="p-4 text-body text-fg-muted"
+              role={retryItem || linked ? "status" : undefined}
+            >
+              {retryItem || linked
+                ? resource.loading
+                  ? "正在刷新会话快照…"
+                  : "当前快照中无法读取原会话，请检查来源状态或重新选择会话。"
+                : "此会话暂不可读取。"}
+            </p>
+          ))}
       </div>
     </div>
+  );
+}
+function UnifiedSessionTable({
+  names,
+  items,
+  loading,
+  complete,
+}: {
+  names: Record<string, string>;
+  items: SessionItem[];
+  loading?: boolean;
+  complete?: boolean;
+}) {
+  const columns = useMemo(() => columnsFor(names), [names]);
+  const { table } = useDataTable({
+    data: items,
+    columns,
+    getRowId: (row) => row.record.id,
+    manualPagination: true,
+    manualSorting: true,
+    manualFiltering: true,
+    enableSorting: false,
+    enableRowSelection: false,
+    enableHiding: false,
+  });
+  return (
+    <DataTable
+      table={table}
+      showPagination={false}
+      isLoading={loading}
+      loadingMessage="正在查询统一会话"
+      emptyMessage={complete ? "没有匹配会话" : "当前范围尚无可读会话"}
+      onRowActivate={({ original }) => {
+        window.location.hash = sessionHref(original);
+      }}
+    />
   );
 }
 function SourceSummaries({

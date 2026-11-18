@@ -10,10 +10,8 @@ test("five-second rates give way to timestamped history and turn totals without 
     name: "实时任务汇总",
     exact: true,
   });
-  const rate = summary
-    .locator('[data-slot="metric-card"]')
-    .filter({ hasText: /(?:总|已测) Token 速率/ });
-  const value = rate.locator('[data-slot="metric-card-value-row"]');
+  const rate = summary.getByRole("group", { name: /(?:总|已测) Token 速率/ });
+  const value = rate.getByLabel("指标值");
   const feed = page.getByRole("region", { name: "当前活动列表", exact: true });
   const row = feed.getByRole("row").filter({ hasText: "原生采集同一条消息" });
   await page.evaluate(() => {
@@ -21,8 +19,8 @@ test("five-second rates give way to timestamped history and turn totals without 
   });
   await openRecentActivities(page);
   await expect(row).toContainText("近5秒 24.0 Token/s");
-  await expect(row).toContainText("本轮已报输出 1,200 Token");
-  await expect(row).toContainText("其中思考 800 Token");
+  await expect(row).toContainText("出 1,200");
+  await expect(row.getByTitle(/思考 800 tok/)).toHaveCount(1);
   await expect(row.locator("[data-activity-elapsed]")).toContainText("1 分");
   await expect(value).toContainText(/24\.0\s*Token\/s/);
   await row.getByRole("link").focus();
@@ -44,11 +42,11 @@ test("five-second rates give way to timestamped history and turn totals without 
     sampledAt = actual;
     await expect(value).toContainText(/—\s*Token\/s/);
     await expect(value).not.toContainText("68.2");
-    await expect(rate).toContainText("暂无实时采样");
+    await expect(rate).toContainText("当前来源未提供可测的 Token 增量");
     await expect(rate).not.toContainText("部分可测");
     await expect(summary.locator("animateMotion")).toHaveCount(0);
-    await expect(row).toContainText("本轮已报输出 1,200 Token");
-    await expect(row).toContainText("TTFT 1.05 秒");
+    await expect(row).toContainText("出 1,200");
+    await expect(row).toContainText("1.05 秒");
     await expect(row.getByRole("link")).toBeFocused();
     await expect(feed.getByRole("row")).toHaveCount(2);
   }
@@ -56,8 +54,8 @@ test("five-second rates give way to timestamped history and turn totals without 
     window.activityCase = "native-desktop-performance-next";
   });
   await expect(row).not.toContainText("68.2 Token/s");
-  await expect(row).not.toContainText("1,200 Token");
-  await expect(row).toContainText("本轮用量待上报");
+  await expect(row).not.toContainText("出 1,200");
+  await expect(row).toContainText("出 未知");
   await page.evaluate(() => {
     window.activityCase = "native-desktop-performance-completed";
   });
@@ -76,13 +74,9 @@ test("parallel totals exclude samples from a different window endpoint", async (
     name: "实时任务汇总",
     exact: true,
   });
-  const rate = summary
-    .locator('[data-slot="metric-card"]')
-    .filter({ hasText: /(?:总|已测) Token 速率/ });
+  const rate = summary.getByRole("group", { name: /(?:总|已测) Token 速率/ });
   await expect(rate).toContainText("1/2 个活动来源可测 · 部分可测");
-  await expect(
-    rate.locator('[data-slot="metric-card-value-row"]'),
-  ).toContainText(/24\.0\s*Token\/s/);
+  await expect(rate.getByLabel("指标值")).toContainText(/24\.0\s*Token\/s/);
   await expect(rate).not.toContainText("124.0");
 });
 
@@ -100,9 +94,9 @@ test("gateway usage is counted once and historical gateway rates remain separate
     .getByRole("row")
     .filter({ hasText: "原生采集同一条消息" });
   await expect(row).toContainText("最近 68.2 Token/s");
-  await expect(row).toContainText("本轮已报输出 900 Token");
-  await expect(row).toContainText("其中思考 500 Token");
-  await expect(row).not.toContainText("1,400 Token");
+  await expect(row).toContainText("出 900");
+  await expect(row.getByTitle(/思考 500 tok/)).toHaveCount(1);
+  await expect(row).not.toContainText("出 1,400");
   const summary = page.getByRole("region", {
     name: "实时任务汇总",
     exact: true,

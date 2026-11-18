@@ -117,7 +117,8 @@
     "Kind": {
       "enum": [
         "save",
-        "connect"
+        "connect",
+        "delete"
       ],
       "type": "string"
     },

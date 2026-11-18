@@ -1,5 +1,15 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import type {} from "./requests-harness";
+
+async function openSources(page: Page) {
+  const trigger = page.getByRole("button", {
+    name: "观测来源与覆盖范围",
+    exact: true,
+  });
+  await expect(trigger).toBeVisible();
+  if ((await trigger.getAttribute("aria-expanded")) !== "true")
+    await trigger.click();
+}
 
 test("request detail shows candidate decisions when no upstream send occurred", async ({
   page,
@@ -68,7 +78,7 @@ test("request overview, full count, frozen pages, detail and return retain scope
     page.getByText("当前为历史分页", { exact: false }),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: "查看详情", exact: true })
+    .getByRole("link", { name: /^查看请求 / })
     .first()
     .click();
   await expect(page.getByRole("region", { name: "请求详情" })).toContainText(
@@ -80,7 +90,7 @@ test("request overview, full count, frozen pages, detail and return retain scope
     page.getByText("fixture-immutable-route-version", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("轮次准入依据", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "返回请求列表" }).click();
+  await page.getByRole("link", { name: "返回请求列表" }).press("Enter");
   await expect(page).toHaveURL(/cursor=fixture-snapshot/);
   await expect(
     page.getByText("当前为历史分页", { exact: false }),
@@ -91,6 +101,7 @@ test("request page defaults to both sources and shows their selected representat
   page,
 }) => {
   await page.goto("/tests/frontend/requests.html#/requests?range=all");
+  await openSources(page);
   await expect(page.getByRole("tab", { name: "全部来源" })).toHaveAttribute(
     "aria-selected",
     "true",
@@ -131,6 +142,7 @@ test("gateway retry waterfall uses measured spans and links only the exact attem
     attempts.nth(2).getByRole("button", { name: "定位会话调用" }),
   ).toBeVisible();
   await jump.click();
+  await expect(page).toHaveURL(/#\/sessions\/session-native\?/);
   const url = new URL(page.url());
   expect(url.hash.split("?")[0]).toBe("#/sessions/session-native");
   const params = new URLSearchParams(url.hash.split("?")[1]);
@@ -146,9 +158,7 @@ test("keyboard detail navigation restores the triggering record in a short windo
   await page.goto("/tests/frontend/requests.html#/requests?range=all");
   const table = page.getByRole("region", { name: "请求", exact: true });
   await expect(table.getByRole("row")).toHaveCount(41);
-  const trigger = table
-    .getByRole("button", { name: "查看详情", exact: true })
-    .last();
+  const trigger = table.getByRole("link", { name: /^查看请求 / }).last();
   await trigger.focus();
   await expect(trigger).toBeInViewport();
   await trigger.press("Enter");
@@ -157,7 +167,7 @@ test("keyboard detail navigation restores the triggering record in a short windo
   await expect(title).toBeFocused();
   await expect(title).toBeInViewport();
   await page.keyboard.press("Tab");
-  const back = page.getByRole("button", { name: "返回请求列表", exact: true });
+  const back = page.getByRole("link", { name: "返回请求列表", exact: true });
   await expect(back).toBeFocused();
   await expect(back).toBeInViewport();
   await page.keyboard.press("Enter");
@@ -173,7 +183,7 @@ test("filters, model dimension, slow response and time drilldown preserve explic
   await page.goto(
     "/tests/frontend/requests.html#/requests?range=all&session=known-session",
   );
-  await expect(page.getByLabel("请求筛选")).toContainText("known-session");
+  await expect(page.getByLabel("请求关联范围")).toContainText("known-session");
   await page.getByRole("button", { name: "失败 1", exact: true }).click();
   await expect(page).toHaveURL(/result=failed/);
   await page
@@ -181,16 +191,24 @@ test("filters, model dimension, slow response and time drilldown preserve explic
     .click();
   await expect(page).not.toHaveURL(/session=/);
   await expect(page).toHaveURL(/result=failed/);
-  await page.getByLabel("请求结果", { exact: true }).click();
-  await page.getByRole("option", { name: "全部结果", exact: true }).click();
-  await page.getByLabel("搜索请求", { exact: true }).fill("slow");
-  await page.getByRole("button", { name: "搜索", exact: true }).click();
-  await page.getByLabel("搜索请求", { exact: true }).fill("request-001");
-  await page.getByRole("button", { name: "搜索", exact: true }).click();
+  const search = page.getByPlaceholder(/^搜索请求或输入/);
+  const apply = page.getByRole("option", { name: "Apply filters" });
+  await search.click();
+  await search.fill("result:failed slow");
+  await apply.click();
+  await expect(page).toHaveURL(/search=slow/);
+  await expect
+    .poll(() => page.evaluate(() => window.requestQueries.at(-1)?.search))
+    .toBe("slow");
+  await search.click();
+  await search.fill("result:failed request-000");
+  await apply.click();
+  await expect(page).toHaveURL(/result=failed/);
+  await expect(page).toHaveURL(/search=request-000/);
   await expect(page.getByText("当前筛选 1 条", { exact: false })).toBeVisible();
   await page.waitForTimeout(400);
   await expect(page.getByText("当前筛选 1 条", { exact: false })).toBeVisible();
-  await page.getByRole("tab", { name: "趋势分析", exact: true }).click();
+  await page.getByRole("link", { name: "趋势与热力图", exact: true }).click();
   await page.getByLabel("拆分维度", { exact: true }).click();
   await page.getByRole("option", { name: "按模型", exact: true }).click();
   await expect(page).toHaveURL(/dimension=model/);
@@ -229,7 +247,7 @@ test("export pauses polling during destination selection and resumes after compl
   await page.goto(
     "/tests/frontend/requests.html?export=wait#/requests?range=all",
   );
-  await page.getByRole("tab", { name: "趋势分析", exact: true }).click();
+  await page.getByRole("link", { name: "趋势与热力图", exact: true }).click();
   const before = await page.evaluate(() => window.requestQueries.length);
   await page.clock.fastForward(5000);
   await expect
@@ -277,6 +295,7 @@ test("native source keeps usable filters, labels response units and opens origin
   await page.goto(
     "/tests/frontend/requests.html#/requests?range=all&agent=codex-cli&provider=fixture",
   );
+  await openSources(page);
   await page.getByRole("tab", { name: "原生响应", exact: true }).click();
   await expect(page).toHaveURL(/source=native/);
   await expect(page).toHaveURL(/agent=codex-cli/);
@@ -284,18 +303,18 @@ test("native source keeps usable filters, labels response units and opens origin
   await expect(
     page.getByText("当前筛选 45 条", { exact: false }),
   ).toBeVisible();
-  await page.getByRole("tab", { name: "趋势分析", exact: true }).click();
+  await page.getByRole("link", { name: "趋势与热力图", exact: true }).click();
   await expect(
     page.getByRole("region", { name: "请求指标概览" }),
   ).toContainText("逐条响应，不代表已确认 HTTP 请求");
-  await page.getByRole("tab", { name: "响应记录", exact: true }).click();
+  await page.getByRole("link", { name: "模型请求", exact: true }).click();
   await expect(
     page
       .getByRole("region", { name: "原生响应", exact: true })
       .getByRole("row"),
   ).toHaveCount(41);
   await page
-    .getByRole("button", { name: "查看详情", exact: true })
+    .getByRole("link", { name: /^查看请求 / })
     .first()
     .click();
   await expect(page.getByRole("region", { name: "原生证据" })).toContainText(
@@ -309,7 +328,7 @@ test("native source keeps usable filters, labels response units and opens origin
   await expect(
     page.getByRole("region", { name: "跨源关联证据" }),
   ).toContainText("消费只采用网关记录");
-  await page.getByRole("button", { name: "返回请求列表" }).click();
+  await page.getByRole("link", { name: "返回请求列表" }).press("Enter");
   await expect(page).toHaveURL(/source=native/);
 });
 
@@ -317,6 +336,7 @@ test("linked view and export keep explicit source without presenting an additive
   page,
 }) => {
   await page.goto("/tests/frontend/requests.html#/requests?range=all");
+  await openSources(page);
   await page
     .getByRole("button", { name: "跨来源统计与采集状态", exact: true })
     .click();
@@ -345,6 +365,7 @@ test("no exact match keeps both underlying request sources accessible", async ({
   await page.goto(
     "/tests/frontend/requests.html?noExactMatch=1#/requests?range=all&source=linked",
   );
+  await openSources(page);
   await expect(
     page.getByText("当前范围没有按响应 ID 精确匹配的记录。", { exact: false }),
   ).toBeVisible();
@@ -370,7 +391,7 @@ test("heatmap is collapsed by default, supports keyboard day drilldown and prese
   await expect(
     page.getByLabel("热力图指标", { exact: true }),
   ).not.toBeVisible();
-  await page.getByRole("tab", { name: "趋势分析", exact: true }).click();
+  await page.getByRole("link", { name: "趋势与热力图", exact: true }).click();
   await page.getByRole("button", { name: "用量热力图 · 最近 53 周" }).click();
   await page.getByLabel("热力图指标", { exact: true }).click();
   await page
@@ -397,12 +418,13 @@ test("source authorization state and heatmap fit narrow layouts", async ({
   await page.goto(
     "/tests/frontend/requests.html?noConsent=1#/requests?range=all&source=native",
   );
+  await openSources(page);
   await expect(
     page.getByText(
       "原生来源尚未授权。可在 Agents 的连接与观测中选择允许读取的来源。",
     ),
   ).toBeVisible();
-  await page.getByRole("tab", { name: "趋势分析", exact: true }).click();
+  await page.getByRole("link", { name: "趋势与热力图", exact: true }).click();
   await page.getByRole("button", { name: "用量热力图 · 最近 53 周" }).click();
   expect(
     await page.evaluate(

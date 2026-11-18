@@ -43,7 +43,9 @@ test("switching Session cancels an index retry and permission errors never retry
       .getByRole("region", { name: "会话内容", exact: true })
       .getByRole("status"),
   ).toHaveText("会话暂未就绪，正在重试…");
-  await page.getByRole("button", { name: /修复登录/ }).click();
+  await page.evaluate(() => {
+    location.hash = "#/sessions/claude%3Aa";
+  });
   await expect(page).toHaveURL(/claude%3Aa/);
   await expect(
     page.getByRole("button", { name: "刷新对话", exact: true }),

@@ -1,3 +1,6 @@
+import type { Usage } from "@/shared/types/usage";
+import type { ProviderCostTotals } from "@/features/providers/types";
+
 export interface Settings {
   captureContent: boolean;
   retentionDays: 7 | 30 | 90;
@@ -36,12 +39,22 @@ export interface GatewayClient {
   enabled: boolean;
   createdAt: string;
 }
+export interface GatewayClientUsage {
+  requests7d: number;
+  errors7d: number;
+  throttled429Count7d: number;
+  usage7d: Usage;
+  cost7d: ProviderCostTotals;
+  lastPeer?: string | null;
+  lastActiveAt?: string | null;
+}
 export interface GatewayStatus {
   listen: string | null;
   persistent: boolean;
   concurrency: number | null;
   active: number | null;
   clients: GatewayClient[];
+  clientUsage?: Record<string, GatewayClientUsage>;
   writeProtocol?: {
     version: 1;
     storeId: string;
@@ -100,6 +113,7 @@ export type GatewayOperationFileResult =
     } & (
       | { status: "saved"; fileName: string }
       | { status: "issued" }
+      | { status: "receipt"; key: string }
       | {
           status: "revoked";
           compensation: GatewayRevocation;

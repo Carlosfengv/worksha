@@ -33,6 +33,11 @@ const SettingsPage = lazy(() =>
     default: module.SettingsPage,
   })),
 );
+const GatewayPanel = lazy(() =>
+  import("@/features/settings/gateway-panel").then((module) => ({
+    default: module.GatewayPanel,
+  })),
+);
 const PluginManager = lazy(() =>
   import("@/features/plugins/manager").then((module) => ({
     default: module.PluginManager,
@@ -84,7 +89,7 @@ export const builtinPlugins: readonly UiPlugin[] = [
     pages: [
       {
         id: "agents",
-        label: "Agents",
+        label: "本机 Agents",
         icon: "brain",
         footer: false,
         ownsBody: false,
@@ -107,18 +112,20 @@ export const builtinPlugins: readonly UiPlugin[] = [
     pages: [
       {
         id: "providers",
-        label: "模型供应商",
+        label: "模型与额度",
         icon: "globe",
         footer: false,
         ownsBody: false,
         refreshInHeader: false,
         resetScrollOnObject: true,
-        render: ({ data, refresh, route }) => (
+        render: ({ data, refresh, route, routeSearch, featureAvailable }) => (
           <ProvidersPage
             data={data}
             refresh={refresh}
             selectedId={route.objectId}
             selectedTab={route.tab}
+            routeSearch={routeSearch}
+            canCreateDefaultService={featureAvailable("model-services")}
           />
         ),
       },
@@ -130,14 +137,18 @@ export const builtinPlugins: readonly UiPlugin[] = [
     pages: [
       {
         id: "model-services",
-        label: "模型服务",
+        label: "模型服务与路由",
         icon: "globe",
         footer: false,
         ownsBody: false,
         refreshInHeader: false,
         resetScrollOnObject: true,
-        render: ({ data }) => (
-          <ModelServicesPage providers={data?.providers ?? []} />
+        render: ({ data, route }) => (
+          <ModelServicesPage
+            providers={data?.providers ?? []}
+            selectedId={route.objectId}
+            cloneFrom={route.from}
+          />
         ),
       },
     ],
@@ -173,14 +184,15 @@ export const builtinPlugins: readonly UiPlugin[] = [
     pages: [
       {
         id: "sessions",
-        label: "Sessions",
+        label: "会话列表",
         icon: "message-circle",
         footer: false,
         ownsBody: true,
         refreshInHeader: false,
         resetScrollOnObject: false,
-        render: ({ data, navigate, route }) => (
+        render: ({ data, navigate, route, featureAvailable }) => (
           <SessionsPage
+            projectsAvailable={featureAvailable("projects")}
             initialUnified={route.scope === "unified"}
             nativeOnly={route.scope === "local"}
             initialDomainSource={route.domainSource}
@@ -204,7 +216,7 @@ export const builtinPlugins: readonly UiPlugin[] = [
     pages: [
       {
         id: "requests",
-        label: "请求",
+        label: "调用与工具",
         icon: "file-text",
         footer: false,
         ownsBody: true,
@@ -284,15 +296,34 @@ export const builtinPlugins: readonly UiPlugin[] = [
     version: 1,
     pages: [
       {
+        id: "lan-gateway",
+        label: "常驻网关与密钥",
+        icon: "lock",
+        render: ({ data, route }) => (
+          <GatewayPanel
+            selectedId={route.objectId}
+            providers={data?.providers ?? []}
+            storeId={data?.settingsWriteProtocol?.storeId}
+          />
+        ),
+      },
+      {
         id: "settings",
-        label: "设置",
+        label: "系统设置",
         icon: "settings",
         footer: true,
-        ownsBody: false,
+        ownsBody: true,
         refreshInHeader: true,
         resetScrollOnObject: false,
-        render: ({ data, refresh }) => (
-          <SettingsPage data={data} refresh={refresh} />
+        render: ({ data, refresh, route, featureAvailable }) => (
+          <SettingsPage
+            data={data}
+            refresh={refresh}
+            section={route.tab}
+            accountSettings={
+              featureAvailable("iam") ? <AccountsPage /> : undefined
+            }
+          />
         ),
       },
     ],

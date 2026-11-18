@@ -355,6 +355,16 @@ impl Observation {
             .collect::<Vec<_>>();
         serde_json::json!({"native":native,"gateway":gateway})
     }
+    pub(crate) fn gateway_client_usage(
+        &self,
+    ) -> Result<
+        std::collections::BTreeMap<String, local_agent_core::observation::GatewayClientUsage>,
+        String,
+    > {
+        local_agent_core::observation::ObservationStore::open(&self.directory)?
+            .gateway_client_usage(chrono::Utc::now())
+    }
+
     pub fn new(directory: &Path, host: &str) -> Result<Self, String> {
         let directory = directory.join("observation");
         if std::fs::symlink_metadata(&directory).is_ok_and(|m| m.file_type().is_symlink()) {

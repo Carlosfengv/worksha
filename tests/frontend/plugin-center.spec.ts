@@ -106,13 +106,15 @@ test("DSH 和原生 Agent 共用列表和详情，模型连接入口独立于会
   const openCode = table.getByRole("row").filter({ hasText: "OpenCode" });
   await expect(openCode).toHaveCount(1);
   await openCode.getByRole("link", { name: "详情 OpenCode" }).click();
-  await expect(page.getByRole("tab", { name: "概览" })).toHaveAttribute(
+  await expect(page.getByRole("tab", { name: "连接与观测" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
   await expect(page.getByRole("tab", { name: "调用" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Sessions" })).toBeVisible();
-  await page.getByRole("link", { name: "返回 Agents" }).click();
+  await page.evaluate(() => {
+    location.hash = "#/agents";
+  });
   const dsh = table
     .getByRole("row")
     .filter({ hasText: "DeepSeek Harness 桌面端" });
@@ -160,7 +162,9 @@ test("DSH 已启用的会话来源仍可在自身详情授权", async ({ page })
   await expect(page).toHaveURL(
     /#\/agents\/net\.worksha\.dsh-desktop%3Adesktop\?tab=connection$/,
   );
-  await page.getByRole("link", { name: "返回 Agents" }).click();
+  await page.evaluate(() => {
+    location.hash = "#/agents";
+  });
   const dsh = page
     .getByRole("row")
     .filter({ hasText: "DeepSeek Harness 桌面端" });

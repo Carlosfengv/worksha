@@ -134,7 +134,7 @@ test("Provider list shows every account's core statistics before selection with 
 }) => {
   await page.goto("/tests/frontend/provider-overview.html");
   await expect(
-    page.getByRole("tab", { name: "用量概览", exact: true }),
+    page.getByRole("tab", { name: "额度与账单", exact: true }),
   ).toHaveAttribute("aria-selected", "true");
   const list = page.getByLabel("Provider 与计费账户概览", { exact: true });
   const api = list.getByRole("row").filter({ hasText: "MyDeepSeek" });
@@ -279,7 +279,11 @@ test("directory and usage errors preserve prior values and unknown forecasts; ov
     window.providerOverviewFixture.usageFailed = true;
   });
   await page.getByRole("button", { name: "刷新概览", exact: true }).click();
-  await expect(page.getByText("账户目录未更新", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Provider 用量概览", exact: true })
+      .getByText("账户目录未更新", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("调用统计未更新", { exact: true })).toBeVisible();
   await expect(row).toContainText("8.52 CNY");
   await expect(row).toContainText("11.93 CNY · 估算 / 18 次未知");
@@ -287,7 +291,7 @@ test("directory and usage errors preserve prior values and unknown forecasts; ov
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
     .toBeLessThanOrEqual(390);
-  await page.getByRole("tab", { name: "连接与调用", exact: true }).click();
+  await page.getByRole("tab", { name: "供应商连接", exact: true }).click();
   await expect(page.getByText("已添加 · 2", { exact: true })).toBeVisible();
 });
 
@@ -369,10 +373,14 @@ test("add provider stays in the page header across views in a small window", asy
   await expect(add).toBeInViewport();
   await add.focus();
   await page.keyboard.press("Enter");
+  const wizard = page.getByRole("region", { name: "添加模型供应商" });
+  await expect(wizard).toBeVisible();
   await expect(
-    page.getByRole("dialog", { name: "添加模型供应商" }),
-  ).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(add).toBeFocused();
+    page.getByRole("tab", { name: "全部模型", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "返回列表", exact: true }).click();
+  await expect(wizard).toHaveCount(0);
+  await expect(
+    page.getByRole("tab", { name: "全部模型", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
 });

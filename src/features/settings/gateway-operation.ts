@@ -206,6 +206,7 @@ export function gatewayOperationFileResult(
       "sourceInstanceId",
       "sourceCurrent",
       "fileName",
+      "key",
       "compensation",
       "reason",
     ]);
@@ -222,6 +223,7 @@ export function gatewayOperationFileResult(
     };
     if (
       row.status === "saved" &&
+      row.key === undefined &&
       text(row.fileName, 1024) &&
       !/[\0/]/.test(row.fileName) &&
       row.compensation === undefined &&
@@ -230,13 +232,25 @@ export function gatewayOperationFileResult(
       return { ...source, status: "saved", fileName: row.fileName };
     if (
       row.status === "issued" &&
+      row.key === undefined &&
       row.fileName === undefined &&
       row.compensation === undefined &&
       row.reason === undefined
     )
       return { ...source, status: "issued" };
     if (
+      row.status === "receipt" &&
+      source.sourceCurrent &&
+      typeof row.key === "string" &&
+      /^la_[a-f0-9]{64}$/.test(row.key) &&
+      row.fileName === undefined &&
+      row.compensation === undefined &&
+      row.reason === undefined
+    )
+      return { ...source, status: "receipt", key: row.key };
+    if (
       row.status === "revoked" &&
+      row.key === undefined &&
       row.fileName === undefined &&
       text(row.reason, 4096)
     )

@@ -1,18 +1,37 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+const editor = (page: Page) =>
+  page.getByRole("region", { name: "模型服务编辑器", exact: true });
+
+async function openModelService(page: Page, name = "编程服务") {
+  const link = page.getByRole("link", { name, exact: true });
+  if (!(await link.isVisible())) {
+    const home = page.getByRole("button", { name: "Home", exact: true });
+    if (await home.isVisible()) await home.click();
+  }
+  await link.click();
+  await expect(editor(page)).toBeVisible();
+}
+
+async function closeChangedEditor(page: Page) {
+  await editor(page).getByRole("button", { name: "取消", exact: true }).click();
+  const guard = page.getByRole("dialog", { name: "标签含有未保存修改" });
+  if (await guard.isVisible())
+    await guard.getByRole("button", { name: "放弃未保存修改" }).click();
+}
 
 test("publishes explicit access fallback and restores it in the editor", async ({
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html");
-  const edit = page.getByRole("button", { name: "编辑 编程服务", exact: true });
-  await edit.click();
+  await openModelService(page);
   await page.getByRole("switch", { name: "启用优先级与自动回退" }).click();
   const access = page.getByRole("switch", {
     name: "上游明确拒绝凭据或模型权限时回退",
   });
   await expect(access).not.toBeChecked();
   await access.click();
-  await page.getByRole("button", { name: "验证并发布", exact: true }).click();
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(
     await page.evaluate(
@@ -21,12 +40,12 @@ test("publishes explicit access fallback and restores it in the editor", async (
           ?.fallbackOnAccessDenied,
     ),
   ).toBe(true);
-  await edit.click();
+  await openModelService(page);
   await expect(access).toBeChecked();
   await access.click();
-  await page.getByRole("button", { name: "验证并发布", exact: true }).click();
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await edit.click();
+  await openModelService(page);
   await expect(access).not.toBeChecked();
 });
 
@@ -34,10 +53,10 @@ test("publishes and reopens a child service pinned to its chosen version", async
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html?nested=1");
-  await page.getByRole("button", { name: "创建模型服务", exact: true }).click();
+  await page.getByRole("button", { name: /创建模型服务/, exact: true }).click();
   await page.getByRole("textbox", { name: "服务名称" }).fill("父服务");
   await page.getByRole("button", { name: "添加子服务", exact: true }).click();
-  const publish = page.getByRole("button", { name: "验证并发布" });
+  const publish = page.getByRole("button", { name: /^发布新版本 rev#/ });
   await expect(publish).toBeDisabled();
   const child = page.getByRole("combobox", { name: "子服务版本" });
   await child.click();
@@ -64,7 +83,7 @@ test("publishes and reopens a child service pinned to its chosen version", async
     serviceId: "620d7132-b3f3-4e56-8f5a-2c06c8282a01",
     versionId: "70130e70-ef47-4cd7-9b01-2da76b6101d5",
   });
-  await page.getByRole("button", { name: "编辑 父服务", exact: true }).click();
+  await openModelService(page, "父服务");
   await expect(child).toHaveValue("编程服务 · 第 1 版");
 });
 
@@ -72,9 +91,7 @@ test("publishes an opted-in intent rule with a fixed classifier account", async 
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html?upstream-accounts=1");
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page.getByRole("switch", { name: "启用优先级与自动回退" }).click();
   const classifier = page.getByRole("switch", { name: "启用意图分类" });
   await expect(classifier).not.toBeChecked();
@@ -83,7 +100,7 @@ test("publishes an opted-in intent rule with a fixed classifier account", async 
   await classifier.click();
   await page.getByRole("combobox", { name: "分类模型" }).click();
   await page.getByRole("option", { name: "Pro", exact: true }).click();
-  const publish = page.getByRole("button", { name: "验证并发布", exact: true });
+  const publish = page.getByRole("button", { name: /^发布新版本 rev#/ });
   await expect(publish).toBeDisabled();
   await page.getByRole("combobox", { name: "分类账号" }).click();
   await page.getByRole("option", { name: "主账号", exact: true }).click();
@@ -105,9 +122,7 @@ test("publishes an opted-in intent rule with a fixed classifier account", async 
     modelId: "model-flash",
     intent: "排查错误",
   });
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await expect(page.getByRole("combobox", { name: "分类账号" })).toContainText(
     "主账号",
   );
@@ -125,9 +140,7 @@ test("publishes ordered conditions and restores them in the editor", async ({
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html");
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page.getByRole("switch", { name: "启用优先级与自动回退" }).click();
   await page.getByRole("button", { name: "添加规则" }).click();
   const name = page.getByRole("textbox", { name: "规则名称" });
@@ -136,7 +149,7 @@ test("publishes ordered conditions and restores them in the editor", async ({
   await page.keyboard.insertText("OpenCode 工具");
   await page.getByRole("combobox", { name: "规则目标模型" }).click();
   await page.getByRole("option", { name: "Flash", exact: true }).click();
-  const publish = page.getByRole("button", { name: "验证并发布", exact: true });
+  const publish = page.getByRole("button", { name: /^发布新版本 rev#/ });
   await expect(publish).toBeDisabled();
   await page.getByRole("combobox", { name: "客户端条件" }).click();
   await expect(
@@ -175,9 +188,7 @@ test("publishes ordered conditions and restores them in the editor", async ({
       minInputTokens: 2048,
     },
   ]);
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page
     .getByRole("button", { name: "OpenCode 工具", exact: true })
     .click();
@@ -193,8 +204,7 @@ test("selects and republishes a project available only to routing", async ({
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html");
-  const edit = page.getByRole("button", { name: "编辑 编程服务", exact: true });
-  await edit.click();
+  await openModelService(page);
   await page.getByRole("switch", { name: "启用优先级与自动回退" }).click();
   await page.getByRole("button", { name: "添加规则" }).click();
   const ruleName = page.getByRole("textbox", { name: "规则名称" });
@@ -205,7 +215,7 @@ test("selects and republishes a project available only to routing", async ({
   const project = page.getByRole("combobox", { name: "项目条件" });
   await project.fill("opencode-v2");
   await page.getByRole("option", { name: /OpenCode 2.x 项目/ }).click();
-  await page.getByRole("button", { name: "验证并发布", exact: true }).click();
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(
     await page.evaluate(
@@ -214,7 +224,7 @@ test("selects and republishes a project available only to routing", async ({
           ?.projectId,
     ),
   ).toBe(`project:${"2".repeat(64)}`);
-  await edit.click();
+  await openModelService(page);
   await page
     .getByRole("button", { name: "OpenCode 2.x 项目规则", exact: true })
     .click();
@@ -227,9 +237,7 @@ test("publish upstream account order, weights and affinity", async ({
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html?upstream-accounts=1");
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page.getByRole("switch", { name: "启用优先级与自动回退" }).click();
   const picker = page.getByRole("combobox", { name: "添加上游账号" });
   await picker.click();
@@ -242,14 +250,16 @@ test("publish upstream account order, weights and affinity", async ({
   await page.getByRole("option", { name: "按权重分配" }).click();
   const weight = page.getByRole("spinbutton", { name: "备用账号 权重" });
   await weight.fill("0");
-  await expect(page.getByRole("button", { name: "验证并发布" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: /^发布新版本 rev#/ }),
+  ).toBeDisabled();
   await weight.fill("3");
   await page.getByRole("combobox", { name: "同会话后续轮次" }).click();
   await page.getByRole("option", { name: "优先沿用" }).click();
   await expect(
     page.getByRole("switch", { name: "账号池耗尽后允许跨模型回退" }),
   ).not.toBeChecked();
-  await page.getByRole("button", { name: "验证并发布" }).click();
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const state = await page.evaluate(() => ({
     actions: window.modelServiceFixture.actions,
@@ -272,16 +282,14 @@ test("publish upstream account order, weights and affinity", async ({
     affinity: "prefer",
     weights: { "b8259fd0-66d1-493f-ac6f-12abc5437890": 3 },
   });
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page.getByRole("combobox", { name: "账号选择策略" }).click();
   await page
     .getByRole("option", { name: "优先用每小时剩余额度比例高的账号" })
     .click();
   await expect(page.getByText(/额度排序当前使用 OpenRouter/)).toBeVisible();
   await expect(page.getByText(/按到重置前的剩余时间折算/)).toBeVisible();
-  await page.getByRole("button", { name: "验证并发布" }).click();
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const quotaPool = await page.evaluate(
     () =>
@@ -303,7 +311,7 @@ test("model service list is the default and routing controls are a secondary wor
     exact: true,
   });
   const create = page.getByRole("button", {
-    name: "创建模型服务",
+    name: /创建模型服务/,
     exact: true,
   });
   await expect(list.getByRole("table")).toBeInViewport();
@@ -323,7 +331,7 @@ test("create a cross-provider model service and publish capability metadata", as
   await expect(
     page.getByRole("region", { name: "模型服务列表" }).getByRole("table"),
   ).toContainText("尚未创建模型服务");
-  await page.getByRole("button", { name: "创建模型服务" }).click();
+  await page.getByRole("button", { name: /创建模型服务/ }).click();
   await page
     .getByRole("textbox", { name: "服务名称", exact: true })
     .fill("研发组");
@@ -346,8 +354,13 @@ test("create a cross-provider model service and publish capability metadata", as
   await page
     .getByRole("spinbutton", { name: "上下文窗口（Token）" })
     .fill("96000");
-  await page.getByRole("button", { name: "验证并发布" }).click();
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.getByRole("navigation", { name: "工作区标签" }),
+  ).toContainText("研发组");
+  await expect(page.getByText("rev#1", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Home", exact: true }).click();
   const row = page.getByRole("row").filter({ hasText: "研发组" });
   await expect(row).toContainText("2 个 Provider");
   await expect(row).toContainText("Pro · Flash");
@@ -397,9 +410,7 @@ test("publication preview shows account status and invalidates edited scope", as
   await page.goto(
     "/tests/frontend/model-services.html?require-account=1&upstream-accounts=1",
   );
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   const preview = page.getByRole("region", { name: "发布前路由预览" });
   expect(await page.evaluate(() => window.modelServiceFixture.actions)).toEqual(
     [],
@@ -449,27 +460,24 @@ test("publish conflicts preserve the editor and deleting an attached service sta
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html");
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page
     .getByRole("textbox", { name: "服务名称", exact: true })
     .fill("编程服务二");
   await page.evaluate(() => {
     window.modelServiceFixture.failSave = true;
   });
-  await page.getByRole("button", { name: "验证并发布" }).click();
-  await expect(page.getByRole("dialog")).toContainText("模型服务已被修改");
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
+  await expect(editor(page)).toContainText("模型服务已被修改");
   await expect(
     page.getByRole("textbox", { name: "服务名称", exact: true }),
   ).toHaveValue("编程服务二");
-  await page.getByRole("button", { name: "取消", exact: true }).click();
+  await closeChangedEditor(page);
   await page.evaluate(() => {
     window.modelServiceFixture.inUse = true;
   });
-  await page
-    .getByRole("button", { name: "删除 编程服务", exact: true })
-    .click();
+  await openModelService(page);
+  await page.getByRole("button", { name: "删除服务", exact: true }).click();
   await page.getByRole("button", { name: "删除服务", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("此服务仍被 Agent 接入");
   expect(
@@ -546,14 +554,12 @@ test("small window keeps model fields and publish actions reachable and recovers
 }) => {
   await page.setViewportSize({ width: 720, height: 560 });
   await page.goto("/tests/frontend/model-services.html");
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page
     .getByRole("combobox", { name: "服务默认模型", exact: true })
     .click();
   await page.getByRole("option", { name: "Flash", exact: true }).press("Enter");
-  await page.getByRole("button", { name: "验证并发布" }).click();
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(
     await page.evaluate(
@@ -565,20 +571,21 @@ test("small window keeps model fields and publish actions reachable and recovers
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  await page.getByRole("button", { name: "Home", exact: true }).click();
   await page.evaluate(() => {
     window.modelServiceFixture.failRead = true;
   });
   await page.getByRole("button", { name: "重新读取", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("服务目录读取失败");
   await expect(
-    page.getByRole("button", { name: "创建模型服务" }),
+    page.getByRole("button", { name: /创建模型服务/ }),
   ).toBeDisabled();
   await page.evaluate(() => {
     window.modelServiceFixture.failRead = false;
   });
   await page.getByRole("button", { name: "重新读取", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "创建模型服务" }),
+    page.getByRole("button", { name: /创建模型服务/ }),
   ).toBeEnabled();
 });
 
@@ -610,9 +617,7 @@ test("routing priority and per-model limits publish without rewriting the model 
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html");
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page.getByRole("switch", { name: "启用优先级与自动回退" }).click();
   await page
     .getByRole("button", { name: "提高 Flash 优先级", exact: true })
@@ -622,7 +627,7 @@ test("routing priority and per-model limits publish without rewriting the model 
   ).toContainText("Flash");
   await page.getByRole("spinbutton", { name: "最多尝试候选" }).fill("2");
   await page.getByRole("spinbutton", { name: "来源模型最大并发" }).fill("3");
-  await page.getByRole("button", { name: "验证并发布" }).click();
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const saved = await page.evaluate(
     () => window.modelServiceFixture.catalog.services[0],
@@ -769,9 +774,7 @@ test("lost publish reply stays uncertain, locks the draft and queries the origin
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html");
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page
     .getByRole("spinbutton", { name: "上下文窗口（Token）" })
     .fill("64000");
@@ -779,11 +782,11 @@ test("lost publish reply stays uncertain, locks the draft and queries the origin
     window.modelServiceFixture.loseCommitReply = true;
     window.modelServiceFixture.failOperationRead = true;
   });
-  await page.getByRole("button", { name: "验证并发布", exact: true }).click();
-  const dialog = page.getByRole("dialog");
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
+  const dialog = editor(page);
   await expect(dialog).toContainText("原操作结果尚未确认");
   await expect(
-    dialog.getByRole("button", { name: "验证并发布", exact: true }),
+    dialog.getByRole("button", { name: /^发布新版本 rev#/ }),
   ).toBeDisabled();
   await expect(
     dialog.getByRole("spinbutton", { name: "上下文窗口（Token）" }),
@@ -807,7 +810,9 @@ test("lost publish reply stays uncertain, locks the draft and queries the origin
   await dialog
     .getByRole("button", { name: "查询原操作结果", exact: true })
     .click();
-  await expect(dialog).toHaveCount(0);
+  await expect(
+    dialog.getByRole("button", { name: /^发布新版本 rev#3/ }),
+  ).toBeEnabled();
   expect(await page.evaluate(() => window.modelServiceFixture.actions)).toEqual(
     ["verify:source-Alpha:a", "save"],
   );
@@ -817,9 +822,7 @@ test("reload retains the frozen request, performs no write on mount and retries 
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html?write-recovery=1");
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page
     .getByRole("spinbutton", { name: "上下文窗口（Token）" })
     .fill("64000");
@@ -827,8 +830,8 @@ test("reload retains the frozen request, performs no write on mount and retries 
     window.modelServiceFixture.dropBeforeCommit = true;
     window.modelServiceFixture.failOperationRead = true;
   });
-  await page.getByRole("button", { name: "验证并发布", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText("原操作结果尚未确认");
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
+  await expect(editor(page)).toContainText("原操作结果尚未确认");
   const id = await page.evaluate(
     () => window.modelServiceFixture.operationAttempts[0],
   );
@@ -875,9 +878,8 @@ test("a lost deletion reply is recovered from its receipt and never deletes agai
     window.modelServiceFixture.loseCommitReply = true;
     window.modelServiceFixture.failOperationRead = true;
   });
-  await page
-    .getByRole("button", { name: "删除 编程服务", exact: true })
-    .click();
+  await openModelService(page);
+  await page.getByRole("button", { name: "删除服务", exact: true }).click();
   await page.getByRole("button", { name: "删除服务", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("原操作结果尚未确认");
   await page.reload();
@@ -898,16 +900,12 @@ test("an old backend is detected before model verification or a legacy write", a
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html?legacy-write=1");
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page
     .getByRole("spinbutton", { name: "上下文窗口（Token）" })
     .fill("64000");
-  await page.getByRole("button", { name: "验证并发布", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText(
-    "当前后台不支持模型服务结果核查",
-  );
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
+  await expect(editor(page)).toContainText("当前后台不支持模型服务结果核查");
   expect(await page.evaluate(() => window.modelServiceFixture.actions)).toEqual(
     [],
   );
@@ -920,16 +918,14 @@ test("a pending operation added during verification prevents a second submission
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html");
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page
     .getByRole("spinbutton", { name: "上下文窗口（Token）" })
     .fill("64000");
   await page.evaluate(() => {
     window.modelServiceFixture.holdVerification = true;
   });
-  await page.getByRole("button", { name: "验证并发布", exact: true }).click();
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
   await expect
     .poll(() => page.evaluate(() => window.modelServiceFixture.actions.length))
     .toBe(1);
@@ -949,7 +945,7 @@ test("a pending operation added during verification prevents a second submission
     window.modelServiceFixture.releaseVerification();
     return { key, raw };
   });
-  await expect(page.getByRole("dialog")).toContainText("此服务已有待核查操作");
+  await expect(editor(page)).toContainText("此服务已有待核查操作");
   expect(
     await page.evaluate(() => window.modelServiceFixture.operationAttempts),
   ).toEqual([]);
@@ -962,9 +958,7 @@ test("publishing requires the original request to survive local storage readback
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html");
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page
     .getByRole("spinbutton", { name: "上下文窗口（Token）" })
     .fill("64000");
@@ -975,8 +969,8 @@ test("publishing requires the original request to survive local storage readback
         save.call(this, key, value);
     };
   });
-  await page.getByRole("button", { name: "验证并发布", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText("原请求未能完整保存");
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
+  await expect(editor(page)).toContainText("原请求未能完整保存");
   expect(
     await page.evaluate(() => window.modelServiceFixture.operationAttempts),
   ).toEqual([]);
@@ -986,9 +980,7 @@ test("confirming an original receipt preserves recovery metadata changed during 
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html");
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page
     .getByRole("spinbutton", { name: "上下文窗口（Token）" })
     .fill("64000");
@@ -996,8 +988,8 @@ test("confirming an original receipt preserves recovery metadata changed during 
     window.modelServiceFixture.loseCommitReply = true;
     window.modelServiceFixture.failOperationRead = true;
   });
-  await page.getByRole("button", { name: "验证并发布", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText("原操作结果尚未确认");
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
+  await expect(editor(page)).toContainText("原操作结果尚未确认");
   const changed = await page.evaluate(() => {
     const [key, raw] = Object.entries(localStorage).find(([key]) =>
       key.startsWith("local-agent.model-service-operation.v1."),
@@ -1010,7 +1002,7 @@ test("confirming an original receipt preserves recovery metadata changed during 
     return { key, raw: replacement };
   });
   await page
-    .getByRole("dialog")
+    .getByRole("region", { name: "模型服务编辑器" })
     .getByRole("button", { name: "查询原操作结果", exact: true })
     .click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -1023,9 +1015,7 @@ test("unmounting while verifying does not verify the next model or submit", asyn
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html");
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page
     .getByRole("spinbutton", { name: "上下文窗口（Token）" })
     .fill("64000");
@@ -1036,7 +1026,7 @@ test("unmounting while verifying does not verify the next model or submit", asyn
   await page.evaluate(() => {
     window.modelServiceFixture.holdVerification = true;
   });
-  await page.getByRole("button", { name: "验证并发布", exact: true }).click();
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
   await expect
     .poll(() => page.evaluate(() => window.modelServiceFixture.actions.length))
     .toBe(1);
@@ -1057,9 +1047,7 @@ test("pending requests cannot be replayed into a different database and retain t
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html");
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page
     .getByRole("spinbutton", { name: "上下文窗口（Token）" })
     .fill("64000");
@@ -1067,8 +1055,8 @@ test("pending requests cannot be replayed into a different database and retain t
     window.modelServiceFixture.dropBeforeCommit = true;
     window.modelServiceFixture.failOperationRead = true;
   });
-  await page.getByRole("button", { name: "验证并发布", exact: true }).click();
-  const dialog = page.getByRole("dialog");
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
+  const dialog = editor(page);
   await expect(dialog).toContainText("原操作结果尚未确认");
   await page.evaluate(() => {
     window.modelServiceFixture.failOperationRead = false;
@@ -1094,7 +1082,9 @@ test("pending requests cannot be replayed into a different database and retain t
   await dialog
     .getByRole("button", { name: "按原编号重试", exact: true })
     .click();
-  await expect(dialog).toHaveCount(0);
+  await expect(
+    dialog.getByRole("button", { name: /^发布新版本 rev#3/ }),
+  ).toBeEnabled();
   const attempts = await page.evaluate(
     () => window.modelServiceFixture.operationAttempts,
   );
@@ -1110,12 +1100,9 @@ for (const action of ["publish", "delete"] as const) {
     page,
   }) => {
     await page.goto("/tests/frontend/model-services.html");
-    await page
-      .getByRole("button", {
-        name: action === "publish" ? "编辑 编程服务" : "删除 编程服务",
-        exact: true,
-      })
-      .click();
+    await openModelService(page);
+    if (action === "delete")
+      await page.getByRole("button", { name: "删除服务", exact: true }).click();
     if (action === "publish") {
       await page
         .getByRole("textbox", { name: "服务名称", exact: true })
@@ -1133,10 +1120,11 @@ for (const action of ["publish", "delete"] as const) {
     await expect(
       page.getByRole("region", { name: "模型服务列表", includeHidden: true }),
     ).toContainText("B库同号服务");
-    const dialog = page.getByRole("dialog");
+    const dialog =
+      action === "publish" ? editor(page) : page.getByRole("dialog");
     await dialog
       .getByRole("button", {
-        name: action === "publish" ? "验证并发布" : "删除服务",
+        name: action === "publish" ? /^发布新版本 rev#/ : "删除服务",
         exact: true,
       })
       .click();
@@ -1170,11 +1158,15 @@ for (const action of ["publish", "delete"] as const) {
     ).toContainText("编程服务");
     await dialog
       .getByRole("button", {
-        name: action === "publish" ? "验证并发布" : "删除服务",
+        name: action === "publish" ? /^发布新版本 rev#/ : "删除服务",
         exact: true,
       })
       .click();
-    await expect(dialog).toHaveCount(0);
+    if (action === "delete") await expect(dialog).toHaveCount(0);
+    else
+      await expect(
+        dialog.getByRole("textbox", { name: "服务名称" }),
+      ).toHaveValue("A库草稿");
     expect(
       await page.evaluate(() => window.modelServiceFixture.actions),
     ).toEqual(
@@ -1187,9 +1179,7 @@ test("a dialog opened without a database identity cannot adopt one after a proto
   page,
 }) => {
   await page.goto("/tests/frontend/model-services.html?legacy-write=1");
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page
     .getByRole("textbox", { name: "服务名称", exact: true })
     .fill("未确认来源的草稿");
@@ -1206,8 +1196,8 @@ test("a dialog opened without a database identity cannot adopt one after a proto
   await expect(
     page.getByRole("region", { name: "模型服务列表", includeHidden: true }),
   ).toContainText("新后台目录");
-  const dialog = page.getByRole("dialog");
-  await dialog.getByRole("button", { name: "验证并发布", exact: true }).click();
+  const dialog = editor(page);
+  await dialog.getByRole("button", { name: /^发布新版本 rev#/ }).click();
   await expect(dialog).toContainText("无法确认草稿所属后台");
   await expect(
     dialog.getByRole("textbox", { name: "服务名称", exact: true }),
@@ -1218,12 +1208,12 @@ test("a dialog opened without a database identity cannot adopt one after a proto
   expect(
     await page.evaluate(() => window.modelServiceFixture.operationAttempts),
   ).toEqual([]);
-  await dialog.getByRole("button", { name: "取消", exact: true }).click();
-  await page
-    .getByRole("button", { name: "编辑 新后台目录", exact: true })
-    .click();
-  await page.getByRole("button", { name: "验证并发布", exact: true }).click();
-  await expect(dialog).toHaveCount(0);
+  await closeChangedEditor(page);
+  await openModelService(page, "新后台目录");
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
+  await expect(
+    dialog.getByRole("button", { name: /^发布新版本 rev#3/ }),
+  ).toBeEnabled();
   expect(await page.evaluate(() => window.modelServiceFixture.actions)).toEqual(
     ["save"],
   );
@@ -1312,14 +1302,12 @@ test("unreadable recovery metadata remains visible and never triggers a verifica
   await expect(
     page.getByRole("region", { name: "模型服务操作核查" }),
   ).toContainText("操作恢复记录不可读取");
-  await page
-    .getByRole("button", { name: "编辑 编程服务", exact: true })
-    .click();
+  await openModelService(page);
   await page
     .getByRole("spinbutton", { name: "上下文窗口（Token）" })
     .fill("64000");
-  await page.getByRole("button", { name: "验证并发布", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText("恢复记录不可读取");
+  await page.getByRole("button", { name: /^发布新版本 rev#/ }).click();
+  await expect(editor(page)).toContainText("恢复记录不可读取");
   expect(await page.evaluate(() => window.modelServiceFixture.actions)).toEqual(
     [],
   );

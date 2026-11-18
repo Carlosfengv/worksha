@@ -743,6 +743,15 @@ export const providersApi = {
       operationId,
     );
   },
+  async probeDraft(storeId: string, provider: Provider) {
+    const value = await command<{ verified?: boolean }>(
+      "probe_provider_draft",
+      {
+        request: { storeId, provider },
+      },
+    );
+    if (value?.verified !== true) throw Error("探活结果未确认，请核对后重试。");
+  },
   verifyProvider(
     providerId: string,
     expectedRevision: number,

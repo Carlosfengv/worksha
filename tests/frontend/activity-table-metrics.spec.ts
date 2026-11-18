@@ -5,9 +5,9 @@ import type {} from "./activity-fixture";
 const feed = (page: Page) =>
   page.getByRole("region", { name: "当前活动列表", exact: true });
 const ttft = (row: ReturnType<Page["getByRole"]>) =>
-  row.getByRole("cell").nth(3);
+  row.getByRole("cell").nth(1);
 const rate = (row: ReturnType<Page["getByRole"]>) =>
-  row.getByRole("cell").nth(4);
+  row.getByRole("cell").nth(2);
 async function load(page: Page, value: Window["activityCase"]) {
   await page.goto("/tests/frontend/tables.html?mode=activity#/overview");
   await page.evaluate((value) => {
@@ -25,15 +25,13 @@ test("reasoning and tool arguments stream before the conclusion, and continuatio
     name: "实时任务汇总",
     exact: true,
   });
-  const firstOutput = summary
-    .locator('[data-slot="metric-card"]')
-    .filter({ hasText: "当前平均 TTFT" });
-  const totalRate = summary
-    .locator('[data-slot="metric-card"]')
-    .filter({ hasText: /(?:总|已测) Token 速率/ });
+  const firstOutput = summary.getByRole("group", { name: "当前平均 TTFT" });
+  const totalRate = summary.getByRole("group", {
+    name: /(?:总|已测) Token 速率/,
+  });
   await expect(rate(row)).toContainText("实时 37.0 Token/s");
   await expect(rate(row)).toContainText("最近 1 秒 · 输出估算");
-  await expect(ttft(row)).toContainText("TTFT 0.900 秒");
+  await expect(ttft(row)).toContainText("0.900 秒");
   await expect(ttft(row)).toContainText("消息首出 · 网关实测");
   await expect(firstOutput).toContainText("0.450"); // Includes the other request's real zero.
   await expect(totalRate).toContainText("37.0");
@@ -43,14 +41,14 @@ test("reasoning and tool arguments stream before the conclusion, and continuatio
   });
   await expect(rate(row)).toContainText("实时 64.0 Token/s");
   await expect(totalRate).toContainText("64.0");
-  await expect(ttft(row)).toContainText("TTFT 0.900 秒");
+  await expect(ttft(row)).toContainText("0.900 秒");
   await expect(row.getByRole("link")).toBeFocused();
   await page.evaluate(() => {
     window.activityCase = "table-metrics-output-waiting";
   });
   await expect(rate(row)).toContainText("等待模型响应");
   await expect(rate(row)).not.toContainText("64.0 Token/s");
-  await expect(ttft(row)).toContainText("TTFT 0.900 秒");
+  await expect(ttft(row)).toContainText("0.900 秒");
   await expect(firstOutput).toContainText("0.450");
   await page.evaluate(() => {
     window.activityCase = "table-metrics-output-new";
@@ -66,23 +64,26 @@ test("table shows per-request live TTFT and Token/s, including real zeros, and r
   await load(page, "table-metrics");
   const row = feed(page).getByRole("row").filter({ hasText: "实时请求指标" });
   await expect(
-    feed(page).getByRole("columnheader", { name: "TTFT", exact: true }),
+    feed(page).getByRole("columnheader", {
+      name: "首字延迟 (TTFT)",
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(
     feed(page).getByRole("columnheader", { name: "Token/s", exact: true }),
   ).toBeVisible();
-  await expect(ttft(row)).toContainText("TTFT 1.20 秒");
+  await expect(ttft(row)).toContainText("1.20 秒");
   await expect(ttft(row)).toContainText("网关实测 · 当前请求");
   await expect(rate(row)).toContainText("实时 20.0 Token/s");
   await expect(rate(row)).toContainText("最近 1 秒 · 文本估算");
   const zero = feed(page).getByRole("row").filter({ hasText: "table-ze" });
-  await expect(ttft(zero)).toContainText("TTFT 0.000 秒");
+  await expect(ttft(zero)).toContainText("0.000 秒");
   await expect(rate(zero)).toContainText("实时 0.0 Token/s");
   await page.evaluate(() => {
     window.activityCase = "table-metrics-updated";
   });
   await expect(rate(row)).toContainText("实时 42.0 Token/s");
-  await expect(ttft(row)).toContainText("TTFT 1.20 秒");
+  await expect(ttft(row)).toContainText("1.20 秒");
   await expect(row).toHaveCount(1);
 });
 
@@ -91,12 +92,12 @@ test("native-only table keeps metric columns and shows reported first-output tim
 }) => {
   await load(page, "table-native-metrics");
   const row = feed(page).getByRole("row").filter({ hasText: "原生首出已上报" });
-  await expect(ttft(row)).toContainText("TTFT 1.23 秒");
+  await expect(ttft(row)).toContainText("1.23 秒");
   await expect(ttft(row)).toContainText("Agent 上报 · 本轮");
   await expect(rate(row)).toContainText("原生未提供流式时序");
   await expect(rate(row)).not.toContainText("Token/s");
   const zero = feed(page).getByRole("row").filter({ hasText: "原生零首出" });
-  await expect(ttft(zero)).toContainText("TTFT 0.000 秒");
+  await expect(ttft(zero)).toContainText("0.000 秒");
   const unknown = feed(page)
     .getByRole("row")
     .filter({ hasText: "原生时序未知" });
@@ -116,7 +117,7 @@ test("latest native completion keeps its own metrics and hides older requests in
     .getByRole("row")
     .filter({ hasText: "已结束 · 等待输入" });
   await expect(merged).toContainText("原生记录");
-  await expect(ttft(merged)).toContainText("TTFT 0.900 秒");
+  await expect(ttft(merged)).toContainText("0.900 秒");
   await expect(ttft(merged)).toContainText("最近请求");
   await expect(rate(merged)).toContainText("均速 35.0 Token/s");
   await expect(rate(merged)).toContainText("完成正文均速 · 估算");
@@ -137,7 +138,7 @@ test("native tool progress stays in one message row with the prior request metri
   await load(page, "table-tool-metrics");
   const current = feed(page).getByRole("row").filter({ hasText: "原生记录" });
   await expect(current).toContainText("已提出工具调用");
-  await expect(ttft(current)).toContainText("TTFT 0.900 秒");
+  await expect(ttft(current)).toContainText("0.900 秒");
   await expect(ttft(current)).toContainText("最近请求 · 已记录");
   await expect(rate(current)).toContainText("均速 35.0 Token/s");
   await expect(rate(current)).toContainText("完成正文均速");
@@ -157,7 +158,7 @@ test("stale live metrics clear Token/s but retain the measured first-output timi
   await expect(row).toContainText("状态待更新");
   await expect(rate(row)).toContainText("速度待更新");
   await expect(rate(row)).not.toContainText("20.0 Token/s");
-  await expect(ttft(row)).toContainText("TTFT 1.20 秒");
+  await expect(ttft(row)).toContainText("1.20 秒");
   await expect(ttft(row)).not.toContainText("当前活动");
 });
 
@@ -168,7 +169,7 @@ test("public reasoning and tool arguments do not become text Token/s while TTFT 
   const row = feed(page).getByRole("row").filter({ hasText: "实时请求指标" });
   await expect(rate(row)).toContainText("推理中");
   await expect(rate(row)).not.toContainText("20.0 Token/s");
-  await expect(ttft(row)).toContainText("TTFT 1.20 秒");
+  await expect(ttft(row)).toContainText("1.20 秒");
   await page.evaluate(() => {
     window.activityCase = "table-metrics-tools";
   });
@@ -198,19 +199,19 @@ test("a partial stream keeps measured TTFT and restores speed without replacing 
 }) => {
   await load(page, "table-metrics");
   const row = feed(page).getByRole("row").filter({ hasText: "实时请求指标" });
-  await expect(ttft(row)).toContainText("TTFT 1.20 秒");
+  await expect(ttft(row)).toContainText("1.20 秒");
   await page.evaluate(() => {
     window.activityCase = "table-metrics-gap";
   });
   await expect(rate(row)).toContainText("采样恢复中");
   await expect(rate(row)).toContainText("部分流事件缺失");
-  await expect(ttft(row)).toContainText("TTFT 1.20 秒");
+  await expect(ttft(row)).toContainText("1.20 秒");
   await expect(feed(page)).not.toContainText("不可测");
   await page.evaluate(() => {
     window.activityCase = "table-metrics-recovered";
   });
   await expect(rate(row)).toContainText("实时 42.0 Token/s");
-  await expect(ttft(row)).toContainText("TTFT 1.20 秒");
+  await expect(ttft(row)).toContainText("1.20 秒");
   await expect(row).toHaveCount(1);
 });
 
@@ -233,7 +234,10 @@ test("activity ages advance through seconds, minutes and hours while an overview
   await page.clock.install({ time: now });
   await load(page, "table-metrics");
   await expect(
-    feed(page).getByRole("columnheader", { name: "TTFT", exact: true }),
+    feed(page).getByRole("columnheader", {
+      name: "首字延迟 (TTFT)",
+      exact: true,
+    }),
   ).toBeVisible();
   await page.clock.pauseAt(new Date(now.getTime() + 60000));
   await page.evaluate(
@@ -258,7 +262,7 @@ test("activity ages advance through seconds, minutes and hours while an overview
   await expect(time).toHaveText("1 小时前活动");
   await expect(time).toHaveAttribute("datetime", updatedAt!);
   await expect(rate(row)).not.toContainText("20.0 Token/s");
-  await expect(ttft(row)).toContainText("TTFT 1.20 秒");
+  await expect(ttft(row)).toContainText("1.20 秒");
   await expect(row).toHaveCount(1);
 });
 

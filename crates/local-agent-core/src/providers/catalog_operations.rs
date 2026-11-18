@@ -175,6 +175,7 @@ impl ProviderManager {
             operations::Kind::Save => {
                 current.status == Status::Committed && !store.connection.is_autocommit()
             }
+            operations::Kind::Delete => false,
         };
         if !admitted {
             return Err(invalid());

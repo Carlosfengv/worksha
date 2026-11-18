@@ -8,7 +8,11 @@ const titles = (page: Page) =>
   feed(page)
     .getByRole("row")
     .evaluateAll((rows) =>
-      rows.slice(1).map((row) => row.querySelector("p")?.textContent),
+      rows
+        .slice(1)
+        .map(
+          (row) => row.querySelector("a[data-workspace-resource]")?.textContent,
+        ),
     );
 const initial = [
   "检查新的请求",

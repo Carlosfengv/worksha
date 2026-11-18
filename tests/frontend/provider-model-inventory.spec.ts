@@ -236,7 +236,7 @@ test("source and provider filters retain unknown permission state and narrow lay
 }) => {
   await page.setViewportSize({ width: 720, height: 700 });
   await page.goto("/tests/frontend/provider-model-inventory.html");
-  await page.getByRole("tab", { name: "连接与调用", exact: true }).focus();
+  await page.getByRole("tab", { name: "供应商连接", exact: true }).focus();
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("Enter");
   await expect(

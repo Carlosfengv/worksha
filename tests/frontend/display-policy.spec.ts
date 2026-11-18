@@ -67,7 +67,9 @@ test.describe("display policy in a different system locale and timezone", () => 
   test("settings diagnostics keep the same Chinese Shanghai timestamp as the main UI", async ({
     page,
   }) => {
-    await page.goto("/tests/frontend/tables.html?mode=shell#/settings");
+    await page.goto(
+      "/tests/frontend/tables.html?mode=shell#/settings?tab=connection",
+    );
     await page
       .getByRole("button", { name: "最近诊断记录", exact: true })
       .click();

@@ -4,24 +4,25 @@ test("gateway revocation requires confirmation and preserves the client history"
   page,
 }) => {
   await page.goto("/tests/frontend/gateway.html");
-  await expect(page.getByText("Laptop A", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "撤销密钥", exact: true }).click();
+  const client = page.getByRole("link", { name: "Laptop A", exact: true });
+  const revoke = page.getByRole("button", { name: "撤销此密钥", exact: true });
+  await client.click();
+  await revoke.click();
   await expect(page.getByRole("dialog")).toContainText(
     "其他客户端和已有请求继续运行",
   );
   await page.getByRole("button", { name: "取消", exact: true }).click();
-  await expect(
-    page.getByRole("cell", { name: "已启用", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "撤销密钥", exact: true }).click();
+  await expect(page.getByText(/^已启用 ·/)).toBeVisible();
+  await revoke.click();
   await page.getByRole("button", { name: "确认撤销", exact: true }).click();
-  await expect(
-    page.getByRole("cell", { name: "已撤销", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText("Laptop A", { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "撤销密钥", exact: true }),
-  ).toBeDisabled();
+  await expect(page.getByText(/^已撤销 ·/)).toBeVisible();
+  await expect(revoke).toBeDisabled();
+  await page.evaluate(() => {
+    location.hash = "/lan-gateway";
+  });
+  await expect(page.getByRole("row").filter({ has: client })).toContainText(
+    "已撤销",
+  );
 });
 
 test("gateway keeps stale data on read failure and distinguishes disabled from unknown", async ({

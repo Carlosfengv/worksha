@@ -331,7 +331,7 @@ export function NativeProviderImport({
           void scan();
         }}
       >
-        导入本机配置
+        从本机客户端导入
       </Button>
       {notice && (
         <Alert>
@@ -358,7 +358,7 @@ export function NativeProviderImport({
           <DialogHeader>
             <DialogTitle>导入本机 Provider 配置</DialogTitle>
             <DialogDescription>
-              识别 Claude Code / Codex 的用户级配置。API Key
+              识别 Claude Code、Codex 和 OpenCode 的用户级 API 配置。API Key
               由后台直接存入钥匙串，不显示在界面；不改写原 Agent
               配置，不发送模型请求。
             </DialogDescription>
@@ -434,9 +434,13 @@ export function NativeProviderImport({
                               : "需要核查"}
                       </Badge>
                       <Badge>
-                        {candidate.agentId === "claude"
-                          ? "Claude Code"
-                          : "Codex"}
+                        {
+                          {
+                            claude: "Claude Code",
+                            codex: "Codex",
+                            opencode: "OpenCode",
+                          }[candidate.agentId]
+                        }
                       </Badge>
                     </div>
                     <DetailList>

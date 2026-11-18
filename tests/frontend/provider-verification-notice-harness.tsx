@@ -2,7 +2,11 @@ import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { IconProvider } from "@/lib/icon-context";
 import { ProvidersPage } from "@/features/providers/page";
-import { providersApi } from "@/features/providers/api";
+import {
+  providersApi,
+  providerSourceApi,
+  providerSourceOperationApi,
+} from "@/features/providers/api";
 import type {
   Provider,
   ProviderVerification,
@@ -70,6 +74,19 @@ providersApi.commitOperation = async (request) => {
     error: null,
   };
 };
+providerSourceApi.state = async (query) => ({
+  providerId: query.providerId,
+  expectedRevision: query.expectedRevision,
+  sourceRevision: null,
+  kind: "builtin",
+  choice: null,
+  authorized: true,
+  selection: null,
+  policy: null,
+  errorCode: null,
+});
+providerSourceOperationApi.perform = async (_kind, request) =>
+  providersApi.commitOperation(request);
 function Harness() {
   const [data, setData] = useState<Snapshot>({
     version: "fixture",

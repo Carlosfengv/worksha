@@ -35,6 +35,26 @@ result = messagePerformance([{ ...gateways[0], request: { ...gateways[0].request
 assert.equal(result.outputTokens, 23.5);
 assert.equal(result.estimated, true);
 assert.equal(result.reasoningTokens, null);
+const first = { ...gateways[0], request: { ...gateways[0].request, status: "success", revision: 2,
+  usage: {inputTokens: 1000, cachedInputTokens: 800, outputTokens: 100, reasoningOutputTokens: 40},
+  reportedCost: {amount: 0.01, currency: "USD", source: "fixture"}
+}};
+const second = { ...gateways[1], request: { ...gateways[1].request, status: "success", ttftMs: 600,
+  usage: {inputTokens: 2000, cachedInputTokens: 1100, outputTokens: 200, reasoningOutputTokens: 60},
+  reportedCost: {amount: 0.03, currency: "USD", source: "fixture"}
+}};
+const stream = { ...gateways[1], request: { ...gateways[1].request, id: "r3", startedAt: at(-40000), usage: {outputTokens: null}, estimatedTextTokens: 45 }};
+result = messagePerformance([second, first, gateways[0], stream], [a], at(-60000), now);
+assert.equal(result.firstRequest.ttftMs, 500);
+assert.equal(result.requestCount, 3);
+assert.equal(result.inputTokens, 3000);
+assert.equal(result.cachedInputTokens, 1900);
+assert.equal(result.outputTokens, 345);
+assert.equal(result.reasoningTokens, 100);
+assert.deepEqual(result.cost.actual, [{amount: 0.04, currency: "USD", calls: 2}]);
+assert.equal(result.cost.unknownCalls, 1);
+assert.equal(result.partial, true);
+assert.equal(result.streamingEstimated, true);
 assert.equal(elapsedLabel(at(-65000), null, now), "1 分 5 秒");
 assert.equal(elapsedLabel(at(-65000), at(-30000), now), "35 秒");
 

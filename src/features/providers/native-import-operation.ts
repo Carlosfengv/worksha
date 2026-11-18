@@ -170,7 +170,7 @@ export function nativeImportPreview(value: unknown): {
       if (
         !object(candidate) ||
         !text(candidate.id, 256) ||
-        !["claude", "codex"].includes(String(candidate.agentId)) ||
+        !["claude", "codex", "opencode"].includes(String(candidate.agentId)) ||
         !text(candidate.sourcePath, 4096) ||
         !text(candidate.sourceLabel, 400) ||
         typeof candidate.revision !== "string" ||

@@ -1,6 +1,6 @@
 import { DesktopError } from "@/shared/lib/desktop-command";
 import { gatewayUuid, gatewayUuid4 } from "./gateway-operation";
-import type { GatewayClient, GatewayStatus } from "./types";
+import type { GatewayClient, GatewayClientUsage, GatewayStatus } from "./types";
 const record = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw Error("shape");
@@ -69,6 +69,59 @@ export function gatewayStatus(value: unknown): GatewayStatus {
       active: r.active as number | null,
       clients,
     };
+    if (r.clientUsage != null) {
+      const totals = record(r.clientUsage);
+      const clientUsage: Record<string, GatewayClientUsage> = {};
+      for (const id of ids) {
+        if (!Object.hasOwn(totals, id)) continue;
+        const usage = record(totals[id]);
+        if (
+          ![usage.requests7d, usage.errors7d, usage.throttled429Count7d].every(
+            (n) => integer(n, 0, Number.MAX_SAFE_INTEGER),
+          )
+        )
+          throw Error("usage");
+        const tokens = record(usage.usage7d);
+        const cost = record(usage.cost7d);
+        for (const key of [
+          "inputTokens",
+          "cachedInputTokens",
+          "cacheWriteInputTokens",
+          "outputTokens",
+          "reasoningOutputTokens",
+          "totalTokens",
+        ]) {
+          if (
+            tokens[key] !== null &&
+            !integer(tokens[key], 0, Number.MAX_SAFE_INTEGER)
+          )
+            throw Error("tokens");
+        }
+        if (!integer(cost.unknownCalls, 0, Number.MAX_SAFE_INTEGER))
+          throw Error("cost");
+        for (const group of [cost.actual, cost.estimated]) {
+          if (!Array.isArray(group)) throw Error("cost");
+          for (const line of group) {
+            const total = record(line);
+            if (
+              typeof total.currency !== "string" ||
+              !/^[A-Z]{3}$/.test(total.currency) ||
+              typeof total.amount !== "number" ||
+              !Number.isFinite(total.amount) ||
+              total.amount < 0 ||
+              !integer(total.calls, 0, Number.MAX_SAFE_INTEGER)
+            )
+              throw Error("cost");
+          }
+        }
+        for (const key of ["lastPeer", "lastActiveAt"]) {
+          if (usage[key] != null && typeof usage[key] !== "string")
+            throw Error("last activity");
+        }
+        clientUsage[id] = usage as unknown as GatewayClientUsage;
+      }
+      status.clientUsage = clientUsage;
+    }
     if (r.writeProtocol !== undefined) {
       const p = record(r.writeProtocol);
       if (p.version === 1) {

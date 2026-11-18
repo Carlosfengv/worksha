@@ -23,6 +23,7 @@ export function AgentDetailLayout({
   tabs,
   value,
   canConfigure,
+  showTabs = true,
   activation,
   status,
   refresh,
@@ -33,6 +34,7 @@ export function AgentDetailLayout({
   tabs: readonly { id: string; label: string }[];
   value: string;
   canConfigure: boolean;
+  showTabs?: boolean;
   activation?: ReactNode;
   status?: ReactNode;
   refresh: () => Promise<void>;
@@ -58,13 +60,10 @@ export function AgentDetailLayout({
     <div className="min-w-0 space-y-4">
       <PageHeader className="px-0">
         <div className="min-w-0 space-y-1">
-          <h2 className="break-words text-title font-medium">{agent.name}</h2>
+          <h2 className="sr-only">{agent.name}</h2>
           <p className="text-label text-fg-muted">{description}</p>
         </div>
         <PageActions>
-          <Button asChild variant="tertiary">
-            <a href="#/agents">返回 Agents</a>
-          </Button>
           <Button
             variant="tertiary"
             loading={refreshing}
@@ -97,11 +96,13 @@ export function AgentDetailLayout({
         variant="underline"
         color="default"
       >
-        <TabsList aria-label="Agent 详情">
-          {tabs.map(({ id, label }) => (
-            <TabItem key={id} value={id} label={label} />
-          ))}
-        </TabsList>
+        {showTabs && (
+          <TabsList aria-label="Agent 详情">
+            {tabs.map(({ id, label }) => (
+              <TabItem key={id} value={id} label={label} />
+            ))}
+          </TabsList>
+        )}
         {children}
       </Tabs>
       {(!agent.sourceId || agent.found) && (

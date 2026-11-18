@@ -18,10 +18,21 @@ import type { Provider } from "@/features/providers/types";
 import { useSharedRead, useSharedQuery } from "@/shared/hooks/use-shared-read";
 import { providerStatusResource, providerUsageResource } from "./queries";
 import { ConnectionEmpty } from "@/shared/ui/connection-empty";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useWorkspaceNavigation } from "@/shared/hooks/use-workspace-navigation";
+import { agentDetailHref } from "@/features/agents/components/agent-detail-layout";
+import { useServiceWrite } from "@/features/model-services/hooks/use-service-write";
+import { modelServicesApi } from "@/features/model-services/api";
+import { defaultCapabilities } from "@/features/model-services/types";
+import { ServiceWriteFeedback } from "@/features/model-services/components/service-write-feedback";
+import { GatewayCostComparison } from "./components/gateway-cost-comparison";
+import { AccountQuota } from "@/features/accounts/components/account-quota";
 
 import { ProviderDetail } from "./components/provider-detail";
-import { ProviderEditor } from "./components/provider-editor";
+import {
+  ProviderEditor,
+  providerWizardFormId,
+} from "./components/provider-editor";
 import { ProviderOperationRecovery } from "./components/provider-operation-recovery";
 import { ProviderTable } from "./components/provider-table";
 import { ProviderOverview } from "./components/provider-overview";
@@ -36,6 +47,7 @@ import {
 } from "./components/provider-history";
 import {
   ProviderUsageFilters,
+  providerHistoryHref,
   type UsageFilters,
 } from "./components/provider-usage-filters";
 export function ProvidersPage({
@@ -43,16 +55,37 @@ export function ProvidersPage({
   refresh,
   selectedId,
   selectedTab,
+  routeSearch = "",
+  canCreateDefaultService = false,
 }: {
   data: Snapshot | null;
   refresh: () => Promise<void>;
   selectedId?: string;
   selectedTab?: string;
+  routeSearch?: string;
+  canCreateDefaultService?: boolean;
 }) {
   const status = useSharedRead(providerStatusResource, !!data);
-  const [listTab, setListTab] = useState("overview");
-  const [usageFilters, setUsageFilters] = useState<UsageFilters>({
-    source: "gateway",
+  const fallbackListTab =
+    selectedTab === "quotas" || selectedTab === "models"
+      ? selectedTab
+      : "connections";
+  const [listSelection, setListSelection] = useState({
+    entry: selectedTab,
+    value: fallbackListTab,
+  });
+  const listTab =
+    listSelection.entry === selectedTab ? listSelection.value : fallbackListTab;
+  const setListTab = (value: string) =>
+    setListSelection({ entry: selectedTab, value });
+  const [usageFilters, setUsageFilters] = useState<UsageFilters>(() => {
+    const params = new URLSearchParams(routeSearch);
+    const days = Number(params.get("days"));
+    return {
+      source: params.get("source") === "native" ? "native" : "gateway",
+      agent: params.get("agent") ?? undefined,
+      days: [1, 7, 30].includes(days) ? days : undefined,
+    };
   });
   const usage = useSharedQuery(
     providerUsageResource,
@@ -65,6 +98,110 @@ export function ProvidersPage({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [bindingHref, setBindingHref] = useState<string | null>(null);
+  const pendingBinding = useRef<{ serviceId: string; href: string } | null>(
+    null,
+  );
+  const workspace = useWorkspaceNavigation();
+  const active = useRef(false);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
+  const openBinding = (href: string, notice: string) => {
+    setBindingHref(href);
+    setNotice(notice);
+    if (active.current) workspace.open(href, { pin: true });
+  };
+  const createService = useServiceWrite((receipt) => {
+    const pending = pendingBinding.current;
+    if (pending?.serviceId !== receipt.serviceId) return;
+    pendingBinding.current = null;
+    openBinding(pending.href, "供应商与同名默认模型服务已就绪。");
+  });
+  const createDefault = async (provider: Provider) => {
+    if (createService.busy || createService.uncertain)
+      throw Error("请先核查上一条模型服务保存结果，再创建新服务。");
+    const catalog = await modelServicesApi.catalog();
+    if (!active.current) return;
+    const clients =
+      data?.agents.filter(
+        (agent) =>
+          agent.found &&
+          !agent.readonly &&
+          !agent.sourceId &&
+          ["claude", "codex", "opencode", "claude-desktop"].includes(
+            agent.configId,
+          ),
+      ) ?? [];
+    const preferredId = {
+      messages: "claude",
+      responses: "codex",
+      "chat-completions": "opencode",
+    }[provider.protocol];
+    const target =
+      clients.find((agent) => agent.configId === preferredId) ??
+      (clients.length === 1 ? clients[0] : null);
+    const href = target ? agentDetailHref(target.id, "connection") : "#/agents";
+    const existing = catalog.services.find(
+      (service) => service.name === provider.name,
+    );
+    if (existing) {
+      if (
+        existing.models.some(
+          (model) =>
+            model.id === existing.defaultModelId &&
+            !model.child &&
+            !existing.routingPolicy?.disabledModels.includes(model.id) &&
+            model.provider.id === provider.id &&
+            model.provider.model === provider.model,
+        )
+      ) {
+        openBinding(href, "已复用同名默认模型服务。");
+      } else
+        setError(
+          "供应商已保存，已有同名服务使用不同的模型来源，请在模型服务中检查。",
+        );
+      return;
+    }
+    const id = crypto.randomUUID();
+    const serviceId = crypto.randomUUID();
+    pendingBinding.current = { serviceId, href };
+    await createService.start(
+      {
+        kind: "save",
+        draft: {
+          id: serviceId,
+          revision: 0,
+          name: provider.name,
+          defaultModelId: id,
+          models: [
+            {
+              id,
+              name: provider.model,
+              providerId: provider.id,
+              model: provider.model,
+              capabilities: defaultCapabilities(),
+            },
+          ],
+        },
+      },
+      catalog.writeProtocol?.storeId,
+      async (_progress, isCurrent, storeId) => {
+        const result = await modelServicesApi.verifyMember({
+          storeId,
+          providerId: provider.id,
+          expectedRevision: provider.revision,
+          model: provider.model,
+        });
+        if (isCurrent() && result.state !== "verified")
+          throw Error(result.message);
+      },
+    );
+  };
+
   const updated = async () => {
     setNotice(null);
     await refresh();
@@ -109,7 +246,7 @@ export function ProvidersPage({
     return (
       <div className="min-w-0 space-y-4">
         <PageHeader className="px-0">
-          <h2 className="text-title font-medium">模型供应商</h2>
+          <h2 className="text-title font-medium">模型与额度</h2>
         </PageHeader>
         <ConnectionEmpty title="尚未连接服务商配置" icon="globe" />
       </div>
@@ -117,10 +254,17 @@ export function ProvidersPage({
   const freshStatus = status.error ? null : status.data;
   const selected = data.providers.find((p) => p.id === selectedId);
   const configured = data.providers.filter((p) => p.configured);
+  const adding =
+    !!draft &&
+    !selectedId &&
+    !draft.configured &&
+    draft.revision === 0 &&
+    draft.id.startsWith("custom-");
   const edit = (p: Provider) => {
     setDraft(p);
     setError(null);
     setNotice(null);
+    setBindingHref(null);
   };
   const requestVerification = (p: Provider) => {
     setVerify(p);
@@ -130,37 +274,43 @@ export function ProvidersPage({
     <div className="min-w-0 space-y-4">
       {!selectedId && (
         <PageHeader className="px-0">
-          <h2 className="text-title font-medium">模型供应商</h2>
+          <h2 className="text-title font-medium">模型与额度</h2>
           <PageActions>
-            <Button
-              variant="tertiary"
-              loading={refreshing}
-              disabled={refreshing}
-              onClick={() => void refreshConfiguration()}
-            >
-              刷新配置
-            </Button>
-            <NativeProviderImport onImported={updated} />
-            <Button
-              onClick={() =>
-                edit({
-                  id: `custom-${crypto.randomUUID()}`,
-                  name: "",
-                  vendor: "custom",
-                  endpoint: "",
-                  protocol: "responses",
-                  model: "",
-                  models: [],
-                  credentialRef: null,
-                  credentialLabel: null,
-                  category: "custom",
-                  configured: false,
-                  revision: 0,
-                })
-              }
-            >
-              添加供应商
-            </Button>
+            {!adding && <NativeProviderImport onImported={updated} />}
+            {adding ? (
+              <Button
+                key="return"
+                type="reset"
+                form={providerWizardFormId}
+                variant="secondary"
+              >
+                返回列表
+              </Button>
+            ) : (
+              <Button
+                key="add"
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  edit({
+                    id: `custom-${crypto.randomUUID()}`,
+                    name: "",
+                    vendor: "custom",
+                    endpoint: "",
+                    protocol: "responses",
+                    model: "",
+                    models: [],
+                    credentialRef: null,
+                    credentialLabel: null,
+                    category: "custom",
+                    configured: false,
+                    revision: 0,
+                  });
+                }}
+              >
+                添加供应商
+              </Button>
+            )}
           </PageActions>
         </PageHeader>
       )}
@@ -198,7 +348,7 @@ export function ProvidersPage({
           <ProviderDetail
             key={`${data.providerWriteProtocol?.storeId ?? "unknown"}:${selected.id}`}
             provider={selected}
-            initialTab={selectedTab === "models" ? "models" : "overview"}
+            initialTab={selectedTab}
             storeId={data.providerWriteProtocol?.storeId}
             status={freshStatus}
             onEdit={edit}
@@ -220,20 +370,22 @@ export function ProvidersPage({
             }}
           />
         )
-      ) : (
+      ) : !adding ? (
         <>
           <Tabs
             value={listTab}
             onValueChange={setListTab}
-            variant="underline"
+            variant="segment"
             color="default"
           >
             <TabsList aria-label="Provider 页面">
-              <TabItem value="overview" label="用量概览" />
-              <TabItem value="connections" label="连接与调用" />
+              <TabItem value="connections" label="供应商连接" />
               <TabItem value="models" label="全部模型" />
+              <TabItem value="quotas" label="额度与账单" />
             </TabsList>
-            <TabPanel value="overview">
+            <TabPanel value="quotas" className="space-y-3 pt-3">
+              <AccountQuota />
+              <GatewayCostComparison />
               <ProviderOverview
                 providers={data.providers}
                 dshConnectionHref={`#/agents/${encodeURIComponent(bundledDshAgent.id)}?tab=connection`}
@@ -275,6 +427,7 @@ export function ProvidersPage({
                 />
                 <ProviderTable
                   providers={configured}
+                  usageFilters={usageFilters}
                   status={freshStatus}
                   onEdit={edit}
                   onVerify={requestVerification}
@@ -291,7 +444,7 @@ export function ProvidersPage({
                 />
                 {usage.data && usage.data.unattributed.calls > 0 && (
                   <Button variant="link" size="sm" asChild>
-                    <a href="#/providers/_unknown">
+                    <a href={providerHistoryHref("_unknown", usageFilters)}>
                       未归属调用 ·{" "}
                       {usage.data.unattributed.calls.toLocaleString("zh-CN")} 次
                     </a>
@@ -303,6 +456,12 @@ export function ProvidersPage({
           </Tabs>
           <PluginEntries kind="providers" />
         </>
+      ) : null}
+      <ServiceWriteFeedback operation={createService} />
+      {bindingHref && (
+        <Button variant="secondary" asChild>
+          <a href={bindingHref}>前往绑定本机 Agent</a>
+        </Button>
       )}
       <ProviderOperationRecovery
         storeId={data.providerWriteProtocol?.storeId}
@@ -327,10 +486,25 @@ export function ProvidersPage({
           provider={draft}
           storeId={data.providerWriteProtocol?.storeId}
           onClose={() => setDraft(null)}
-          onSaved={async () => {
+          guidedCreation={adding}
+          canCreateDefaultService={canCreateDefaultService}
+          onSaved={async (saved, makeService) => {
             await updated();
+            if (!active.current) return;
             setDraft(null);
-            setNotice("已保存模型来源，可在模型服务中组织并接入 Agent。");
+            setNotice("已保存模型来源。");
+            if (makeService && canCreateDefaultService) {
+              try {
+                await createDefault(saved);
+              } catch (reason) {
+                setError(`供应商已保存，默认服务创建失败：${message(reason)}`);
+              }
+            } else if (adding) {
+              workspace.open(
+                `#/providers/${encodeURIComponent(saved.id)}?tab=models`,
+                { pin: true },
+              );
+            }
           }}
         />
       )}

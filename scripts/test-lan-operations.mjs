@@ -79,6 +79,23 @@ const proxy = createServer(async (req, res) => {
     res.destroy();
   }
 });
+const upstream = createServer(async (req, res) => {
+  let body = "";
+  for await (const bytes of req) body += bytes;
+  const { model } = JSON.parse(body);
+  res.writeHead(200, { "content-type": "application/json" });
+  res.end(
+    JSON.stringify({
+      id: "msg_fixture_audit",
+      type: "message",
+      role: "assistant",
+      model,
+      content: [{ type: "text", text: "isolated audit fixture" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 10, output_tokens: 2 },
+    }),
+  );
+});
 const reservation = tcpServer();
 await new Promise((resolve) => reservation.listen(0, "127.0.0.1", resolve));
 const listen = `127.0.0.1:${reservation.address().port}`;
@@ -178,6 +195,7 @@ const modelCatalog = (key) =>
   });
 try {
   await new Promise((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+  await new Promise((resolve) => upstream.listen(0, "127.0.0.1", resolve));
   const proxyBase = `http://127.0.0.1:${proxy.address().port}`;
   await run(
     binary,
@@ -201,7 +219,7 @@ try {
     {
       id: "anthropic",
       name: "LAN receipt fixture",
-      endpoint: "http://127.0.0.1:9/v1",
+      endpoint: `http://127.0.0.1:${upstream.address().port}/v1`,
       protocol: "messages",
       model: "fixture",
       models: ["fixture"],
@@ -291,6 +309,33 @@ try {
   assert.equal(status.clients.length, 3);
   passed("重启后原回执一致；12 个并发同编号只生成一个客户端与一次密钥回复");
 
+  const response = await fetch(`http://${listen}/v1/messages`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${key}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "fixture",
+      stream: false,
+      max_tokens: 16,
+      messages: [{ role: "user", content: "isolated request" }],
+    }),
+    signal: AbortSignal.timeout(10000),
+  });
+  assert.equal(response.status, 200);
+  await response.json();
+  let beforeRevoke;
+  for (let i = 0; i < 60; i++) {
+    beforeRevoke = (await api("/api/gateway-lan")).clientUsage?.[
+      parallel.operationId
+    ];
+    if (beforeRevoke?.usage7d.totalTokens === 12) break;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.equal(beforeRevoke?.requests7d, 1);
+  assert.equal(beforeRevoke?.usage7d.totalTokens, 12);
+  assert.equal(beforeRevoke?.cost7d.unknownCalls, 1);
   const revoke = {
     storeId,
     operationId: randomUUID(),
@@ -302,6 +347,22 @@ try {
   const revoked = await query(revoke);
   assert.deepEqual(revoked.request, revoke);
   assert.equal(revoked.receipt.action, "revoke");
+  const afterRevoke = await api("/api/gateway-lan");
+  assert.deepEqual(afterRevoke.clientUsage[parallel.operationId], beforeRevoke);
+  assert.equal(
+    afterRevoke.clients.find(({ id }) => id === parallel.operationId).enabled,
+    false,
+  );
+  const audit = await api(
+    `/api/request-dashboard?source=gateway&clientScope=lan&client=${parallel.operationId}`,
+  );
+  assert.equal(audit.total, 1);
+  assert.equal(audit.items[0].client.id, parallel.operationId);
+  const csv = await api(`/api/request-export?snapshot=${audit.snapshot}`);
+  assert.equal(csv.count, 1);
+  assert.ok(csv.csv.includes(parallel.operationId));
+  assert.equal(csv.csv.includes(key), false);
+  passed("模拟转发持久化，撤销后保留 7 天用量、精确请求归属与 CSV");
   const revokedBytes = bytes();
   assert.equal((await modelCatalog(key)).status, 401);
   assert.equal((await modelCatalog(legacy.key)).status, 200);
@@ -518,6 +579,7 @@ try {
     }
   }
   await new Promise((resolve) => proxy.close(resolve));
+  await new Promise((resolve) => upstream.close(resolve));
   report.ownedProcessesStopped =
     !child || child.exitCode !== null || child.signalCode !== null;
   fs.rmSync(root, { recursive: true, force: true });

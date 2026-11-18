@@ -7,7 +7,7 @@ test("an exact Claude request opens the original CLI session with the workbench 
   await page.goto(
     "/tests/frontend/requests.html?workbench=claude#/requests/request-001?range=all",
   );
-  await page.getByRole("button", { name: "打开所属会话", exact: true }).click();
+  await page.getByRole("link", { name: "打开关联会话", exact: true }).click();
   await expect(page).toHaveURL(
     /#\/sessions\/claude%3A00000000-0000-4000-8000-000000000002\?returnTo=.*&view=requests$/,
   );
@@ -23,9 +23,7 @@ for (const mode of ["claude-missing", "claude-offline", "claude-desktop"]) {
     await page.goto(
       `/tests/frontend/requests.html?workbench=${mode}#/requests/request-001?range=all`,
     );
-    await page
-      .getByRole("button", { name: "打开所属会话", exact: true })
-      .click();
+    await page.getByRole("link", { name: "打开关联会话", exact: true }).click();
     await expect(page).toHaveURL(
       /#\/sessions\/claude%3A00000000-0000-4000-8000-000000000002\?/,
     );
@@ -38,7 +36,7 @@ test("a delayed Claude association preserves later navigation", async ({
   await page.goto(
     "/tests/frontend/requests.html?workbench=claude-slow#/requests/request-001?range=all",
   );
-  await page.getByRole("button", { name: "打开所属会话", exact: true }).click();
+  await page.getByRole("link", { name: "打开关联会话", exact: true }).click();
   await page.evaluate(() => {
     location.hash = "/requests/request-002?range=all";
   });
@@ -55,7 +53,7 @@ test("an exact OpenCode request opens the original session with the workbench un
   expect(await page.evaluate(() => window.requestWorkbenchSelections)).toEqual(
     [],
   );
-  await page.getByRole("button", { name: "打开所属会话", exact: true }).click();
+  await page.getByRole("link", { name: "打开关联会话", exact: true }).click();
   await expect(page).toHaveURL(
     /#\/sessions\/opencode%3Ases_00000000000040008000000000000001\?returnTo=.*&view=requests$/,
   );
@@ -71,9 +69,7 @@ for (const mode of ["missing", "offline"]) {
     await page.goto(
       `/tests/frontend/requests.html?workbench=${mode}#/requests/request-001?range=all`,
     );
-    await page
-      .getByRole("button", { name: "打开所属会话", exact: true })
-      .click();
+    await page.getByRole("link", { name: "打开关联会话", exact: true }).click();
     await expect(page).toHaveURL(
       /#\/sessions\/opencode%3Ases_00000000000040008000000000000001\?/,
     );
@@ -89,7 +85,7 @@ test("a delayed task association cannot navigate away from a newly selected requ
   await page.goto(
     "/tests/frontend/requests.html?workbench=slow#/requests/request-001?range=all",
   );
-  await page.getByRole("button", { name: "打开所属会话", exact: true }).click();
+  await page.getByRole("link", { name: "打开关联会话", exact: true }).click();
   await page.evaluate(() => {
     location.hash = "/requests/request-002?range=all";
   });

@@ -10,6 +10,7 @@ use local_agent_core::{
     ModelCatalogSource, Provider,
     providers::{ConfigError, validate_endpoint},
 };
+use serde::Deserialize;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use zeroize::Zeroizing;
 
@@ -355,4 +356,55 @@ pub(crate) async fn connect(
             .map_err(providers::error)?;
         json_value(serde_json::json!({"provider":provider,"verification":verification,"catalog":detected.catalog.as_deref()}))
     }).await.map_err(|e| providers::error(crate::blocking::config_error(e)))?
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct DraftProbe {
+    store_id: String,
+    provider: Provider,
+}
+
+pub(crate) async fn probe_draft(
+    State(state): State<AppState>,
+    Json(input): Json<DraftProbe>,
+) -> ApiResult {
+    let copy = state.clone();
+    let store_id = input.store_id;
+    crate::blocking::run(move || {
+        providers::ensure_write_enabled(&copy)?;
+        let store = copy
+            .store
+            .lock()
+            .map_err(|_| fail("service_unavailable", "数据服务暂不可用"))?;
+        if store.provider_write_protocol()?.store_id != store_id {
+            return Err(fail(
+                "operation_store_changed",
+                "后台来源已变化，本次未验证",
+            ));
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| providers::error(crate::blocking::config_error(e)))?
+    .map_err(providers::error)?;
+    let _permit = state
+        .verification_capacity
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| providers::error(fail("busy", "已有连接验证正在进行，请稍后重试")))?;
+    let mut draft = input.provider;
+    draft.configured = true;
+    draft.model = draft.model.trim().into();
+    local_agent_core::providers::validate_source(&draft).map_err(providers::error)?;
+    let (draft, secret) = prepare(&state, draft).await.map_err(providers::error)?;
+    providers::probe_short_with(
+        &state.provider_adapters,
+        &state.provider_client,
+        &draft,
+        secret,
+    )
+    .await
+    .map_err(providers::error)?;
+    json_value(serde_json::json!({"verified":true}))
 }

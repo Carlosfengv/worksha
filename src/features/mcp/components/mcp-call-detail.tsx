@@ -271,7 +271,7 @@ export function McpCallDetail({
           ))}
         </>
       )}
-      <Accordion>
+      <Accordion className="w-full min-w-0">
         <AccordionItem value="source">
           <AccordionTrigger>来源与统计</AccordionTrigger>
           <AccordionContent className="space-y-3">

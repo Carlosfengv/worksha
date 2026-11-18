@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { useEffect, useState } from "react";
 import { IconProvider } from "@/lib/icon-context";
 import { GatewayPanel } from "@/features/settings/gateway-panel";
 import { settingsApi } from "@/features/settings/api";
@@ -54,27 +55,37 @@ settingsApi.commitGatewayClientOperation = async (request) => {
   return { status: "committed", outcome: gatewayFixtureOutcome(request) };
 };
 settingsApi.createGatewayClient = async () => ({ status: "cancelled" });
-createRoot(document.getElementById("root")!).render(
-  <IconProvider>
-    <main className="p-6">
-      <GatewayPanel
-        storeId={gatewayStoreA}
-        providers={[
-          {
-            id: "fixture",
-            name: "Fixture provider",
-            endpoint: "http://fixture.invalid",
-            protocol: "messages",
-            model: "model-a",
-            models: ["model-a"],
-            configured: false,
-            revision: 0,
-            category: "custom",
-            credentialRef: null,
-            credentialLabel: null,
-          },
-        ]}
-      />
-    </main>
-  </IconProvider>,
-);
+function Harness() {
+  const [selectedId, setSelectedId] = useState(location.hash.split("/")[2]);
+  useEffect(() => {
+    const select = () => setSelectedId(location.hash.split("/")[2]);
+    window.addEventListener("hashchange", select);
+    return () => window.removeEventListener("hashchange", select);
+  }, []);
+  return (
+    <IconProvider>
+      <main className="p-6">
+        <GatewayPanel
+          selectedId={selectedId}
+          storeId={gatewayStoreA}
+          providers={[
+            {
+              id: "fixture",
+              name: "Fixture provider",
+              endpoint: "http://fixture.invalid",
+              protocol: "messages",
+              model: "model-a",
+              models: ["model-a"],
+              configured: false,
+              revision: 0,
+              category: "custom",
+              credentialRef: null,
+              credentialLabel: null,
+            },
+          ]}
+        />
+      </main>
+    </IconProvider>
+  );
+}
+createRoot(document.getElementById("root")!).render(<Harness />);

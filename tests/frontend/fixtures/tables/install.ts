@@ -10,6 +10,10 @@ import { installTableShell } from "./shell";
 import { installTableProviders } from "./providers";
 import { installTableActivity } from "./activity";
 import { installTableProjects } from "./projects";
+import {
+  installProviderLifecycleFixture,
+  installWorkspaceFixture,
+} from "./workspace";
 import { installPluginNavigation } from "./plugin-navigation";
 import { installLocalConnectionFixture } from "./local-connections";
 import { installLoopGuards } from "./loop-guards";
@@ -36,6 +40,7 @@ export const applicationTableModes = new Set([
   "provider-history",
   "activity",
   "plugin-navigation",
+  "workspace",
 ]);
 export function installTableFixtures() {
   iamApi.status = async () => ({
@@ -45,6 +50,7 @@ export function installTableFixtures() {
   });
   const context = createTableFixtureContext();
   installTableShell(context);
+  if (context.mode === "workspace") installWorkspaceFixture();
   if (context.mode === "agents")
     agentConnectionApi.status = async () => ({
       state: "authorization-required",
@@ -316,5 +322,7 @@ export function installTableFixtures() {
       save: (input) => providersApi.saveProvider(input),
       connect: (input) => providersApi.connectProvider(input),
     });
+  if (context.mode === "workspace" && context.params.has("providerLifecycle"))
+    installProviderLifecycleFixture();
   return { ...context, provider };
 }

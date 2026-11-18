@@ -187,7 +187,7 @@ export function AgentMemory({
               ；不代表两端均已加载。
             </p>
           )}
-          <Accordion>
+          <Accordion className="w-full min-w-0">
             <AccordionItem value="coverage">
               <AccordionTrigger>读取范围</AccordionTrigger>
               <AccordionContent>

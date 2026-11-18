@@ -5,7 +5,7 @@ test("overview separates actual zero, sub-micro estimates and unknown fees while
 }) => {
   await page.goto("/tests/frontend/tables.html?mode=activity#/overview");
   const analysis = page.getByRole("region", {
-    name: "调用趋势与占比",
+    name: /模型调用趋势$/,
     exact: true,
   });
   await page.getByLabel("调用统计来源").click();
@@ -22,7 +22,7 @@ test("overview separates actual zero, sub-micro estimates and unknown fees while
   );
   await expect(analysis).toContainText("费用未知 / 部分");
   await expect(
-    analysis.getByRole("region", { name: "Agent占比 · 费用" }),
+    analysis.getByRole("region", { name: "模型占比 · 费用" }),
   ).toBeVisible();
   await page.getByLabel("时间范围").click();
   await page.getByRole("option", { name: "最近 6 小时", exact: true }).click();

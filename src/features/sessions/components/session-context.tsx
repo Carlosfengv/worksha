@@ -12,7 +12,7 @@ import type { ContextRecord, SessionContext } from "../types";
 function Records({ rows, empty }: { rows: ContextRecord[]; empty: string }) {
   const { agentNames } = useAgentDirectory();
   return rows.length ? (
-    <Accordion>
+    <Accordion className="w-full min-w-0">
       {rows.map((r) => (
         <AccordionItem key={r.id} value={r.id}>
           <AccordionTrigger>{r.label}</AccordionTrigger>

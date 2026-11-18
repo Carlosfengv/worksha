@@ -39,7 +39,7 @@ test("one message keeps the same row through thinking, tools, returns, seven req
     await expect(row.getByRole("link")).toBeFocused();
     await expect(elapsed).toHaveAttribute("title", stamp!);
   }
-  await expect(row.getByRole("cell").first().locator("p").first()).toHaveText(
+  await expect(row.getByRole("cell").first().getByRole("link")).toHaveText(
     "检查登录",
   );
   await expect(row).toContainText("会话：消息归并会话");
@@ -55,17 +55,17 @@ test("the next message replaces the same Session row without reusing the previou
   await mode(page, "message-row-completed");
   await expect(rows(page)).toHaveCount(1);
   const row = rows(page).first();
-  await expect(row).toContainText("TTFT 0.700 秒");
+  await expect(row).toContainText("0.700 秒");
   await expect(row).toContainText("均速 36.0 Token/s");
   await row.getByRole("link").focus();
   await mode(page, "message-row-next");
   await expect(rows(page)).toHaveCount(1);
   await expect(row).toContainText("收到新的用户消息");
   await expect(row).not.toContainText("已结束 · 等待输入");
-  await expect(row).not.toContainText("TTFT 0.700 秒");
+  await expect(row).not.toContainText("0.700 秒");
   await expect(row).not.toContainText("36.0 Token/s");
   await expect(row.getByRole("link")).toBeFocused();
-  await expect(row.getByRole("cell").first().locator("p").first()).toHaveText(
+  await expect(row.getByRole("cell").first().getByRole("link")).toHaveText(
     "检查登录",
   );
 });
@@ -90,7 +90,7 @@ test("legacy requests in the same Session display only the latest resolved user 
   await mode(page, "message-row-legacy");
   await expect(rows(page)).toHaveCount(1);
   await expect(
-    rows(page).first().getByRole("cell").first().locator("p").first(),
+    rows(page).first().getByRole("cell").first().getByRole("link"),
   ).toHaveText("检查登录");
   await expect(
     rows(page).first().locator("[data-activity-elapsed]"),

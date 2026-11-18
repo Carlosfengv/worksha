@@ -12,6 +12,13 @@ export type UsageFilters = Pick<
   ProviderUsageQuery,
   "source" | "agent" | "days"
 >;
+export function providerHistoryHref(id: string, filters: UsageFilters) {
+  const params = new URLSearchParams();
+  if (filters.source === "native") params.set("source", filters.source);
+  if (filters.agent) params.set("agent", filters.agent);
+  if (filters.days) params.set("days", String(filters.days));
+  return `#/providers/${encodeURIComponent(id)}${params.size ? `?${params}` : ""}`;
+}
 export function ProviderUsageFilters({
   value,
   onChange,

@@ -1,3 +1,14 @@
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useWorkspaceNavigation } from "@/shared/hooks/use-workspace-navigation";
+import { useSharedRead } from "@/shared/hooks/use-shared-read";
+import { modelServicesResource } from "@/features/model-services/queries";
+import { gatewayStatusResource } from "@/features/settings/queries";
 import { PluginDetailSlots } from "@/features/plugins/detail-slots";
 import { ObjectContributionSlots } from "@/features/plugins/object-detail-slots";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -20,6 +31,9 @@ import { PageActions, PageHeader } from "@/components/ui/page-layout";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabPanel, TabsList, TabItem } from "@/components/ui/tabs";
 import { AccountQuota } from "@/features/accounts/components/account-quota";
+import { providerSourceApi } from "../api";
+import { catalogAuthority } from "../catalog-authority";
+import { providerCatalogSource } from "../model-inventory";
 import {
   availableProviderModelIds,
   providerCatalog,
@@ -37,7 +51,7 @@ import {
   dataTablePagination,
 } from "@/shared/ui/data-table-labels";
 import type { ColumnDef } from "@tanstack/react-table";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { message, protocolName, verificationName } from "../display";
 import { ProviderHistory } from "./provider-history";
@@ -162,7 +176,7 @@ export function ProviderDetail({
   storeId,
 }: {
   provider: Provider;
-  initialTab?: "models" | "overview";
+  initialTab?: string;
   status: ProviderStatus | null;
   onEdit: (p: Provider) => void;
   onVerify: (p: Provider) => void;
@@ -174,12 +188,56 @@ export function ProviderDetail({
   storeId?: string;
 }) {
   const [search, setSearch] = useState("");
-  const [detailTab, setDetailTab] = useState<string>(initialTab);
+  const entryTab = ["history", "models", "connection", "accounts"].includes(
+    initialTab,
+  )
+    ? initialTab
+    : "overview";
+  const [tabSelection, setTabSelection] = useState({
+    entry: entryTab,
+    value: entryTab,
+  });
+  const detailTab =
+    tabSelection.entry === entryTab ? tabSelection.value : entryTab;
+  const setDetailTab = (value: string) =>
+    setTabSelection({ entry: entryTab, value });
   const [page, setPage] = useState(0);
   const [activeModel, setActiveModel] = useState<string | null>(null);
   const [modelNotice, setModelNotice] = useState<string | null>(null);
+  const [customModels, setCustomModels] = useState("");
+  const [impact, setImpact] = useState<string[]>([]);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const workspace = useWorkspaceNavigation();
+  const { setTitle } = workspace;
+  useEffect(() => setTitle(provider.name), [provider.name, setTitle]);
+  const services = useSharedRead(modelServicesResource);
+  const gateway = useSharedRead(gatewayStatusResource, removeOpen);
+  const providerServices = useMemo(
+    () =>
+      services.data?.services.filter((service) =>
+        service.models.some(
+          (model) => !model.child && model.provider.id === provider.id,
+        ),
+      ) ?? [],
+    [provider.id, services.data],
+  );
+  const clients =
+    gateway.data?.clients.filter(
+      (client) => client.enabled && client.providerId === provider.id,
+    ) ?? [];
+  const references = [
+    ...providerServices.map((service) => service.name),
+    ...clients.map((client) => client.name),
+  ];
+  const remove = useProviderWrite(storeId, (receipt) => {
+    if (receipt.status !== "committed") return;
+    void onUpdated();
+    workspace.close();
+  });
+
   const write = useProviderWrite(storeId, (operation) => {
     if (operation.status !== "committed") return;
+    if (activeModel === "_custom") setCustomModels("");
     setModelNotice("模型设置已保存。");
     void onUpdated().catch((reason) =>
       setModelNotice(`模型设置已保存，列表暂未刷新：${message(reason)}`),
@@ -203,13 +261,80 @@ export function ProviderDetail({
   );
   const saveModels = useCallback(
     async (id: string, changes: Partial<Provider>) => {
-      if (savingModel) return;
+      if (savingModel || !storeId) return;
       setActiveModel(id);
       setModelNotice(null);
-      await startWrite("save", { ...provider, ...changes });
+      const disabled =
+        changes.disabledModels?.filter(
+          (model) => !(provider.disabledModels ?? []).includes(model),
+        ) ?? [];
+      setImpact(
+        providerServices
+          .filter((service) =>
+            service.models.some(
+              (model) =>
+                !model.child &&
+                model.provider.id === provider.id &&
+                disabled.includes(model.provider.model),
+            ),
+          )
+          .map((service) => service.name),
+      );
+      const query = {
+        storeId,
+        providerId: provider.id,
+        expectedRevision: String(provider.revision),
+      };
+      let readAuthority: string | null = null;
+      await startWrite(
+        "save",
+        { ...provider, ...changes },
+        id === "_catalog"
+          ? async () => {
+              const state = await providerSourceApi.state(query);
+              readAuthority = catalogAuthority(state);
+              const catalog = await providerSourceApi.read(
+                query,
+                state.sourceRevision ?? null,
+              );
+              if (!catalog.models.length)
+                throw Error("上游目录为空，已登记模型保留。");
+              return {
+                ...provider,
+                models: [
+                  ...new Set([
+                    ...models,
+                    ...catalog.models.map((model) => model.id),
+                  ]),
+                ],
+                modelCatalog: providerCatalogSource(provider, catalog),
+              };
+            }
+          : undefined,
+        async () => {
+          const state = await providerSourceApi.state(query);
+          if (readAuthority && catalogAuthority(state) !== readAuthority)
+            throw Error("目录来源已变化，请重新同步。");
+          if (state.kind === "builtin")
+            return {
+              source: { kind: "builtin" },
+              expectedSourceRevision: state.sourceRevision ?? null,
+            };
+          if (state.kind === "external" && state.authorized && state.selection)
+            return {
+              source: { kind: "external", catalog: state.selection },
+              expectedSourceRevision: state.sourceRevision ?? null,
+            };
+          throw Error("请先在配置连接中核对目录来源与授权。");
+        },
+      );
     },
-    [provider, savingModel, startWrite],
+    [models, provider, providerServices, savingModel, startWrite, storeId],
   );
+  const additions = customModels
+    .split(/[,，\n]/)
+    .map((id) => id.trim())
+    .filter(Boolean);
   const query = search.trim().toLowerCase();
   const matching = useMemo(
     () => models.filter((id) => id.toLowerCase().includes(query)),
@@ -259,10 +384,10 @@ export function ProviderDetail({
     <div className="min-w-0 space-y-4">
       <PageHeader className="px-0">
         <div className="min-w-0 space-y-1">
+          <h2 className="sr-only">{provider.name}</h2>
           <p className="text-label text-fg-subtle">
             {vendor?.name ?? "自定义供应商"} · 连接详情
           </p>
-          <h2 className="break-all text-title font-medium">{provider.name}</h2>
           <Badge
             status={
               verification?.state === "verified"
@@ -280,8 +405,13 @@ export function ProviderDetail({
           </Badge>
         </div>
         <PageActions>
-          <Button variant="tertiary" asChild>
-            <a href="#/providers">返回供应商列表</a>
+          <Button
+            variant="tertiary"
+            size="sm"
+            disabled={!provider.configured || !canWrite || !!savingModel}
+            onClick={() => setRemoveOpen(true)}
+          >
+            删除供应商
           </Button>
           {onRefresh && (
             <Button
@@ -313,6 +443,61 @@ export function ProviderDetail({
           </Button>
         </PageActions>
       </PageHeader>
+      {impact.length > 0 && (
+        <Alert status="warning">
+          <AlertTitle>停用模型影响下游服务</AlertTitle>
+          <AlertDescription>{impact.join("、")}</AlertDescription>
+        </Alert>
+      )}
+      <Dialog
+        open={removeOpen}
+        onOpenChange={(open) => {
+          if (!remove.busy) setRemoveOpen(open);
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>删除供应商</DialogTitle>
+          <DialogDescription>
+            移除连接及当前钥匙串引用，历史请求归属和账单记录仍可查询。
+          </DialogDescription>
+          {references.length > 0 && (
+            <Alert status="warning">
+              <AlertTitle>供应商仍被下游引用</AlertTitle>
+              <AlertDescription>{references.join("、")}</AlertDescription>
+            </Alert>
+          )}
+          <ProviderWriteStatus write={remove} />
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              disabled={remove.busy}
+              onClick={() => setRemoveOpen(false)}
+            >
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={
+                references.length > 0 ||
+                remove.unresolved ||
+                gateway.loading ||
+                services.loading
+              }
+              loading={remove.busy}
+              onClick={() =>
+                void remove.start("delete", {
+                  ...provider,
+                  credentialRef: null,
+                  credentialLabel: null,
+                  modelCatalog: null,
+                })
+              }
+            >
+              确认删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Tabs
         value={detailTab}
         onValueChange={setDetailTab}
@@ -416,12 +601,41 @@ export function ProviderDetail({
               </div>
               <Button
                 variant="secondary"
-                disabled={!!savingModel}
-                onClick={() => onEdit(provider)}
+                disabled={!!savingModel || !canWrite}
+                loading={savingModel === "_catalog"}
+                onClick={() => void saveModels("_catalog", {})}
               >
-                获取与补充模型
+                从上游同步模型目录
               </Button>
             </div>
+            <form
+              className="flex flex-wrap items-end gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (additions.length)
+                  void saveModels("_custom", {
+                    models: [...new Set([...models, ...additions])],
+                  });
+              }}
+            >
+              <Field className="min-w-48 flex-1">
+                <FieldLabel>自定义模型 ID</FieldLabel>
+                <Input
+                  value={customModels}
+                  onChange={(event) => setCustomModels(event.target.value)}
+                  placeholder="多个模型 ID 用逗号分隔"
+                  maxLength={400000}
+                  disabled={!!savingModel || !canWrite}
+                />
+              </Field>
+              <Button
+                type="submit"
+                disabled={!additions.length || !!savingModel || !canWrite}
+                loading={savingModel === "_custom"}
+              >
+                手动补充模型
+              </Button>
+            </form>
             <p className="text-label text-fg-subtle" title={source?.sourceUrl}>
               {source
                 ? `最近获取 ${date(source.fetchedAt)}`
@@ -523,18 +737,18 @@ export function ProviderDetail({
               <ConnectionEmpty
                 compact
                 title="尚未登记模型"
-                description="在配置中获取服务商模型目录，也可以手动添加模型 ID。"
-                action="获取与管理模型"
-                onAction={() => onEdit(provider)}
+                description="可从上游同步目录，或输入已知的模型 ID。"
               />
             )}
           </section>
         </TabPanel>
       </Tabs>
-      <PluginDetailSlots target="provider" objectId={provider.id} />
-      <ObjectContributionSlots
-        object={{ target: "provider", id: provider.id }}
-      />
+      <>
+        <PluginDetailSlots target="provider" objectId={provider.id} />
+        <ObjectContributionSlots
+          object={{ target: "provider", id: provider.id }}
+        />
+      </>
     </div>
   );
 }

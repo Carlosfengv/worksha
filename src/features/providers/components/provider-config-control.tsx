@@ -1,5 +1,6 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { ArtifactPreviewPanel } from "@/components/ui/artifact-preview-panel";
 import { Button } from "@/components/ui/button";
 import {
   Combobox,
@@ -174,6 +175,7 @@ export function ProviderConfigControl({
   checking = false,
   onlyAgent,
   agentProductId,
+  showConfigurationPreview = false,
   renderPicker,
 }: {
   status: ProviderStatus;
@@ -182,6 +184,7 @@ export function ProviderConfigControl({
   checking?: boolean;
   onlyAgent?: string;
   agentProductId: AgentProductId;
+  showConfigurationPreview?: boolean;
   renderPicker?: (
     openSwitch: (config: NativeConfig, providerId: string) => void,
     busy: boolean,
@@ -773,6 +776,46 @@ export function ProviderConfigControl({
                       </p>
                     </AlertDescription>
                   </Alert>
+                )}
+                {showConfigurationPreview && !t.restoreOf && (
+                  <ArtifactPreviewPanel
+                    locale="zh-CN"
+                    artifact={{
+                      id: t.id,
+                      title: "模型连接配置差异",
+                      filename: "模型连接摘要.json",
+                      kind: "code",
+                      revisions: [
+                        {
+                          id: "before",
+                          label: "变更前",
+                          content: JSON.stringify(
+                            {
+                              连接: t.before.providerName,
+                              模型: t.before.model,
+                            },
+                            null,
+                            2,
+                          ),
+                        },
+                        {
+                          id: "target",
+                          label:
+                            t.state === "pending" ? "待应用目标" : "事务目标",
+                          content: JSON.stringify(
+                            {
+                              连接: t.targetName,
+                              模型: t.model ?? t.provider?.model ?? null,
+                              本机网关: t.routing?.localEndpoint ?? null,
+                              发布模型: t.routing?.models ?? [],
+                            },
+                            null,
+                            2,
+                          ),
+                        },
+                      ],
+                    }}
+                  />
                 )}
                 {operation && (
                   <Alert

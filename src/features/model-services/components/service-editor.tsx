@@ -1,16 +1,16 @@
+import type { ServiceReceipt } from "../operation-receipt";
 import { modelServicesApi } from "../api";
-import { useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { DataTable, useDataTable } from "@/components/ui/data-table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -169,34 +169,87 @@ const memberColumns: ColumnDef<MemberRow>[] = [
   },
 ];
 
+export interface ServiceEditorDraftState {
+  tabId: string;
+  storeId: string | undefined;
+  baseline: ModelServiceDraft;
+  draft: ModelServiceDraft;
+  selectedModelId: string;
+}
+
 export function ServiceEditor({
   service,
   providers,
   services,
   originStoreId,
   onClose,
+  onSaved,
+  onDirtyChange,
+  initialDraft,
+  tabId,
+  draftState,
 }: {
   service: ModelService | null;
+  initialDraft?: ModelServiceDraft;
+  tabId: string;
+  draftState: RefObject<ServiceEditorDraftState | null>;
   providers: Provider[];
   services: ModelService[];
   originStoreId: string | undefined;
   onClose: () => void;
+  onSaved: (receipt: ServiceReceipt) => void;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
-  const origin = useRef(originStoreId).current;
-  const [draft, setDraft] = useState<ModelServiceDraft>(() =>
-    service
-      ? serviceDraft(service)
-      : {
-          id: crypto.randomUUID(),
-          revision: 0,
-          name: "",
-          defaultModelId: "",
-          models: [],
-          routingPolicy: defaultRoutingPolicy(),
-        },
-  );
-  const [selected, setSelected] = useState(draft.models[0]?.id ?? "");
-  const operation = useServiceWrite(onClose);
+  const [initial] = useState(() => {
+    const remembered = draftState.current;
+    if (remembered?.tabId === tabId) return remembered;
+    const baseline =
+      initialDraft ??
+      (service
+        ? serviceDraft(service)
+        : {
+            id: crypto.randomUUID(),
+            revision: 0,
+            name: "",
+            defaultModelId: "",
+            models: [],
+            routingPolicy: defaultRoutingPolicy(),
+          });
+    return {
+      tabId,
+      storeId: originStoreId,
+      baseline,
+      draft: baseline,
+      selectedModelId: baseline.models[0]?.id ?? "",
+    };
+  });
+  const origin = initial.storeId;
+  const [draft, setDraft] = useState(initial.draft);
+  const [selected, setSelected] = useState(initial.selectedModelId);
+  const baseline = useRef(initial.baseline);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(baseline.current);
+  // The catalog can be empty briefly while a background tab is reactivated.
+  useLayoutEffect(() => {
+    draftState.current = dirty
+      ? {
+          tabId,
+          storeId: origin,
+          baseline: baseline.current,
+          draft,
+          selectedModelId: selected,
+        }
+      : null;
+  }, [dirty, draft, draftState, origin, selected, tabId]);
+  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
+  const operation = useServiceWrite((receipt) => {
+    if (receipt.service) {
+      const published = serviceDraft(receipt.service);
+      baseline.current = published;
+      setDraft(published);
+    }
+    onDirtyChange(false);
+    onSaved(receipt);
+  });
   const { busy, progress } = operation;
   const locked = busy || operation.uncertain;
   const member = draft.models.find((m) => m.id === selected);
@@ -378,21 +431,12 @@ export function ServiceEditor({
     );
   };
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !busy) onClose();
-      }}
-    >
-      <DialogContent size="lg" className="flex max-h-[85dvh] flex-col">
-        <DialogHeader>
-          <DialogTitle>{service ? "编辑模型服务" : "创建模型服务"}</DialogTitle>
-          <DialogDescription>
-            统一组织不同 Provider
-            的模型和已发布的子服务。已接入的默认入口在兼容的新轮次跟随服务默认值。
-          </DialogDescription>
-        </DialogHeader>
-        <div className="min-h-0 space-y-5 overflow-y-auto px-1">
+    <section className="space-y-4" aria-label="模型服务编辑器">
+      <div className="grid items-start gap-4 xl:grid-cols-2">
+        <section
+          className="min-w-0 space-y-4 rounded-xl border border-border p-3"
+          aria-label="服务与路由"
+        >
           <ServiceWriteFeedback operation={operation} />
           <Field>
             <FieldLabel htmlFor="service-name">服务名称</FieldLabel>
@@ -415,6 +459,16 @@ export function ServiceEditor({
               setDraft((d) => ({ ...d, routingPolicy }))
             }
           />
+          <PublicationReview
+            draft={normalize(draft)}
+            storeId={origin}
+            disabled={locked}
+          />
+        </section>
+        <section
+          className="min-w-0 space-y-4 rounded-xl border border-border p-3"
+          aria-label="候选链"
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-body font-medium">服务模型</h3>
             <div className="flex gap-2">
@@ -797,29 +851,24 @@ export function ServiceEditor({
               </FieldDescription>
             </Field>
           )}
-          <PublicationReview
-            draft={normalize(draft)}
-            storeId={origin}
-            disabled={locked}
-          />
           <p className="text-label text-fg-muted" role="status">
             {progress ||
               "来源或能力变化会发送短请求验证；仅调整策略时沿用已发布的来源快照。"}
           </p>
-        </div>
-        <DialogFooter>
-          <Button variant="tertiary" disabled={busy} onClick={onClose}>
-            取消
-          </Button>
-          <Button
-            loading={busy}
-            disabled={!valid || locked}
-            onClick={() => void save()}
-          >
-            验证并发布
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </section>
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button variant="tertiary" disabled={busy} onClick={onClose}>
+          取消
+        </Button>
+        <Button
+          loading={busy}
+          disabled={!valid || locked}
+          onClick={() => void save()}
+        >
+          发布新版本 rev#{draft.revision + 1}
+        </Button>
+      </div>
+    </section>
   );
 }

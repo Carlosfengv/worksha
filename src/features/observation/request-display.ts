@@ -77,3 +77,10 @@ export function requestParams(
   });
   return params.toString();
 }
+
+export function requestsViewHref(search: string, trends: boolean) {
+  const params = new URLSearchParams(search);
+  if (trends) params.set("tab", "trends");
+  else params.delete("tab");
+  return `#/requests${params.size ? `?${params}` : ""}`;
+}

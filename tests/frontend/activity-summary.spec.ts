@@ -5,13 +5,9 @@ import type {} from "./activity-fixture";
 const summary = (page: Page) =>
   page.getByRole("region", { name: "实时任务汇总", exact: true });
 const sessions = (page: Page) =>
-  summary(page)
-    .locator('[data-slot="metric-card"]')
-    .filter({ hasText: "执行中的 Session" });
+  summary(page).getByRole("group", { name: "执行中的 Session" });
 const rate = (page: Page) =>
-  summary(page)
-    .locator('[data-slot="metric-card"]')
-    .filter({ hasText: /(?:总|已测) Token 速率/ });
+  summary(page).getByRole("group", { name: /(?:总|已测) Token 速率/ });
 async function scenario(page: Page, value: Window["activityCase"]) {
   await page.goto("/tests/frontend/tables.html?mode=activity#/overview");
   await page.evaluate((value) => {
@@ -27,9 +23,7 @@ test("unconfigured native observation keeps an empty gateway feed unknown and of
   );
   await expect(summary(page)).toContainText("仅网关");
   await expect(summary(page)).toContainText("当前执行状态待确认");
-  await expect(
-    sessions(page).locator('[data-slot="metric-card-value-row"]'),
-  ).toContainText("—");
+  await expect(sessions(page).getByLabel("指标值")).toContainText("—");
   await expect(rate(page)).not.toContainText(/0\.0\s*Token\/s/);
   await expect(summary(page)).not.toContainText("空闲");
   await page.getByRole("combobox", { name: "首页筛选 Agent" }).click();
@@ -50,9 +44,7 @@ test("gateway measurements remain live while native observation is not enabled",
     .click();
   await expect(summary(page)).toContainText("仅网关");
   await expect(summary(page)).toContainText("当前仅统计经本应用的网关请求");
-  await expect(
-    sessions(page).locator('[data-slot="metric-card-value-row"]'),
-  ).toHaveText(/\s*2\s*个\s*/);
+  await expect(sessions(page).getByLabel("指标值")).toHaveText(/\s*2\s*个\s*/);
   await expect(rate(page)).toContainText(/60\.0\s*Token\/s/);
 });
 
@@ -60,9 +52,7 @@ test("summary counts Sessions once and sums simultaneous measured text rates", a
   page,
 }) => {
   await scenario(page, "parallel");
-  await expect(
-    sessions(page).locator('[data-slot="metric-card-value-row"]'),
-  ).toContainText(/10\s*个/);
+  await expect(sessions(page).getByLabel("指标值")).toContainText(/10\s*个/);
   await expect(sessions(page)).toContainText("另有 2 个网关请求待关联 Session");
   await expect(rate(page)).toContainText("已测 Token 速率");
   await expect(rate(page)).toContainText(/1159\.0\s*Token\/s/);
@@ -85,20 +75,16 @@ test("message steps remain one executing Session and completion clears the live 
   page,
 }) => {
   await scenario(page, "message-row-streaming");
-  await expect(
-    sessions(page).locator('[data-slot="metric-card-value-row"]'),
-  ).toContainText(/1\s*个/);
+  await expect(sessions(page).getByLabel("指标值")).toContainText(/1\s*个/);
   await expect(rate(page)).toContainText(/42\.0\s*Token\/s/);
   await page.evaluate(() => {
     window.activityCase = "message-row-completed";
   });
-  await expect(
-    sessions(page).locator('[data-slot="metric-card-value-row"]'),
-  ).toContainText(/0\s*个/);
+  await expect(sessions(page).getByLabel("指标值")).toContainText(/0\s*个/);
   await expect(rate(page)).toContainText(/0\.0\s*Token\/s/);
   await expect(
-    summary(page).getByText("当前没有观测到正在执行的任务。", { exact: true }),
-  ).toBeVisible();
+    summary(page).getByRole("status", { name: "实时任务汇总" }),
+  ).toContainText("当前没有观测到正在执行的任务。");
   await openRecentActivities(page);
   await expect(
     page
@@ -111,9 +97,7 @@ test("native-only running tasks keep unknown rates distinct from zero", async ({
   page,
 }) => {
   await scenario(page, "table-native-metrics");
-  await expect(
-    sessions(page).locator('[data-slot="metric-card-value-row"]'),
-  ).toContainText(/1\s*个/);
+  await expect(sessions(page).getByLabel("指标值")).toContainText(/1\s*个/);
   await expect(rate(page)).toContainText(/—\s*Token\/s/);
   await expect(rate(page)).toContainText("当前来源未提供可测的 Token 增量");
   await expect(rate(page)).not.toContainText(/0\.0\s*Token\/s/);
@@ -124,7 +108,7 @@ test("rate metrics keep numbers and units separate from thinking and tool states
   page,
 }) => {
   await scenario(page, "native-desktop-output-thinking-silent");
-  const value = rate(page).locator('[data-slot="metric-card-value-row"]');
+  const value = rate(page).getByLabel("指标值");
   const models = summary(page).getByRole("list", { name: "执行中的模型" });
   for (const mode of [
     "native-desktop-output-thinking-silent",
@@ -164,9 +148,7 @@ test("Agent filtering changes both the summary and model branches", async ({
   await page
     .getByRole("option", { name: "Claude Code CLI", exact: true })
     .click();
-  await expect(
-    sessions(page).locator('[data-slot="metric-card-value-row"]'),
-  ).toContainText(/2\s*个/);
+  await expect(sessions(page).getByLabel("指标值")).toContainText(/2\s*个/);
   await expect(rate(page)).toContainText("总 Token 速率");
   await expect(rate(page)).toContainText(/60\.0\s*Token\/s/);
   await expect(rate(page)).not.toContainText("部分可测");
@@ -184,18 +166,14 @@ test("stale and failed snapshots never present cached counts or rates as live", 
     "快照已过期，当前任务与速率待更新。",
   );
   await expect(rate(page)).not.toContainText("1159.0");
-  await expect(
-    sessions(page).locator('[data-slot="metric-card-value-row"]'),
-  ).toContainText("—");
+  await expect(sessions(page).getByLabel("指标值")).toContainText("—");
   await page.goto(
     "/tests/frontend/tables.html?mode=activity&activity=error#/overview",
   );
   await expect(summary(page)).toContainText(
     "暂时无法读取当前任务，恢复后自动更新。",
   );
-  await expect(
-    sessions(page).locator('[data-slot="metric-card-value-row"]'),
-  ).toContainText("—");
+  await expect(sessions(page).getByLabel("指标值")).toContainText("—");
 });
 
 test("narrow layout and reduced motion preserve readable model numbers", async ({

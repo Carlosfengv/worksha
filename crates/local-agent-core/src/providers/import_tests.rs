@@ -55,6 +55,60 @@ fn import(f: &Fixture, c: &Candidate, model: Option<&str>) -> Result<Imported, C
 }
 
 #[test]
+fn opencode_user_api_configuration_import_preserves_model_aliases_and_keeps_credentials_private() {
+    let f = fixture();
+    fs::create_dir_all(f.home.join(".config/opencode")).unwrap();
+    let source = r#"{
+        // Modern model aliases point to the actual upstream ID.
+        "model": "acme/coder",
+        "providers": {
+            "acme": {
+                "package": "@opencode/ai/providers/openai-compatible",
+                "settings": {"baseURL":"https://models.example.test/v1","apiKey":"fixture-opencode-key"},
+                "models": {"coder":{"modelID":"actual-coder"},"chat":{}}
+            },
+            "file-auth": {
+                "package": "@opencode/ai/providers/openai-compatible",
+                "settings": {"baseURL":"https://models.example.test/v1","apiKey":"{file:~/private-key}"},
+                "models": {"chat":{}}
+            }
+        }
+    }"#;
+    let path = f.home.join(".config/opencode/opencode.jsonc");
+    fs::write(&path, source).unwrap();
+    let candidates = f.manager.discover_imports(&f.store.providers().unwrap());
+    let candidate = candidates
+        .iter()
+        .find(|c| c.agent_id == "opencode" && c.active)
+        .unwrap();
+    assert!(candidate.can_import);
+    assert_eq!(candidate.model.as_deref(), Some("actual-coder"));
+    assert!(
+        !serde_json::to_string(&candidates)
+            .unwrap()
+            .contains("fixture-opencode-key")
+    );
+    assert!(
+        !candidates
+            .iter()
+            .find(|c| c.source_label == "file-auth")
+            .unwrap()
+            .can_import
+    );
+    let saved = import(&f, candidate, None).unwrap().provider;
+    assert_eq!(saved.protocol, "chat-completions");
+    assert!(saved.models.contains(&"chat".into()));
+    assert_eq!(
+        f.manager
+            .secret(saved.credential_ref.as_deref().unwrap())
+            .unwrap()
+            .as_slice(),
+        b"fixture-opencode-key"
+    );
+    assert_eq!(fs::read_to_string(path).unwrap(), source);
+}
+
+#[test]
 fn ambiguous_native_import_write_keeps_a_durable_owner_before_returning_unknown() {
     struct LostReply {
         inner: Arc<MemoryVault>,

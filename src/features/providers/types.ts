@@ -294,7 +294,7 @@ export function dynamicBindingFor(
 
 export interface ProviderImportCandidate {
   id: string;
-  agentId: "claude" | "codex";
+  agentId: "claude" | "codex" | "opencode";
   sourcePath: string;
   sourceLabel: string;
   revision: string;

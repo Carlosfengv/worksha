@@ -15,6 +15,7 @@ const contexts = pages.map((page) => {
     refresh: async () => {},
     navigate: () => {},
     pageRefresh: 2,
+    featureAvailable: () => true,
   });
   if (!isValidElement(element)) throw new Error("Invalid registered page");
   return { page, route, props: element.props };

@@ -24,6 +24,7 @@ export interface ProviderEditorDraft {
   advanced: boolean;
   manualModel: boolean;
   showModel: boolean;
+  excludedCatalogModels: string[];
 }
 export type ProviderDraftAction =
   | { type: "preset"; value: PresetAdvice }
@@ -37,6 +38,7 @@ export type ProviderDraftAction =
     }
   | { type: "mode"; value: ProviderEditorDraft["mode"] }
   | { type: "manual-model" | "show-model"; value: boolean }
+  | { type: "include-catalog-model"; model: string; included: boolean }
   | { type: "advanced" }
   | { type: "provider"; value: Provider };
 
@@ -67,6 +69,7 @@ export function providerEditorDraft(provider: Provider): ProviderEditorDraft {
     advanced: false,
     manualModel: false,
     showModel: false,
+    excludedCatalogModels: [],
   };
 }
 export function reduceProviderDraft(
@@ -181,6 +184,9 @@ export function reduceProviderDraft(
     case "select-model":
       return {
         ...state,
+        excludedCatalogModels: state.excludedCatalogModels.filter(
+          (id) => id !== action.value,
+        ),
         provider: {
           ...draft,
           model: action.value,
@@ -199,6 +205,13 @@ export function reduceProviderDraft(
       return { ...state, manualModel: action.value };
     case "show-model":
       return { ...state, showModel: action.value };
+    case "include-catalog-model":
+      return {
+        ...state,
+        excludedCatalogModels: action.included
+          ? state.excludedCatalogModels.filter((id) => id !== action.model)
+          : [...state.excludedCatalogModels, action.model],
+      };
     case "advanced":
       return {
         ...state,

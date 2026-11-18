@@ -105,6 +105,7 @@
   "set_project_hidden": ["hidden", "projectId"],
   "set_session_source": ["agentId", "enabled"],
   "verify_model_service_member": ["input"],
+  "probe_provider_draft": ["request"],
   "verify_provider": ["expectedRevision", "model", "providerId"],
   "get_builtin_plugins": [],
   "configure_builtin_plugins": ["input"],

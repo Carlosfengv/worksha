@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { CellContext, ColumnDef } from "@tanstack/react-table";
 import type { Snapshot } from "@/app/types";
+import { SegmentedBar } from "@/components/ui/chart-primitives";
+import { compactNumber } from "@/shared/lib/format";
+import { providerCosts } from "@/features/providers/usage-display";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, useDataTable } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
@@ -52,7 +55,9 @@ function measurementCell(
     if (kind === "ttft" && timing?.firstTokenMs != null)
       return (
         <div className="text-label tabular-nums">
-          <p>TTFT {seconds(timing.firstTokenMs)} 秒</p>
+          <p className="font-mono text-body">
+            {seconds(timing.firstTokenMs)} 秒
+          </p>
           <p className="text-fg-muted">{activity.agentName} · 上报首出</p>
         </div>
       );
@@ -94,21 +99,32 @@ function withinActivityWindow(time: string, now: number) {
 const columns: ColumnDef<ActivityRow>[] = [
   {
     id: "task",
-    header: "任务 / Agent",
+    header: "当前会话任务",
     cell: ({ row: { original: a } }) => (
-      <div className="min-w-24 max-w-96 space-y-1 whitespace-normal wrap-anywhere">
-        <p className="line-clamp-2 font-medium">
-          <a
-            href={`#${a.href}`}
-            title={a.title}
-            className="rounded-sm text-fg-default underline decoration-border underline-offset-4 hover:decoration-current focus-visible:ring-1 focus-visible:ring-focus-ring"
-          >
-            {a.title}
-          </a>
-        </p>
-        <p className="text-label text-fg-muted">
-          {a.agentName} · {a.model ?? "模型未知"}
-        </p>
+      <div className="min-w-24 max-w-96 space-y-1 whitespace-normal">
+        <a
+          href={`#${a.href}`}
+          data-workspace-resource
+          data-workspace-title={a.title}
+          title={a.title}
+          className="line-clamp-2 font-medium wrap-anywhere hover:underline"
+        >
+          {a.title}
+        </a>
+        <div className="flex flex-wrap items-center gap-1">
+          <Badge size="sm" status="neutral" title={a.agentName}>
+            {a.model ?? "模型未知"}
+          </Badge>
+          <Badge size="sm" status={a.active ? "info" : "neutral"}>
+            {a.reported
+              ? a.phaseLabel
+              : a.expired
+                ? "状态待更新"
+                : a.phase === "waiting_input"
+                  ? "已结束 · 等待输入"
+                  : (phaseNames[a.phase] ?? requestStates[a.phase] ?? a.phase)}
+          </Badge>
+        </div>
         {!a.reported && a.userInput?.text.trim() && a.sessionTitle && (
           <p
             className="line-clamp-1 text-label text-fg-muted"
@@ -121,77 +137,42 @@ const columns: ColumnDef<ActivityRow>[] = [
           <p className="text-label text-fg-muted">最近输入：来源未提供</p>
         )}
         {!a.reported && a.messageUncertain && a.sessionId && (
-          <p className="text-label text-fg-subtle">消息归属待确认</p>
+          <p className="text-label text-fg-muted">消息归属待确认</p>
         )}
-        <span className="block text-label text-fg-muted @3xl:hidden">
+        {!a.reported && (a.step || a.toolNames.length > 0) && (
+          <p
+            className="line-clamp-2 text-label text-fg-muted"
+            title={a.step ?? a.toolNames.join("、")}
+          >
+            {a.step
+              ? `${a.expired ? "最近步骤：" : ""}${a.step}`
+              : `${a.expired ? "最近工具" : "工具"}：${a.toolNames.join("、")}`}
+          </p>
+        )}
+        <p className="flex flex-wrap items-baseline gap-x-1.5 text-label text-fg-muted">
+          <span>
+            {a.agentName} · {a.source}
+          </span>
+          <span
+            data-activity-elapsed
+            title={
+              !a.taskElapsed
+                ? "来源未提供本轮耗时"
+                : a.messageAt || a.requestAt
+                  ? `本轮开始 · ${date(a.messageAt ?? a.requestAt)}`
+                  : undefined
+            }
+          >
+            {a.taskElapsed ?? "—"}
+          </span>
           <ActivityTime value={a.time} kind="activity" />
-        </span>
+        </p>
       </div>
     ),
   },
   {
-    id: "phase",
-    header: "阶段",
-    cell: ({ row: { original: a } }) =>
-      a.reported ? (
-        <div className="space-y-1 whitespace-normal">
-          <Badge size="sm" status={a.active ? "success" : "neutral"}>
-            {a.phaseLabel}
-          </Badge>
-          <p className="text-label text-fg-muted">{a.source}</p>
-        </div>
-      ) : (
-        <div className="max-w-40 space-y-1 whitespace-normal wrap-anywhere">
-          <Badge
-            size="sm"
-            status={a.expired ? "neutral" : a.active ? "info" : "neutral"}
-          >
-            {a.expired
-              ? "状态待更新"
-              : a.phase === "waiting_input"
-                ? "已结束 · 等待输入"
-                : (phaseNames[a.phase] ?? requestStates[a.phase] ?? a.phase)}
-          </Badge>
-          {(a.toolNames.length > 0 ||
-            a.step ||
-            ["tool_arguments", "tool_requested"].includes(a.phase)) && (
-            <p
-              className="line-clamp-2 text-label text-fg-muted"
-              title={a.step ?? a.toolNames.join("、")}
-            >
-              {a.step
-                ? `${a.expired ? "最近步骤：" : ""}${a.step}`
-                : a.toolNames.length > 0
-                  ? `${a.expired ? "最近工具" : "工具"}：${a.toolNames.join("、")}`
-                  : "工具名称未提供"}
-            </p>
-          )}
-          <p className="text-label text-fg-muted">{a.source}</p>
-        </div>
-      ),
-  },
-  {
-    id: "elapsed",
-    header: "本轮耗时",
-    cell: ({ row: { original: a } }) => (
-      <span
-        className="font-medium text-fg-default tabular-nums"
-        data-activity-elapsed
-        title={
-          !a.taskElapsed
-            ? "来源未提供本轮耗时"
-            : a.messageAt || a.requestAt
-              ? `本轮开始 · ${date(a.messageAt ?? a.requestAt)}`
-              : undefined
-        }
-      >
-        {a.taskElapsed ?? "—"}
-      </span>
-    ),
-  },
-  {
     id: "ttft",
-    header: "TTFT",
+    header: "首字延迟 (TTFT)",
     cell: measurementCell("ttft", (a) => (
       <div
         className="max-w-40 space-y-1 whitespace-normal text-label tabular-nums"
@@ -212,9 +193,9 @@ const columns: ColumnDef<ActivityRow>[] = [
           .filter(Boolean)
           .join(" · ")}
       >
-        <p className="font-medium text-fg-default">
+        <p className="font-mono text-body font-medium">
           {a.ttft !== null
-            ? `${a.ttftSource === "native_text" ? "正文首出" : "TTFT"} ${seconds(a.ttft)} 秒`
+            ? `${seconds(a.ttft)} 秒`
             : a.nativeRealtime
               ? a.nativeRealtime.firstTokenMissed
                 ? "TTFT 待补报"
@@ -357,40 +338,69 @@ const columns: ColumnDef<ActivityRow>[] = [
             "请求未记录可测速率"
           )}
         </p>
-        <p className="sr-only text-fg-muted @3xl:not-sr-only">
-          {a.statistics.outputTokens == null
-            ? "本轮用量待上报"
-            : `${a.statistics.estimated ? "本轮可见正文约" : "本轮已报输出"} ${a.statistics.outputTokens.toLocaleString("zh-CN", { maximumFractionDigits: 1 })} Token${a.statistics.partial ? " · 部分上报" : ""}`}
-        </p>
-        {a.statistics.reasoningTokens != null && (
-          <p className="sr-only text-fg-muted @3xl:not-sr-only">
-            其中思考 {a.statistics.reasoningTokens.toLocaleString("zh-CN")}{" "}
-            Token
-          </p>
-        )}
-        {a.speedKind !== "average" && a.statistics.averageTextRate != null && (
-          <p className="sr-only text-fg-muted @3xl:not-sr-only">
-            正文采样均速 {speed(a.statistics.averageTextRate)} Token/s
-          </p>
-        )}
       </div>
     )),
   },
   {
-    id: "time",
-    header: () => (
-      <span className="whitespace-nowrap" data-activity-update>
-        更新时间
-      </span>
-    ),
-    cell: ({ row: { original: a } }) => (
-      <span
-        className="whitespace-nowrap text-label text-fg-muted"
-        data-activity-update
-      >
-        <ActivityTime value={a.time} kind="activity" />
-      </span>
-    ),
+    id: "spend",
+    header: "本轮 Token 花费",
+    cell: ({ row: { original: activity } }) => {
+      if (activity.reported)
+        return (
+          <span className="text-label">
+            {activity.timing?.outputTokens != null
+              ? `已报输出 ${BigInt(activity.timing.outputTokens).toLocaleString("zh-CN")} tok`
+              : "来源未提供"}
+          </span>
+        );
+      const stats = activity.statistics;
+      const uncached =
+        stats.cachedInputTokens != null && stats.inputTokens != null
+          ? Math.max(0, stats.inputTokens - stats.cachedInputTokens)
+          : stats.inputTokens;
+      const segments = [
+        { id: "input", label: "输入", value: uncached },
+        { id: "cache", label: "缓存", value: stats.cachedInputTokens },
+        { id: "output", label: "输出", value: stats.outputTokens },
+      ];
+      return (
+        <div
+          className="min-w-44 space-y-1 text-label"
+          title={`思考 ${compactNumber(stats.reasoningTokens)} tok · ${stats.requestCount} 步网关请求`}
+        >
+          <div className="flex justify-between gap-3">
+            <span className="tabular-nums">
+              {stats.streamingEstimated ? "≈ " : ""}
+              {compactNumber(stats.totalTokens)} tok
+            </span>
+            <span className="text-fg-muted">
+              {stats.requestCount
+                ? providerCosts(stats.cost, true)
+                : "直连无计费"}
+              {stats.streamingEstimated
+                ? " · 估算中"
+                : stats.partial
+                  ? " · 部分上报"
+                  : ""}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <SegmentedBar
+              mode="distribution"
+              segments={segments}
+              total={stats.totalTokens}
+              valueText="本轮 Token 构成"
+              className="h-1.5 w-12 shrink-0"
+            />
+            <span className="text-fg-muted">
+              入 {compactNumber(uncached)} · 缓{" "}
+              {compactNumber(stats.cachedInputTokens)} · 出{" "}
+              {compactNumber(stats.outputTokens)}
+            </span>
+          </div>
+        </div>
+      );
+    },
   },
 ];
 
@@ -617,14 +627,23 @@ export function CurrentActivities({
     reportedOnly,
     sourceHref,
   } = activity.performance;
-  const [mode, setMode] = useState("running");
   const activeRows = rows.filter((row) => row.active);
-  const visibleRows = mode === "running" ? activeRows : rows;
+  const completedRows = rows.filter((row) => !row.active);
+  const running = activeRows.length > 0;
+  const [choice, setChoice] = useState<{ running: boolean; mode: string }>();
+  const mode =
+    choice?.mode === "all" || choice?.running === running
+      ? choice.mode
+      : running
+        ? "running"
+        : "recent";
+  const visibleRows =
+    mode === "all" ? rows : mode === "running" ? activeRows : completedRows;
   const pagination = useTablePagination(visibleRows.length, 5);
   const { table } = useDataTable({
     data: visibleRows,
     columns,
-    getRowId: (row) => (row.sessionId ? `session:${row.sessionId}` : row.id),
+    getRowId: (row) => row.sessionId ?? row.id,
     enableSorting: false,
     enableRowSelection: false,
     autoResetPageIndex: false,
@@ -637,7 +656,7 @@ export function CurrentActivities({
     <Tabs
       value={mode}
       onValueChange={(value) => {
-        setMode(value);
+        setChoice({ running, mode: value });
         pagination.onChange((page) => ({ ...page, pageIndex: 0 }));
       }}
       color="default"
@@ -646,7 +665,8 @@ export function CurrentActivities({
     >
       <TabsList aria-label="活动范围">
         <TabItem value="running" label="执行中" badge={activeRows.length} />
-        <TabItem value="recent" label="最近 3 小时" badge={rows.length} />
+        <TabItem value="recent" label="最近完成" badge={completedRows.length} />
+        <TabItem value="all" label="最近 3 小时" badge={rows.length} />
       </TabsList>
       <TabPanel value={mode} className="min-w-0 space-y-3">
         {overviewExpired && !reportedOnly && rows.length > 0 && (
@@ -659,7 +679,7 @@ export function CurrentActivities({
           table={table}
           aria-label="当前活动列表"
           role="region"
-          className="@max-3xl:[&_:is(td,th):has([data-activity-update])]:hidden [&_td]:align-top @max-3xl:[&_td]:px-2 @max-3xl:[&_th]:px-2"
+          className="[&_td]:align-top"
           isLoading={visibleRows.length === 0 && state === "loading"}
           loadingMessage="正在读取实时活动…"
           showPagination={visibleRows.length > 5}
@@ -673,7 +693,7 @@ export function CurrentActivities({
                 <EmptyHeader>
                   <EmptyTitle>当前没有确认在执行的任务</EmptyTitle>
                   <EmptyDescription>
-                    可在「最近 3 小时」查看已记录的任务。
+                    可在「最近完成」查看已记录的任务。
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>

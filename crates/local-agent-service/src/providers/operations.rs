@@ -107,12 +107,24 @@ pub(crate) async fn commit(
     .await
     .map_err(|e| super::error(crate::blocking::config_error(e)))?
     .map_err(super::catalog_connection::error)?;
-    if request.kind == Kind::Save {
+    if request.kind != Kind::Connect {
         let result = crate::blocking::run(move || {
             let manager = state.providers.lock().map_err(|_| unavailable())?;
             let _guard = manager.provider_edit_guard()?;
             let store = state.store.lock().map_err(|_| unavailable())?;
             super::ensure_write_enabled(&state)?;
+            if request.kind == Kind::Delete {
+                let references = state
+                    .gateway
+                    .lan
+                    .provider_references(&request.store_id, &request.provider.id)?;
+                if !references.is_empty() {
+                    return Err(ConfigError::new(
+                        "in_use",
+                        &format!("供应商仍被局域网客户端引用：{}", references.join("、")),
+                    ));
+                }
+            }
             Ok::<_, ConfigError>(store.start_provider_operation(&request)?.operation)
         })
         .await

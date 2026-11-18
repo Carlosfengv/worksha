@@ -49,10 +49,10 @@ test("provider account inspection verifies the selected model and displays store
 test("Agent source state distinguishes partial transcripts from read failure with cached sessions", async ({
   page,
 }) => {
-  for (const [state, label] of [
-    ["ready", "历史会话已接入"],
-    ["partial", "部分会话可读"],
-    ["failed", "会话读取异常"],
+  for (const [state, label, detailLabel] of [
+    ["ready", "原生观测已就绪", "原生观测已就绪"],
+    ["partial", "原生会话部分可读取", "部分会话可读"],
+    ["failed", "原生读取失败", "会话读取异常"],
   ]) {
     for (const name of ["OpenCode CLI", "OpenCode Desktop"]) {
       await page.goto(
@@ -68,7 +68,7 @@ test("Agent source state distinguishes partial transcripts from read failure wit
         .getByRole("link", { name: `详情 ${name}`, exact: true })
         .click();
       await expect(
-        page.getByText(label, { exact: true }).first(),
+        page.getByText(detailLabel, { exact: true }).first(),
       ).toBeVisible();
     }
   }
@@ -121,7 +121,9 @@ test("native Agent rows navigate to their own details alongside bundled DSH", as
     ).toBeVisible();
     if (ids[i].startsWith("codex-"))
       await expect(page.getByText(/CLI 与桌面共用 Codex 配置/)).toBeVisible();
-    await page.getByRole("link", { name: "返回 Agents", exact: true }).click();
+    await page
+      .getByRole("button", { name: "← 本机 Agents", exact: true })
+      .click();
   }
 });
 import type {} from "./tables-harness";
@@ -183,9 +185,7 @@ test("MCP independent Agent filters retain configuration-only groups and scope d
   await expect(
     page.getByRole("region", { name: "MCP 聚合列表" }),
   ).toContainText("配置适用：Codex CLI / Codex 桌面端");
-  await page
-    .getByRole("button", { name: "查看 Fixture MCP", exact: true })
-    .click();
+  await page.getByRole("link", { name: "Fixture MCP", exact: true }).click();
   await expect(
     page.getByRole("region", { name: "MCP 聚合详情" }),
   ).toBeVisible();
@@ -601,7 +601,7 @@ test("a refreshed smaller collection clamps the current page without hiding rema
   await expect(region.getByRole("row")).toHaveCount(4);
 });
 
-test("the app shell keeps header and document fixed while the page body scrolls; sidebar uses the public shortcut", async ({
+test("the app shell keeps header and document fixed while the page body scrolls; Home restores the sidebar", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 860 });
@@ -622,12 +622,10 @@ test("the app shell keeps header and document fixed while the page body scrolls;
     .poll(async () => (await banner.boundingBox())?.y)
     .toBe(before?.y);
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
-  await page.getByRole("heading", { name: "模型供应商", exact: true }).click();
-  await page.keyboard.press("ControlOrMeta+b");
   await expect(
     page.getByRole("link", { name: "总览", exact: true }),
-  ).not.toBeInViewport();
-  await page.keyboard.press("ControlOrMeta+b");
+  ).toHaveCount(0);
+  await page.keyboard.press("Meta+1");
   await expect(
     page.getByRole("link", { name: "总览", exact: true }),
   ).toBeVisible();
@@ -648,9 +646,6 @@ for (const [width, height] of [
         document.documentElement.dataset.theme = enabled ? "dark" : "light";
       }, dark);
       await expect(
-        page.getByRole("heading", { name: "待开放能力", exact: true }),
-      ).toBeAttached();
-      await expect(
         page.getByRole("region", { name: "本地已安装插件管理", exact: true }),
       ).toHaveCount(0);
       await expect(
@@ -659,13 +654,24 @@ for (const [width, height] of [
       await expect(
         page.getByRole("button", { name: "保存偏好", exact: true }),
       ).toBeDisabled();
-      const body = page.locator('[data-slot="page-body"]');
+      await page
+        .getByRole("link", { name: "本机连接诊断", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: "待开放能力", exact: true }),
+      ).toBeAttached();
+      await page
+        .getByRole("button", { name: "最近诊断记录", exact: true })
+        .click();
+      const diagnostics = page.getByLabel("最近后台连接诊断", { exact: true });
+      await expect(diagnostics.getByRole("row")).toHaveCount(11);
+      const body = page.locator('[data-slot="page-body"]:visible');
       await expect
         .poll(() => page.evaluate(() => document.documentElement.scrollHeight))
         .toBeLessThanOrEqual(height + 1);
-      expect(await body.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(
-        true,
-      );
+      await expect
+        .poll(() => body.evaluate((e) => e.scrollHeight > e.clientHeight))
+        .toBe(true);
       // Table announcements remain in the accessibility tree. Removing the
       // offscreen status would hide the overflow while breaking accessibility.
       const announcements = body.locator(
@@ -693,11 +699,6 @@ for (const [width, height] of [
       expect((await banner.boundingBox())?.y).toBe(bannerBefore?.y);
       // Exercise the settings page's read-only diagnostics table. Plugin
       // management has its own page; retention writes remain unauthorized.
-      await page
-        .getByRole("button", { name: "最近诊断记录", exact: true })
-        .click();
-      const diagnostics = page.getByLabel("最近后台连接诊断", { exact: true });
-      await expect(diagnostics.getByRole("row")).toHaveCount(11);
       const pageSize = diagnostics.getByRole("combobox", {
         name: "每页条数",
         exact: true,

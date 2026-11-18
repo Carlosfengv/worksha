@@ -1,76 +1,60 @@
 import { expect, test } from "@playwright/test";
 
-test("native-sized overview keeps live metrics, recent history and name links in one activity table", async ({
+test("overview puts trends and live model activity alongside the four-column task table", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 860 });
   await page.goto(
     "/tests/frontend/tables.html?mode=activity&activity=recent-history-attention#/overview",
   );
-
-  const attention = page.getByRole("complementary", { name: "需要关注" });
-  const performance = page.getByRole("region", { name: "实时任务汇总" });
-  await expect(
-    performance.getByRole("heading", { name: "活动性能明细" }),
-  ).toBeVisible();
-  const activity = page.getByRole("region", { name: "当前活动列表" });
-  const analysis = page.getByRole("region", { name: "调用趋势与占比" });
-  const failure = attention.getByRole("link");
-  await expect(failure).toHaveCount(1);
-  await expect(failure).toHaveAttribute("href", "#/requests/recent-failed");
-  await expect(attention).toContainText("HTTP 429");
-  const columns = ["任务 / Agent", "阶段", "本轮耗时", "TTFT", "Token/s"];
-  await expect(activity.getByRole("columnheader")).toHaveText([
-    ...columns,
-    "更新时间",
+  const live = page.getByRole("region", { name: "实时模型流向", exact: true });
+  const trend = page.getByRole("region", {
+    name: "24h 模型调用趋势",
+    exact: true,
+  });
+  const table = page.getByRole("region", { name: "当前活动列表", exact: true });
+  await expect(live).toBeVisible();
+  await expect(trend).toBeVisible();
+  await expect(live.getByLabel("最近 30 秒 Token 速率")).toBeVisible();
+  await expect(table.getByRole("columnheader")).toHaveText([
+    "当前会话任务",
+    "首字延迟 (TTFT)",
+    "Token/s",
+    "本轮 Token 花费",
   ]);
+  expect((await trend.boundingBox())!.y).toBeLessThan(
+    (await table.boundingBox())!.y,
+  );
+  const ttft = table.getByRole("row").nth(1).getByRole("cell").nth(1);
+  await expect(ttft.getByRole("progressbar")).toHaveCount(0);
   await expect(page.getByRole("tab", { name: /^执行中/ })).toHaveAttribute(
     "aria-selected",
     "true",
   );
-
-  await expect(
-    activity.getByRole("row").nth(1).locator("[data-activity-elapsed]"),
-  ).toContainText(/秒|分/);
-  for (const width of [1280, 720]) {
-    await page.setViewportSize({ width, height: 860 });
-    expect((await attention.boundingBox())!.y).toBeLessThan(
-      (await performance.boundingBox())!.y,
-    );
-    expect((await performance.boundingBox())!.y).toBeLessThan(
-      (await activity.boundingBox())!.y,
-    );
-    expect((await activity.boundingBox())!.y).toBeLessThan(
-      (await analysis.boundingBox())!.y,
-    );
-    for (const metric of columns.slice(2))
-      await expect(
-        activity.getByRole("columnheader", { name: metric }),
-      ).toBeVisible();
-    expect(
-      await activity
-        .locator("table")
-        .evaluate(
-          (table) =>
-            table.closest(".overflow-x-auto")!.clientWidth >= table.clientWidth,
-        ),
-    ).toBe(true);
-  }
-
-  const recent = page.getByRole("tab", { name: /^最近 3 小时.*6/ });
-  await recent.press("Enter");
-  await expect(activity.getByRole("link")).toHaveCount(5);
-  await activity
-    .getByRole("button", { name: "下一页", exact: true })
-    .press("Enter");
-  await expect(activity.getByRole("link")).toHaveCount(1);
-  await expect(
-    activity.getByRole("button", { name: /查看|详情|展开指标/ }),
-  ).toHaveCount(0);
-
+  const attention = page.getByRole("complementary", { name: "需要关注" });
+  const failure = attention.getByRole("link");
+  await expect(failure).toHaveAttribute("href", "#/requests/recent-failed");
+  await expect(attention).toContainText("HTTP 429");
   await failure.press("Enter");
-  await expect(page).toHaveURL(/#\/requests\/recent-failed$/);
   await expect(
-    page.getByRole("heading", { name: "请求详情", exact: true }),
-  ).toBeVisible();
+    page.locator('[data-workspace-tab="request:recent-failed"]'),
+  ).toHaveAttribute("data-pinned", "false");
+});
+
+test("idle overview collapses live activity and selects recent completions", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 860 });
+  await page.goto(
+    "/tests/frontend/tables.html?mode=activity&activity=recent-history-expired#/overview",
+  );
+  const idle = page.getByRole("status", { name: "实时任务汇总" });
+  await expect(idle).toContainText("当前无在途");
+  await expect(
+    page.getByRole("region", { name: "实时模型流向", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: /^最近完成/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
 });

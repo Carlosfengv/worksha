@@ -5,7 +5,7 @@ async function openHistory(page: import("@playwright/test").Page, url: string) {
   await page.goto(url);
   await page
     .getByRole("tab", {
-      name: url.endsWith("/providers") ? "连接与调用" : "调用与用量",
+      name: url.endsWith("/providers") ? "供应商连接" : "调用与用量",
       exact: true,
     })
     .click();
@@ -21,7 +21,7 @@ test("costs keep actual zero, estimates and unknown separate, with per-call evid
   const list = page.getByRole("region", { name: "供应商连接", exact: true });
   await expect(list).toContainText("累计费用");
   await expect(list).toContainText("0 USD · 实际 / 6.23 USD · 估算 / 1 次未知");
-  await page.getByRole("link", { name: "连接 000 详情", exact: true }).click();
+  await page.getByRole("link", { name: "连接 000", exact: true }).click();
   await page.getByRole("tab", { name: "调用与用量", exact: true }).click();
   const history = page.getByRole("region", {
     name: "供应商调用历史",
@@ -120,7 +120,7 @@ test("provider list shows full-history totals, detail keeps totals across call p
   await expect(
     page.getByRole("link", { name: "未归属调用 · 2 次" }),
   ).toBeVisible();
-  await page.getByRole("link", { name: "连接 000 详情", exact: true }).click();
+  await page.getByRole("link", { name: "连接 000", exact: true }).click();
   await page.getByRole("tab", { name: "调用与用量", exact: true }).click();
   const history = page.getByRole("region", {
     name: "供应商调用历史",

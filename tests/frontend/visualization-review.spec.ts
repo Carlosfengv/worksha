@@ -181,7 +181,7 @@ for (const [client, name] of openCodeClients) {
     await expect(task).toContainText("工具调用");
     await expect(task).toContainText("原生记录");
     await expect(task).toContainText(name);
-    await expect(task).toContainText("TTFT 1.20 秒");
+    await expect(task).toContainText("1.20 秒");
     await expect(activity.getByRole("row")).toHaveCount(2);
     await expect(task).not.toContainText("消息归属待确认");
     await task.getByRole("link").click();

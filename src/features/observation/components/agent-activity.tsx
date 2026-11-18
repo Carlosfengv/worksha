@@ -1,5 +1,11 @@
 import { useAgentDirectory } from "@/shared/hooks/use-agent-directory";
-import { useId, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import type { Snapshot } from "@/app/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,7 +34,7 @@ import { activityMetrics, phaseNames, seconds, speed } from "../display";
 import type { Overview, SessionContextSample } from "../types";
 import { ActivityContext } from "./activity-context";
 import { ActivityTime } from "./activity-time";
-import { messageFirstRequest, messageGroups } from "../message-groups";
+import { messageGroups } from "../message-groups";
 import { elapsedLabel, messagePerformance } from "../activity-performance";
 
 const recordedNumber = (value: number | null | undefined) =>
@@ -346,20 +352,18 @@ export function activityRows(
           ? (linkedNative?.userInput ?? winner.userInput)
           : winner.userInput;
       const sessionTitle = linkedNative?.title ?? null;
-      const firstRequest = messageFirstRequest(message.gateways);
-      const firstTtft = recordedNumber(firstRequest?.request.ttftMs);
-      const messageTtftRequest =
-        message.gateways.length > 1 &&
-        firstTtft != null &&
-        (metrics.ttftSource ?? winner.ttftSource) !== "agent"
-          ? firstRequest!.request
-          : null;
       const performance = messagePerformance(
         message.gateways,
         message.natives,
         message.startedAt,
         now,
       );
+      const messageTtftRequest =
+        performance.requestCount > 1 &&
+        (metrics.ttftSource ?? winner.ttftSource) !== "agent"
+          ? performance.firstRequest
+          : null;
+      const firstTtft = recordedNumber(messageTtftRequest?.ttftMs);
       return [
         {
           ...winner,
@@ -422,6 +426,8 @@ function ActiveActivities({
   const [open, setOpen] = useState(false);
   const triggerId = useId();
   const listRef = useRef<HTMLDivElement>(null);
+  // Home keeps the cards mounted while a resource tab is active.
+  useLayoutEffect(() => () => setOpen(false), []);
   const scrollList = (event: KeyboardEvent) => {
     if (
       !open ||

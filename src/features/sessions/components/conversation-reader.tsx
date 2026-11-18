@@ -1,3 +1,17 @@
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
+import { MessageNavigation } from "@/components/ui/message-navigation";
+import { ContextMap } from "@/components/ui/context-map";
+import { ChatMessage } from "@/components/ui/chat-message";
+import {
+  ThinkingSteps,
+  ThinkingStepsContent,
+  ThinkingStepsHeader,
+} from "@/components/ui/thinking-steps";
+import { useWorkspaceNavigation } from "@/shared/hooks/use-workspace-navigation";
 import { ObjectContributionSlots } from "@/features/plugins/object-detail-slots";
 import { useAgentDirectory } from "@/shared/hooks/use-agent-directory";
 import { useBackendReadEpoch } from "@/shared/hooks/use-backend-read-epoch";
@@ -388,6 +402,17 @@ export function ConversationReader({
   };
   const data = view.epoch === epoch ? view.data : null;
   const session = data?.session ?? summary;
+  const { setTitle } = useWorkspaceNavigation();
+  const [inspect, setInspect] = useState(true);
+  const [activeTurn, setActiveTurn] = useState<string>();
+  useEffect(() => {
+    if (session?.title) setTitle(session.title);
+  }, [session?.title, setTitle]);
+  const observedContext = data?.context;
+  const canShowMap =
+    typeof observedContext?.inputTokens === "number" &&
+    typeof observedContext.windowTokens === "number" &&
+    observedContext.windowTokens > 0;
   const timeline = view.tab === "timeline";
   const readingTab = timeline ? "conversation" : view.tab;
   const activeTab = requestsActive ? "requests" : readingTab;
@@ -465,13 +490,16 @@ export function ConversationReader({
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
       <div className="shrink-0 space-y-2 border-b border-border p-4">
+        {session && <h2 className="sr-only">{session.title}</h2>}
         <PageHeader className="px-0">
-          <h2
-            className="min-w-0 break-words text-title font-medium"
-            title={session?.title}
+          <Button
+            variant="tertiary"
+            size="sm"
+            aria-pressed={inspect}
+            onClick={() => setInspect(!inspect)}
           >
-            {session?.title ?? "会话详情"}
-          </h2>
+            检视栏
+          </Button>
           <PageActions>
             {returnRequest && (
               <Button
@@ -513,7 +541,10 @@ export function ConversationReader({
           <>
             <p className="text-label text-fg-muted">
               {sessionAgentLabel(session, agentNames)} ·{" "}
-              {session.projectName ?? "项目未知"} · {date(session.updatedAt)}
+              {session.projectHidden
+                ? "项目已隐藏"
+                : (session.projectName ?? "项目未知")}{" "}
+              · {date(session.updatedAt)}
             </p>
             {session.modelErrorCount > 0 && session.latestFailureId && (
               <Button
@@ -594,62 +625,195 @@ export function ConversationReader({
               value="conversation"
               className="flex min-h-0 flex-1 flex-col"
             >
-              {navigation}
-              <div
-                ref={activeTab === "conversation" ? scrollRef : undefined}
-                aria-label={timeline ? "调用时间线滚动区域" : "对话滚动区域"}
-                aria-busy={loading || more}
-                tabIndex={0}
-                className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 [overflow-anchor:none]"
-                onScroll={(event) => {
-                  cache.scroll(id, event.currentTarget.scrollTop);
-                }}
+              <ResizablePanelGroup
+                className="min-h-0 flex-1"
+                orientation="horizontal"
               >
-                {data.warnings.map((warning) => (
-                  <p
-                    key={warning}
-                    role="status"
-                    className="text-label text-fg-muted"
+                <ResizablePanel
+                  id="turns"
+                  defaultSize="12%"
+                  minSize="8%"
+                  maxSize="26%"
+                >
+                  <aside
+                    className="h-full overflow-y-auto p-2"
+                    aria-label="本页轮次"
                   >
-                    {warning}
-                  </p>
-                ))}
-                {events?.map((event) => (
-                  <ConversationEntry
-                    key={event.id}
-                    event={event}
-                    timeline={timeline}
-                    agentId={session!.agentId}
-                    expanded={view.expanded.includes(event.id)}
-                    onExpand={(open) =>
-                      patch({
-                        ...view,
-                        scroll: scrollRef.current?.scrollTop ?? 0,
-                        expanded: open
-                          ? [...new Set([...view.expanded, event.id])]
-                          : view.expanded.filter((id) => id !== event.id),
-                      })
-                    }
-                  />
-                ))}
-                {!events?.length && (
-                  <ConnectionEmpty
-                    compact
-                    title={
-                      timeline ? "本页没有已记录调用" : "此会话暂无可读对话"
-                    }
-                  />
+                    <h3 className="text-label text-fg-muted">本页轮次</h3>
+                    <MessageNavigation
+                      align="left"
+                      previewSide="right"
+                      label="本页轮次"
+                      activeId={activeTurn}
+                      items={(events ?? [])
+                        .filter((event) => event.role === "user")
+                        .map((event) => ({
+                          id: event.id,
+                          label: event.name,
+                          description: event.text?.slice(0, 240),
+                        }))}
+                      onSelect={(entry) => {
+                        setActiveTurn(entry);
+                        document
+                          .getElementById(entry)
+                          ?.scrollIntoView({ block: "start" });
+                      }}
+                    />
+                  </aside>
+                </ResizablePanel>
+                <ResizableHandle withHandle />
+                <ResizablePanel id="thread" minSize="38%">
+                  <div className="flex h-full min-h-0 flex-col">
+                    {navigation}
+                    <div
+                      ref={activeTab === "conversation" ? scrollRef : undefined}
+                      aria-label={
+                        timeline ? "调用时间线滚动区域" : "对话滚动区域"
+                      }
+                      aria-busy={loading || more}
+                      tabIndex={0}
+                      className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 [overflow-anchor:none]"
+                      onScroll={(event) => {
+                        cache.scroll(id, event.currentTarget.scrollTop);
+                      }}
+                    >
+                      {data.warnings.map((warning) => (
+                        <p
+                          key={warning}
+                          role="status"
+                          className="text-label text-fg-muted"
+                        >
+                          {warning}
+                        </p>
+                      ))}
+                      {events?.map((event) => (
+                        <ConversationEntry
+                          key={event.id}
+                          event={event}
+                          timeline={timeline}
+                          agentId={session!.agentId}
+                          expanded={view.expanded.includes(event.id)}
+                          onExpand={(open) =>
+                            patch({
+                              ...view,
+                              scroll: scrollRef.current?.scrollTop ?? 0,
+                              expanded: open
+                                ? [...new Set([...view.expanded, event.id])]
+                                : view.expanded.filter((id) => id !== event.id),
+                            })
+                          }
+                        />
+                      ))}
+                      {!events?.length && (
+                        <ConnectionEmpty
+                          compact
+                          title={
+                            timeline
+                              ? "本页没有已记录调用"
+                              : "此会话暂无可读对话"
+                          }
+                        />
+                      )}
+                      {activeTab === "conversation" && !inspect && (
+                        <ObjectContributionSlots
+                          object={{
+                            target: "session",
+                            id,
+                            origin: { kind: "builtin" },
+                          }}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </ResizablePanel>
+                {inspect && (
+                  <>
+                    <ResizableHandle withHandle />
+                    <ResizablePanel
+                      id="inspector"
+                      defaultSize="28%"
+                      minSize="18%"
+                      maxSize="45%"
+                    >
+                      <aside
+                        className="h-full space-y-4 overflow-y-auto p-3"
+                        aria-label="会话检视栏"
+                      >
+                        {canShowMap && observedContext && (
+                          <ContextMap
+                            className="min-h-48"
+                            locale="zh-CN"
+                            limit={observedContext.windowTokens!}
+                            model={observedContext.model ?? undefined}
+                            blocks={[
+                              {
+                                id: "known-input",
+                                label: "最近输入 · 分类未知",
+                                kind: "chat",
+                                tokens: observedContext.inputTokens!,
+                              },
+                            ]}
+                          />
+                        )}
+                        <SessionContextPanel
+                          context={data.context}
+                          partial={data.coverage === "partial"}
+                        />
+                        <Accordion className="w-full">
+                          <AccordionItem value="cost">
+                            <AccordionTrigger>已核实关联费用</AccordionTrigger>
+                            <AccordionContent>
+                              <CostDetails key={id} scope="session" id={id} />
+                            </AccordionContent>
+                          </AccordionItem>
+                          {onRequestsChange && (
+                            <AccordionItem value="requests">
+                              <AccordionTrigger>
+                                已关联的网关请求
+                              </AccordionTrigger>
+                              <AccordionContent>
+                                <SessionRequests id={id} embedded />
+                              </AccordionContent>
+                            </AccordionItem>
+                          )}
+                          {session && (
+                            <AccordionItem value="files">
+                              <AccordionTrigger>项目与文件</AccordionTrigger>
+                              <AccordionContent>
+                                <DetailList>
+                                  <DetailListItem>
+                                    <DetailListLabel>项目</DetailListLabel>
+                                    <DetailListValue>
+                                      {session.projectHidden
+                                        ? "项目已隐藏"
+                                        : (session.projectName ?? "项目未知")}
+                                    </DetailListValue>
+                                  </DetailListItem>
+                                  <DetailListItem>
+                                    <DetailListLabel>
+                                      实际磁盘占用
+                                    </DetailListLabel>
+                                    <DetailListValue>
+                                      {bytes(session.diskAllocatedBytes)}
+                                    </DetailListValue>
+                                  </DetailListItem>
+                                </DetailList>
+                              </AccordionContent>
+                            </AccordionItem>
+                          )}
+                        </Accordion>
+                        <ObjectContributionSlots
+                          object={{
+                            target: "session",
+                            id,
+                            origin: { kind: "builtin" },
+                          }}
+                        />
+                      </aside>
+                    </ResizablePanel>
+                  </>
                 )}
-                {activeTab === "conversation" && (
-                  <ObjectContributionSlots
-                    object={{
-                      target: "session",
-                      id,
-                      origin: { kind: "builtin" },
-                    }}
-                  />
-                )}
-              </div>
+              </ResizablePanelGroup>
             </TabPanel>
             <TabPanel
               value="context"
@@ -707,14 +871,18 @@ export function ConversationReader({
                       <DetailListLabel>项目位置</DetailListLabel>
                       <DetailListValue>
                         <span className="break-all">
-                          {session.projectPath ?? "原生记录未提供"}
+                          {session.projectHidden
+                            ? "项目已隐藏"
+                            : (session.projectPath ?? "原生记录未提供")}
                         </span>
                       </DetailListValue>
                     </DetailListItem>
                     <DetailListItem>
                       <DetailListLabel>Git 远程地址</DetailListLabel>
                       <DetailListValue>
-                        {session.gitRemote ?? "原生记录未提供"}
+                        {session.projectHidden
+                          ? "项目已隐藏"
+                          : (session.gitRemote ?? "原生记录未提供")}
                       </DetailListValue>
                     </DetailListItem>
                     <DetailListItem>
@@ -847,6 +1015,21 @@ function ConversationEntry({
   const { agentNames } = useAgentDirectory();
   const isCall = isConversationCall(event);
   const isContext = event.kind === "event" && Boolean(event.text);
+  if (isContext && event.name === "公开推理记录" && event.text) {
+    return (
+      <ThinkingSteps
+        id={event.id}
+        open={expanded}
+        onOpenChange={onExpand}
+        className="w-full min-w-0"
+      >
+        <ThinkingStepsHeader>公开推理记录</ThinkingStepsHeader>
+        <ThinkingStepsContent>
+          <TextBlock text={event.text} />
+        </ThinkingStepsContent>
+      </ThinkingSteps>
+    );
+  }
   const summary = (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-label">
       <span className="font-medium">{event.name}</span>
@@ -889,6 +1072,21 @@ function ConversationEntry({
       )}
     </div>
   );
+  if (event.kind === "message" && event.role && event.text) {
+    return (
+      <ChatMessage
+        id={event.id}
+        role="article"
+        aria-label={event.name}
+        from={event.role}
+        header={summary}
+        className={event.role === "user" ? "ml-auto" : undefined}
+        initial={false}
+      >
+        {event.text}
+      </ChatMessage>
+    );
+  }
   return (
     <article
       id={event.id}

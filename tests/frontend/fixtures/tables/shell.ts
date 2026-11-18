@@ -31,7 +31,12 @@ export function installTableShell(context: TableFixtureContext) {
     agentId: "opencode",
     enabled: true,
     locations: [],
-    status: sourceState === "ready" ? "ready" : "partial",
+    status:
+      sourceState === "failed"
+        ? "error"
+        : sourceState === "ready"
+          ? "ready"
+          : "partial",
     sessionCount: 29,
     scannedFiles: sourceState === "failed" ? 0 : 29,
     totalFiles: 29,

@@ -438,6 +438,7 @@ createRoot(document.getElementById("root")!).render(
         data={data}
         refresh={async () => undefined}
         selectedId={params.has("detail") ? provider.id : undefined}
+        selectedTab={params.has("detail") ? undefined : "quotas"}
       />
     </main>
   </IconProvider>,

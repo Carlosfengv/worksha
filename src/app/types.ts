@@ -13,6 +13,7 @@ export interface Snapshot {
   agentConnections?: AgentConnections;
   version: string;
   databasePath: string;
+  sqliteStorage?: { configuration: number | null; observation: number | null };
   gatewayStatus: "not_configured" | "ready" | "paused";
   builtinComposition?: {
     profile: "desktop" | "background" | "recovery";
@@ -43,4 +44,5 @@ export type Page =
   | "requests"
   | "iam"
   | "plugins"
-  | "settings";
+  | "settings"
+  | "lan-gateway";

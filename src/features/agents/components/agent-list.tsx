@@ -100,6 +100,8 @@ const columns: ColumnDef<AgentRow>[] = [
               >
                 <a
                   href={agentDetailHref(agent.id)}
+                  data-workspace-resource
+                  data-workspace-title={agent.name}
                   aria-label={`详情 ${agent.name}`}
                   title={agent.name}
                 >
@@ -342,7 +344,7 @@ export function AgentList({
   return (
     <div className="min-w-0 space-y-4">
       <PageHeader className="px-0">
-        <h2 className="text-title font-medium">Agents</h2>
+        <h2 className="text-title font-medium">本机 Agents</h2>
         <PageActions>
           <Button
             variant="tertiary"
