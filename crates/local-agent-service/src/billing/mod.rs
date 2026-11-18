@@ -165,8 +165,7 @@ impl Billing {
         ] {
             let native = configs.iter().find(|c| c.agent_id == agent);
             let declared = native.is_some_and(|c| {
-                c.mode == "native"
-                    && (c.state == "ready" || (agent == "codex" && c.state == "absent"))
+                c.mode == "native" && matches!(c.state.as_str(), "ready" | "absent")
             });
             accounts.push(Account {
                 source_kind: Some(agent),
@@ -651,6 +650,43 @@ fn parse_claude_capture(bytes: &[u8]) -> Result<(AccountSnapshot, String), &'sta
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn claude_quota_declares_the_cli_for_absent_and_native_settings() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().canonicalize().unwrap();
+        let billing = Billing::new(home.clone(), &home);
+        let read_account = || {
+            let config = local_agent_core::providers::config::inspect(&home, "claude");
+            billing
+                .catalog(None, &[], &[config], vec![])
+                .into_iter()
+                .find(|account| account.id == "native-claude")
+                .unwrap()
+        };
+
+        let absent = read_account();
+        assert_eq!(absent.declared_for, ["claude"]);
+        assert_eq!(absent.source_revision, "absent");
+        assert!(!absent.readable);
+        assert!(absent.snapshot.is_none());
+
+        let settings = home.join(".claude/settings.json");
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        std::fs::write(&settings, "{}").unwrap();
+        assert_eq!(read_account().declared_for, ["claude"]);
+
+        std::fs::write(
+            &settings,
+            r#"{"env":{"ANTHROPIC_BASE_URL":"https://gateway.example.invalid"}}"#,
+        )
+        .unwrap();
+        assert!(read_account().declared_for.is_empty());
+
+        std::fs::write(&settings, "{ invalid").unwrap();
+        assert!(read_account().declared_for.is_empty());
+    }
+
     #[test]
     fn stopping_quota_sources_hides_cached_and_collected_snapshots_without_changing_cache() {
         let temp = tempfile::tempdir().unwrap();
