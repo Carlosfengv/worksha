@@ -92,6 +92,9 @@ jobs:
       - run: pnpm test:cleanup-test-apps
       - run: pnpm check:rust
       - run: pnpm test:rust
+        env:
+          # Keep unrelated test fixtures from competing with SQLite deadline assertions.
+          RUST_TEST_THREADS: "1"
       - run: pnpm test:management-admission 2>&1 | tee .work/ci/management-admission.log
       - run: pnpm test:read-admission 2>&1 | tee .work/ci/read-admission.log
       - run: pnpm test:service 2>&1 | tee .work/ci/service.log
