@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { IconProvider } from "@/lib/icon-context";
@@ -253,7 +254,8 @@ mockIPC(async (name, args) => {
 });
 function Harness() {
   const [active, setActive] = useState(true);
-  control.active = setActive;
+  // Commit each simulated tab change before the fixture can release a pending read.
+  control.active = (value) => flushSync(() => setActive(value));
   return (
     <IconProvider>
       <main className="p-4">
