@@ -463,14 +463,14 @@ try {
     reason: "unsupported_schema",
   });
   toolDb.exec("UPDATE ext_adv_extension_version SET version=1");
-  db.exec("PRAGMA user_version=2");
+  db.exec("PRAGMA user_version=99");
   const futureGateway = await api(inventoryRoute());
   assert.deepEqual(futureGateway.gateway, {
     status: "unverified",
     reason: "unsupported_schema",
   });
   assert.equal(futureGateway.tools.status, "checked");
-  db.exec("PRAGMA user_version=1");
+  db.exec("PRAGMA user_version=2");
   const epochBeforeFailure = db
     .prepare("SELECT value FROM observation_content_epoch WHERE id=1")
     .get().value;
@@ -670,12 +670,12 @@ try {
     "重启保留设置身份与版本；统计、网关摘要与原始哨兵不变；既有未授权原生摘要已移除，预览不会复活，无留存命名空间创建",
   );
   // Only this synthetic source is changed, and restored byte-for-byte afterwards.
-  db.exec("PRAGMA user_version=2");
+  db.exec("PRAGMA user_version=99");
   assert.equal(
     (await api(route(7, saved.revision), { status: 503 })).code,
     "retention_source_unsupported",
   );
-  db.exec("PRAGMA user_version=1");
+  db.exec("PRAGMA user_version=2");
   passed("未来来源结构明确拒绝，未以空历史继续");
   await stop();
   report.complete = true;

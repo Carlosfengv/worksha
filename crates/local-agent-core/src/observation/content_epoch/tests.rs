@@ -34,7 +34,7 @@ fn new_and_legacy_stores_keep_one_epoch_across_reopen_without_consent_or_fact_sc
         }
         let store = ObservationStore::open(dir.path()).unwrap();
         let token = read(&store.0).unwrap();
-        assert_eq!(version(&store.0).unwrap(), 1);
+        assert_eq!(version(&store.0).unwrap(), SCHEMA_VERSION);
         if populated {
             assert_eq!(raw(&store.0), RAW);
         }
@@ -73,9 +73,9 @@ fn failed_additive_migration_rolls_back_header_and_metadata_without_changing_raw
 fn future_versions_are_rejected_before_changing_journal_mode_or_source() {
     let dir = tempfile::tempdir().unwrap();
     let db = legacy(dir.path(), "INTEGER");
-    db.execute_batch("PRAGMA user_version=2;").unwrap();
+    db.execute_batch("PRAGMA user_version=99;").unwrap();
     assert!(ObservationStore::open(dir.path()).is_err());
-    assert_eq!(version(&db).unwrap(), 2);
+    assert_eq!(version(&db).unwrap(), 99);
     let journal: String = db
         .query_row("PRAGMA journal_mode", [], |r| r.get(0))
         .unwrap();
@@ -94,7 +94,7 @@ fn missing_corrupt_future_and_downgraded_epoch_records_are_never_reinitialized()
         "UPDATE observation_content_epoch SET value=zeroblob(1000000)",
         "ALTER TABLE observation_content_epoch ADD COLUMN future TEXT",
         "PRAGMA user_version=0",
-        "PRAGMA user_version=2",
+        "PRAGMA user_version=99",
     ] {
         let dir = tempfile::tempdir().unwrap();
         drop(legacy(dir.path(), "INTEGER"));
@@ -293,4 +293,83 @@ fn temp_tables_cannot_replace_or_repair_the_persistent_epoch() {
         .unwrap();
     assert!(read(&store.0).is_err());
     assert!(ObservationStore::open(dir.path()).is_err());
+}
+
+#[test]
+fn terminal_feed_preserves_v1_epoch_and_orders_late_terminal_rows_once() {
+    let root = tempfile::tempdir().unwrap();
+    let db = legacy(root.path(), "INTEGER");
+    let original = uuid::Uuid::new_v4().to_string();
+    db.execute_batch("CREATE TABLE observation_content_epoch(id INTEGER PRIMARY KEY, format INTEGER NOT NULL,value TEXT NOT NULL);PRAGMA user_version=1;").unwrap();
+    db.execute(
+        "INSERT INTO observation_content_epoch VALUES(1,1,?1)",
+        [&original],
+    )
+    .unwrap();
+    let insert = |id: &str, at: &str, status: &str| {
+        let value = serde_json::json!({"id":id,"agentId":"claude","logicalId":"group","status":status,
+            "client":{"id":"fixture-private"},"model":"fixture","endpoint":"fixture-private","usage":{"outputTokens":17}});
+        db.execute(
+            "INSERT INTO model_observations VALUES(?1,?2,1,?3)",
+            params![id, at, value.to_string()],
+        )
+        .unwrap();
+    };
+    insert("baseline", "2026-11-17", "success");
+    insert("early", "2026-11-16", "in_progress");
+    initialize(&db).unwrap();
+    assert_eq!(read(&db).unwrap().as_str(), original);
+    insert("later", "2026-11-19", "success");
+    insert("late-arrival", "2026-11-15", "error");
+    db.execute_batch("UPDATE model_observations SET value=json_set(value,'$.status','success') WHERE id='early';
+        UPDATE model_observations SET value=json_set(value,'$.model','different') WHERE id='early';").unwrap();
+    let mut stmt = db
+        .prepare("SELECT request_id,baseline,projection FROM observation_export_feed ORDER BY seq")
+        .unwrap();
+    let items = stmt
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, bool>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(
+        items
+            .iter()
+            .map(|r| (r.0.as_str(), r.1))
+            .collect::<Vec<_>>(),
+        vec![
+            ("baseline", true),
+            ("later", false),
+            ("late-arrival", false),
+            ("early", false)
+        ]
+    );
+    for (_, _, projection) in items {
+        assert!(!projection.contains("fixture-private"));
+        let value: serde_json::Value = serde_json::from_str(&projection).unwrap();
+        assert_eq!(value["model"], "fixture");
+        assert_eq!(value["outputTokens"], 17);
+    }
+    db.execute("DELETE FROM model_observations WHERE id='early'", [])
+        .unwrap();
+    assert_eq!(
+        db.query_row(
+            "SELECT last_deleted FROM observation_export_retention",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        4
+    );
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM observation_export_feed", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        3
+    );
 }

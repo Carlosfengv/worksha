@@ -64,7 +64,7 @@ fn unknown_or_future_metadata_stops_writes_without_repairing_or_overwriting_raw_
         "DELETE FROM observation_content_epoch",
         "DROP TABLE observation_content_epoch",
         "UPDATE observation_content_epoch SET format=2",
-        "PRAGMA user_version=2",
+        "PRAGMA user_version=99",
     ] {
         let dir = tempfile::tempdir().unwrap();
         let store = ObservationStore::open(dir.path()).unwrap();

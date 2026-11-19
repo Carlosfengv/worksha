@@ -75,7 +75,9 @@ pub(super) fn artifacts_exist(db: &Connection) -> Result<bool, LedgerError> {
 }
 
 fn raw_triggers(db: &Connection) -> Result<Vec<(String, String)>, LedgerError> {
-    db.prepare("SELECT name,sql FROM main.sqlite_master WHERE type='trigger' AND tbl_name='model_observations' ORDER BY name LIMIT 8")
+    content_epoch::verify_export_schema(db).map_err(schema_error)?;
+    db.prepare("SELECT name,sql FROM main.sqlite_master WHERE type='trigger' AND tbl_name='model_observations'
+        AND name NOT IN ('observation_export_insert','observation_export_update','observation_export_delete') ORDER BY name LIMIT 8")
         .map_err(unavailable)?.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
         .map_err(unavailable)?.collect::<Result<Vec<_>,_>>().map_err(invalid)
 }

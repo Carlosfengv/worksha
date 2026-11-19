@@ -109,7 +109,7 @@ fn unknown_metadata_blocks_cached_and_fresh_reads_without_recreating_a_token() {
         "DROP TABLE observation_content_epoch",
         "UPDATE observation_content_epoch SET format=2",
         "UPDATE observation_content_epoch SET value='corrupt'",
-        "PRAGMA user_version=2",
+        "PRAGMA user_version=99",
         "PRAGMA user_version=0",
     ] {
         let fixture = Fixture::new();
