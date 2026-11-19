@@ -138,6 +138,7 @@ test("all concurrent activities remain inspectable and keyboard scrolling belong
   });
   await expect(popover.getByRole("listitem")).toHaveCount(50);
   const list = popover.getByLabel("Claude Code CLI活动列表");
+  await expect(list.getByRole("link").first()).toBeFocused();
   const before = await page.evaluate(
     () => document.scrollingElement?.scrollTop,
   );
