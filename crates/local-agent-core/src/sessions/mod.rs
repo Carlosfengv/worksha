@@ -217,7 +217,7 @@ pub struct Conversation {
 #[derive(Clone)]
 struct IndexedFile {
     fact_calls: domain_facts::CallIndex,
-    activity_messages: Vec<live::NativeActivity>,
+    activity_messages: Arc<[live::NativeActivity]>,
     context: ContextUsage,
     native_products: Vec<String>,
     native_unknown_non_calls: bool,
