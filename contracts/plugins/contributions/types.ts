@@ -7,5 +7,6 @@ export type DependencyStatus = { "available": boolean; "pluginId": string; "reas
 export type DetailPlacement = "tab" | "card";
 export type DetailSlot = { "id": string; "objectIds": Array<string>; "placement": DetailPlacement; "target": DetailTarget; "title": string; "viewId": string; };
 export type DetailTarget = "agent" | "provider" | "account";
-export type Navigation = { "id": string; "title": string; "viewId": string; };
+export type Navigation = { "group"?: (NavigationGroup | null); "icon"?: (string | null); "id": string; "title": string; "viewId": string; };
+export type NavigationGroup = "observation" | "supply";
 export type OptionalDependency = { "pluginId": string; "version": string; "views": Array<string>; };

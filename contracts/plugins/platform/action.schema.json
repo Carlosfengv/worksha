@@ -1,0 +1,133 @@
+{
+  "$defs": {
+    "EntityKind": {
+      "enum": [
+        "session",
+        "project",
+        "agent",
+        "provider",
+        "request",
+        "account"
+      ],
+      "type": "string"
+    },
+    "PlatformAction": {
+      "enum": [
+        "records.create",
+        "records.update",
+        "records.move",
+        "records.delete",
+        "kv.set"
+      ],
+      "type": "string"
+    },
+    "PlatformContext": {
+      "additionalProperties": false,
+      "properties": {
+        "objectId": {
+          "type": "string"
+        },
+        "scope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "$ref": "#/$defs/EntityKind"
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "target",
+        "objectId"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actionId": {
+      "$ref": "#/$defs/PlatformAction"
+    },
+    "collection": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "context": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlatformContext"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "digest": {
+      "type": "string"
+    },
+    "expectedEpoch": {
+      "type": "string"
+    },
+    "expectedGrantRevision": {
+      "type": "string"
+    },
+    "expectedValues": {
+      "additionalProperties": true,
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "operationId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "pluginId": {
+      "type": "string"
+    },
+    "receiptOnly": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "recordId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "storeId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "values": {
+      "additionalProperties": true,
+      "default": {},
+      "type": "object"
+    }
+  },
+  "required": [
+    "pluginId",
+    "digest",
+    "expectedEpoch",
+    "expectedGrantRevision",
+    "actionId"
+  ],
+  "title": "PlatformActionRequest",
+  "type": "object"
+}

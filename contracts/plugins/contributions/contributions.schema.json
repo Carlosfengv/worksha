@@ -75,6 +75,22 @@
     "Navigation": {
       "additionalProperties": false,
       "properties": {
+        "group": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NavigationGroup"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "id": {
           "type": "string"
         },
@@ -92,6 +108,13 @@
         "viewId"
       ],
       "type": "object"
+    },
+    "NavigationGroup": {
+      "enum": [
+        "observation",
+        "supply"
+      ],
+      "type": "string"
     },
     "OptionalDependency": {
       "additionalProperties": false,

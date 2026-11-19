@@ -35,6 +35,17 @@ pub struct Navigation {
     pub title: String,
     /// An existing host-rendered view, never executable frontend code or a URL.
     pub view_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<NavigationGroup>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+}
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, JsonSchema, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum NavigationGroup {
+    #[default]
+    Observation,
+    Supply,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

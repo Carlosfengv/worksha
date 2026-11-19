@@ -10,10 +10,12 @@ pub mod full;
 mod lifecycle;
 pub mod object_contributions;
 pub mod plans;
+pub mod platform;
 pub mod policy;
 mod registry;
 pub use lifecycle::{PluginLease, PluginResources, ResourceKind};
 pub use registry::{HostSnapshot, PluginHost};
+mod yaml;
 #[cfg(test)]
 use std::sync::{Arc, Mutex};
 

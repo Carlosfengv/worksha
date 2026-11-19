@@ -51,7 +51,7 @@
     "test:domain-sources": "node scripts/test-domain-sources.mjs",
     "test:domain-request-consumer": "node scripts/test-domain-request-consumer.mjs",
     "test:unified-request-export": "node scripts/test-unified-request-export.mjs",
-    "check:plugins": "node scripts/plugin-bindings.mjs && node scripts/plugin-bindings.mjs --extensions && node scripts/plugin-bindings.mjs --sources && node scripts/plugin-bindings.mjs --policy && node scripts/plugin-bindings.mjs --contributions && node scripts/plugin-bindings.mjs --object-contributions && cargo fmt --manifest-path sdk/plugins/Cargo.toml --all -- --check && node scripts/plugin-bindings.mjs --builtin",
+    "check:plugins": "node scripts/plugin-bindings.mjs && node scripts/plugin-bindings.mjs --extensions && node scripts/plugin-bindings.mjs --sources && node scripts/plugin-bindings.mjs --policy && node scripts/plugin-bindings.mjs --contributions && node scripts/plugin-bindings.mjs --platform && node scripts/plugin-bindings.mjs --object-contributions && cargo fmt --manifest-path sdk/plugins/Cargo.toml --all -- --check && node scripts/plugin-bindings.mjs --builtin",
     "test:plugin-source-worker": "node scripts/test-plugin-source-worker.mjs",
     "test:plugin-source-host": "node scripts/test-plugin-source-host.mjs",
     "test:plugin-source-sdk": "node scripts/test-plugin-source-sdk.mjs",

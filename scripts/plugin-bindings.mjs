@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import assert from "node:assert/strict";
 const builtin = process.argv.includes("--builtin");
+const platform = process.argv.includes("--platform");
 const contributions = process.argv.includes("--contributions");
 const objectSummary = process.argv.includes("--object-summary");
 const requestExport = process.argv.includes("--request-export");
@@ -25,7 +26,7 @@ const draftGrant = process.argv.includes("--provider-draft-grant");
 const draftCatalog = process.argv.includes("--provider-draft-catalog");
 const providerSource = process.argv.includes("--provider-source");
 const sourcePlugins = process.argv.includes("--sources");
-const root = builtin ? "contracts/plugins/builtin" : policyRecovery
+const root = platform ? "contracts/plugins/platform" : builtin ? "contracts/plugins/builtin" : policyRecovery
   ? "contracts/domain/routing-policy-recovery"
   : requestExport
     ? "contracts/domain/request-export"
@@ -77,7 +78,7 @@ const schemas = fs
   .map((n) => JSON.parse(fs.readFileSync(`${root}/${n}`, "utf8")));
 assert(
   schemas.length >=
-    (builtin ? 6 : policyRecovery
+    (platform ? 7 : builtin ? 6 : policyRecovery
       ? 4
       : requestExport
         ? 6
@@ -161,7 +162,7 @@ function type(s) {
       ([key, value]) =>
         `${JSON.stringify(key)}${s.required?.includes(key) ? "" : "?"}: ${type(value)};`,
     );
-    if (s.additionalProperties && typeof s.additionalProperties === "object")
+    if ((platform && s.additionalProperties === true) || (s.additionalProperties && typeof s.additionalProperties === "object"))
       fields.push(`[key: string]: ${type(s.additionalProperties)};`);
     return `{ ${fields.join(" ")} }`;
   }
@@ -178,6 +179,7 @@ if (process.argv.includes("--write")) fs.writeFileSync(target, text);
 else
   assert.equal(fs.readFileSync(target, "utf8"), text, "Plugin bindings drift");
 if (
+  !platform &&
   !builtin &&
   !objectSummary &&
   !requestExport &&
@@ -226,7 +228,7 @@ console.log(
         domain ||
         facts
       ? `${schemas.length} domain schemas and TypeScript bindings agree`
-      : contributions || objectContributions
+      : contributions || objectContributions || platform
         ? `${schemas.length} contribution schemas and TypeScript bindings agree`
         : `${schemas.length} plugin schemas, TypeScript bindings and SDK WIT agree`,
 );

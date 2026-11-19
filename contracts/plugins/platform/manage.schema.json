@@ -1,0 +1,185 @@
+{
+  "$defs": {
+    "DirectoryPurpose": {
+      "enum": [
+        "source-read",
+        "log-sink"
+      ],
+      "type": "string"
+    },
+    "EntityKind": {
+      "enum": [
+        "session",
+        "project",
+        "agent",
+        "provider",
+        "request",
+        "account"
+      ],
+      "type": "string"
+    },
+    "LogFilter": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "clientScope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "PlatformManagement": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "grant-entity",
+              "type": "string"
+            },
+            "target": {
+              "$ref": "#/$defs/EntityKind"
+            }
+          },
+          "required": [
+            "kind",
+            "target"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "revoke-entity",
+              "type": "string"
+            },
+            "target": {
+              "$ref": "#/$defs/EntityKind"
+            }
+          },
+          "required": [
+            "kind",
+            "target"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "revoke-directory",
+              "type": "string"
+            },
+            "purpose": {
+              "$ref": "#/$defs/DirectoryPurpose"
+            }
+          },
+          "required": [
+            "kind",
+            "purpose"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "$ref": "#/$defs/LogFilter"
+            },
+            "kind": {
+              "const": "configure-sink",
+              "type": "string"
+            },
+            "rotatePolicy": {
+              "$ref": "#/$defs/RotatePolicy"
+            }
+          },
+          "required": [
+            "kind",
+            "filter",
+            "rotatePolicy"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "flush-sink",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "clear-data",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "RotatePolicy": {
+      "enum": [
+        "daily",
+        "hourly"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "digest": {
+      "type": "string"
+    },
+    "expectedGrantRevision": {
+      "type": "string"
+    },
+    "operation": {
+      "$ref": "#/$defs/PlatformManagement"
+    },
+    "pluginId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "pluginId",
+    "digest",
+    "expectedGrantRevision",
+    "operation"
+  ],
+  "title": "PlatformManageRequest",
+  "type": "object"
+}

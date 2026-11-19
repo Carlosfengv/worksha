@@ -1,0 +1,31 @@
+{
+  "$defs": {
+    "DirectoryPurpose": {
+      "enum": [
+        "source-read",
+        "log-sink"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "digest": {
+      "type": "string"
+    },
+    "pluginId": {
+      "type": "string"
+    },
+    "purpose": {
+      "$ref": "#/$defs/DirectoryPurpose"
+    }
+  },
+  "required": [
+    "pluginId",
+    "digest",
+    "purpose"
+  ],
+  "title": "DirectoryGrantRequest",
+  "type": "object"
+}
