@@ -68,6 +68,7 @@ export function PluginManager({
   refreshSnapshot?: () => Promise<void>;
 }) {
   const general = useSharedRead(pluginDirectoryResource);
+  const platform = usePlatformDirectory(general.data);
   const source = useSharedRead(fullPluginDirectoryResource);
   const hasDsh = source.data?.items.some(
     (plugin) => plugin.manifest.id === bundledDshManifest.id,
@@ -399,6 +400,11 @@ export function PluginManager({
             diagnostics={general.data?.diagnostics}
             unavailable={!!general.error || !!general.data?.diagnosticsError}
           />
+          {platform.data?.items
+            .filter((item) => item.digest === current.digest)
+            .map((item) => (
+              <PlatformControls key={item.digest} plugin={item} />
+            ))}
           <div className="flex flex-wrap gap-3">
             {current.manifest.views?.map((view) => (
               <Button key={view.id} variant="link" asChild>
@@ -511,3 +517,5 @@ export function PluginManager({
     </section>
   );
 }
+import { PlatformControls } from "./platform-controls";
+import { usePlatformDirectory } from "./platform-directory";

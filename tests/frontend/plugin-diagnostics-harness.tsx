@@ -10,8 +10,16 @@ import "@/styles/globals.css";
 setupPluginCenterPeers();
 
 const mode = new URLSearchParams(location.search).get("mode") ?? "ready";
+const manifest = parseContract<Manifest>("manifest", raw);
 const current: PluginStatus = {
-  manifest: parseContract<Manifest>("manifest", raw),
+  manifest:
+    mode === "platform"
+      ? {
+          ...manifest,
+          capabilities: ["ui.platform@1", "source.directory.read"],
+          runtime: { kind: "declarative" },
+        }
+      : manifest,
   digest: "d".repeat(64),
   signingKey: "a".repeat(64),
   enabled: true,

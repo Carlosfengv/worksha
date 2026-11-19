@@ -39,6 +39,13 @@ test("未知、确认无数据、过期与撤权不能互相冒充", async ({ pa
   await expect(revoked).toContainText("等待资源授权");
   await expect(revoked).not.toContainText("完整快照记录数");
 });
+test("目录插件诊断识别能力并指向独立的目录授权", async ({ page }) => {
+  const panel = await open(page, "platform");
+  await expect(panel).toContainText("插件视图与扩展位");
+  await expect(panel).toContainText("目录会话来源");
+  await expect(panel).toContainText("授权状态见下方会话来源目录");
+  await expect(panel).not.toContainText("未识别能力");
+});
 test("旧服务和无效诊断不会隐藏插件及原管理入口", async ({ page }) => {
   for (const mode of ["old", "broken"]) {
     const panel = await open(page, mode);

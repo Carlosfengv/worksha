@@ -25,6 +25,22 @@ export const capabilityDetails: Record<
     name: "宿主扩展视图",
     scope: "使用宿主提供的界面；包不能执行前端脚本。",
   },
+  "ui.platform@1": {
+    name: "插件视图与扩展位",
+    scope: "通过已声明的入口和扩展位显示宿主提供的界面。",
+  },
+  "storage.plugin-data@1": {
+    name: "插件私有存储",
+    scope: "仅访问此插件的记录，最多 10,000 条、8 MiB。",
+  },
+  "source.directory.read": {
+    name: "目录会话来源",
+    scope: "只读授权目录内匹配规则的文件。每个文件最多 2 MiB，正文按需读取。",
+  },
+  "provider.adapter@1": {
+    name: "复合 Provider",
+    scope: "预设、目录、协议及额度各自遵循所声明的能力与授权。",
+  },
   "report.view@1": {
     name: "网关汇总报表",
     scope: "单独授权后读取最近 24 小时统一网关摘要。",

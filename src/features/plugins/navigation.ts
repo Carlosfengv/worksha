@@ -1,4 +1,9 @@
 import type { PluginList } from "./types";
+import type { IconName } from "@/lib/icon-context";
+import type {
+  NavigationGroup,
+  PlatformContribution,
+} from "../../../contracts/plugins/platform/types";
 
 export const pluginViewHref = (pluginId: string, viewId: string) =>
   `#/extensions/${encodeURIComponent(pluginId)}/${encodeURIComponent(viewId)}`;
@@ -48,22 +53,62 @@ export function resolvePluginView(
   return { reason: "ready", status, view } as const;
 }
 
-export function pluginNavigation(directory: PluginList | undefined) {
-  return (directory?.contributions?.items ?? []).flatMap((item) =>
+const navigationIcons = [
+  "presentation",
+  "folder",
+  "inbox",
+  "list",
+  "list-checks",
+  "file-archive",
+  "file-text",
+  "message-circle",
+  "monitor",
+  "globe",
+  "rocket",
+] as const satisfies readonly IconName[];
+
+function entry(
+  pluginId: string,
+  viewId: string,
+  label: string,
+  group?: NavigationGroup | null,
+  icon?: string | null,
+) {
+  return {
+    id: `extension:${pluginId}:${viewId}`,
+    pluginId,
+    viewId,
+    label,
+    group: group ?? "observation",
+    icon: navigationIcons.find((name) => name === icon) ?? "presentation",
+    href: pluginViewHref(pluginId, viewId),
+  };
+}
+
+export function pluginNavigation(
+  directory: PluginList | undefined,
+  platform: readonly PlatformContribution[] = [],
+) {
+  const legacy = (directory?.contributions?.items ?? []).flatMap((item) =>
     (item.navigation ?? []).flatMap((nav) => {
       const route = resolvePluginView(directory, item.pluginId, nav.viewId);
       if (route.reason !== "ready" || route.status.digest !== item.digest)
         return [];
-      return [
-        {
-          id: `extension:${item.pluginId}:${nav.viewId}`,
-          pluginId: item.pluginId,
-          viewId: nav.viewId,
-          label: nav.title,
-          icon: "presentation" as const,
-          href: pluginViewHref(item.pluginId, nav.viewId),
-        },
-      ];
+      return [entry(item.pluginId, nav.viewId, nav.title, nav.group, nav.icon)];
     }),
   );
+  const current = platform.flatMap((item) => {
+    const definition = item.definition;
+    if (!item.enabled || item.diagnostic || !definition) return [];
+    return (definition.slots ?? []).flatMap((slot) => {
+      const view = definition.views?.[slot.viewId];
+      return slot.point === "nav.home-sidebar" && view
+        ? [entry(item.pluginId, slot.viewId, view.title, slot.group, slot.icon)]
+        : [];
+    });
+  });
+  const entries = new Map(
+    [...legacy, ...current].map((item) => [item.id, item]),
+  );
+  return [...entries.values()];
 }

@@ -1,6 +1,5 @@
 import { TimeWindowTimeline } from "@/components/ui/time-window-timeline";
-import { PluginDetailSlots } from "@/features/plugins/detail-slots";
-import { ObjectContributionSlots } from "@/features/plugins/object-detail-slots";
+import { ExtensionSlot } from "@/features/plugins/extension-slot";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -773,16 +772,17 @@ export function AccountQuota({
         </DialogContent>
       </Dialog>
       {account && !resource.error && (
-        <>
-          <PluginDetailSlots
-            key={account.id}
-            target="account"
-            objectId={account.id}
-          />
-          <ObjectContributionSlots
-            object={{ target: "account", id: account.id }}
-          />
-        </>
+        <ExtensionSlot
+          key={account.id}
+          points={[
+            "account.detail.card",
+            "account.detail.tab",
+            "account.detail.actions",
+          ]}
+          legacyDetail
+          context={{ target: "account", objectId: account.id }}
+          object={{ target: "account", id: account.id }}
+        />
       )}
     </section>
   );

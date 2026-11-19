@@ -50,6 +50,8 @@ export function PluginDiagnosticsPanel({
   const grants = [
     status.manifest.capabilities.includes("session.source@1") &&
       `历史来源：${status.sourceAuthorized ? "已授权" : "待授权"}`,
+    status.manifest.capabilities.includes("source.directory.read") &&
+      "目录范围：授权状态见下方会话来源目录。",
     status.manifest.capabilities.includes("account.quota-source@1") &&
       `额度连接：${status.connectionAuthorized ? "已授权" : "待授权"}`,
     status.manifest.capabilities.includes("report.view@1") &&

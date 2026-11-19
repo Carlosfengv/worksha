@@ -19,6 +19,12 @@ import {
   pluginNavigation,
   resolvePluginView,
 } from "@/features/plugins/navigation";
+import {
+  ExtensionSlotContext,
+  platformEntry,
+  usePlatformDirectory,
+} from "@/features/plugins/platform-directory";
+import { PlatformSlotContent } from "@/features/plugins/extension-slot";
 import { requestsViewHref } from "@/features/observation/request-display";
 import { useBackendReadEpoch } from "@/shared/hooks/use-backend-read-epoch";
 import type { AppRoute, PageContext } from "./plugin-registry";
@@ -176,9 +182,36 @@ function Workspace() {
     !uploaded.error && uploaded.data?.readEpoch === readEpoch
       ? uploaded.data
       : undefined;
+  const platformCatalog = usePlatformDirectory(directory);
+  const platform = useMemo(
+    () =>
+      (platformCatalog.data?.items ?? []).filter((entry) =>
+        directory?.items.some(
+          (plugin) =>
+            plugin.manifest.id === entry.pluginId &&
+            plugin.digest === entry.digest &&
+            plugin.enabled &&
+            plugin.runtimeStatus === "active",
+        ),
+      ),
+    [directory, platformCatalog.data],
+  );
+  const builtinSlots = useMemo(
+    () =>
+      pageRegistry.slots
+        .filter(
+          ({ owner }) =>
+            !builtin.error &&
+            builtin.data?.host.plugins.some(
+              (plugin) => plugin.id === owner && plugin.runtimeActive,
+            ),
+        )
+        .map(({ contribution }) => contribution),
+    [builtin.data, builtin.error],
+  );
   const extensionNavigation = useMemo(
-    () => pluginNavigation(directory),
-    [directory],
+    () => pluginNavigation(directory, platform),
+    [directory, platform],
   );
   const activeTab = workspace.tabs.find(
     ({ tabKey }) => tabKey === workspace.activeTabKey,
@@ -285,13 +318,31 @@ function Workspace() {
           );
           return (
             !directory ||
+            !!platformEntry(platform, extensionPlugin!, extensionView!) ||
+            (!platformCatalog.data &&
+              !platformCatalog.error &&
+              directory.items.some(
+                (item) =>
+                  item.manifest.id === extensionPlugin &&
+                  item.enabled &&
+                  item.manifest.capabilities.includes("ui.platform@1"),
+              )) ||
             resolvePluginView(directory, extensionPlugin!, extensionView!)
               .reason === "ready"
           );
         }),
       "none",
     );
-  }, [builtin.data, builtin.error, directory, featureAvailable, update]);
+  }, [
+    builtin.data,
+    builtin.error,
+    directory,
+    platform,
+    platformCatalog.data,
+    platformCatalog.error,
+    featureAvailable,
+    update,
+  ]);
 
   const navigate = (page: Page) => open(`#/${page}`);
   const navigateFromLink = (event: MouseEvent, doubleClick = false) => {
@@ -348,6 +399,10 @@ function Workspace() {
   const renderPage = (route: AppRoute, hash: string) => {
     const current = pageRegistry.resolve(route.page);
     const { extensionPlugin, extensionView } = route;
+    const platformView =
+      extensionPlugin && extensionView
+        ? platformEntry(platform, extensionPlugin, extensionView)
+        : undefined;
     const context: PageContext = {
       route,
       routeSearch: queryString(hash),
@@ -358,7 +413,13 @@ function Workspace() {
       featureAvailable,
     };
     const content =
-      extensionPlugin && extensionView ? (
+      platformView && extensionView ? (
+        <PlatformSlotContent
+          key={`${platformView.digest}:${extensionView}`}
+          plugin={platformView}
+          id={extensionView}
+        />
+      ) : extensionPlugin && extensionView ? (
         <ExtensionsPage
           key={`${extensionPlugin}:${extensionView}`}
           pluginId={extensionPlugin}
@@ -500,272 +561,288 @@ function Workspace() {
           : "本地服务未连接";
   return (
     <AgentDirectoryProvider products={data?.agents}>
-      <AppShell layout="stacked" className="h-dvh overflow-hidden">
-        <WorkspaceTitlebar
-          workspace={workspace}
-          extensions={extensionNavigation}
-          activate={activate}
-          pin={(key) => update((state) => pinTab(state, key), "none")}
-          close={requestClose}
-          open={open}
-          status={status}
-          loading={loading}
-          refresh={() => {
-            setPageRefresh((n) => n + 1);
-            void refresh();
-          }}
-        />
-        <AppShellMain className="flex min-h-0 flex-col overflow-hidden px-3 pb-3 pt-0">
-          <PageLayout
-            size="full"
-            gutter="none"
-            data-workspace-layout
-            className="overflow-hidden rounded-xl border border-border bg-surface-floating"
-            style={
-              !activeTab
-                ? { gridTemplateColumns: "auto minmax(0, 1fr)" }
-                : undefined
-            }
-          >
-            {!activeTab && (
-              <PageSidebar
-                key="sidebar"
-                width="216px"
-                aria-label="应用导航"
-                className="rounded-none border-0 border-r border-border p-2 max-lg:w-[216px]"
+      <ExtensionSlotContext.Provider
+        value={{ builtin: builtinSlots, platform }}
+      >
+        <AppShell layout="stacked" className="h-dvh overflow-hidden">
+          <WorkspaceTitlebar
+            workspace={workspace}
+            extensions={extensionNavigation}
+            activate={activate}
+            pin={(key) => update((state) => pinTab(state, key), "none")}
+            close={requestClose}
+            open={open}
+            status={status}
+            loading={loading}
+            refresh={() => {
+              setPageRefresh((n) => n + 1);
+              void refresh();
+            }}
+          />
+          <AppShellMain className="flex min-h-0 flex-col overflow-hidden px-3 pb-3 pt-0">
+            <PageLayout
+              size="full"
+              gutter="none"
+              data-workspace-layout
+              className="overflow-hidden rounded-xl border border-border bg-surface-floating"
+              style={
+                !activeTab
+                  ? { gridTemplateColumns: "auto minmax(0, 1fr)" }
+                  : undefined
+              }
+            >
+              {!activeTab && (
+                <PageSidebar
+                  key="sidebar"
+                  width="216px"
+                  aria-label="应用导航"
+                  className="rounded-none border-0 border-r border-border p-2 max-lg:w-[216px]"
+                >
+                  {homeSections.map(([group, pages]) => {
+                    const extensions = extensionNavigation.filter(
+                      (item) =>
+                        item.group ===
+                        (group === "观测" ? "observation" : "supply"),
+                    );
+                    const items = pages.flatMap((page) => {
+                      const visible =
+                        page === "requests"
+                          ? featureAvailable("requests") ||
+                            featureAvailable("mcp")
+                          : featureAvailable(page);
+                      const item = pageRegistry.resolve(page);
+                      return visible && item ? [item] : [];
+                    });
+                    return (
+                      (items.length > 0 || extensions.length > 0) && (
+                        <section key={group} className="mb-4">
+                          <h2 className="px-2 py-1 text-label text-fg-muted">
+                            {group}
+                          </h2>
+                          <NavMenu
+                            activeValue={workspace.homeSection}
+                            aria-label={group}
+                          >
+                            {items.map((item) => (
+                              <NavigationLink
+                                key={item.id}
+                                item={{
+                                  ...item,
+                                  href: homeHash(
+                                    workspace,
+                                    item.id === "requests" &&
+                                      !featureAvailable("requests")
+                                      ? "mcp"
+                                      : item.id,
+                                  ),
+                                }}
+                                active={workspace.homeSection === item.id}
+                              />
+                            ))}
+                            {extensions.map((item) => (
+                              <NavigationLink
+                                key={item.id}
+                                item={item}
+                                active={false}
+                              />
+                            ))}
+                          </NavMenu>
+                        </section>
+                      )
+                    );
+                  })}
+                </PageSidebar>
+              )}
+              <PageContent
+                key="content"
+                className="rounded-none border-0"
+                onClickCapture={navigateFromLink}
+                onDoubleClickCapture={(event) => navigateFromLink(event, true)}
               >
-                {homeSections.map(([group, pages]) => {
-                  const extensions =
-                    group === "观测" ? extensionNavigation : [];
-                  const items = pages.flatMap((page) => {
-                    const visible =
-                      page === "requests"
-                        ? featureAvailable("requests") ||
-                          featureAvailable("mcp")
-                        : featureAvailable(page);
-                    const item = pageRegistry.resolve(page);
-                    return visible && item ? [item] : [];
-                  });
+                {data?.agentDirectoryError && (
+                  <Alert status="warning">
+                    <AlertTitle>Agent 来源目录暂不可读取</AlertTitle>
+                    <AlertDescription>
+                      已有客户端的观测继续保留，请稍后重试。
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <BuiltinCompositionNotice
+                  composition={data?.builtinComposition}
+                  className="px-3 pb-3"
+                />
+                {error && (
+                  <Alert status="default">
+                    <AlertTitle>
+                      {data
+                        ? "连接暂时中断，保留上次读取的配置"
+                        : "本机数据尚未连接"}
+                    </AlertTitle>
+                    <AlertDescription>{error}</AlertDescription>
+                    <AlertAction>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => open("#/settings?tab=connection")}
+                      >
+                        查看连接诊断
+                      </Button>
+                    </AlertAction>
+                  </Alert>
+                )}
+                <Activity mode={activeTab ? "hidden" : "visible"}>
+                  <WorkspaceNavigationContext.Provider
+                    value={{
+                      open,
+                      close: () => undefined,
+                      dismiss: () => undefined,
+                      setDirty: () => undefined,
+                      setTitle: () => undefined,
+                    }}
+                  >
+                    {renderPage(
+                      pageRegistry.readRoute(collectionHash),
+                      collectionHash,
+                    )}
+                  </WorkspaceNavigationContext.Provider>
+                </Activity>
+                {workspace.tabs.map((tab) => {
+                  const route = pageRegistry.readRoute(tab.routeHash);
+                  const extension = route.extensionPlugin
+                    ? extensionNavigation.find(
+                        (item) =>
+                          item.pluginId === route.extensionPlugin &&
+                          item.viewId === route.extensionView,
+                      )
+                    : undefined;
+                  const routeName = describeTab(route, data);
+                  const ownerPage = extension
+                    ? extension.group === "supply"
+                      ? "agents"
+                      : "overview"
+                    : tab.ownerPage;
+                  const title =
+                    extension?.label ??
+                    (tab.title !== (route.objectId ?? route.page)
+                      ? tab.title
+                      : (routeName ?? tab.title));
+                  const back = () =>
+                    update((state) =>
+                      openHome(
+                        state,
+                        ["plugins", "settings", "iam"].includes(ownerPage)
+                          ? undefined
+                          : ownerPage,
+                      ),
+                    );
                   return (
-                    (items.length > 0 || extensions.length > 0) && (
-                      <section key={group} className="mb-4">
-                        <h2 className="px-2 py-1 text-label text-fg-muted">
-                          {group}
-                        </h2>
-                        <NavMenu
-                          activeValue={workspace.homeSection}
-                          aria-label={group}
-                        >
-                          {items.map((item) => (
-                            <NavigationLink
-                              key={item.id}
-                              item={{
-                                ...item,
-                                href: homeHash(
-                                  workspace,
-                                  item.id === "requests" &&
-                                    !featureAvailable("requests")
-                                    ? "mcp"
-                                    : item.id,
+                    <Activity
+                      key={tab.tabKey}
+                      mode={
+                        activeTab?.tabKey === tab.tabKey ? "visible" : "hidden"
+                      }
+                    >
+                      <WorkspaceNavigationContext.Provider
+                        value={{
+                          open,
+                          close: (goHome = true) =>
+                            update((state) =>
+                              goHome
+                                ? closeOnDelete(state, tab)
+                                : closeTabs(state, [tab.tabKey]),
+                            ),
+                          dismiss: () => requestClose([tab.tabKey]),
+                          setTitle: (title) =>
+                            update((state) => {
+                              if (
+                                state.tabs.find(
+                                  (item) => item.tabKey === tab.tabKey,
+                                )?.title === title
+                              )
+                                return state;
+                              return {
+                                ...state,
+                                tabs: state.tabs.map((item) =>
+                                  item.tabKey === tab.tabKey
+                                    ? { ...item, title }
+                                    : item,
                                 ),
-                              }}
-                              active={workspace.homeSection === item.id}
-                            />
-                          ))}
-                          {extensions.map((item) => (
-                            <NavigationLink
-                              key={item.id}
-                              item={item}
-                              active={false}
-                            />
-                          ))}
-                        </NavMenu>
-                      </section>
-                    )
+                              };
+                            }, "none"),
+                          setDirty: (dirty) =>
+                            update(
+                              (state) => setTabDirty(state, tab.tabKey, dirty),
+                              "none",
+                            ),
+                        }}
+                      >
+                        <PageContentHeader className="px-4 py-2">
+                          <Breadcrumb aria-label="资源位置">
+                            <BreadcrumbList>
+                              <BreadcrumbItem>
+                                <BreadcrumbLink
+                                  render={
+                                    <button type="button" onClick={back} />
+                                  }
+                                >
+                                  ←{" "}
+                                  {["plugins", "settings", "iam"].includes(
+                                    ownerPage,
+                                  )
+                                    ? "Home"
+                                    : pageRegistry.resolve(ownerPage)?.label}
+                                </BreadcrumbLink>
+                              </BreadcrumbItem>
+                              <BreadcrumbSeparator />
+                              <BreadcrumbItem>
+                                <BreadcrumbPage>{title}</BreadcrumbPage>
+                              </BreadcrumbItem>
+                            </BreadcrumbList>
+                          </Breadcrumb>
+                        </PageContentHeader>
+                        {renderPage(route, tab.routeHash)}
+                      </WorkspaceNavigationContext.Provider>
+                    </Activity>
                   );
                 })}
-              </PageSidebar>
-            )}
-            <PageContent
-              key="content"
-              className="rounded-none border-0"
-              onClickCapture={navigateFromLink}
-              onDoubleClickCapture={(event) => navigateFromLink(event, true)}
-            >
-              {data?.agentDirectoryError && (
-                <Alert status="warning">
-                  <AlertTitle>Agent 来源目录暂不可读取</AlertTitle>
-                  <AlertDescription>
-                    已有客户端的观测继续保留，请稍后重试。
-                  </AlertDescription>
-                </Alert>
-              )}
-              <BuiltinCompositionNotice
-                composition={data?.builtinComposition}
-                className="px-3 pb-3"
-              />
-              {error && (
-                <Alert status="default">
-                  <AlertTitle>
-                    {data
-                      ? "连接暂时中断，保留上次读取的配置"
-                      : "本机数据尚未连接"}
-                  </AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
-                  <AlertAction>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => open("#/settings?tab=connection")}
-                    >
-                      查看连接诊断
-                    </Button>
-                  </AlertAction>
-                </Alert>
-              )}
-              <Activity mode={activeTab ? "hidden" : "visible"}>
-                <WorkspaceNavigationContext.Provider
-                  value={{
-                    open,
-                    close: () => undefined,
-                    dismiss: () => undefined,
-                    setDirty: () => undefined,
-                    setTitle: () => undefined,
+              </PageContent>
+            </PageLayout>
+          </AppShellMain>
+          <Dialog
+            open={closeRequest !== null}
+            onOpenChange={(visible) => {
+              if (!visible) setCloseRequest(null);
+            }}
+          >
+            <DialogContent>
+              <DialogTitle>标签含有未保存修改</DialogTitle>
+              <DialogDescription>
+                关闭标签将丢弃其中尚未发布的变更。
+              </DialogDescription>
+              <DialogFooter>
+                <Button
+                  variant="secondary"
+                  onClick={() => setCloseRequest(null)}
+                >
+                  继续编辑
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    if (!closeRequest) return;
+                    update((state) =>
+                      closeTabs(state, closeRequest.keys, closeRequest.goHome),
+                    );
+                    setCloseRequest(null);
                   }}
                 >
-                  {renderPage(
-                    pageRegistry.readRoute(collectionHash),
-                    collectionHash,
-                  )}
-                </WorkspaceNavigationContext.Provider>
-              </Activity>
-              {workspace.tabs.map((tab) => {
-                const route = pageRegistry.readRoute(tab.routeHash);
-                const extension = route.extensionPlugin
-                  ? extensionNavigation.find(
-                      (item) =>
-                        item.pluginId === route.extensionPlugin &&
-                        item.viewId === route.extensionView,
-                    )
-                  : undefined;
-                const routeName = describeTab(route, data);
-                const ownerPage = extension ? "overview" : tab.ownerPage;
-                const title =
-                  extension?.label ??
-                  (tab.title !== (route.objectId ?? route.page)
-                    ? tab.title
-                    : (routeName ?? tab.title));
-                const back = () =>
-                  update((state) =>
-                    openHome(
-                      state,
-                      ["plugins", "settings", "iam"].includes(ownerPage)
-                        ? undefined
-                        : ownerPage,
-                    ),
-                  );
-                return (
-                  <Activity
-                    key={tab.tabKey}
-                    mode={
-                      activeTab?.tabKey === tab.tabKey ? "visible" : "hidden"
-                    }
-                  >
-                    <WorkspaceNavigationContext.Provider
-                      value={{
-                        open,
-                        close: (goHome = true) =>
-                          update((state) =>
-                            goHome
-                              ? closeOnDelete(state, tab)
-                              : closeTabs(state, [tab.tabKey]),
-                          ),
-                        dismiss: () => requestClose([tab.tabKey]),
-                        setTitle: (title) =>
-                          update((state) => {
-                            if (
-                              state.tabs.find(
-                                (item) => item.tabKey === tab.tabKey,
-                              )?.title === title
-                            )
-                              return state;
-                            return {
-                              ...state,
-                              tabs: state.tabs.map((item) =>
-                                item.tabKey === tab.tabKey
-                                  ? { ...item, title }
-                                  : item,
-                              ),
-                            };
-                          }, "none"),
-                        setDirty: (dirty) =>
-                          update(
-                            (state) => setTabDirty(state, tab.tabKey, dirty),
-                            "none",
-                          ),
-                      }}
-                    >
-                      <PageContentHeader className="px-4 py-2">
-                        <Breadcrumb aria-label="资源位置">
-                          <BreadcrumbList>
-                            <BreadcrumbItem>
-                              <BreadcrumbLink
-                                render={<button type="button" onClick={back} />}
-                              >
-                                ←{" "}
-                                {["plugins", "settings", "iam"].includes(
-                                  ownerPage,
-                                )
-                                  ? "Home"
-                                  : pageRegistry.resolve(ownerPage)?.label}
-                              </BreadcrumbLink>
-                            </BreadcrumbItem>
-                            <BreadcrumbSeparator />
-                            <BreadcrumbItem>
-                              <BreadcrumbPage>{title}</BreadcrumbPage>
-                            </BreadcrumbItem>
-                          </BreadcrumbList>
-                        </Breadcrumb>
-                      </PageContentHeader>
-                      {renderPage(route, tab.routeHash)}
-                    </WorkspaceNavigationContext.Provider>
-                  </Activity>
-                );
-              })}
-            </PageContent>
-          </PageLayout>
-        </AppShellMain>
-        <Dialog
-          open={closeRequest !== null}
-          onOpenChange={(visible) => {
-            if (!visible) setCloseRequest(null);
-          }}
-        >
-          <DialogContent>
-            <DialogTitle>标签含有未保存修改</DialogTitle>
-            <DialogDescription>
-              关闭标签将丢弃其中尚未发布的变更。
-            </DialogDescription>
-            <DialogFooter>
-              <Button variant="secondary" onClick={() => setCloseRequest(null)}>
-                继续编辑
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  if (!closeRequest) return;
-                  update((state) =>
-                    closeTabs(state, closeRequest.keys, closeRequest.goHome),
-                  );
-                  setCloseRequest(null);
-                }}
-              >
-                放弃未保存修改
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </AppShell>
+                  放弃未保存修改
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </AppShell>
+      </ExtensionSlotContext.Provider>
     </AgentDirectoryProvider>
   );
 }

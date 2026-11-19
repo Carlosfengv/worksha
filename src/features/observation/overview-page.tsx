@@ -385,6 +385,7 @@ export function OverviewPage({
               )}
             </div>
             <CurrentActivities activity={activity} />
+            <ExtensionSlot points={["overview.section"]} />
           </>
         ) : (
           <ConnectionEmpty title="连接本机数据后查看活动" />
@@ -529,3 +530,4 @@ function TimingSummary({
     </div>
   );
 }
+import { ExtensionSlot } from "@/features/plugins/extension-slot";

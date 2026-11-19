@@ -67,7 +67,7 @@
     "format": "node scripts/format.mjs --write",
     "check:architecture": "node scripts/check-architecture.mjs",
     "test:frontend": "playwright test",
-    "test:display": "node --test scripts/test-workspace-tabs.mjs && node scripts/test-activity-performance.mjs && node scripts/test-account-display.mjs && node scripts/test-account-forecast.mjs && node scripts/test-balance-estimate.mjs && node scripts/test-activity-display.mjs && node scripts/test-activity-group.mjs && node scripts/test-message-groups.mjs && node scripts/test-agent-connection.mjs && node scripts/test-model-usage-display.mjs && node scripts/test-provider-models.mjs && node scripts/test-desktop-contract.mjs",
+    "test:display": "node --test scripts/test-workspace-tabs.mjs scripts/test-plugin-operation.mjs && node scripts/test-activity-performance.mjs && node scripts/test-account-display.mjs && node scripts/test-account-forecast.mjs && node scripts/test-balance-estimate.mjs && node scripts/test-activity-display.mjs && node scripts/test-activity-group.mjs && node scripts/test-message-groups.mjs && node scripts/test-agent-connection.mjs && node scripts/test-model-usage-display.mjs && node scripts/test-provider-models.mjs && node scripts/test-desktop-contract.mjs",
     "check:rust": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --locked -- -D warnings",
     "test:rust": "cargo test --workspace --locked",
     "test:requests": "node scripts/test-requests.mjs && node scripts/test-request-sources.mjs && node scripts/test-request-export.mjs && node scripts/test-content-writer.mjs",

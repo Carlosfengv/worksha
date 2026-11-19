@@ -369,6 +369,7 @@ function SessionWorkspace({
             />
           </div>
           <div className="flex flex-wrap gap-2">
+            <ExtensionSlot points={["sessions.toolbar.actions"]} />
             {data?.agents.some(
               (agent) => agent.sourceId && agent.connected,
             ) && (
@@ -563,3 +564,4 @@ function SessionWorkspace({
     </div>
   );
 }
+import { ExtensionSlot } from "@/features/plugins/extension-slot";

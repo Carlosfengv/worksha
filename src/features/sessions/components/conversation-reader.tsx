@@ -12,7 +12,7 @@ import {
   ThinkingStepsHeader,
 } from "@/components/ui/thinking-steps";
 import { useWorkspaceNavigation } from "@/shared/hooks/use-workspace-navigation";
-import { ObjectContributionSlots } from "@/features/plugins/object-detail-slots";
+import { ExtensionSlot } from "@/features/plugins/extension-slot";
 import { useAgentDirectory } from "@/shared/hooks/use-agent-directory";
 import { useBackendReadEpoch } from "@/shared/hooks/use-backend-read-epoch";
 import { backendReadEpoch } from "@/shared/lib/backend-recovery";
@@ -501,6 +501,10 @@ export function ConversationReader({
             检视栏
           </Button>
           <PageActions>
+            <ExtensionSlot
+              points={["session.detail.actions"]}
+              context={{ target: "session", objectId: id }}
+            />
             {returnRequest && (
               <Button
                 variant="tertiary"
@@ -715,7 +719,8 @@ export function ConversationReader({
                         />
                       )}
                       {activeTab === "conversation" && !inspect && (
-                        <ObjectContributionSlots
+                        <ExtensionSlot
+                          points={[]}
                           object={{
                             target: "session",
                             id,
@@ -802,7 +807,12 @@ export function ConversationReader({
                             </AccordionItem>
                           )}
                         </Accordion>
-                        <ObjectContributionSlots
+                        <ExtensionSlot
+                          points={[
+                            "session.inspector.card",
+                            "session.inspector.tab",
+                          ]}
+                          context={{ target: "session", objectId: id }}
                           object={{
                             target: "session",
                             id,
@@ -826,7 +836,8 @@ export function ConversationReader({
                 />
               )}
               {activeTab === "context" && (
-                <ObjectContributionSlots
+                <ExtensionSlot
+                  points={[]}
                   object={{
                     target: "session",
                     id,
@@ -851,7 +862,8 @@ export function ConversationReader({
                 查看网关调用
               </Button>
               {activeTab === "cost" && (
-                <ObjectContributionSlots
+                <ExtensionSlot
+                  points={[]}
                   object={{
                     target: "session",
                     id,
@@ -939,7 +951,8 @@ export function ConversationReader({
                 </>
               )}
               {activeTab === "disk" && (
-                <ObjectContributionSlots
+                <ExtensionSlot
+                  points={[]}
                   object={{
                     target: "session",
                     id,

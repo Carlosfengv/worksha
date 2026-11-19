@@ -46,6 +46,7 @@ export interface UiPlugin {
   id: string;
   version: 1;
   pages: readonly PageContribution[];
+  slots?: readonly import("@/features/plugins/platform-directory").BuiltinSlotContribution[];
 }
 const hostRoutes = ["plugins", "settings"] as const;
 
@@ -53,10 +54,17 @@ export function createUiRegistry(plugins: readonly UiPlugin[]) {
   const ids = new Set<string>();
   const pages = new Map<Page, Readonly<PageContribution>>();
   const owners = new Map<Page, string>();
+  const slots: {
+    owner: string;
+    contribution: NonNullable<UiPlugin["slots"]>[number];
+  }[] = [];
   for (const plugin of plugins) {
     if (!plugin.id || ids.has(plugin.id) || plugin.version !== 1)
       throw new Error("页面插件描述无效或重复");
     ids.add(plugin.id);
+    for (const contribution of plugin.slots ?? []) {
+      slots.push({ owner: plugin.id, contribution });
+    }
     for (const page of plugin.pages) {
       if (
         !/^[a-z][a-z-]*$/.test(page.id) ||
@@ -72,6 +80,7 @@ export function createUiRegistry(plugins: readonly UiPlugin[]) {
   const navigation = Object.freeze([...pages.values()]);
   return Object.freeze({
     navigation,
+    slots: Object.freeze(slots),
     resolve: (id: Page) => pages.get(id),
     owner: (id: Page) => owners.get(id),
     readRoute(hash: string): AppRoute {

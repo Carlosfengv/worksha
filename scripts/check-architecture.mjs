@@ -387,27 +387,38 @@ assert(
 const iamCommands = JSON.parse(
   fs.readFileSync("tests/iam-ipc-contract.json", "utf8"),
 );
+const existingIpc = {
+  ...original,
+  ...extensions,
+  ...advancedExtensions,
+  ...domainCommands,
+  ...providerCatalogCommands,
+  ...providerConnectionCommands,
+  ...providerSourceCommands,
+  ...sourceOperationCommands,
+  ...draftCatalogCommands,
+  ...draftGrantCommands,
+  ...draftRecoveryCommands,
+  ...presetCommands,
+  ...routingPolicyCommands,
+  ...objectContributionCommands,
+  ...requestExportCommands,
+  ...policyRecoveryCommands,
+  ...workbenchCommands,
+  ...iamCommands,
+};
+const platformCommands = JSON.parse(
+  fs.readFileSync("tests/plugin-platform-ipc-contract.json", "utf8"),
+);
+assert(
+  Object.keys(platformCommands).length <= 5 &&
+    Object.keys(platformCommands).every(
+      (name) => !Object.hasOwn(existingIpc, name),
+    ),
+  "Platform IPC must remain additive and use at most five commands",
+);
 const expected = Object.fromEntries(
-  Object.entries({
-    ...original,
-    ...extensions,
-    ...advancedExtensions,
-    ...domainCommands,
-    ...providerCatalogCommands,
-    ...providerConnectionCommands,
-    ...providerSourceCommands,
-    ...sourceOperationCommands,
-    ...draftCatalogCommands,
-    ...draftGrantCommands,
-    ...draftRecoveryCommands,
-    ...presetCommands,
-    ...routingPolicyCommands,
-    ...objectContributionCommands,
-    ...requestExportCommands,
-    ...policyRecoveryCommands,
-    ...workbenchCommands,
-    ...iamCommands,
-  }).sort(),
+  Object.entries({ ...existingIpc, ...platformCommands }).sort(),
 );
 assert.deepEqual(
   Object.fromEntries([...commands].sort()),

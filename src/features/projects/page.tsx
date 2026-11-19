@@ -1,4 +1,4 @@
-import { ObjectContributionSlots } from "@/features/plugins/object-detail-slots";
+import { ExtensionSlot } from "@/features/plugins/extension-slot";
 import { useAgentDirectory } from "@/shared/hooks/use-agent-directory";
 import { CostDetails } from "@/features/costs/details";
 import { costText } from "@/shared/lib/money";
@@ -313,6 +313,14 @@ export function ProjectsPage({
                   {current.project.name}
                 </h2>
                 <div className="flex flex-wrap gap-2">
+                  <ExtensionSlot
+                    points={["project.detail.actions"]}
+                    context={{
+                      target: "project",
+                      objectId: current.project.id,
+                      scope,
+                    }}
+                  />
                   <Button
                     variant="secondary"
                     size="sm"
@@ -472,7 +480,13 @@ export function ProjectsPage({
                 <DiskGit detail={current} />
               </TabPanel>
             </Tabs>
-            <ObjectContributionSlots
+            <ExtensionSlot
+              points={["project.detail.tab", "project.detail.card"]}
+              context={{
+                target: "project",
+                objectId: current.project.id,
+                scope,
+              }}
               object={{
                 target: "project",
                 id: current.project.id,

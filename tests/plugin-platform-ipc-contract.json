@@ -1,0 +1,7 @@
+{
+  "choose_plugin_directory_grant": ["request"],
+  "invoke_platform_action": ["request"],
+  "list_platform_contributions": [],
+  "manage_plugin_platform": ["request"],
+  "query_platform_slot": ["request"]
+}

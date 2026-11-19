@@ -15,6 +15,7 @@ import {
   installWorkspaceFixture,
 } from "./workspace";
 import { installPluginNavigation } from "./plugin-navigation";
+import { installPlatformFixture } from "./plugin-platform";
 import { installLocalConnectionFixture } from "./local-connections";
 import { installLoopGuards } from "./loop-guards";
 import { appApi } from "@/app/api";
@@ -316,6 +317,10 @@ export function installTableFixtures() {
   if (context.params.has("loopGuards")) installLoopGuards();
   if (["mcp-page", "projects-page"].includes(context.mode ?? ""))
     installTableProjects(context);
+  if (context.params.has("platform")) {
+    installTableProjects(context);
+    installPlatformFixture();
+  }
   if (context.params.has("fees")) installAssociatedCosts();
   if (!applicationTableModes.has(context.mode ?? ""))
     window.providerOperationsFixture = installProviderOperationFixture({
