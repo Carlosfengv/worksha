@@ -103,6 +103,7 @@ jobs:
           pnpm prepare:plugins 2>&1 | tee .work/ci/plugin-prepare.log
           pnpm test:plugins 2>&1 | tee .work/ci/plugins.log
           pnpm test:plugin-database 2>&1 | tee .work/ci/plugin-database.log
+          pnpm test:plugin-platform 2>&1 | tee .work/ci/plugin-platform.log
           pnpm test:dynamic-plugins 2>&1 | tee .work/ci/dynamic-plugins.log
           pnpm test:plugin-extensions 2>&1 | tee .work/ci/plugin-extensions.log
           pnpm test:protocol-completion 2>&1 | tee .work/ci/protocol-completion.log

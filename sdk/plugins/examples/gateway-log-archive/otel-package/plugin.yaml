@@ -1,0 +1,16 @@
+manifest:
+  manifestVersion: 1
+  id: org.example.otel-log-archive
+  publisher: org.example
+  version: 1.0.0
+  displayName: OpenTelemetry 网关日志归档
+  hostApi: ^1.0.0
+  runtime: { kind: wasm-component, entry: plugin.wasm, abi: local-agent:plugin@1.0.0 }
+  capabilities: [ui.platform@1]
+platform:
+  schemaVersion: 1
+  logSink: { format: wasm, rotatePolicy: hourly }
+  views:
+    archive: { title: OpenTelemetry 网关日志归档, kind: detail-list }
+  slots:
+    - { id: archive-nav, point: nav.home-sidebar, viewId: archive, group: observation, icon: file-archive }

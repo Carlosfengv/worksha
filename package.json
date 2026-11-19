@@ -60,6 +60,7 @@
     "test:plugins": "node scripts/test-plugins.mjs",
     "test:builtin-plugins": "node scripts/test-builtin-plugins.mjs",
     "test:plugin-database": "node scripts/test-plugin-database.mjs",
+    "test:plugin-platform": "node scripts/test-plugin-platform.mjs",
     "test:plugin-cache-capacity": "node scripts/test-plugin-cache-capacity.mjs",
     "test:plugin-extensions": "node scripts/test-plugin-extensions.mjs",
     "test:accounts": "cargo build --locked -p local-agent-service --target-dir .work/provider-tests-target && node scripts/test-account-display.mjs && node scripts/test-accounts.mjs",

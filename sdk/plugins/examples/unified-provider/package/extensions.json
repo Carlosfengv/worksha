@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "protocol": { "baseProtocol": "responses", "path": "/responses" },
+  "config": null,
+  "connector": null
+}

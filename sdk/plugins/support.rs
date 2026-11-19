@@ -1,4 +1,20 @@
 use serde_json::{Value, json};
+
+#[macro_export]
+macro_rules! define_plugin {
+    ($plugin:ident, $handler:path) => {
+        struct $plugin;
+        impl Guest for $plugin {
+            fn invoke(method: String, payload: String) -> Result<String, String> {
+                if let Some(reply) = $crate::support::lifecycle(&method, &payload) {
+                    return reply;
+                }
+                $handler(&method, &payload)
+            }
+        }
+        export!($plugin);
+    };
+}
 pub fn lifecycle(method: &str, payload: &str) -> Option<Result<String, String>> {
     match method {
         "plugin.initialize" => Some(Ok(payload.into())),
