@@ -16,6 +16,7 @@ pub(crate) fn routes() -> Router<AppState> {
         .merge(super::full::api::routes())
         .merge(super::policy::api::routes())
         .merge(super::object_contributions::api::routes())
+        .merge(super::platform::routes())
         .route("/api/plugins", get(list))
         .route("/api/plugins/inspect", post(inspect))
         .route("/api/plugins/upload/inspect", post(inspect_upload))
@@ -32,7 +33,9 @@ pub(crate) fn response(result: Result<Value>) -> ApiResult {
             match error.code {
                 "permission_denied" | "grant_revoked" => StatusCode::FORBIDDEN,
                 "not_found" => StatusCode::NOT_FOUND,
-                "stale_snapshot" => StatusCode::CONFLICT,
+                "stale_snapshot" | "operation_conflict" | "record_conflict" | "source_changed" => {
+                    StatusCode::CONFLICT
+                }
                 "busy" => StatusCode::SERVICE_UNAVAILABLE,
                 _ => StatusCode::BAD_REQUEST,
             },

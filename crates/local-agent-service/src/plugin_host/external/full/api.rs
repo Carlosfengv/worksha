@@ -65,6 +65,7 @@ struct SourcePath {
 }
 async fn source(State(state): State<AppState>, Json(input): Json<SourcePath>) -> ApiResult {
     let manager = state.plugins.clone();
+    let intake = state.readonly.intake.clone();
     let package = input.package.clone();
     response(
         run_sync(move || {
@@ -77,7 +78,7 @@ async fn source(State(state): State<AppState>, Json(input): Json<SourcePath>) ->
         })
         .await
         .and_then(|value| {
-            manager.watch_source(package)?;
+            manager.watch_source(package, intake)?;
             Ok(value)
         }),
     )

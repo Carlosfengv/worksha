@@ -103,10 +103,22 @@ pub(crate) fn validate(m: &Manifest, files: &BTreeMap<String, Vec<u8>>) -> Resul
         return Err(fail("resource_limit"));
     }
     let policy: a::Policy = serde_json::from_slice(bytes).checked("invalid_input")?;
+    let composite = m
+        .capabilities
+        .iter()
+        .any(|cap| cap == local_agent_core::plugin::platform::PROVIDER_ADAPTER);
     if !policy.valid()
         || !m.requires.iter().any(|r| r == a::BROKER)
         || m.capabilities.iter().any(|c| {
-            ![a::CAPABILITY, "provider.catalog@1", "ui.contribution@1"].contains(&c.as_str())
+            !([a::CAPABILITY, "provider.catalog@1", "ui.contribution@1"].contains(&c.as_str())
+                || (composite
+                    && [
+                        local_agent_core::plugin::platform::PROVIDER_ADAPTER,
+                        local_agent_core::plugin::platform::CAPABILITY,
+                        "account.quota-source@1",
+                        "gateway.protocol@1",
+                    ]
+                    .contains(&c.as_str())))
         })
         || m.permissions
             .iter()
@@ -124,12 +136,13 @@ pub(crate) fn validate(m: &Manifest, files: &BTreeMap<String, Vec<u8>>) -> Resul
             )
         })
         || m.requires.iter().any(|r| {
-            ![
+            !([
                 a::BROKER,
                 local_agent_core::plugin::contributions::OPTIONAL,
                 local_agent_core::plugin::contributions::DETAILS,
             ]
             .contains(&r.as_str())
+                || (composite && r == "host.connection-broker@1"))
         })
     {
         return Err(fail("permission_denied"));

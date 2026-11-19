@@ -67,8 +67,27 @@ pub(crate) fn validate(manifest: &Manifest) -> Result<()> {
     if manifest.kind.is_some() {
         return super::policy::package::validate(manifest);
     }
+    let composite_provider = manifest
+        .capabilities
+        .iter()
+        .any(|capability| capability == local_agent_core::plugin::platform::PROVIDER_ADAPTER);
     if manifest.is_extension() {
-        return super::advanced::validate_manifest(manifest);
+        if !composite_provider {
+            return super::advanced::validate_manifest(manifest);
+        }
+        let mut protocol = manifest.clone();
+        protocol.capabilities.retain(|capability| {
+            ["ui.contribution@1", "gateway.protocol@1"].contains(&capability.as_str())
+        });
+        protocol
+            .permissions
+            .retain(|permission| matches!(permission, Permission::UiContribute));
+        protocol.requires.clear();
+        protocol.providers.clear();
+        protocol
+            .views
+            .retain(|view| view.kind == ViewKind::Settings);
+        super::advanced::validate_manifest(&protocol)?;
     }
     validate_header(manifest)?;
     let allowed = [
@@ -78,6 +97,11 @@ pub(crate) fn validate(manifest: &Manifest) -> Result<()> {
         local_agent_core::domain::provider_access::CAPABILITY,
         "ui.contribution@1",
         "report.view@1",
+        local_agent_core::plugin::platform::CAPABILITY,
+        local_agent_core::plugin::platform::STORAGE,
+        local_agent_core::plugin::platform::DIRECTORY_SOURCE,
+        local_agent_core::plugin::platform::PROVIDER_ADAPTER,
+        "gateway.protocol@1",
     ];
     let mut caps = BTreeSet::new();
     if manifest.capabilities.is_empty()
@@ -179,7 +203,7 @@ pub(crate) fn validate(manifest: &Manifest) -> Result<()> {
         || source != (content == 1)
         || (quota || catalog) != (network == 1)
         || (source && quota)
-        || (catalog && (source || quota || report))
+        || (catalog && (source || (!composite_provider && quota) || report))
         || domain > 1
         || report != (domain == 1 && !objects)
         || (report && !matches!(manifest.runtime, Runtime::Declarative))
@@ -194,7 +218,14 @@ pub(crate) fn validate(manifest: &Manifest) -> Result<()> {
         Runtime::Declarative if !source && !quota && !catalog => {}
         _ => return Err(fail("unsupported")),
     }
-    if source {
+    let directory = manifest
+        .capabilities
+        .iter()
+        .any(|capability| capability == local_agent_core::plugin::platform::DIRECTORY_SOURCE);
+    if directory && (source || quota || catalog) {
+        return Err(fail("permission_denied"));
+    }
+    if source || directory {
         let agent = manifest.agent.as_ref().ok_or(fail("invalid_input"))?;
         if !agent.product_id.starts_with(&format!("{}:", manifest.id))
             || !label(&agent.product_id, 140)
@@ -367,6 +398,7 @@ pub(crate) fn inspect(bytes: &[u8], development: bool) -> Result<Package> {
     validate(&manifest)?;
     super::contributions::parse(&manifest, &files)?;
     super::object_contributions::parse(&manifest, &files)?;
+    super::platform_package::parse(&manifest, &files)?;
     if manifest.is_extension() {
         super::advanced::validate_policy(&manifest, &files)?;
     }

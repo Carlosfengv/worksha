@@ -25,6 +25,7 @@ struct Context {
     provider: Option<Provider>,
     network_used: bool,
     broker_sequence: u64,
+    platform: Option<super::platform::guest::Call>,
 }
 impl Manager {
     fn context(
@@ -48,6 +49,7 @@ impl Manager {
             provider,
             network_used: false,
             broker_sequence: 0,
+            platform: None,
         };
         if !preflight {
             self.alive(&context)?;
@@ -148,7 +150,7 @@ impl Manager {
         }
         self.alive_async(context).await?;
         let value = match method {
-            "source.read" => {
+            "source.read" if context.platform.is_none() => {
                 let request: ReadChunk = serde_json::from_str(payload).checked("invalid_input")?;
                 if request.context_id != context.id
                     || request.source_ref != context.source_ref
@@ -293,7 +295,20 @@ impl Manager {
                 let body = String::from_utf8(bytes).checked("invalid_input")?;
                 json!({"body":body,"status":200})
             }
-            _ => return Err(fail("unsupported")),
+            _ => match context.platform.as_mut() {
+                Some(scope) => {
+                    scope
+                        .invoke(
+                            method,
+                            payload,
+                            p.manifest.capabilities.iter().any(|capability| {
+                                capability == local_agent_core::plugin::platform::STORAGE
+                            }),
+                        )
+                        .await?
+                }
+                None => return Err(fail("unsupported")),
+            },
         };
         self.alive_async(context).await?;
         serde_json::to_string(&value).checked("invalid_input")
@@ -508,6 +523,53 @@ impl Manager {
         }
         result
     }
+    pub(super) async fn transform_sink(
+        self: &std::sync::Arc<Self>,
+        plugin: String,
+        selected: Selection,
+        payload: Value,
+    ) -> Result<Value> {
+        let _permit = self.workers.try_acquire().checked("resource_limit")?;
+        let manager = self.clone();
+        let (installed, mut context) = super::run_sync(move || {
+            let installed = manager.verified(&plugin, &selected.digest)?;
+            let context = manager.context(&installed, &selected, false, None)?;
+            Ok((installed, context))
+        })
+        .await?;
+        self.invoke(&installed, &mut context, Some(("sink.transform", payload)))
+            .await
+    }
+
+    pub(super) async fn invoke_platform_guest(
+        self: &std::sync::Arc<Self>,
+        id: &str,
+        selected: Selection,
+        scope: super::platform::guest::Call,
+        method: &str,
+        payload: Value,
+    ) -> Result<(Value, Vec<super::platform::guest::Write>)> {
+        let _permit = self.workers.try_acquire().checked("resource_limit")?;
+        let manager = self.clone();
+        let plugin = id.to_owned();
+        let (installed, mut context) = super::run_sync(move || {
+            let installed = manager.verified(&plugin, &selected.digest)?;
+            let context = manager.context(&installed, &selected, false, None)?;
+            Ok((installed, context))
+        })
+        .await?;
+        context.platform = Some(scope);
+        let output = self
+            .invoke(&installed, &mut context, Some((method, payload)))
+            .await?;
+        let writes = context
+            .platform
+            .take()
+            .ok_or(fail("invalid_record"))?
+            .writes;
+        Ok((output, writes))
+    }
+
     pub(super) async fn invoke_catalog(
         self: &std::sync::Arc<Self>,
         q: &local_agent_core::domain::provider_access::Query,
@@ -523,7 +585,20 @@ impl Manager {
         let (p, mut context) = super::run_sync(move || {
             let (p, _) = manager.catalog_plugin(&query)?;
             let selected = manager.selection(&query.plugin_id)?;
-            let context = manager.context(&p, &selected, false, None)?;
+            let mut catalog = p.clone();
+            if catalog
+                .manifest
+                .capabilities
+                .iter()
+                .any(|c| c == local_agent_core::plugin::platform::PROVIDER_ADAPTER)
+            {
+                // Catalog admission owns its own connection grant and network exchange.
+                catalog
+                    .manifest
+                    .capabilities
+                    .retain(|capability| capability != "account.quota-source@1");
+            }
+            let context = manager.context(&catalog, &selected, false, None)?;
             Ok((p, context))
         })
         .await?;
@@ -985,10 +1060,15 @@ pub(super) async fn monitor_rss(pid: u32) -> Result<Value> {
                 .output(),
         )
         .await
-        .checked("deadline_exceeded")?
-        .checked("unavailable")?;
-        let text = String::from_utf8(output.stdout).checked("unavailable")?;
-        if !output.status.success() || text.trim().is_empty() {
+        .checked("deadline_exceeded")?;
+        let sample = output
+            .as_ref()
+            .ok()
+            .filter(|output| output.status.success())
+            .and_then(|output| std::str::from_utf8(&output.stdout).ok())
+            .map(str::trim)
+            .filter(|text| !text.is_empty());
+        let Some(sample) = sample else {
             // The protocol reader owns exit/EOF handling. A worker may already
             // have sent its successful dispose reply while its waiter is doing
             // the final lease check; do not race that reply with an RSS error.
@@ -997,9 +1077,13 @@ pub(super) async fn monitor_rss(pid: u32) -> Result<Value> {
             {
                 return std::future::pending().await;
             }
-            return Err(fail("worker_crashed"));
-        }
-        if text.trim().parse::<u64>().checked("unavailable")? > 512 * 1024 {
+            return Err(fail(if output.is_err() {
+                "unavailable"
+            } else {
+                "worker_crashed"
+            }));
+        };
+        if sample.parse::<u64>().checked("unavailable")? > 512 * 1024 {
             return Err(fail("resource_limit"));
         }
     }

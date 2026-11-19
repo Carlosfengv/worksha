@@ -1,0 +1,28 @@
+manifest:
+  manifestVersion: 1
+  id: org.example.cursor-dir-agent
+  publisher: org.example
+  version: 1.0.0
+  displayName: Cursor 目录型会话来源
+  hostApi: ^1.0.0
+  runtime: { kind: declarative }
+  capabilities: [ui.platform@1, source.directory.read]
+  agent:
+    productId: "org.example.cursor-dir-agent:cursor-desktop"
+    displayName: Cursor Desktop
+platform:
+  schemaVersion: 1
+  adapter:
+    kind: agent-adapter
+    sourceMapper:
+      format: jsonl
+      glob: "**/agent-transcripts/*.jsonl"
+      sessionId: "$.session_id"
+      title: "$.first_user_prompt"
+      project: "$.workspace_root"
+      model: "$.model_slug"
+      createdAt: "$.created_at"
+      updatedAt: "$.updated_at"
+      usage: { inputTokens: "$.usage.input", outputTokens: "$.usage.output" }
+      activity: { phase: "$.activity.phase", occurredAt: "$.activity.at" }
+      conversation: { messages: "$.messages", role: "$.role", text: "$.text" }

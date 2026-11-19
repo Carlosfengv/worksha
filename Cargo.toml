@@ -18,6 +18,7 @@ opt-level = 1
 [profile.dev.package.local-agent-service]
 debug = 0
 opt-level = "s"
+strip = "symbols"
 
 [profile.dev.package.jsonc-parser]
 debug = 1

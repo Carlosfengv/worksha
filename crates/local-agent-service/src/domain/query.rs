@@ -167,6 +167,12 @@ pub(super) fn capture(state: &AppState, query: &d::UnifiedSessionQuery) -> Resul
             hidden.extend(full.hidden_projects.iter().cloned());
         }
     }
+    if views
+        .iter()
+        .any(|view| matches!(view, SourceView::Directory(_)))
+    {
+        hidden.extend(state.plugins.hidden_directory_projects()?);
+    }
     hidden.sort();
     hidden.dedup();
     let revision = if !builtin_ids.is_empty() {
@@ -371,7 +377,13 @@ pub(super) async fn conversation(
         let view = before
             .views
             .iter()
-            .find(|v| v.matches_session(&request.session_id, &frozen.query.filter, frozen.cutoff))
+            .find(|v| {
+                v.matches_session(&request.session_id, &frozen.query.filter, frozen.cutoff)
+                    && !matches!(v, SourceView::Directory(source) if source
+                        .record(&request.session_id)
+                        .and_then(|record| record.project_ref)
+                        .is_some_and(|project| before.hidden.contains(&project)))
+            })
             .ok_or(fail("permission_denied"))?;
         (
             view.source().id.clone(),

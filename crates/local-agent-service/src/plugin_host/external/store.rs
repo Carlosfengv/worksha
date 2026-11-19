@@ -319,6 +319,7 @@ impl Manager {
                     policy: Mutex::new(policy),
                     policy_presence,
                     installation: Mutex::new(()),
+                    platform_commit: Mutex::new(()),
                     full: Mutex::new(super::full::Host::new(data).with_writer(writer.clone())),
                     full_publisher_revisions: Mutex::new(BTreeMap::new()),
                     domain: Mutex::new(
@@ -448,6 +449,7 @@ impl Manager {
             policy: Mutex::new(policy),
             policy_presence,
             installation: Mutex::new(()),
+            platform_commit: Mutex::new(()),
             full: Mutex::new(super::full::Host::new(data).with_writer(writer.clone())),
             full_publisher_revisions: Mutex::new(BTreeMap::new()),
             domain: Mutex::new(
@@ -1052,6 +1054,7 @@ impl Manager {
         selected: Selection,
         digest: String,
     ) -> Result<Status> {
+        let _platform = self.platform_commit.lock().checked("unavailable")?;
         self.ensure_running()?;
         let db = self.db.lock().checked("unavailable")?;
         let tx = db.unchecked_transaction().checked("unavailable")?;
@@ -1244,6 +1247,7 @@ impl Manager {
         }
     }
     pub(crate) fn revoke(&self, id: &str, digest: &str, disable: bool) -> Result<()> {
+        let _platform = self.platform_commit.lock().checked("unavailable")?;
         let db = self.db.lock().checked("unavailable")?;
         let s = Self::read_selection(&db, id)?;
         if s.digest != digest {

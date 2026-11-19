@@ -289,13 +289,38 @@ async fn service_main() -> Result<(), Box<dyn std::error::Error>> {
     // Installing jobs does not start a disabled collector. A background/recovery
     // combination can later activate its declared scopes without a UI runtime.
     tasks::start(&state);
-    if !options.persistent
-        && plugin_host::features::mounted(&state.readonly.host, "builtin.overview")
-    {
-        let plugins = state.plugins.clone();
+    tokio::spawn(plugin_host::external::platform::run_sources(
+        state.clone(),
+        runtime.clone(),
+    ));
+    tokio::spawn(plugin_host::external::platform::run_sinks(
+        state.clone(),
+        runtime.clone(),
+    ));
+    if !options.persistent {
+        let restore_state = state.clone();
+        let lifecycle = runtime.clone();
         tokio::spawn(async move {
-            if let Err(error) = plugins.restore_saved_sources().await {
-                eprintln!("会话来源未恢复（{}）。", error.code);
+            let intake = &restore_state.readonly.intake;
+            loop {
+                if let Some(permit) = intake.acquire_for(None)
+                    && plugin_host::features::mounted(
+                        &restore_state.readonly.host,
+                        "builtin.overview",
+                    )
+                {
+                    if let Err(error) = plugin_host::intake::ACTIVE_JOB
+                        .scope(
+                            Arc::new(permit),
+                            restore_state.plugins.restore_saved_sources(intake.clone()),
+                        )
+                        .await
+                    {
+                        eprintln!("会话来源未恢复（{}）。", error.code);
+                    }
+                    break;
+                }
+                tokio::select! { _ = lifecycle.stopped() => break, _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => {} }
             }
         });
     }
