@@ -8,6 +8,7 @@ use local_agent_core::domain as d;
 pub(super) enum SourceView {
     Legacy(Box<external::domain::SourceView>),
     Full(Box<external::full::SourceView>),
+    Directory(Box<external::platform::DirectoryView>),
 }
 impl SourceView {
     pub fn has_agent_connection(&self) -> bool {
@@ -17,48 +18,56 @@ impl SourceView {
         match self {
             Self::Legacy(v) => &v.source,
             Self::Full(v) => &v.source,
+            Self::Directory(v) => &v.source,
         }
     }
     pub fn provider(&self) -> &d::Provider {
         match self {
             Self::Legacy(v) => &v.provider,
             Self::Full(v) => &v.provider,
+            Self::Directory(v) => &v.provider,
         }
     }
     pub fn products(&self) -> &[d::Product] {
         match self {
             Self::Legacy(v) => std::slice::from_ref(&v.product),
             Self::Full(v) => &v.products,
+            Self::Directory(v) => std::slice::from_ref(&v.product),
         }
     }
     pub fn plugin_id(&self) -> &str {
         match self {
             Self::Legacy(v) => &v.plugin_id,
             Self::Full(v) => &v.plugin_id,
+            Self::Directory(v) => &v.plugin_id,
         }
     }
     pub fn digest(&self) -> &str {
         match self {
             Self::Legacy(v) => &v.digest,
             Self::Full(v) => &v.digest,
+            Self::Directory(v) => &v.digest,
         }
     }
     pub fn persist_metadata(&self) -> bool {
         match self {
             Self::Legacy(v) => v.persist_metadata,
             Self::Full(v) => v.persist_metadata,
+            Self::Directory(_) => false,
         }
     }
     pub fn state(&self) -> d::SourceState {
         match self {
             Self::Legacy(v) => v.state(),
             Self::Full(v) => v.state(),
+            Self::Directory(v) => v.state(),
         }
     }
     pub fn vector(&self) -> String {
         match self {
             Self::Legacy(v) => v.vector(),
             Self::Full(v) => v.vector(),
+            Self::Directory(v) => v.vector(),
         }
     }
     pub fn capabilities(&self) -> Vec<d::CapabilityEntry> {
@@ -69,6 +78,14 @@ impl SourceView {
                 operations: vec![d::ReadOperation::Scan, d::ReadOperation::ReadConversation],
             }],
             Self::Full(v) => v.capabilities(),
+            Self::Directory(v) => v.capabilities(),
+        }
+    }
+    pub fn fact_snapshot(&self) -> Option<&d::facts::FactSnapshot> {
+        match self {
+            Self::Legacy(_) => None,
+            Self::Full(v) => v.snapshot(),
+            Self::Directory(v) => v.facts(),
         }
     }
     pub fn sessions(
@@ -81,6 +98,7 @@ impl SourceView {
         match self {
             Self::Legacy(v) => v.sessions(filter, after, cutoff),
             Self::Full(v) => v.sessions(filter, after, cutoff, hidden),
+            Self::Directory(v) => v.sessions(filter, after, cutoff, hidden),
         }
     }
     pub fn matches_session(
@@ -101,6 +119,9 @@ impl SourceView {
                 })
             }),
             Self::Full(v) => v.matches_session(id, filter, cutoff),
+            Self::Directory(v) => v
+                .record(id)
+                .is_some_and(|record| filter.matches(&record, cutoff)),
         }
     }
     /// Resolve one retained metadata record; never invoke read_conversation or a guest.
@@ -140,6 +161,7 @@ impl SourceView {
                         partial: s.partial,
                     })
                 })),
+            Self::Directory(v) => Ok(v.record(id)),
         }
     }
     pub async fn read_conversation(
@@ -150,6 +172,7 @@ impl SourceView {
         match self {
             Self::Legacy(v) => state.plugins.domain_read_legacy(v, request).await,
             Self::Full(v) => state.plugins.full_read_conversation(v, request).await,
+            Self::Directory(v) => v.conversation(state, request).await,
         }
     }
 }
@@ -159,6 +182,12 @@ pub(super) fn external_sources(state: &AppState) -> (Vec<SourceView>, Option<Str
     match state.plugins.domain_sources() {
         Ok(v) => views.extend(v.into_iter().map(|v| SourceView::Legacy(Box::new(v)))),
         Err(e) => problem = Some(e.code.into()),
+    }
+    match external::platform::source_views(state) {
+        Ok(v) => views.extend(v.into_iter().map(|v| SourceView::Directory(Box::new(v)))),
+        Err(e) => {
+            problem.get_or_insert_with(|| e.code.into());
+        }
     }
     match state.plugins.full_source_views() {
         Ok(v) => {

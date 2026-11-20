@@ -2,9 +2,18 @@ import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { PageActions, PageHeader } from "@/components/ui/page-layout";
 import { TabItem, Tabs, TabsList } from "@/components/ui/tabs";
-import { PluginDetailSlots } from "@/features/plugins/detail-slots";
-import { ObjectContributionSlots } from "@/features/plugins/object-detail-slots";
+import { ExtensionSlot } from "@/features/plugins/extension-slot";
 import type { AgentDiscovery } from "@/shared/types/agent";
+
+const directoryProblems: Record<string, string> = {
+  invalid_record: "记录格式无效",
+  resource_limit: "超过读取限制",
+  permission_denied: "需要目录授权",
+  grant_revoked: "目录身份已变化",
+  unavailable: "读取暂不可用",
+  unmapped_record: "部分记录缺少可识别的会话编号",
+  incomplete_directory: "本次扫描仅覆盖部分目录",
+};
 
 export const agentDetailTabs = {
   overview: { id: "overview", label: "概览" },
@@ -62,8 +71,26 @@ export function AgentDetailLayout({
         <div className="min-w-0 space-y-1">
           <h2 className="sr-only">{agent.name}</h2>
           <p className="text-label text-fg-muted">{description}</p>
+          {agent.directoryRead && (
+            <p className="text-label text-fg-muted">
+              {agent.directoryRead.lastSuccess &&
+                `最近读取成功 ${new Date(agent.directoryRead.lastSuccess).toLocaleString()} · ${agent.directoryRead.sessions ?? 0} 个会话`}
+              {agent.directoryRead.problem &&
+                ` ${directoryProblems[agent.directoryRead.problem] ?? agent.directoryRead.problem}`}
+              {agent.directoryRead.problem &&
+                agent.directoryRead.lastAttempt &&
+                ` · 最近尝试 ${new Date(agent.directoryRead.lastAttempt).toLocaleString()}`}
+              {!agent.directoryRead.problem &&
+                !agent.directoryRead.lastAttempt &&
+                "等待首次读取"}
+            </p>
+          )}
         </div>
         <PageActions>
+          <ExtensionSlot
+            points={["agent.detail.actions"]}
+            context={{ target: "agent", objectId: agent.id }}
+          />
           <Button
             variant="tertiary"
             loading={refreshing}
@@ -107,8 +134,12 @@ export function AgentDetailLayout({
       </Tabs>
       {(!agent.sourceId || agent.found) && (
         <>
-          <PluginDetailSlots target="agent" objectId={agent.id} />
-          <ObjectContributionSlots object={{ target: "agent", id: agent.id }} />
+          <ExtensionSlot
+            points={["agent.detail.card", "agent.detail.tab"]}
+            legacyDetail
+            context={{ target: "agent", objectId: agent.id }}
+            object={{ target: "agent", id: agent.id }}
+          />
         </>
       )}
     </div>

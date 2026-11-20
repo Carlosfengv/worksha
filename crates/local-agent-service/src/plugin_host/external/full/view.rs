@@ -7,6 +7,51 @@ use super::{
 use local_agent_core::{domain as d, plugin::full as f};
 use std::sync::Arc;
 
+fn hidden_reported_projects(db: &rusqlite::Connection) -> Result<Vec<String>> {
+    let mut statement = db
+        .prepare("SELECT id FROM ext_source_full_hidden_projects ORDER BY id LIMIT 4097")
+        .checked("unavailable")?;
+    let hidden = statement
+        .query_map([], |r| r.get::<_, String>(0))
+        .checked("unavailable")?
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .checked("invalid_record")?;
+    if hidden.len() > 4096 {
+        return Err(fail("resource_limit"));
+    }
+    Ok(hidden)
+}
+
+fn update_reported_project_visibility(
+    db: &rusqlite::Connection,
+    input: &d::facts::query::ProjectVisibility,
+) -> Result<()> {
+    if input.hidden {
+        let count: i64 = db
+            .query_row(
+                "SELECT count(*) FROM ext_source_full_hidden_projects",
+                [],
+                |r| r.get(0),
+            )
+            .checked("unavailable")?;
+        if count >= 4096 && !hidden_reported_projects(db)?.contains(&input.project_id) {
+            return Err(fail("resource_limit"));
+        }
+        db.execute(
+            "INSERT OR IGNORE INTO ext_source_full_hidden_projects VALUES(?1)",
+            [&input.project_id],
+        )
+        .checked("unavailable")?;
+    } else {
+        db.execute(
+            "DELETE FROM ext_source_full_hidden_projects WHERE id=?1",
+            [&input.project_id],
+        )
+        .checked("unavailable")?;
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
 pub(crate) struct SourceView {
     pub plugin_id: String,
@@ -197,20 +242,7 @@ impl Manager {
                     .get(&status.manifest.id)
                     .filter(|p| Some(&p.lease) == lease.as_ref())
                     .cloned();
-                let db = host.db()?;
-                let mut statement = db
-                    .prepare(
-                        "SELECT id FROM ext_source_full_hidden_projects ORDER BY id LIMIT 4097",
-                    )
-                    .checked("unavailable")?;
-                let hidden = statement
-                    .query_map([], |r| r.get::<_, String>(0))
-                    .checked("unavailable")?
-                    .collect::<std::result::Result<Vec<_>, _>>()
-                    .checked("invalid_record")?;
-                if hidden.len() > 4096 {
-                    return Err(fail("resource_limit"));
-                }
+                let hidden = hidden_reported_projects(&*host.db()?)?;
                 (lease, projection, hidden)
             };
             let manifest = status.manifest;
@@ -306,33 +338,18 @@ impl Manager {
         {
             return Err(fail("grant_revoked"));
         }
-        if input.hidden {
-            let count: i64 = host
-                .db()?
-                .query_row(
-                    "SELECT count(*) FROM ext_source_full_hidden_projects",
-                    [],
-                    |r| r.get(0),
-                )
-                .checked("unavailable")?;
-            if count >= 4096 && !view.hidden_projects.contains(&input.project_id) {
-                return Err(fail("resource_limit"));
-            }
-            host.db()?
-                .execute(
-                    "INSERT OR IGNORE INTO ext_source_full_hidden_projects VALUES(?1)",
-                    [&input.project_id],
-                )
-                .checked("unavailable")?;
-        } else {
-            host.db()?
-                .execute(
-                    "DELETE FROM ext_source_full_hidden_projects WHERE id=?1",
-                    [&input.project_id],
-                )
-                .checked("unavailable")?;
-        }
-        Ok(())
+        update_reported_project_visibility(&*host.db()?, input)
+    }
+    pub(crate) fn hidden_directory_projects(&self) -> Result<Vec<String>> {
+        let host = self.full.lock().checked("unavailable")?;
+        hidden_reported_projects(&*host.db()?)
+    }
+    pub(in crate::plugin_host::external) fn set_directory_project_visibility(
+        &self,
+        input: &d::facts::query::ProjectVisibility,
+    ) -> Result<()> {
+        let host = self.full.lock().checked("unavailable")?;
+        update_reported_project_visibility(&*host.db()?, input)
     }
     pub(crate) async fn full_read_conversation(
         self: &Arc<Self>,

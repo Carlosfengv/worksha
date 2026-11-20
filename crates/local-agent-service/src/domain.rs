@@ -4,7 +4,7 @@ use crate::{ApiResult, AppState, json_value, native_error};
 use axum::Json;
 use axum::extract::State;
 use local_agent_core::domain as d;
-mod activity;
+pub(crate) mod activity;
 mod facts;
 pub(crate) mod object_summary;
 mod requests;
@@ -42,7 +42,16 @@ pub(crate) async fn project_visibility(
 ) -> ApiResult {
     external::api::response(
         external::run_sync(move || {
-            state.plugins.full_project_visibility(&input)?;
+            match state.plugins.full_project_visibility(&input) {
+                Err(error) if error.code == "not_found" => {
+                    external::platform::source_views(&state)?
+                        .into_iter()
+                        .find(|view| view.source.id == input.source_id)
+                        .ok_or(error)?
+                        .project_visibility(&state, &input)?
+                }
+                outcome => outcome?,
+            }
             Ok(serde_json::json!({"updated":true}))
         })
         .await,
@@ -72,6 +81,10 @@ pub(crate) fn plugin_agents(state: &AppState) -> (Vec<serde_json::Value>, Option
                 )
             })
             .collect();
+        let read_status = match &source {
+            sources::SourceView::Directory(view) => Some(view.read_status()),
+            _ => None,
+        };
         for product in source.products() {
             agents.push(serde_json::json!({
                 "id":product.id,"name":product.display_name,
@@ -80,7 +93,7 @@ pub(crate) fn plugin_agents(state: &AppState) -> (Vec<serde_json::Value>, Option
                 "connected":source.source().status.authorization == d::Authorization::Authorized,
                 "readonly":true,"sourceId":source.source().id,
                 "connectionAdapter": source.has_agent_connection().then_some("agent.connection@1"),
-                "pluginId":source.plugin_id(),"sourceState":source.source().status,"capabilities":capabilities
+                "pluginId":source.plugin_id(),"directoryRead":read_status,"sourceState":source.source().status,"capabilities":capabilities
             }));
         }
     }
@@ -116,6 +129,7 @@ pub(crate) async fn authorize_source(
     Json(input): Json<external::api::SourcePath>,
 ) -> ApiResult {
     let manager = state.plugins.clone();
+    let intake = state.readonly.intake.clone();
     let package = local_agent_core::plugin::full::PackageQuery {
         plugin_id: input.plugin_id.clone(),
         digest: input.digest.clone(),
@@ -133,7 +147,7 @@ pub(crate) async fn authorize_source(
         })
         .await
         .and_then(|value| {
-            manager.watch_source(package)?;
+            manager.watch_source(package, intake)?;
             Ok(value)
         }),
     )
@@ -143,11 +157,13 @@ pub(crate) async fn refresh_source(
     Json(input): Json<d::SourceConsentQuery>,
 ) -> ApiResult {
     external::api::response(
-        state
-            .plugins
-            .domain_refresh_source(input)
-            .await
-            .map(|_| serde_json::json!({"updated":true})),
+        async {
+            if !external::platform::refresh_if_directory(state.clone(), input.clone()).await? {
+                state.plugins.domain_refresh_source(input).await?;
+            }
+            Ok(serde_json::json!({"updated":true}))
+        }
+        .await,
     )
 }
 
@@ -193,6 +209,7 @@ pub(crate) async fn consent(
     Json(input): Json<d::SourceConsent>,
 ) -> ApiResult {
     let manager = state.plugins.clone();
+    let intake = state.readonly.intake.clone();
     let package = local_agent_core::plugin::full::PackageQuery {
         plugin_id: input.plugin_id.clone(),
         digest: input.digest.clone(),
@@ -204,7 +221,7 @@ pub(crate) async fn consent(
         })
         .await
         .and_then(|value| {
-            manager.watch_source(package)?;
+            manager.watch_source(package, intake)?;
             Ok(value)
         }),
     )

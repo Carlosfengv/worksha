@@ -154,7 +154,7 @@ impl ReadOnlySessionSource for JsonlSource {
                             path.clone(),
                             IndexedFile {
                                 fact_calls: super::domain_facts::CallIndex::new(&parsed.calls),
-                                activity_messages: parsed.activity_messages,
+                                activity_messages: parsed.activity_messages.into(),
                                 context: parsed.context.usage_summary(),
                                 native_products: parsed.summary.agent_products.clone(),
                                 native_unknown_non_calls: parsed.unknown_non_calls,

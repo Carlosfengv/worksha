@@ -353,3 +353,123 @@ pub(crate) async fn export_plugin_connector(
     .map_err(|_| "连接文件保存未完成")?;
     Ok(serde_json::json!({"saved":true}))
 }
+
+#[tauri::command]
+pub(crate) async fn list_platform_contributions(
+    backend: tauri::State<'_, Backend>,
+) -> Result<serde_json::Value, String> {
+    backend
+        .request(
+            reqwest::Method::GET,
+            "/api/plugins/platform/contributions",
+            None,
+        )
+        .await
+}
+
+#[tauri::command]
+pub(crate) async fn query_platform_slot(
+    backend: tauri::State<'_, Backend>,
+    request: local_agent_core::plugin::platform::PlatformSlotQuery,
+) -> Result<serde_json::Value, String> {
+    backend
+        .request(
+            reqwest::Method::POST,
+            "/api/plugins/platform/slot",
+            Some(serde_json::to_value(request).map_err(|_| "插件插槽查询参数无效")?),
+        )
+        .await
+}
+
+#[tauri::command]
+pub(crate) async fn invoke_platform_action(
+    backend: tauri::State<'_, Backend>,
+    request: local_agent_core::plugin::platform::PlatformActionRequest,
+) -> Result<serde_json::Value, String> {
+    backend
+        .request(
+            reqwest::Method::POST,
+            "/api/plugins/platform/action",
+            Some(serde_json::to_value(request).map_err(|_| "插件数据操作参数无效")?),
+        )
+        .await
+}
+
+#[tauri::command]
+pub(crate) async fn choose_plugin_directory_grant(
+    app: tauri::AppHandle,
+    backend: tauri::State<'_, Backend>,
+    request: local_agent_core::plugin::platform::DirectoryGrantRequest,
+) -> Result<serde_json::Value, String> {
+    use local_agent_core::plugin::platform::DirectoryPurpose;
+
+    let origin = backend.context()?;
+    let catalog = origin
+        .request(
+            reqwest::Method::GET,
+            "/api/plugins/platform/contributions",
+            None,
+        )
+        .await?;
+    let plugin = catalog["items"]
+        .as_array()
+        .and_then(|items| {
+            items.iter().find(|item| {
+                item["pluginId"] == request.plugin_id
+                    && item["digest"] == request.digest
+                    && item["enabled"] == true
+            })
+        })
+        .ok_or("请先启用对应的插件")?;
+    let title = match request.purpose {
+        DirectoryPurpose::SourceRead
+            if plugin["definition"]["adapter"]["kind"] == "agent-adapter" =>
+        {
+            "授权此插件读取所选目录中的会话"
+        }
+        DirectoryPurpose::LogSink if plugin["definition"]["logSink"].is_object() => {
+            "授权此插件向所选目录写入脱敏网关日志"
+        }
+        _ => return Err("此插件未声明对应的目录能力".into()),
+    };
+    let revision = plugin["grantRevision"]
+        .as_str()
+        .ok_or("插件授权版本暂不可读")?;
+    let window = app.get_webview_window("main").ok_or("应用窗口不可用")?;
+    let selected = tokio::task::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_parent(&window)
+            .set_title(title)
+            .blocking_pick_folder()
+    })
+    .await
+    .map_err(|_| "未完成目录选择")?;
+    let Some(selected) = selected else {
+        return Ok(serde_json::Value::Null);
+    };
+    let path = selected.into_path().map_err(|_| "请选择本机目录")?;
+    origin
+        .request(
+            reqwest::Method::POST,
+            "/api/plugins/platform/directory",
+            Some(
+                serde_json::json!({"request":request,"path":path,"expectedGrantRevision":revision}),
+            ),
+        )
+        .await
+}
+
+#[tauri::command]
+pub(crate) async fn manage_plugin_platform(
+    backend: tauri::State<'_, Backend>,
+    request: local_agent_core::plugin::platform::PlatformManageRequest,
+) -> Result<serde_json::Value, String> {
+    backend
+        .request(
+            reqwest::Method::POST,
+            "/api/plugins/platform/manage",
+            Some(serde_json::to_value(request).map_err(|_| "插件管理参数无效")?),
+        )
+        .await
+}

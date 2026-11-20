@@ -63,7 +63,9 @@ test("Session context distinguishes observed zero, calculated percentage, compre
     "/tests/frontend/tables.html?mode=activity#/sessions/codex%3Aa",
   );
   await page.getByRole("tab", { name: "上下文", exact: true }).click();
-  const context = page.getByRole("region", { name: "会话上下文" });
+  const context = page
+    .getByRole("tabpanel", { name: "上下文", exact: true })
+    .getByRole("region", { name: "会话上下文", exact: true });
   await expect(context).toContainText("0 Token");
   await expect(context).toContainText("0.0%");
   await expect(context.getByText("真实采集", { exact: true })).toHaveCount(2);

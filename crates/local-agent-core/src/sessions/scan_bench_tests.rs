@@ -791,3 +791,50 @@ fn refresh_capacity(
         );
     }
 }
+
+#[test]
+#[ignore = "explicit native sampler benchmark using generated histories"]
+fn native_sampler_capacity() {
+    let count: usize = std::env::var("LOCAL_AGENT_NATIVE_FILES")
+        .unwrap_or_else(|_| "1000".into())
+        .parse()
+        .unwrap();
+    let samples = 120usize;
+    let append = std::env::var("LOCAL_AGENT_NATIVE_APPEND").as_deref() == Ok("1");
+    let home = tempfile::tempdir().unwrap();
+    let dir = home.path().join(".claude/projects/fixture");
+    fs::create_dir_all(&dir).unwrap();
+    let timestamp = Utc::now().to_rfc3339();
+    for n in 0..count {
+        let row = json!({"type":"user","uuid":format!("u-{n}"),"sessionId":format!("s-{n}"),"timestamp":timestamp,"message":{"role":"user","content":"fixture"}});
+        fs::write(dir.join(format!("{n}.jsonl")), format!("{row}\n")).unwrap();
+    }
+    let sessions = NativeSessions::new(home.path().into(), &["claude".into()]);
+    sessions.refresh().unwrap();
+    let mut watch = live::NativeWatch::default();
+    watch.poll(&sessions);
+    let mut timings = Vec::new();
+    for sample in 0..samples {
+        if append && count > 0 {
+            let n = sample % count;
+            let row = json!({"type":"user","uuid":format!("a-{sample}"),"sessionId":format!("s-{n}"),"timestamp":Utc::now().to_rfc3339(),"message":{"role":"user","content":"append fixture"}});
+            writeln!(
+                fs::OpenOptions::new()
+                    .append(true)
+                    .open(dir.join(format!("{n}.jsonl")))
+                    .unwrap(),
+                "{row}"
+            )
+            .unwrap();
+        }
+        let start = Instant::now();
+        std::hint::black_box(watch.poll(&sessions));
+        timings.push(start.elapsed().as_micros());
+    }
+    timings.sort_unstable();
+    println!(
+        "NATIVE_POLL files={count} append={append} samples={samples} p50_us={} p95_us={}",
+        timings[samples / 2],
+        timings[samples * 95 / 100 - 1]
+    );
+}

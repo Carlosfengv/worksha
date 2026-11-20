@@ -452,3 +452,50 @@ function parsePlanCapacity(value: unknown): PlanCapacity | undefined {
   }
   return value as unknown as PlanCapacity;
 }
+
+import { submitPlatformAction } from "./platform-operation";
+import platformCatalogSchema from "../../../contracts/plugins/platform/contributions.schema.json";
+import platformSlotSchema from "../../../contracts/plugins/platform/slot-view.schema.json";
+import type {
+  DirectoryGrantRequest,
+  PlatformActionRequest,
+  PlatformContributionList,
+  PlatformManageRequest,
+  PlatformSlotQuery,
+  PlatformSlotView,
+} from "../../../contracts/plugins/platform/types";
+
+export const platformPluginsApi = {
+  async list() {
+    return parseSchema<PlatformContributionList>(
+      platformCatalogSchema,
+      await command<unknown>("list_platform_contributions"),
+    );
+  },
+  async query(request: PlatformSlotQuery) {
+    return parseSchema<PlatformSlotView>(
+      platformSlotSchema,
+      await command<unknown>("query_platform_slot", { request }),
+    );
+  },
+  async invoke(input: PlatformActionRequest) {
+    const { storeId, ...request } = input;
+    return submitPlatformAction(request, storeId ?? null, (body) =>
+      command<unknown>("invoke_platform_action", { request: body }),
+    );
+  },
+  async chooseDirectory(request: DirectoryGrantRequest) {
+    const result = await command<unknown>("choose_plugin_directory_grant", {
+      request,
+    });
+    if (result !== null) invalidateBackendReads();
+    return result;
+  },
+  async manage(request: PlatformManageRequest) {
+    const result = await command<unknown>("manage_plugin_platform", {
+      request,
+    });
+    invalidateBackendReads();
+    return result;
+  },
+};

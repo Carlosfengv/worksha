@@ -273,7 +273,7 @@ fn an_unverifiable_epoch_is_never_reinitialized_while_checking_committed_sources
     for damage in [
         "DELETE FROM observation_content_epoch",
         "UPDATE observation_content_epoch SET format=2",
-        "PRAGMA user_version=2",
+        "PRAGMA user_version=99",
     ] {
         let temp = tempfile::tempdir().unwrap();
         let store = ObservationStore::open(temp.path()).unwrap();

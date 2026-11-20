@@ -7,7 +7,11 @@ use std::{
 };
 
 impl Manager {
-    pub(crate) fn watch_source(self: &Arc<Self>, query: f::PackageQuery) -> Result<()> {
+    pub(crate) fn watch_source(
+        self: &Arc<Self>,
+        query: f::PackageQuery,
+        intake: Arc<crate::plugin_host::intake::Intake>,
+    ) -> Result<()> {
         if !self.full_query(&query.plugin_id, &query.digest)? {
             return Ok(());
         }
@@ -47,6 +51,9 @@ impl Manager {
                 if manager.stopping.load(Ordering::Acquire) {
                     break;
                 }
+                let Some(permit) = intake.acquire_for(None) else {
+                    continue;
+                };
                 let Some((grant, stamp)) = manager.full.lock().ok().and_then(|host| {
                     let grant = host.grants.get(&query.plugin_id).filter(|grant| {
                         grant.lease == lease && host.active.get(&query.plugin_id) == Some(&lease)
@@ -72,7 +79,9 @@ impl Manager {
                     continue;
                 }
                 // Every scan rechecks the source identity and lease before publish.
-                if let Err(error) = manager.full_refresh(query.clone()).await
+                if let Err(error) = crate::plugin_host::intake::ACTIVE_JOB
+                    .scope(Arc::new(permit), manager.full_refresh(query.clone()))
+                    .await
                     && matches!(
                         error.code,
                         "grant_revoked"

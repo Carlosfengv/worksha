@@ -7,3 +7,18 @@ crate-type = ["cdylib"]
 [dependencies]
 wit-bindgen = "=0.43.0"
 serde_json = { version = "1", features = ["arbitrary_precision"] }
+
+[[example]]
+name = "unified_provider"
+path = "../unified-provider/src/lib.rs"
+crate-type = ["cdylib"]
+
+[[example]]
+name = "otel_log_archive"
+path = "../gateway-log-archive/src/lib.rs"
+crate-type = ["cdylib"]
+
+[[example]]
+name = "platform_guest_fixture"
+path = "../../fixtures/platform-guest.rs"
+crate-type = ["cdylib"]

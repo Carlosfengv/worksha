@@ -9,8 +9,7 @@ import { useWorkspaceNavigation } from "@/shared/hooks/use-workspace-navigation"
 import { useSharedRead } from "@/shared/hooks/use-shared-read";
 import { modelServicesResource } from "@/features/model-services/queries";
 import { gatewayStatusResource } from "@/features/settings/queries";
-import { PluginDetailSlots } from "@/features/plugins/detail-slots";
-import { ObjectContributionSlots } from "@/features/plugins/object-detail-slots";
+import { ExtensionSlot } from "@/features/plugins/extension-slot";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -405,6 +404,10 @@ export function ProviderDetail({
           </Badge>
         </div>
         <PageActions>
+          <ExtensionSlot
+            points={["provider.detail.actions"]}
+            context={{ target: "provider", objectId: provider.id }}
+          />
           <Button
             variant="tertiary"
             size="sm"
@@ -743,12 +746,12 @@ export function ProviderDetail({
           </section>
         </TabPanel>
       </Tabs>
-      <>
-        <PluginDetailSlots target="provider" objectId={provider.id} />
-        <ObjectContributionSlots
-          object={{ target: "provider", id: provider.id }}
-        />
-      </>
+      <ExtensionSlot
+        points={["provider.detail.card", "provider.detail.tab"]}
+        legacyDetail
+        context={{ target: "provider", objectId: provider.id }}
+        object={{ target: "provider", id: provider.id }}
+      />
     </div>
   );
 }

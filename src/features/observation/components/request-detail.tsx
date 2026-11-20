@@ -1,4 +1,4 @@
-import { ObjectContributionSlots } from "@/features/plugins/object-detail-slots";
+import { ExtensionSlot } from "@/features/plugins/extension-slot";
 import { useAgentDirectory } from "@/shared/hooks/use-agent-directory";
 import { useBackendReadEpoch } from "@/shared/hooks/use-backend-read-epoch";
 import { backendReadEpoch } from "@/shared/lib/backend-recovery";
@@ -749,7 +749,13 @@ export function RequestDetail({
             更新于 {date(data.asOf)}
             。仅展示诊断元数据，不额外保存请求正文、回复或认证头。下钻不会重发模型请求。
           </p>
-          <ObjectContributionSlots
+          <ExtensionSlot
+            points={["request.detail.card", "request.detail.actions"]}
+            context={{
+              target: "request",
+              objectId: r.id,
+              unit: r.native ? "model-response" : "logical-request",
+            }}
             object={{
               target: "request",
               id: r.id,

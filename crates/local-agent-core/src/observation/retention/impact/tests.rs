@@ -240,7 +240,7 @@ fn empty_is_confirmed_but_missing_and_future_schema_are_not_empty() {
     let empty = gateway(dir.path(), 30, now()).unwrap();
     assert_eq!(empty.attempts, 0);
     assert!(empty.classification_complete);
-    store.0.execute_batch("PRAGMA user_version=2").unwrap();
+    store.0.execute_batch("PRAGMA user_version=99").unwrap();
     assert_eq!(
         gateway(dir.path(), 30, now()).unwrap_err(),
         Error::UnsupportedSchema
@@ -279,7 +279,10 @@ fn legacy_preview_does_not_migrate_and_current_preview_rejects_missing_epoch_met
         )
         .unwrap();
     assert!(!created);
-    store.0.execute_batch("PRAGMA user_version=0").unwrap();
+    // Construct a genuine version-zero source without the v2 export objects.
+    store.0.execute_batch("DROP TRIGGER observation_export_insert; DROP TRIGGER observation_export_update;
+        DROP TRIGGER observation_export_delete; DROP VIEW observation_export_projection;
+        DROP TABLE observation_export_feed; DROP TABLE observation_export_retention; PRAGMA user_version=0;").unwrap();
     assert_eq!(gateway(dir.path(), 30, now()).unwrap().attempts, 1);
     let version: u32 = store
         .0

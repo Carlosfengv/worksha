@@ -8,7 +8,7 @@ import { TabItem, Tabs, TabsList } from "@/components/ui/tabs";
 import { useSessionGrouping } from "@/features/sessions/hooks/use-session-grouping";
 import { groupSessionsByProject } from "@/features/sessions/session-collections";
 import { useWorkspaceNavigation } from "@/shared/hooks/use-workspace-navigation";
-import { ObjectContributionSlots } from "@/features/plugins/object-detail-slots";
+import { ExtensionSlot } from "@/features/plugins/extension-slot";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
@@ -227,6 +227,7 @@ export function UnifiedWorkspace({
             <Button asChild variant="tertiary" size="sm">
               <a href={manageHref}>管理授权</a>
             </Button>
+            <ExtensionSlot points={["sessions.toolbar.actions"]} />
           </div>
           {directory.loading && !directory.data && (
             <p role="status" className="text-label text-fg-muted">
@@ -658,6 +659,16 @@ function UnifiedBody({
             : ""}
         </p>
         <div className="flex flex-wrap gap-2">
+          {item && (
+            <ExtensionSlot
+              points={["session.detail.actions"]}
+              context={{
+                target: "session",
+                objectId: item.record.id,
+                scope: item.sourceId,
+              }}
+            />
+          )}
           <Button
             variant="tertiary"
             size="sm"
@@ -686,7 +697,13 @@ function UnifiedBody({
         className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3"
       >
         {item && (
-          <ObjectContributionSlots
+          <ExtensionSlot
+            points={["session.inspector.card", "session.inspector.tab"]}
+            context={{
+              target: "session",
+              objectId: item.record.id,
+              scope: item.sourceId,
+            }}
             object={{
               target: "session",
               id: item.record.id,

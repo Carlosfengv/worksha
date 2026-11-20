@@ -134,7 +134,7 @@ fn scan(
     let encoding: String = tx
         .query_row("PRAGMA encoding", [], |r| r.get(0))
         .map_err(unavailable)?;
-    if ![0, 1].contains(&version)
+    if ![0, 1, 2].contains(&version)
         || encoding != "UTF-8"
         || !read_source::table(
             &tx,
@@ -149,12 +149,13 @@ fn scan(
     {
         return Err(Error::UnsupportedSchema);
     }
-    if version == 1 {
-        crate::observation::content_epoch::read(&tx).map_err(|_| Error::UnsupportedSchema)?;
+    if version > 0 {
+        crate::observation::content_epoch::epoch_record(&tx)
+            .map_err(|_| Error::UnsupportedSchema)?;
     } else {
         let misplaced: bool = tx
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='observation_content_epoch')",
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='observation_content_epoch' OR name GLOB 'observation_export_*')",
                 [],
                 |r| r.get(0),
             )

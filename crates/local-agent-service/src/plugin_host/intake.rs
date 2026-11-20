@@ -30,6 +30,10 @@ pub(crate) struct Intake {
     changed: Condvar,
 }
 pub(crate) struct Permit(Arc<Intake>, Option<&'static str>);
+// Blocking plugin work can outlive its awaiting task. Keep its admission until
+// the actual worker returns, including during cancellation and mode changes.
+tokio::task_local! { pub(crate) static ACTIVE_JOB: Arc<Permit>; }
+
 pub(crate) struct Transition {
     intake: Arc<Intake>,
     previous: bool,
@@ -242,6 +246,32 @@ mod tests {
             .commit(true);
         assert!(intake.acquire().is_some());
     }
+    #[tokio::test]
+    async fn cancelled_waiter_keeps_admission_until_blocking_work_exits() {
+        let intake = Intake::new(true);
+        let permit = Arc::new(intake.acquire().unwrap());
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let (release, wait) = std::sync::mpsc::channel();
+        let task = tokio::spawn(ACTIVE_JOB.scope(
+            permit,
+            crate::plugin_host::external::run_sync(move || {
+                started.send(()).unwrap();
+                wait.recv().unwrap();
+                Ok(())
+            }),
+        ));
+        ready.await.unwrap();
+        task.abort();
+        let _ = task.await;
+        assert!(intake.transition(Duration::ZERO).is_err());
+        release.send(()).unwrap();
+        intake
+            .transition(Duration::from_secs(5))
+            .unwrap()
+            .commit(false);
+        assert!(intake.acquire().is_none());
+    }
+
     #[tokio::test]
     async fn a_stream_body_owns_the_permit_until_completion_or_drop() {
         let intake = Intake::new(true);

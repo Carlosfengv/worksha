@@ -112,23 +112,24 @@ const modelColumns: ColumnDef<ModelRow>[] = [
   },
 ];
 type CallRow = ProviderUsage["calls"][number];
-const callColumns = (
-  agentNames: Record<string, string>,
-): ColumnDef<CallRow>[] => [
+const callColumns: ColumnDef<CallRow>[] = [
   {
     id: "model",
     header: "模型 / Agent",
-    cell: ({ row }) => (
-      <>
-        <p className="max-w-72 break-all">
-          {row.original.model ?? "模型未记录"}
-        </p>
-        <p className="text-label text-fg-muted">
-          {agentNames[row.original.agentProductId ?? row.original.agentId] ??
-            "客户端未知"}
-        </p>
-      </>
-    ),
+    cell: function ModelAgentCell({ row }) {
+      const { agentNames } = useAgentDirectory();
+      return (
+        <>
+          <p className="max-w-72 break-all">
+            {row.original.model ?? "模型未记录"}
+          </p>
+          <p className="text-label text-fg-muted">
+            {agentNames[row.original.agentProductId ?? row.original.agentId] ??
+              "客户端未知"}
+          </p>
+        </>
+      );
+    },
   },
   {
     id: "time",
@@ -306,7 +307,6 @@ export function ProviderHistory({
   filters?: UsageFilters;
   onFiltersChange?: (filters: UsageFilters) => void;
 }) {
-  const { agentNames } = useAgentDirectory();
   const [localFilters, setLocalFilters] = useState<UsageFilters>({
     source: "gateway",
   });
@@ -344,7 +344,7 @@ export function ProviderHistory({
   });
   const calls = useDataTable({
     data: data?.calls ?? [],
-    columns: useMemo(() => callColumns(agentNames), [agentNames]),
+    columns: callColumns,
     getRowId: (r) => r.id,
     enableRowSelection: false,
     enableHiding: false,

@@ -27,7 +27,101 @@ fn metric(
         value,
     }
 }
+#[cfg(test)]
+#[test]
+fn native_summary_lease_expires_even_if_source_is_reenabled() {
+    let home = tempfile::tempdir().unwrap();
+    let sessions = NativeSessions::new(home.path().into(), &["claude".into()]);
+    let lease = sessions
+        .domain_activity_authorizations()
+        .unwrap()
+        .into_iter()
+        .find(|lease| lease.source_id() == "claude")
+        .unwrap();
+    lease.ensure_current(&sessions).unwrap();
+    sessions.set_enabled("claude", false).unwrap();
+    assert!(lease.ensure_current(&sessions).is_err());
+    sessions.set_enabled("claude", true).unwrap();
+    assert!(lease.ensure_current(&sessions).is_err());
+}
+
 impl NativeSessions {
+    pub fn platform_project_titles(
+        &self,
+        ids: &std::collections::BTreeSet<&str>,
+        hidden: &std::collections::BTreeSet<String>,
+    ) -> d::Result<std::collections::BTreeMap<String, (String, String)>> {
+        let state = self
+            .lock()
+            .map_err(|_| failure(d::ErrorCode::Unavailable))?;
+        let ready = state
+            .sources
+            .iter()
+            .filter(|source| {
+                source.enabled && source.status == "ready" && self.source_active(&source.agent_id)
+            })
+            .map(|source| source.agent_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        Ok(unique_files(&state)
+            .into_iter()
+            .filter_map(|file| {
+                let id = file.summary.project_id.as_ref()?;
+                let name = file.summary.project_name.as_ref()?;
+                (ids.contains(id.as_str())
+                    && !hidden.contains(id)
+                    && ready.contains(file.agent.as_str()))
+                .then(|| {
+                    (
+                        id.clone(),
+                        (file.agent.clone(), super::sanitize_label(name, 120)),
+                    )
+                })
+            })
+            .collect())
+    }
+
+    pub fn platform_session_summaries(
+        &self,
+        ids: &std::collections::BTreeSet<&str>,
+    ) -> d::Result<std::collections::BTreeMap<String, crate::plugin::platform::HydratedEntity>>
+    {
+        use crate::plugin::platform::{Authorization, Freshness, HydratedEntity};
+
+        let state = self
+            .lock()
+            .map_err(|_| failure(d::ErrorCode::Unavailable))?;
+        let ready = state
+            .sources
+            .iter()
+            .filter(|source| {
+                source.enabled && source.status == "ready" && self.source_active(&source.agent_id)
+            })
+            .map(|source| source.agent_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        Ok(unique_files(&state)
+            .into_iter()
+            .filter(|file| {
+                ids.contains(file.summary.id.as_str()) && ready.contains(file.agent.as_str())
+            })
+            .map(|file| {
+                let summary = &file.summary;
+                (
+                    summary.id.clone(),
+                    HydratedEntity {
+                        authorization: Authorization::Authorized,
+                        freshness: Freshness::Current,
+                        title: Some(super::sanitize_label(&summary.title, 200)),
+                        source_id: Some(file.agent.clone()),
+                        activity_state: None,
+                        model: None,
+                        total_tokens: summary.usage.total_tokens,
+                        route_hash: None,
+                    },
+                )
+            })
+            .collect())
+    }
+
     /// Hidden projects remain a display boundary; session metadata keeps its existing visibility.
     pub fn object_summary(
         &self,

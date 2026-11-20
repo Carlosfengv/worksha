@@ -83,11 +83,10 @@ pub(in crate::domain) fn read(
             SourceView::Legacy(v) => legacy_snapshot(v)?,
             _ => None,
         };
-        let snapshot = match view {
-            SourceView::Full(v) => v.snapshot(),
-            SourceView::Legacy(_) => legacy.as_ref(),
-        }
-        .ok_or(fail("not_found"))?;
+        let snapshot = view
+            .fact_snapshot()
+            .or(legacy.as_ref())
+            .ok_or(fail("not_found"))?;
         let graph = snapshot.filtered_graph(&selection, &before.hidden);
         let record = graph
             .iter()

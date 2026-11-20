@@ -1,0 +1,54 @@
+manifest:
+  manifestVersion: 1
+  id: org.example.session-kanban
+  publisher: org.example
+  version: 1.0.0
+  displayName: 项目与会话看板
+  hostApi: ^1.0.0
+  runtime: { kind: declarative }
+  capabilities: [ui.platform@1, storage.plugin-data@1]
+platform:
+  schemaVersion: 1
+  collections:
+    cards:
+      groupBy: state
+      fields:
+        title: { label: 标题, kind: text, required: true }
+        description: { label: 说明, kind: textarea }
+        state: { label: 状态, kind: enum, required: true, options: [待处理, 进行中, 待核对, 已完成] }
+        session: { label: 会话, kind: ref:session }
+        project: { label: 项目, kind: ref:project }
+  views:
+    board:
+      title: 项目与会话看板
+      kind: kanban
+      collection: cards
+      primaryField: title
+      actions: [records.create, records.update, records.move, records.delete]
+    project-board:
+      title: 项目看板
+      kind: kanban
+      collection: cards
+      primaryField: title
+      actions: [records.create, records.update, records.move, records.delete]
+    session-cards:
+      title: 关联看板卡片
+      kind: detail-list
+      collection: cards
+      primaryField: title
+      actions: [records.create, records.move]
+    bind-card:
+      title: 新建关联卡片
+      kind: action-bar
+      collection: cards
+      actions: [records.create]
+    board-summary:
+      title: 看板任务
+      kind: stat-row
+      collection: cards
+  slots:
+    - { id: board-nav, point: nav.home-sidebar, viewId: board, group: observation, icon: list-checks }
+    - { id: project-board-tab, point: project.detail.tab, viewId: project-board, filterByContext: project }
+    - { id: session-card-list, point: session.inspector.card, viewId: session-cards, filterByContext: session }
+    - { id: session-card-action, point: session.detail.actions, viewId: bind-card, filterByContext: session }
+    - { id: overview-board-summary, point: overview.section, viewId: board-summary }

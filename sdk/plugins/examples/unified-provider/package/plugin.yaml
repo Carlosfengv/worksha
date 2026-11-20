@@ -1,0 +1,22 @@
+manifest:
+  manifestVersion: 1
+  id: org.example.unified-provider
+  publisher: org.example
+  version: 1.0.0
+  displayName: 复合供应商示例
+  hostApi: ^1.0.0
+  runtime: { kind: wasm-component, entry: plugin.wasm, abi: local-agent:plugin@1.0.0 }
+  capabilities: [ui.platform@1, provider.adapter@1, provider.catalog@1, provider.models@1, account.quota-source@1, gateway.protocol@1, ui.contribution@1]
+  requires: [host.provider-catalog@1, host.connection-broker@1]
+  permissions:
+    - { kind: connection.request, path: /catalog }
+    - { kind: ui.contribute }
+  providers:
+    - { id: demo, name: 复合供应商示例, protocol: responses, endpoint: "https://adapter.example.invalid/v1", model: sample-model }
+  views:
+    - { id: manage, title: 复合供应商, kind: settings, description: 安装后按需要分别授权模型目录、协议与额度连接。 }
+    - { id: quota, title: 供应商额度, kind: quota, description: 显示用户授权的连接额度。 }
+    - { id: presets, title: 供应商预设, kind: providers, description: 可从预设创建本机连接。 }
+platform:
+  schemaVersion: 1
+  adapter: { kind: provider-adapter }

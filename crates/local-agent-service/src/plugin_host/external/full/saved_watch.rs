@@ -69,7 +69,10 @@ impl Manager {
         Ok(())
     }
 
-    pub(crate) async fn restore_saved_sources(self: &Arc<Self>) -> Result<()> {
+    pub(crate) async fn restore_saved_sources(
+        self: &Arc<Self>,
+        intake: Arc<crate::plugin_host::intake::Intake>,
+    ) -> Result<()> {
         let manager = self.clone();
         let ids = run_sync(move || {
             // Earlier persisted display consent implied a watch only for one
@@ -94,7 +97,7 @@ impl Manager {
             let restored = run_sync(move || manager.restore_saved_watch(&id)).await;
             drop(gate);
             match restored {
-                Ok(Some(query)) => match self.watch_source(query.clone()) {
+                Ok(Some(query)) => match self.watch_source(query.clone(), intake.clone()) {
                     Ok(()) => {
                         let _ = self.full_refresh(query).await;
                     }

@@ -276,77 +276,75 @@ impl NativeWatch {
         let Ok(catalog) = sessions.catalog.lock() else {
             return vec![];
         };
-        let meta: HashMap<_, _> = super::unique_files(&catalog)
+        let indexed_paths: HashSet<_> = catalog.files.keys().cloned().collect();
+        let files = super::unique_files(&catalog)
             .into_iter()
-            .map(|f| {
+            .map(|file| {
                 (
-                    f.path.clone(),
-                    (
-                        f.summary.clone(),
-                        f.calls.iter().rev().find_map(|c| c.model.clone()),
-                        f.calls
-                            .iter()
-                            .filter(|c| {
-                                matches!(
-                                    c.agent_attribution,
-                                    Some(
-                                        "desktop_tool_execution"
-                                            | "conflicting_evidence"
-                                            | "ambiguous_evidence"
-                                    )
-                                )
-                            })
-                            .filter_map(|c| {
-                                c.id.strip_prefix(&format!("{}:call:", c.session_id))
-                                    .map(|id| {
-                                        (
-                                            id.to_owned(),
-                                            (c.agent_product_id.clone(), c.agent_attribution),
-                                        )
-                                    })
-                            })
-                            .collect::<HashMap<_, _>>(),
-                    ),
+                    file.path.clone(),
+                    file.summary.clone(),
+                    file.calls.clone(),
+                    file.activity_messages.clone(),
+                    file.stamp,
                 )
             })
-            .collect();
-        let indexed_paths: HashSet<_> = catalog.files.keys().cloned().collect();
-        let indexed_source_paths = super::unique_files(&catalog)
-            .into_iter()
-            .map(|file| (file.summary.id.clone(), file.path.clone()))
-            .collect::<HashMap<_, _>>();
-        let indexed_last = super::unique_files(&catalog)
-            .into_iter()
-            .filter(|file| {
-                !file.activity_messages.is_empty() && super::stamp(&file.path) == Some(file.stamp)
-            })
-            .filter_map(|file| {
-                file.activity_messages
-                    .last()
-                    .map(|activity| (file.summary.id.clone(), (activity.clone(), file.stamp)))
-            })
-            .collect::<HashMap<_, _>>();
-        let mut history = super::unique_files(&catalog)
-            .into_iter()
-            .filter(|file| {
-                !file.activity_messages.is_empty()
-                    && super::stamp(&file.path).is_some_and(|current| {
-                        current == file.stamp
-                            || (current.0 > file.stamp.0
-                                && (current.2, current.3) == (file.stamp.2, file.stamp.3))
-                    })
-            })
-            .flat_map(|file| {
-                file.activity_messages
-                    .iter()
-                    .map(move |activity| (activity, &file.summary))
-            })
             .collect::<Vec<_>>();
-        history.retain(|(activity, _)| {
-            DateTime::parse_from_rfc3339(&activity.event_at).is_ok_and(|at| {
-                (0..=86_400_000).contains(&Utc::now().signed_duration_since(at).num_milliseconds())
-            })
-        });
+        drop(catalog);
+
+        let mut meta = HashMap::new();
+        let mut indexed_source_paths = HashMap::new();
+        let mut indexed_last = HashMap::new();
+        let mut history = Vec::new();
+        let now = Utc::now();
+        for (path, summary, calls, messages, stamp) in &files {
+            indexed_source_paths.insert(summary.id.clone(), path.clone());
+            let model = calls.iter().rev().find_map(|c| c.model.clone());
+            let attribution = calls
+                .iter()
+                .filter(|c| {
+                    matches!(
+                        c.agent_attribution,
+                        Some(
+                            "desktop_tool_execution"
+                                | "conflicting_evidence"
+                                | "ambiguous_evidence"
+                        )
+                    )
+                })
+                .filter_map(|c| {
+                    c.id.strip_prefix(&format!("{}:call:", c.session_id))
+                        .map(|id| {
+                            (
+                                id.to_owned(),
+                                (c.agent_product_id.clone(), c.agent_attribution),
+                            )
+                        })
+                })
+                .collect::<HashMap<_, _>>();
+            meta.insert(path.clone(), (summary, model, attribution));
+            let Some(last) = messages.last() else {
+                continue;
+            };
+            let Some(current) = super::stamp(path) else {
+                continue;
+            };
+            if current == *stamp {
+                indexed_last.insert(summary.id.clone(), (last.clone(), *stamp));
+            } else if current.0 <= stamp.0 || (current.2, current.3) != (stamp.2, stamp.3) {
+                continue;
+            }
+            history.extend(
+                messages
+                    .iter()
+                    .filter(|activity| {
+                        DateTime::parse_from_rfc3339(&activity.event_at).is_ok_and(|at| {
+                            (0..=86_400_000)
+                                .contains(&now.signed_duration_since(at).num_milliseconds())
+                        })
+                    })
+                    .map(|activity| (activity, summary)),
+            );
+        }
         history.sort_by(|(a, _), (b, _)| b.event_at.cmp(&a.event_at));
         let mut counts = HashMap::new();
         let indexed_history = history
@@ -363,7 +361,6 @@ impl NativeWatch {
                 activity
             })
             .collect::<Vec<_>>();
-        drop(catalog);
         let mut seen = HashSet::new();
         let mut failed = false;
         for source in sources.iter().filter(|s| s.enabled) {
@@ -416,7 +413,7 @@ impl NativeWatch {
                     continue;
                 }
                 seen.insert(path.clone());
-                let summary = meta.get(&path).map(|(summary, _, _)| summary);
+                let summary = meta.get(&path).map(|(summary, _, _)| *summary);
                 let tail = self.tails.entry(path.clone()).or_insert_with(|| Tail {
                     message_usages: HashMap::new(),
                     message_started_at: None,
@@ -1219,15 +1216,22 @@ impl NativeWatch {
             current.model = current.model.clone().or(history.model);
             current.turn_ttft_ms = current.turn_ttft_ms.or(history.turn_ttft_ms);
         }
-        for activity in activities.values() {
-            for old in self
-                .database_recent
-                .values_mut()
-                .filter(|old| old.session_id == activity.session_id)
-            {
-                old.title = activity.title.clone();
-                old.project = activity.project.clone();
+        // Several turns can share a session; resolve its label once from the
+        // freshest event before updating older cached turns.
+        let mut latest_label = HashMap::new();
+        for row in activities.values() {
+            let label = latest_label.entry(&row.session_id).or_insert(row);
+            if (&row.event_at, &row.id) > (&label.event_at, &label.id) {
+                *label = row;
             }
+        }
+        for old in self.database_recent.values_mut() {
+            if let Some(row) = latest_label.get(&old.session_id) {
+                old.title.clone_from(&row.title);
+                old.project.clone_from(&row.project);
+            }
+        }
+        for activity in activities.values() {
             self.database_recent
                 .insert(activity.id.clone(), activity.clone());
         }

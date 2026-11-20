@@ -14,6 +14,7 @@ async function openHistory(page: import("@playwright/test").Page, url: string) {
 test("costs keep actual zero, estimates and unknown separate, with per-call evidence and model scopes", async ({
   page,
 }) => {
+  await page.clock.install();
   await openHistory(
     page,
     "/tests/frontend/tables.html?mode=provider-history#/providers",
@@ -51,6 +52,8 @@ test("costs keep actual zero, estimates and unknown separate, with per-call evid
     .first()
     .click();
   await expect(dialog).toContainText("估算费用");
+  // The open cost details must survive the next Agent directory snapshot.
+  await page.clock.fastForward(5_100);
   await expect(
     dialog.getByRole("table", { name: "本次调用费用明细" }),
   ).toContainText("缓存命中");

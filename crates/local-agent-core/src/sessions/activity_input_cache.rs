@@ -1,7 +1,11 @@
 //! Private, bounded message summaries. Complete bodies and tool data never enter this cache.
 use super::activity_input::UserInput;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, io::Read, path::PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    io::Read,
+    path::PathBuf,
+};
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -36,6 +40,7 @@ struct Saved {
 #[derive(Default)]
 pub struct InputCache {
     rows: BTreeMap<String, CachedInput>,
+    by_time: BTreeSet<(chrono::DateTime<chrono::FixedOffset>, String)>,
     path: Option<PathBuf>,
     dirty: bool,
     pub error: Option<String>,
@@ -114,10 +119,18 @@ impl InputCache {
         self.rows.values()
     }
     pub fn insert(&mut self, mut row: CachedInput) {
+        let Ok(time) = chrono::DateTime::parse_from_rfc3339(&row.input.at) else {
+            return;
+        };
         if row.key.len() > 2048
             || row.agent.len() > 250
             || row.session_id.as_ref().is_some_and(|s| s.len() > 1024)
-            || chrono::DateTime::parse_from_rfc3339(&row.input.at).is_err()
+            || (self.rows.len() == 512
+                && !self.rows.contains_key(&row.key)
+                && self
+                    .by_time
+                    .first()
+                    .is_some_and(|(old, key)| (&time, &row.key) <= (old, key)))
             || row
                 .started_at
                 .as_ref()
@@ -166,27 +179,31 @@ impl InputCache {
         if self.rows.get(&row.key) == Some(&row) {
             return;
         }
-        self.rows.insert(row.key.clone(), row);
-        while self.rows.len() > 512 {
-            let oldest = self
-                .rows
-                .values()
-                .min_by_key(|row| {
-                    (
-                        chrono::DateTime::parse_from_rfc3339(&row.input.at).ok(),
-                        &row.key,
-                    )
-                })
-                .unwrap()
-                .key
-                .clone();
+        let key = row.key.clone();
+        if let Some(old) = self.rows.insert(key.clone(), row)
+            && let Ok(old_time) = chrono::DateTime::parse_from_rfc3339(&old.input.at)
+        {
+            self.by_time.remove(&(old_time, old.key));
+        }
+        self.by_time.insert((time, key));
+        if self.by_time.len() > 512
+            && let Some((_, oldest)) = self.by_time.pop_first()
+        {
             self.rows.remove(&oldest);
         }
         self.dirty = true;
     }
     pub fn retain(&mut self, keep: impl Fn(&CachedInput) -> bool) {
         let before = self.rows.len();
-        self.rows.retain(|_, row| keep(row));
+        self.rows.retain(|_, row| {
+            if keep(row) {
+                return true;
+            }
+            if let Ok(time) = chrono::DateTime::parse_from_rfc3339(&row.input.at) {
+                self.by_time.remove(&(time, row.key.clone()));
+            }
+            false
+        });
         self.dirty |= before != self.rows.len();
     }
     pub fn commit(&mut self) -> Result<(), String> {

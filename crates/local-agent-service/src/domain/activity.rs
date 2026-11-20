@@ -15,6 +15,19 @@ mod metrics;
 #[cfg(test)]
 mod tests;
 
+pub(crate) fn recent(stamp: Option<&str>, now: i64, window: i64) -> bool {
+    stamp
+        .and_then(d::timestamp)
+        .is_some_and(|at| (0..=window).contains(&now.saturating_sub(at)))
+}
+
+pub(crate) fn running_phase(phase: &str) -> bool {
+    matches!(
+        phase,
+        "processing" | "thinking" | "tool_requested" | "tool_returned" | "streaming"
+    )
+}
+
 pub(super) fn query(
     state: &AppState,
     input: a::UnifiedActivityQuery,
@@ -62,9 +75,7 @@ fn query_with(
         let observed = publication
             .and_then(|p| p.checked_at.as_ref())
             .filter(|t| d::timestamp(t).is_some());
-        let fresh = observed
-            .and_then(|t| d::timestamp(t))
-            .is_some_and(|at| (0..=15000).contains(&now_ms.saturating_sub(at)));
+        let fresh = recent(observed.map(String::as_str), now_ms, 15_000);
         if !usable || observed.is_none() {
             status.coverage = d::Coverage::Unavailable;
             status.freshness = d::Freshness::Unread;
@@ -100,19 +111,9 @@ fn query_with(
             );
             used_native.push(authority);
             for row in p.rows.iter().filter(|r| r.agent_id == source.source_id) {
-                let running = [
-                    "processing",
-                    "thinking",
-                    "tool_requested",
-                    "tool_returned",
-                    "streaming",
-                ]
-                .contains(&row.phase.as_str());
-                let current = fresh
-                    && !row.stale
-                    && running
-                    && d::timestamp(&row.event_at)
-                        .is_some_and(|at| (0..=30000).contains(&now_ms.saturating_sub(at)));
+                let running = running_phase(&row.phase);
+                let current =
+                    fresh && !row.stale && running && recent(Some(&row.event_at), now_ms, 30_000);
                 let record = a::ActivityRecord {
                     id: row.id.clone(),
                     kind: a::ActivityKind::NativeMessage,
@@ -232,6 +233,11 @@ fn query_with(
             SourceView::Full(v) if input.include_historical || v.live_report_window().is_some() => {
                 v.snapshot()
             }
+            SourceView::Directory(v)
+                if input.include_historical || v.live_report_window().is_some() =>
+            {
+                v.facts()
+            }
             _ => None,
         };
         if let Some(snapshot) = snapshot.filter(|s| s.available_kinds.contains(&FactKind::Activity))
@@ -262,7 +268,9 @@ fn query_with(
                     SourceView::Full(v) => v.live_report_window(),
                     _ => None,
                 };
-                let activity_state = if value.phase == d::facts::ActivityPhase::Running {
+                let activity_state = if let SourceView::Directory(source) = view {
+                    source.activity_state(value, now_ms)
+                } else if value.phase == d::facts::ActivityPhase::Running {
                     reported_window.map_or(a::ActivityState::Historical, |seconds| {
                         let recent = value
                             .occurred_at
@@ -319,7 +327,10 @@ fn query_with(
                     title: task.map(|task| task.title.clone()).unwrap_or_else(|| {
                         session.map_or_else(|| "来源历史活动".into(), |s| s.title.clone())
                     }),
-                    model: task.and_then(|task| task.model.clone()),
+                    model: match view {
+                        SourceView::Directory(source) => source.reported_model(&value.session_ref),
+                        _ => task.and_then(|task| task.model.clone()),
+                    },
                     phase: serde_json::to_value(&value.phase)
                         .ok()
                         .and_then(|v| v.as_str().map(Into::into))
@@ -354,7 +365,9 @@ fn query_with(
         } else {
             status.coverage = d::Coverage::Unavailable;
             status.problem = Some(
-                if !input.include_historical {
+                if !input.include_historical
+                    && !matches!(view, SourceView::Directory(v) if v.live_report_window().is_some())
+                {
                     "history_not_selected"
                 } else if matches!(view, SourceView::Legacy(_)) {
                     "unsupported"

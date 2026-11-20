@@ -119,6 +119,12 @@ export interface AgentDiscovery extends AgentProduct {
   location: string | null;
   connected: boolean;
   sourceState?: SourceProviderStatus;
+  directoryRead?: {
+    lastAttempt: string | null;
+    lastSuccess: string | null;
+    sessions: number | null;
+    problem: string | null;
+  } | null;
 }
 
 export interface AgentConnection {

@@ -122,6 +122,7 @@ export function PluginControls({
     (p) => p.kind === "connection.request",
   );
   const catalog = status.manifest.capabilities.includes("provider.models@1");
+  const quota = status.manifest.capabilities.includes("account.quota-source@1");
   const objects =
     status.manifest.requires?.includes("host.object-detail-slots@1") ?? false;
   const connectionNames = new Map(
@@ -240,7 +241,7 @@ export function PluginControls({
           </Button>
         )}
       </div>
-      {status.enabled && network && !catalog && (
+      {status.enabled && network && (!catalog || quota) && (
         <div className="space-y-3">
           <Field>
             <FieldLabel>额度连接</FieldLabel>

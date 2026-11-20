@@ -2,7 +2,7 @@
 //! installation identity, retention policy, consent or permission to delete.
 use rusqlite::{Connection, Transaction, TransactionBehavior, params};
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 pub(super) const RAW_COLUMNS: &[(&str, &str, u8, u8)] = &[
     ("id", "TEXT", 0, 1),
     ("started_at", "TEXT", 1, 0),
@@ -12,6 +12,12 @@ pub(super) const RAW_COLUMNS: &[(&str, &str, u8, u8)] = &[
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ContentEpoch(String);
+
+impl ContentEpoch {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EpochError {
@@ -81,6 +87,10 @@ fn read_snapshot(db: &Connection) -> Result<ContentEpoch, EpochError> {
     if version(db)? != SCHEMA_VERSION {
         return Err(EpochError::UnsupportedVersion);
     }
+    epoch_record(db)
+}
+
+pub(super) fn epoch_record(db: &Connection) -> Result<ContentEpoch, EpochError> {
     table(
         db,
         "observation_content_epoch",
@@ -132,14 +142,38 @@ pub fn advance(tx: &Transaction<'_>, expected: &ContentEpoch) -> Result<ContentE
     Ok(next)
 }
 
+pub(super) fn verify_export_schema(db: &Connection) -> Result<(), EpochError> {
+    let mut check = db
+        .prepare_cached("SELECT sql FROM main.sqlite_schema WHERE name=?1")
+        .map_err(unavailable)?;
+    for definition in include_str!("export_feed.sql").trim().split("\n\n") {
+        let name = definition
+            .split_ascii_whitespace()
+            .nth(2)
+            .ok_or(EpochError::InvalidRecord)?;
+        let sql: String = check
+            .query_row([name], |row| row.get(0))
+            .map_err(|_| EpochError::InvalidRecord)?;
+        if sql != definition.trim_end_matches(';') {
+            return Err(EpochError::InvalidRecord);
+        }
+    }
+    let extra:bool = db.query_row("SELECT EXISTS(SELECT 1 FROM main.sqlite_schema WHERE type='trigger' AND tbl_name IN ('observation_export_feed','observation_export_retention','observation_export_projection')) OR EXISTS(SELECT 1 FROM temp.sqlite_schema WHERE name IN ('observation_export_feed','observation_export_retention','observation_export_projection','model_observations') OR (type='trigger' AND tbl_name IN ('observation_export_feed','observation_export_retention','observation_export_projection')))",[],|r|r.get(0)).map_err(unavailable)?;
+    if extra {
+        return Err(EpochError::InvalidRecord);
+    }
+    Ok(())
+}
+
 pub(super) fn initialize(db: &Connection) -> Result<(), EpochError> {
     let before = version(db)?;
-    if ![0, SCHEMA_VERSION].contains(&before) {
+    if ![0, 1, SCHEMA_VERSION].contains(&before) {
         return Err(EpochError::UnsupportedVersion);
     }
     if before == SCHEMA_VERSION {
         read(db)?;
         table(db, "model_observations", RAW_COLUMNS)?;
+        verify_export_schema(db)?;
         // Current stores need no migration write lock. WAL readers must remain
         // openable while a different connection holds the writer transaction.
         db.execute_batch("PRAGMA journal_mode=WAL;")
@@ -168,11 +202,13 @@ pub(super) fn initialize(db: &Connection) -> Result<(), EpochError> {
             {
                 return Err(EpochError::InvalidRecord);
             }
-            tx.pragma_update(None, "user_version", SCHEMA_VERSION)
-                .map_err(unavailable)?;
+        }
+        1 => {
+            epoch_record(&tx)?;
         }
         SCHEMA_VERSION => {
             read(&tx)?;
+            return tx.commit().map_err(unavailable);
         }
         _ => return Err(EpochError::UnsupportedVersion),
     }
@@ -181,6 +217,13 @@ pub(super) fn initialize(db: &Connection) -> Result<(), EpochError> {
         "CREATE INDEX IF NOT EXISTS observation_started ON model_observations(started_at);",
     )
     .map_err(unavailable)?;
+    tx.execute_batch(include_str!("export_feed.sql"))
+        .map_err(unavailable)?;
+    tx.execute_batch("INSERT INTO observation_export_retention VALUES(1,0);
+        INSERT INTO observation_export_feed(request_id,started_at,baseline,projection)
+        SELECT id,started_at,1,projection FROM observation_export_projection ORDER BY started_at,id;").map_err(unavailable)?;
+    tx.pragma_update(None, "user_version", SCHEMA_VERSION)
+        .map_err(unavailable)?;
     read(&tx)?;
     tx.commit().map_err(unavailable)
 }

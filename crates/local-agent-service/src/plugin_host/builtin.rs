@@ -501,7 +501,10 @@ pub(crate) async fn guard_owned(
             .into_response();
         }
     }
-    let response = next.run(request).await;
+    let permit = std::sync::Arc::new(permit);
+    let response = super::intake::ACTIVE_JOB
+        .scope(permit.clone(), next.run(request))
+        .await;
     let (parts, body) = response.into_parts();
     axum::response::Response::from_parts(
         parts,

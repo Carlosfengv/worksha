@@ -72,6 +72,23 @@ impl bindings::local_agent::plugin::host::Host for GuestState {
                             | "domain.read-conversation",
                         "source.read"
                     ) | ("account.quota", "connection.request")
+                        | (
+                            "platform.render" | "platform.action",
+                            "domain.read"
+                                | "source.list_files"
+                                | "source.read"
+                                | "storage.kv.get"
+                                | "storage.kv.list"
+                                | "storage.records.get"
+                                | "storage.records.query"
+                        )
+                        | (
+                            "platform.action",
+                            "storage.kv.put"
+                                | "storage.kv.delete"
+                                | "storage.records.put"
+                                | "storage.records.delete"
+                        )
                 )
             {
                 return Err(fail("permission_denied"));
@@ -231,6 +248,13 @@ fn run_package(path: &Path, digest: &str) -> Result<()> {
             "policy.rank" => {
                 phase == "active"
                     && package.capabilities == [local_agent_core::plugin::policy::CAPABILITY]
+            }
+            "sink.transform" | "platform.render" | "platform.action" => {
+                phase == "active"
+                    && package
+                        .capabilities
+                        .iter()
+                        .any(|c| c == local_agent_core::plugin::platform::CAPABILITY)
             }
             "protocol.open" | "protocol.feed" | "protocol.finish" => {
                 phase == "active"

@@ -1,0 +1,84 @@
+{
+  "$defs": {
+    "EntityKind": {
+      "enum": [
+        "session",
+        "project",
+        "agent",
+        "provider",
+        "request",
+        "account"
+      ],
+      "type": "string"
+    },
+    "PlatformContext": {
+      "additionalProperties": false,
+      "properties": {
+        "objectId": {
+          "type": "string"
+        },
+        "scope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "$ref": "#/$defs/EntityKind"
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "target",
+        "objectId"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "context": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlatformContext"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "cursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "digest": {
+      "type": "string"
+    },
+    "filter": {
+      "additionalProperties": true,
+      "default": {},
+      "type": "object"
+    },
+    "pluginId": {
+      "type": "string"
+    },
+    "slotOrViewId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "pluginId",
+    "digest",
+    "slotOrViewId"
+  ],
+  "title": "PlatformSlotQuery",
+  "type": "object"
+}

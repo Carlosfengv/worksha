@@ -1,0 +1,680 @@
+{
+  "$defs": {
+    "AdapterDef": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "agent-adapter",
+              "type": "string"
+            },
+            "sourceMapper": {
+              "$ref": "#/$defs/SourceMapper"
+            }
+          },
+          "required": [
+            "kind",
+            "sourceMapper"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "provider-adapter",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "CollectionDef": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "additionalProperties": {
+            "$ref": "#/$defs/FieldDef"
+          },
+          "type": "object"
+        },
+        "groupBy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "fields"
+      ],
+      "type": "object"
+    },
+    "DirectoryPurpose": {
+      "enum": [
+        "source-read",
+        "log-sink"
+      ],
+      "type": "string"
+    },
+    "EntityKind": {
+      "enum": [
+        "session",
+        "project",
+        "agent",
+        "provider",
+        "request",
+        "account"
+      ],
+      "type": "string"
+    },
+    "FieldDef": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/FieldKind"
+        },
+        "label": {
+          "type": "string"
+        },
+        "options": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "required": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "label",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "FieldKind": {
+      "enum": [
+        "text",
+        "textarea",
+        "number",
+        "boolean",
+        "enum",
+        "ref:session",
+        "ref:project",
+        "ref:agent",
+        "ref:provider"
+      ],
+      "type": "string"
+    },
+    "LogFilter": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "clientScope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "LogFormat": {
+      "enum": [
+        "jsonl",
+        "csv",
+        "wasm"
+      ],
+      "type": "string"
+    },
+    "LogSinkDef": {
+      "additionalProperties": false,
+      "properties": {
+        "filter": {
+          "$ref": "#/$defs/LogFilter",
+          "default": {
+            "agent": null,
+            "clientScope": null,
+            "model": null,
+            "outcome": null
+          }
+        },
+        "format": {
+          "$ref": "#/$defs/LogFormat"
+        },
+        "rotatePolicy": {
+          "$ref": "#/$defs/RotatePolicy"
+        }
+      },
+      "required": [
+        "format",
+        "rotatePolicy"
+      ],
+      "type": "object"
+    },
+    "NavigationGroup": {
+      "enum": [
+        "observation",
+        "supply"
+      ],
+      "type": "string"
+    },
+    "PlatformAction": {
+      "enum": [
+        "records.create",
+        "records.update",
+        "records.move",
+        "records.delete",
+        "kv.set"
+      ],
+      "type": "string"
+    },
+    "PlatformContribution": {
+      "additionalProperties": false,
+      "properties": {
+        "definition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlatformDefinition"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "diagnostic": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "digest": {
+          "type": "string"
+        },
+        "directoryGrants": {
+          "items": {
+            "$ref": "#/$defs/DirectoryPurpose"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "entityGrants": {
+          "items": {
+            "$ref": "#/$defs/EntityKind"
+          },
+          "type": "array"
+        },
+        "epoch": {
+          "type": "string"
+        },
+        "grantRevision": {
+          "type": "string"
+        },
+        "pluginId": {
+          "type": "string"
+        },
+        "sink": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SinkStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "usedBytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "usedRows": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "pluginId",
+        "digest",
+        "epoch",
+        "grantRevision",
+        "enabled",
+        "entityGrants",
+        "directoryGrants",
+        "usedRows",
+        "usedBytes"
+      ],
+      "type": "object"
+    },
+    "PlatformDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdapterDef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "collections": {
+          "additionalProperties": {
+            "$ref": "#/$defs/CollectionDef"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "logSink": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LogSinkDef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "schemaVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "slots": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlatformSlotDef"
+          },
+          "type": "array"
+        },
+        "views": {
+          "additionalProperties": {
+            "$ref": "#/$defs/PlatformViewDef"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "wasm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlatformWasmDef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
+    "PlatformSlotDef": {
+      "additionalProperties": false,
+      "properties": {
+        "filterByContext": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "group": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NavigationGroup"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "point": {
+          "$ref": "#/$defs/SlotPoint"
+        },
+        "viewId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "point",
+        "viewId"
+      ],
+      "type": "object"
+    },
+    "PlatformViewDef": {
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlatformAction"
+          },
+          "type": "array"
+        },
+        "collection": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/ViewKind"
+        },
+        "primaryField": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "PlatformWasmDef": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "default": false,
+          "type": "boolean"
+        },
+        "render": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "RotatePolicy": {
+      "enum": [
+        "daily",
+        "hourly"
+      ],
+      "type": "string"
+    },
+    "SinkStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "exportedRows": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filter": {
+          "$ref": "#/$defs/LogFilter"
+        },
+        "lastError": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lastFlushedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "legacyCoverageUnknown": {
+          "default": false,
+          "type": "boolean"
+        },
+        "quotaBytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rotatePolicy": {
+          "$ref": "#/$defs/RotatePolicy"
+        },
+        "writtenBytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "exportedRows",
+        "writtenBytes",
+        "quotaBytes",
+        "filter",
+        "rotatePolicy"
+      ],
+      "type": "object"
+    },
+    "SlotPoint": {
+      "enum": [
+        "nav.home-sidebar",
+        "overview.section",
+        "sessions.toolbar.actions",
+        "requests.toolbar.actions",
+        "session.inspector.card",
+        "session.inspector.tab",
+        "session.detail.actions",
+        "project.detail.tab",
+        "project.detail.card",
+        "project.detail.actions",
+        "request.detail.card",
+        "request.detail.actions",
+        "agent.detail.tab",
+        "agent.detail.card",
+        "agent.detail.actions",
+        "provider.detail.tab",
+        "provider.detail.card",
+        "provider.detail.actions",
+        "account.detail.tab",
+        "account.detail.card",
+        "account.detail.actions"
+      ],
+      "type": "string"
+    },
+    "SourceActivityMapper": {
+      "additionalProperties": false,
+      "properties": {
+        "occurredAt": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "phase",
+        "occurredAt"
+      ],
+      "type": "object"
+    },
+    "SourceConversationMapper": {
+      "additionalProperties": false,
+      "properties": {
+        "messages": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "messages",
+        "role",
+        "text"
+      ],
+      "type": "object"
+    },
+    "SourceFormat": {
+      "enum": [
+        "json",
+        "jsonl"
+      ],
+      "type": "string"
+    },
+    "SourceMapper": {
+      "additionalProperties": false,
+      "properties": {
+        "activity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceActivityMapper"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conversation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceConversationMapper"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "createdAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "format": {
+          "$ref": "#/$defs/SourceFormat"
+        },
+        "glob": {
+          "type": "string"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "project": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UsageMapper"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "format",
+        "glob",
+        "sessionId",
+        "title"
+      ],
+      "type": "object"
+    },
+    "UsageMapper": {
+      "additionalProperties": false,
+      "properties": {
+        "inputTokens": {
+          "type": "string"
+        },
+        "outputTokens": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "inputTokens",
+        "outputTokens"
+      ],
+      "type": "object"
+    },
+    "ViewKind": {
+      "enum": [
+        "kanban",
+        "data-table",
+        "form",
+        "stat-row",
+        "detail-list",
+        "action-bar"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "items": {
+        "$ref": "#/$defs/PlatformContribution"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "items"
+  ],
+  "title": "PlatformContributionList",
+  "type": "object"
+}

@@ -1,0 +1,20 @@
+manifest:
+  manifestVersion: 1
+  id: org.example.gateway-log-archive
+  publisher: org.example
+  version: 1.0.0
+  displayName: 网关日志归档
+  hostApi: ^1.0.0
+  runtime: { kind: declarative }
+  capabilities: [ui.platform@1]
+platform:
+  schemaVersion: 1
+  logSink: { format: jsonl, rotatePolicy: daily }
+  views:
+    archive: { title: 网关日志归档, kind: detail-list }
+    archive-status: { title: 归档状态, kind: action-bar }
+    request-archive: { title: 网关日志归档状态, kind: detail-list }
+  slots:
+    - { id: archive-nav, point: nav.home-sidebar, viewId: archive, group: observation, icon: file-archive }
+    - { id: request-toolbar-archive, point: requests.toolbar.actions, viewId: archive-status }
+    - { id: request-detail-archive, point: request.detail.card, viewId: request-archive }

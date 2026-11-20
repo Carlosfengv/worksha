@@ -1,0 +1,312 @@
+{
+  "$defs": {
+    "Authorization": {
+      "enum": [
+        "authorized",
+        "unauthorized",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "Coverage": {
+      "enum": [
+        "complete",
+        "partial",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "Freshness": {
+      "enum": [
+        "current",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "HydratedEntity": {
+      "additionalProperties": false,
+      "properties": {
+        "activityState": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authorization": {
+          "$ref": "#/$defs/Authorization"
+        },
+        "freshness": {
+          "$ref": "#/$defs/Freshness"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "routeHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "totalTokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "authorization",
+        "freshness"
+      ],
+      "type": "object"
+    },
+    "LogFilter": {
+      "additionalProperties": false,
+      "properties": {
+        "agent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "clientScope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "PlatformAction": {
+      "enum": [
+        "records.create",
+        "records.update",
+        "records.move",
+        "records.delete",
+        "kv.set"
+      ],
+      "type": "string"
+    },
+    "PlatformRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "_hydrated": {
+          "additionalProperties": {
+            "$ref": "#/$defs/HydratedEntity"
+          },
+          "type": "object"
+        },
+        "recordId": {
+          "type": "string"
+        },
+        "values": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "recordId",
+        "values",
+        "_hydrated"
+      ],
+      "type": "object"
+    },
+    "PlatformViewDef": {
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlatformAction"
+          },
+          "type": "array"
+        },
+        "collection": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/ViewKind"
+        },
+        "primaryField": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "RotatePolicy": {
+      "enum": [
+        "daily",
+        "hourly"
+      ],
+      "type": "string"
+    },
+    "SinkStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "exportedRows": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filter": {
+          "$ref": "#/$defs/LogFilter"
+        },
+        "lastError": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lastFlushedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "legacyCoverageUnknown": {
+          "default": false,
+          "type": "boolean"
+        },
+        "quotaBytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rotatePolicy": {
+          "$ref": "#/$defs/RotatePolicy"
+        },
+        "writtenBytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "exportedRows",
+        "writtenBytes",
+        "quotaBytes",
+        "filter",
+        "rotatePolicy"
+      ],
+      "type": "object"
+    },
+    "ViewKind": {
+      "enum": [
+        "kanban",
+        "data-table",
+        "form",
+        "stat-row",
+        "detail-list",
+        "action-bar"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actionStoreId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "authorization": {
+      "$ref": "#/$defs/Authorization"
+    },
+    "blocks": {
+      "items": {
+        "$ref": "#/$defs/PlatformViewDef"
+      },
+      "type": "array"
+    },
+    "coverage": {
+      "$ref": "#/$defs/Coverage"
+    },
+    "epoch": {
+      "type": "string"
+    },
+    "freshness": {
+      "$ref": "#/$defs/Freshness"
+    },
+    "grantRevision": {
+      "type": "string"
+    },
+    "nextCursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "records": {
+      "items": {
+        "$ref": "#/$defs/PlatformRecord"
+      },
+      "type": "array"
+    },
+    "sink": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SinkStatus"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "blocks",
+    "records",
+    "coverage",
+    "freshness",
+    "authorization",
+    "epoch",
+    "grantRevision"
+  ],
+  "title": "PlatformSlotView",
+  "type": "object"
+}

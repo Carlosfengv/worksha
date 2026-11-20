@@ -28,6 +28,7 @@ prototypes/
 /docs/technical-plan.md
 /docs/status.md
 sdk/plugins/examples/*/package/plugin.wasm
+sdk/plugins/examples/gateway-log-archive/otel-package/plugin.wasm
 *.laplug
 !src-tauri/resources/dsh-desktop.laplug
 __pycache__/

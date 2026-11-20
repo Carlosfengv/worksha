@@ -14,6 +14,7 @@ pub(crate) fn run(args: Vec<String>) -> Result<()> {
         | Some("schemas-builtin")
         | Some("schemas-extensions")
         | Some("schemas-contributions")
+        | Some("schemas-platform")
         | Some("schemas-object-summary")
         | Some("schemas-request-export")
         | Some("schemas-object-contributions")
@@ -38,6 +39,8 @@ pub(crate) fn run(args: Vec<String>) -> Result<()> {
             std::fs::create_dir_all(root).checked("unavailable")?;
             let schemas = if args[0] == "schemas-builtin" {
                 local_agent_core::plugin::builtin::schemas()
+            } else if args[0] == "schemas-platform" {
+                local_agent_core::plugin::platform::schemas()
             } else if args[0] == "schemas-routing-policy-recovery" {
                 local_agent_core::domain::routing_policy_recovery::schemas()
             } else if args[0] == "schemas-request-export" {
@@ -202,6 +205,26 @@ pub(crate) fn pack_files(root: &Path) -> Result<BTreeMap<String, Vec<u8>>> {
     }
     let mut files = BTreeMap::new();
     visit(root, root, &mut files)?;
+    if files.contains_key("manifest.json") {
+        return Ok(files);
+    }
+    for name in ["plugin.yaml", "plugin.toml", "plugin.jsonc"] {
+        if let Some(source) = files.remove(name) {
+            if files.contains_key("manifest.json") || files.contains_key("platform.json") {
+                return Err(fail("invalid_input"));
+            }
+            let rule = local_agent_core::plugin::platform::compile_rules(name, &source)
+                .checked("invalid_input")?;
+            files.insert(
+                "manifest.json".into(),
+                serde_json::to_vec(&rule.manifest).checked("invalid_input")?,
+            );
+            files.insert(
+                "platform.json".into(),
+                serde_json::to_vec(&rule.platform).checked("invalid_input")?,
+            );
+        }
+    }
     Ok(files)
 }
 pub(crate) fn pack(root: &Path, key: Option<&SigningKey>) -> Result<Vec<u8>> {

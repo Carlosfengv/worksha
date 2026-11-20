@@ -24,17 +24,21 @@ function pack(example, name = example, edit = () => {}) {
 }
 let child, exited, base;
 const token = randomUUID();
-async function api(route, body, status = 200, busyRetries = 0) {
+async function api(route, body, status = 200, retries = 0) {
   // A cold source worker has a 30-second host deadline plus shutdown time.
   const r = await fetch(base + route, { method: body === undefined ? "GET" : "POST", headers: { authorization: "Bearer " + token, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(35000) });
   const value = await r.json();
-  if (busyRetries > 0 && r.status === 503 && value.code === "busy") {
+  const busy = r.status === 503 && value.code === "busy";
+  const staleActivity = route === "/api/domain/activity" && status === 200 && r.status === 409 && value.code === "stale_snapshot";
+  if (retries > 0 && (busy || staleActivity)) {
     await new Promise((resolve) => setTimeout(resolve, 250));
-    return api(route, body, status, busyRetries - 1);
+    return api(route, body, status, retries - 1);
   }
   assert.equal(r.status, status, route + ": " + JSON.stringify(value));
   return value;
 }
+// A source-watch publication can invalidate an in-flight activity read. Request a fresh page.
+const readActivity = (body) => api("/api/domain/activity", body, 200, 4);
 const sourceId = "net.worksha.dsh-desktop:desktop", productId = sourceId;
 const secondSourceId = "org.example.full-history:history";
 const secondProductId = "org.example.full-history:terminal";
@@ -179,7 +183,7 @@ try {
   assert.deepEqual(secondView.report.sources.map((s) => [s.sourceId, s.sessions]), [[secondSourceId, "3"]]);
   assert.notEqual(secondView.snapshot, reportView.snapshot);
   assert.equal((await view()).snapshot, reportView.snapshot);
-  const activity = () => api("/api/domain/activity", { scope: query.scope, rangeSeconds: 3600, productId, sessionId: null, includeGateway: false, includeHistorical: false });
+  const activity = () => readActivity({ scope: query.scope, rangeSeconds: 3600, productId, sessionId: null, includeGateway: false, includeHistorical: false });
   writeRows(1);
   await api("/api/plugin-sources/refresh", source);
   const current = (await activity()).items[0]; assert.equal(current.state, "current"); assert.equal(current.kind, "source-event"); assert.equal(current.measurements, null);
@@ -257,7 +261,7 @@ try {
     const snapshot = randomUUID();
     fs.writeFileSync(history, [{ snapshot, records: records.length }, ...records, { commit: snapshot }].map((row) => JSON.stringify(row)).join("\n") + "\n");
   }
-  const sourceActivity = () => api("/api/domain/activity", { scope: query.scope, rangeSeconds: 3600, productId, sessionId: null, includeGateway: false, includeHistorical: true });
+  const sourceActivity = () => readActivity({ scope: query.scope, rangeSeconds: 3600, productId, sessionId: null, includeGateway: false, includeHistorical: true });
   const sourceStatus = async () => (await api("/api/plugin-sources")).items.find((item) => item.digest === source.digest);
   const authorizeHistory = async (persistWatch = true) => {
     // Startup restores the saved source in the background and can still hold its gate.
@@ -376,7 +380,7 @@ try {
   await approve(firstNonDsh, secondHistory, true);
   await stop(); await start();
   await waitFor(() => details(firstNonDsh), (status) => status.unifiedAuthorized);
-  const otherActivity = () => api("/api/domain/activity", { scope:{kind:"external",sourceIds:[secondSourceId]},rangeSeconds:3600,productId:secondProductId,sessionId:null,includeGateway:false,includeHistorical:true });
+  const otherActivity = () => readActivity({ scope:{kind:"external",sourceIds:[secondSourceId]},rangeSeconds:3600,productId:secondProductId,sessionId:null,includeGateway:false,includeHistorical:true });
   const [otherTask] = (await waitFor(otherActivity,matchesTask("Non-DSH reported task","historical"))).items;
   assert.deepEqual(otherTask.reportedMeasurements, {firstTokenMs:40,runningTokensPerSecond:null,completedTokensPerSecond:40,outputTokens:"20"});
   fs.renameSync(secondHistory, secondHistory+".old");

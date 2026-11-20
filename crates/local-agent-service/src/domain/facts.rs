@@ -149,10 +149,7 @@ pub(super) async fn conversation(
                     SourceView::Legacy(ref v) => legacy_snapshot(v)?,
                     _ => None,
                 };
-                let snapshot = match &view {
-                    SourceView::Full(v) => v.snapshot(),
-                    _ => legacy.as_ref(),
-                };
+                let snapshot = view.fact_snapshot().or(legacy.as_ref());
                 if snapshot.is_some_and(|s| {
                     s.filtered_graph(&selection, &before.hidden)
                         .iter()
@@ -258,10 +255,7 @@ pub(super) fn facts(state: &AppState, query: FactQuery) -> Result<FactPage> {
             SourceView::Legacy(v) => legacy_snapshot(v)?,
             _ => None,
         };
-        let snapshot = match view {
-            SourceView::Full(full) => full.snapshot(),
-            SourceView::Legacy(_) => legacy.as_ref(),
-        };
+        let snapshot = view.fact_snapshot().or(legacy.as_ref());
         if let Some(snapshot) = snapshot {
             let metadata = FactSnapshot {
                 identity: snapshot.identity.clone(),

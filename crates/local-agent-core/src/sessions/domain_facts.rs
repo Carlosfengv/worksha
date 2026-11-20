@@ -382,7 +382,7 @@ impl NativeSessions {
             }
             if query.response_id.is_none() && query.kind == FactKind::Activity {
                 let mut activities = HashSet::new();
-                for activity in &file.activity_messages {
+                for activity in file.activity_messages.iter() {
                     let id = super::live::message_key(activity);
                     if activity.session_id == s.id && activities.insert(id.clone()) {
                         emit(

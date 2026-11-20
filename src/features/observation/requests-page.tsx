@@ -241,6 +241,7 @@ export function RequestsPage({
         onChange={change}
         actions={
           <PageActions>
+            <ExtensionSlot points={["requests.toolbar.actions"]} />
             <Select
               size="sm"
               value={interval}
@@ -530,3 +531,4 @@ export function RequestsPage({
     </PageBody>
   );
 }
+import { ExtensionSlot } from "@/features/plugins/extension-slot";

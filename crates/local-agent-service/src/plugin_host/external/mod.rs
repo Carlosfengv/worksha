@@ -14,6 +14,9 @@ pub(crate) mod full;
 mod installation;
 mod object_contributions;
 mod package;
+pub(crate) mod platform;
+mod platform_package;
+mod platform_store;
 pub(crate) mod policy;
 pub(crate) mod presets;
 pub(crate) mod sdk;
@@ -61,12 +64,16 @@ pub(crate) fn fail(code: &'static str) -> Error {
 pub(crate) async fn run_sync<T: Send + 'static>(
     work: impl FnOnce() -> Result<T> + Send + 'static,
 ) -> Result<T> {
-    crate::blocking::run(work)
-        .await
-        .map_err(|error| match error {
-            crate::blocking::Error::Busy => fail("busy"),
-            crate::blocking::Error::Unavailable => fail("unavailable"),
-        })?
+    let admission = super::intake::ACTIVE_JOB.try_with(Arc::clone).ok();
+    crate::blocking::run(move || {
+        let _admission = admission;
+        work()
+    })
+    .await
+    .map_err(|error| match error {
+        crate::blocking::Error::Busy => fail("busy"),
+        crate::blocking::Error::Unavailable => fail("unavailable"),
+    })?
 }
 pub(crate) trait Checked<T> {
     fn checked(self, code: &'static str) -> Result<T>;
@@ -99,6 +106,9 @@ pub(crate) fn message(code: &str) -> &'static str {
         "publisher_untrusted" => "请核对发布者公钥后明确同意安装。",
         "publisher_changed" => "发布者公钥与已信任记录不同。",
         "signature_invalid" => "插件签名或文件摘要不一致。",
+        "source_changed" => "观测历史已变化，请核对现有归档；选择新目录可从现存记录重新开始。",
+        "operation_conflict" => "此操作编号已用于不同的提交，请核对原记录。",
+        "record_conflict" => "你修改的字段已在别处更新。请重新打开记录，核对后再保存。",
         "stale_snapshot" => "快照已失效，请重新读取。",
         "object_context_required" => "请从对应对象详情中打开此摘要，并单独确认字段与用途。",
         "deadline_exceeded" => "插件运行超时，任务已终止。",
@@ -137,15 +147,20 @@ pub(crate) struct Cached {
 struct PluginCache {
     data: BTreeMap<String, Arc<Cached>>,
     reports: BTreeMap<String, BTreeMap<String, Cached>>,
+    directory_errors: BTreeMap<String, (String, &'static str, String)>,
+    directory_sources: BTreeMap<String, Arc<platform::DirectorySnapshot>>,
 }
 impl PluginCache {
     fn remove(&mut self, id: &str) {
         self.data.remove(id);
         self.reports.remove(id);
+        self.directory_sources.remove(id);
+        self.directory_errors.remove(id);
     }
 }
 pub(crate) struct Manager {
     installation: Mutex<()>,
+    platform_commit: Mutex<()>,
     objects: Mutex<object_contributions::Host>,
     full: Mutex<full::Host>,
     policy: Mutex<policy::Host>,
